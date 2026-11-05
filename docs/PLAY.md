@@ -20,7 +20,9 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | Left click on a reply, or 1-9 | take that reply, or take an item from a container |
 | Space or Enter | end a line, or close a container |
 | Wheel | zoom |
-| Esc | back out of a screen |
+| Esc | back out of a screen, or pause |
+| I | inventory |
+| U | equipment (C stays free for a character sheet) |
 
 Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG` and `--autopilot` (a scripted player takes the controls and prints what stalls).
 
@@ -66,6 +68,11 @@ Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game 
 Saves are files in `%LOCALAPPDATA%\kotor-rs\saves` and nowhere else, and writing inside the install is refused. Save Game lists them newest first with a New save row: choose a row, press Save, type a name, press OK or Enter. Choosing an old save overwrites it; a file is written beside the old one and then moved over it, so a crash does not cost the old save. Load Game works from the pause menu and the main menu, from any module to any module. Delete asks once, then takes the file away. A file this engine cannot read is not listed.
 
 Saving is refused during a conversation or a fight, because neither is saved. Also not saved: scripts' pending `DelayCommand` blocks and queued actions. There is no thumbnail of the scene, so `LBL_SCREENSHOT` is left dark. Area names like `Endar Spire - Command Module` are split into the planet and area lines (an assumption about the names).
+
+## Inventory and equipment
+`inventory.gui` and `equip.gui`, for the player only. The inventory lists what is carried with its picture and stack, the portrait, vitality, defense and credits. A click on an item wears it in its slot, and anything else just shows its words. The equipment screen lists what can be worn: a click wears it, a click on a worn slot takes it off, and a click on an empty slot lists only what fits it. Damage and to hit follow `combat.rs`: the left hand's only show when it holds a weapon, and combat does not use them yet.
+
+Item pictures are `i<itemclass>_<number>`. Measured over the 557 item templates in the BIFs: 430 go by `ModelVariation`, 97 (the armour) by `TextureVar`, and 30 have no picture at all, `defaulticon` included. `baseitems.2da` `equipableslots` is a mask of slots. **Assumed, not compared with the game:** every `reqfeat` of a row must be known; `droidorhuman` 1 is humans and 2 droids; a weapon that fits only the right hand takes both hands; identical items join a stack up to `stacking`, weapons included; item words replace the portrait and slots while the cursor is on an item. Party switching, quest items and using an item are not built: the first buttons are hidden and the others greyed.
 
 ## Menus
 Stock GUI files drawn by `crates/kotor-ui/src/menus.rs`, with the screens' logic in `gpu/src/menus.rs`. **Assumed, not compared with the game:** a 640x480 screen stays centred on a wide window with black at the sides, except the main menu's background, which stretches; controls are drawn in file order, later ones on top (the HUD draws the other way round); a button under the cursor has yellow text. Text alignment is read as bits: horizontal 1 left, 2 centre, 4 right, vertical 8 top, 16 middle, 32 bottom.

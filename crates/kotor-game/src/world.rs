@@ -359,6 +359,8 @@ pub struct World {
     pub(crate) shape_next: usize,
     pub(crate) shape_started: bool,
     tables: HashMap<String, Option<Rc<TwoDa>>>,
+    /// What the item screens read from UTI files, by template.
+    pub(crate) item_templates: HashMap<String, Rc<crate::items::ItemTemplate>>,
 }
 
 fn creature_defaults(o: &mut Object, utc: &Struct) {
@@ -493,6 +495,7 @@ impl World {
             shape_next: 0,
             shape_started: false,
             tables: HashMap::new(),
+            item_templates: HashMap::new(),
         };
         let table =
             |w: &mut World, n: &str| TwoDa::parse(&w.inst.read(n, ResType::TWODA).ok()?).ok();

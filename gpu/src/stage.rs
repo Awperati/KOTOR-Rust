@@ -1678,8 +1678,11 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
+            "state menu={} saves={} gold={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
             self.menu_name(),
+            self.saves_listed(),
+            w.gold,
+            w.object(w.pc).map_or(0, |o| o.equipped.len()),
             if self.module.is_empty() { "-" } else { &self.module },
             here[0],
             here[1],

@@ -88,5 +88,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     click(&mut s, "LB_GAMES", Some(0));
     shot(&mut gpu, &mut s, "load_list", &out);
     let _ = std::fs::remove_dir_all(&saves);
+    s.escape();
+    s.escape();
+
+    // A bag of things: the inventory, then the equipment with some of them on.
+    let pc = s.game.world.pc;
+    for t in [
+        "g_a_class4001",
+        "g_a_class5001",
+        "g_w_blstrpstl001",
+        "g_w_blstrpstl001",
+        "g_w_blstrrfl001",
+        "g_w_lngswrd01",
+        "g_i_medeqpmnt01",
+        "g_i_medeqpmnt01",
+        "g_i_medeqpmnt02",
+        "g_i_adrnaline003",
+        "g_i_credits001",
+    ] {
+        let item = s.game.world.spawn_item(t);
+        s.game.world.carry(pc, item);
+    }
+    s.open_inventory();
+    let size = SIZES[0];
+    s.set_view(size);
+    let p = s.menu_pixel("LB_ITEMS", Some(1), size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "inventory", &out);
+    s.open_equip();
+    click(&mut s, "LB_ITEMS", Some(0));
+    click(&mut s, "LB_ITEMS", Some(1));
+    s.set_view(size);
+    let p = s.menu_pixel("BTN_INV_BODY", None, size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "equip", &out);
+    let p = s.menu_pixel("LB_ITEMS", Some(0), size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "equip_item", &out);
     Ok(())
 }

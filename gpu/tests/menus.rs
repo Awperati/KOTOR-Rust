@@ -103,6 +103,12 @@ fn temp_saves(s: &mut Stage, name: &str) -> std::path::PathBuf {
     dir
 }
 
+/// The screen as it is now.
+fn frame(s: &mut Stage) -> Vec<u8> {
+    s.update(DT);
+    s.overlay().unwrap().rgba.clone()
+}
+
 fn click_row(s: &mut Stage, tag: &str, row: usize) {
     let p = s.menu_pixel(tag, Some(row), SIZE).unwrap();
     s.hover(p, SIZE);
@@ -307,4 +313,125 @@ fn a_conversation_cannot_be_saved_and_a_save_goes_only_to_its_folder() {
         .join("kotor-rs")
         .join("saves");
     assert_eq!(kotor_gpu::stage::default_saves_dir(), Some(want));
+}
+
+#[test]
+fn the_inventory_lists_what_is_carried_and_a_click_wears_it() {
+    let Some((mut s, _)) = in_game("inventory") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let armour = s.game.world.spawn_item("g_a_class4001");
+    let medpack = s.game.world.spawn_item("g_i_medeqpmnt01");
+    s.game.world.carry(pc, armour);
+    s.game.world.carry(pc, medpack);
+    s.game.world.gold = 123;
+    let t = s.game.world.time;
+    s.open_inventory();
+    assert_eq!(s.menu_name(), "inventory");
+    s.update(DT);
+    assert_eq!(s.game.world.time, t, "the game waits");
+    let before = s.overlay().unwrap().clone();
+
+    // Under the cursor, an item shows its words.
+    let row = s.menu_pixel("LB_ITEMS", Some(1), SIZE).unwrap();
+    s.hover(row, SIZE);
+    s.update(DT);
+    assert_ne!(s.overlay().unwrap().rgba, before.rgba);
+    // A medpack is not worn: a click leaves it in the bag.
+    s.click(row, SIZE);
+    assert_eq!(s.game.world.carried(pc), vec![armour, medpack]);
+    // Armour goes on, and defense changes on the screen.
+    let bare = s.game.world.defense_of(pc);
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert_eq!(s.game.world.carried(pc), vec![medpack]);
+    assert_eq!(
+        s.game.world.object(pc).unwrap().equipped.get(&1),
+        Some(&armour)
+    );
+    assert!(s.game.world.defense_of(pc) > bare);
+    s.update(DT);
+    // I, Esc and the button each close it.
+    s.open_inventory();
+    assert_eq!(s.menu_name(), "-");
+    s.open_inventory();
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    s.open_inventory();
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+    // U swaps to the equipment from the inventory, but neither opens over the pause menu.
+    s.open_inventory();
+    s.open_equip();
+    assert_eq!(s.menu_name(), "equip");
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    s.escape();
+    s.open_inventory();
+    assert_eq!(s.menu_name(), "pause");
+    s.escape();
+}
+
+#[test]
+fn the_equipment_screen_wears_takes_off_and_filters_by_slot() {
+    let Some((mut s, _)) = in_game("equip") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    for t in ["g_a_class4001", "g_w_blstrpstl001", "g_i_medeqpmnt01"] {
+        let i = s.game.world.spawn_item(t);
+        s.game.world.carry(pc, i);
+    }
+    s.open_equip();
+    let empty = frame(&mut s);
+    // Only what can be worn is listed. A click on it wears it, and the slot's picture changes.
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert_eq!(s.game.world.carried(pc).len(), 2);
+    assert!(s.game.world.object(pc).unwrap().equipped.contains_key(&1));
+    assert_ne!(frame(&mut s), empty);
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert!(s.game.world.object(pc).unwrap().equipped.contains_key(&4));
+    assert!(
+        s.menu_pixel("LB_ITEMS", Some(0), SIZE).is_some(),
+        "the row of the medpack is not there, but its place is"
+    );
+    let left = s.game.world.carried(pc);
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert_eq!(s.game.world.carried(pc), left, "no such row to click");
+
+    // A click on a worn slot takes it off.
+    press(&mut s, "BTN_INV_BODY");
+    assert!(!s.game.world.object(pc).unwrap().equipped.contains_key(&1));
+    // A click on an empty slot lists only what fits it.
+    press(&mut s, "BTN_INV_HEAD");
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert!(
+        !s.game.world.object(pc).unwrap().equipped.contains_key(&1),
+        "armour is not listed for the head"
+    );
+    press(&mut s, "BTN_INV_HEAD");
+    press(&mut s, "BTN_INV_BODY");
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert!(s.game.world.object(pc).unwrap().equipped.contains_key(&1));
+
+    // Without the feat an item stays off, and the screen says so.
+    let refused = frame(&mut s);
+    press(&mut s, "BTN_INV_BODY");
+    s.game.world.object_mut(pc).unwrap().feats.clear();
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert!(!s.game.world.object(pc).unwrap().equipped.contains_key(&1));
+    assert_ne!(frame(&mut s), refused);
+
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "-");
+    // What is worn shows on the body.
+    s.update(DT);
+    let scene = s.dynamic_scene();
+    assert!(
+        scene.meshes.iter().any(|m| m
+            .texture
+            .as_ref()
+            .is_some_and(|t| t.to_ascii_lowercase().starts_with("w_"))),
+        "the pistol is drawn in the hand"
+    );
 }

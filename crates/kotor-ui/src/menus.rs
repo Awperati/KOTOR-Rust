@@ -197,8 +197,13 @@ impl Ui<'_> {
         };
         let Some((rows, first)) = view.lists.get(&list.tag) else {
             // A list with text instead of rows: its lines, as many as fit.
-            if let Some(text) = view.patches.get(&list.tag).and_then(|p| p.text.clone()) {
-                let Some(f) = self.font(&t.font).cloned() else {
+            if let Some(patch) = view.patches.get(&list.tag).filter(|p| p.text.is_some()) {
+                let text = patch.text.clone().unwrap_or_default();
+                let e = &list.extent;
+                let box_ = [at.0 + e.left, at.1 + e.top, e.width, e.height];
+                self.draw_border(cv, &list.border, box_, None);
+                let font = patch.font.as_deref().unwrap_or(&t.font);
+                let Some(f) = self.font(font).cloned() else {
                     return;
                 };
                 let [x, y, w, _] = first_row;

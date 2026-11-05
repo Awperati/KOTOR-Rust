@@ -165,27 +165,59 @@ impl World {
 
     /// The weapon in a creature's right-hand slot (4), from `baseitems.2da`.
     pub fn weapon_of(&mut self, id: ObjId) -> Weapon {
+        self.hand_weapon(id, 4).unwrap_or(Weapon::UNARMED)
+    }
+
+    /// The weapon in a slot, if what is there is one.
+    pub fn hand_weapon(&mut self, id: ObjId, slot: i32) -> Option<Weapon> {
         let base = self
             .objects
             .get(&id)
-            .and_then(|o| o.equipped.get(&4))
+            .and_then(|o| o.equipped.get(&slot))
             .and_then(|w| self.objects.get(w))
-            .map(|w| w.base_item);
-        let (Some(base), Some(t)) = (base, self.table("baseitems")) else {
-            return Weapon::UNARMED;
-        };
+            .map(|w| w.base_item)?;
+        let t = self.table("baseitems")?;
         let row = base.max(0) as usize;
         let g = |c: &str| t.int(row, c).unwrap_or(0) as i32;
         if g("numdice") == 0 || g("dietoroll") == 0 {
-            return Weapon::UNARMED;
+            return None;
         }
-        Weapon {
+        Some(Weapon {
             dice: g("numdice"),
             sides: g("dietoroll"),
             threat: g("critthreat").max(1),
             multiplier: g("crithitmult").max(1),
             ranged: g("rangedweapon") > 0,
-        }
+        })
+    }
+
+    /// What is added to the d20 with the weapon in a slot (the right hand's empty fist too): base attack bonus,
+    /// Strength in melee or Dexterity at range, and effects.
+    pub fn attack_bonus_of(&mut self, id: ObjId, slot: i32) -> i32 {
+        let ranged = self.hand_weapon(id, slot).is_some_and(|w| w.ranged);
+        let ability = if ranged { DEX } else { STR };
+        self.base_attack_of(id)
+            + ability_mod(self.ability_score(id, ability))
+            + self.effect_sum(id, "EffectAttackIncrease", None)
+            - self.effect_sum(id, "EffectAttackDecrease", None)
+    }
+
+    /// Least and most damage of a hit that is not a critical with the weapon in a slot. An empty right hand fights
+    /// with its fist; an empty left hand does not fight. As in `resolve`, only melee adds Strength.
+    pub fn damage_range_of(&mut self, id: ObjId, slot: i32) -> Option<(i32, i32)> {
+        let w = self.hand_weapon(id, slot).or_else(|| {
+            let fist = slot == 4 && !self.objects.get(&id)?.equipped.contains_key(&4);
+            fist.then_some(Weapon::UNARMED)
+        })?;
+        let add = if w.ranged {
+            0
+        } else {
+            ability_mod(self.ability_score(id, STR))
+        };
+        Some((
+            damage(w.dice, add, Outcome::Hit, 1),
+            damage(w.dice * w.sides, add, Outcome::Hit, 1),
+        ))
     }
 
     /// Armor class: 10 plus the armor items' `baseac` plus natural AC plus Dexterity modifier.
@@ -258,11 +290,7 @@ impl World {
     fn resolve(&mut self, attacker: ObjId, target: ObjId) {
         let weapon = self.weapon_of(attacker);
         let str_mod = ability_mod(self.ability_score(attacker, STR));
-        let dex_mod = ability_mod(self.ability_score(attacker, DEX));
-        let bonus = self.base_attack_of(attacker)
-            + if weapon.ranged { dex_mod } else { str_mod }
-            + self.effect_sum(attacker, "EffectAttackIncrease", None)
-            - self.effect_sum(attacker, "EffectAttackDecrease", None);
+        let bonus = self.attack_bonus_of(attacker, 4);
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
         let outcome = resolve_attack(roll, confirm, bonus, defense, weapon.threat);

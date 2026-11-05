@@ -2,7 +2,10 @@
 //! Drawing and hit tests are `kotor_ui::menus`.
 
 use super::{Cue, Stage};
-use kotor_game::{read_save_info, SaveInfo};
+use kotor_game::{
+    read_save_info, CannotEquip, ItemView, ObjId, SaveInfo, SLOT_BELT, SLOT_BODY, SLOT_HANDS,
+    SLOT_HEAD, SLOT_IMPLANT, SLOT_LEFT_ARM, SLOT_LEFT_HAND, SLOT_RIGHT_ARM, SLOT_RIGHT_HAND,
+};
 use kotor_ui::{Hit, MenuView, Row};
 use std::path::{Path, PathBuf};
 
@@ -14,6 +17,40 @@ const SMALL_FONT: &str = "fnt_d16x16";
 const STR_LOAD_GAME: u32 = 1585;
 const STR_SAVE_GAME: u32 = 1588;
 
+/// The equipment screen's slots: button, the label that shows the item, slot, and the name shown above them.
+const EQUIP_SLOTS: [(&str, &str, i32, &str); 9] = [
+    ("BTN_INV_HEAD", "LBL_INV_HEAD", SLOT_HEAD, "Head"),
+    (
+        "BTN_INV_IMPLANT",
+        "LBL_INV_IMPLANT",
+        SLOT_IMPLANT,
+        "Implant",
+    ),
+    ("BTN_INV_BODY", "LBL_INV_BODY", SLOT_BODY, "Body"),
+    ("BTN_INV_ARM_L", "LBL_INV_ARM_L", SLOT_LEFT_ARM, "Left arm"),
+    (
+        "BTN_INV_WEAP_L",
+        "LBL_INV_WEAP_L",
+        SLOT_LEFT_HAND,
+        "Left hand",
+    ),
+    ("BTN_INV_BELT", "LBL_INV_BELT", SLOT_BELT, "Belt"),
+    (
+        "BTN_INV_WEAP_R",
+        "LBL_INV_WEAP_R",
+        SLOT_RIGHT_HAND,
+        "Right hand",
+    ),
+    (
+        "BTN_INV_ARM_R",
+        "LBL_INV_ARM_R",
+        SLOT_RIGHT_ARM,
+        "Right arm",
+    ),
+    ("BTN_INV_HANDS", "LBL_INV_HANDS", SLOT_HANDS, "Hands"),
+];
+const STR_CANNOT_EQUIP: u32 = 38450;
+
 /// A screen. The last one on the stack has the input; closing it shows the one under it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Screen {
@@ -22,6 +59,8 @@ pub(super) enum Screen {
     Saves(Mode),
     /// The name dialog over the save screen.
     Name,
+    Inventory,
+    Equip,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -38,6 +77,8 @@ impl Screen {
             Screen::Saves(Mode::Load) => "load",
             Screen::Saves(Mode::Save) => "save",
             Screen::Name => "name",
+            Screen::Inventory => "inventory",
+            Screen::Equip => "equip",
         }
     }
 }
@@ -65,6 +106,13 @@ pub(super) struct Menus {
     delete_armed: Option<PathBuf>,
     /// The name being typed.
     name: String,
+    /// The equipment slot chosen: the list shows what fits it.
+    slot: Option<i32>,
+    /// The item whose words are on show, and the slot under the cursor.
+    about: Option<ObjId>,
+    hover_slot: Option<i32>,
+    /// The last item clicked could not go on.
+    refused: bool,
 }
 
 /// `%LOCALAPPDATA%\kotor-rs\saves`, outside the install and the repository.
@@ -147,11 +195,15 @@ impl Stage {
                 under.dialog = Some(Box::new(d));
                 under
             }
+            Screen::Inventory => self.inventory_view(),
+            Screen::Equip => self.equip_view(),
         };
         if top != Screen::Name {
             v.hover = hover;
         }
-        v.message = self.menus.message.clone();
+        if !self.menus.message.is_empty() {
+            v.message = self.menus.message.clone();
+        }
         Some(v)
     }
 
@@ -236,6 +288,235 @@ impl Stage {
         v
     }
 
+    /// The first picture of an item that exists.
+    fn item_row(&mut self, v: &ItemView, dim: bool) -> Row {
+        let icon = v
+            .icons
+            .iter()
+            .find(|n| self.ui.texture(n).is_some())
+            .cloned();
+        Row {
+            text: v.name.clone(),
+            icon,
+            count: v.stack,
+            dim,
+            ..Row::default()
+        }
+    }
+
+    /// The items a list on the screen shows, in order.
+    fn listed_items(&mut self) -> Vec<ObjId> {
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        let carried = w.carried(pc);
+        match self.menus.stack.last() {
+            Some(Screen::Inventory) => carried,
+            Some(Screen::Equip) => {
+                let slot = self.menus.slot;
+                carried
+                    .into_iter()
+                    .filter(|i| {
+                        let mask = w.slots_of(*i);
+                        slot.map_or(mask != 0, |s| mask & (1 << s) != 0)
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn item_rows(&mut self) -> Vec<Row> {
+        let pc = self.game.world.pc;
+        self.listed_items()
+            .into_iter()
+            .filter_map(|i| {
+                let v = self.game.world.item_view(i)?;
+                let dim = v.slots != 0 && self.game.world.can_wear(pc, i).is_err();
+                Some(self.item_row(&v, dim))
+            })
+            .collect()
+    }
+
+    fn portrait(&self) -> String {
+        let w = &self.game.world;
+        w.object(w.pc)
+            .map(|o| o.portrait.clone())
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "po_pfha2".to_string())
+    }
+
+    fn vitality(&self) -> String {
+        let w = &self.game.world;
+        w.object(w.pc)
+            .map_or(String::new(), |o| format!("{}/{}", o.hp, o.max_hp))
+    }
+
+    /// `inventory.gui`. Party switching is not built, so its buttons are hidden; quest items and using an item are
+    /// greyed.
+    fn inventory_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("inventory");
+        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2"]);
+        v.inert(&["BTN_QUESTITEMS", "BTN_USEITEM"]);
+        let rows = self.item_rows();
+        v.lists
+            .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
+        v.fill("LBL_PORT", self.portrait());
+        v.text("LBL_VIT", self.vitality());
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        v.text("LBL_DEF", w.defense_of(pc).to_string());
+        v.text("LBL_CREDITS_VALUE", w.gold.to_string());
+        let about = self.menus.about.and_then(|i| self.game.world.item_view(i));
+        v.text(
+            "LB_DESCRIPTION",
+            about.map_or(String::new(), |a| a.description),
+        );
+        if self.menus.refused {
+            v.message = self.ui.strref(STR_CANNOT_EQUIP);
+        }
+        v
+    }
+
+    /// `equip.gui`. Party switching is not built and a click on an item wears it at once, so the buttons for those
+    /// are hidden.
+    fn equip_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("equip");
+        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2", "BTN_EQUIP"]);
+        let rows = self.item_rows();
+        v.lists
+            .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
+        v.fill("LBL_PORTRAIT", self.portrait());
+        v.text("LBL_VITALITY", self.vitality());
+        let pc = self.game.world.pc;
+        let shown_slot = self.menus.hover_slot.or(self.menus.slot);
+        for (_, label, slot, name) in EQUIP_SLOTS {
+            if shown_slot == Some(slot) {
+                v.text("LBL_SLOTNAME", name);
+            }
+            let w = &mut self.game.world;
+            let worn = w.object(pc).and_then(|o| o.equipped.get(&slot).copied());
+            let picture = worn
+                .and_then(|i| w.item_view(i))
+                .and_then(|view| self.item_row(&view, false).icon);
+            if let Some(icon) = picture {
+                v.fill(label, icon);
+            }
+        }
+        if shown_slot.is_none() {
+            v.text("LBL_SLOTNAME", "");
+        }
+        v.text(
+            "LBL_SELECTTITLE",
+            self.menus.slot.map_or("Items", |_| "Items for this slot"),
+        );
+        let w = &mut self.game.world;
+        v.text("LBL_DEF", w.defense_of(pc).to_string());
+        for (slot, attack, to_hit) in [
+            (SLOT_RIGHT_HAND, "LBL_ATKR", "LBL_TOHITR"),
+            (SLOT_LEFT_HAND, "LBL_ATKL", "LBL_TOHITL"),
+        ] {
+            match w.damage_range_of(pc, slot) {
+                Some((least, most)) => {
+                    v.text(attack, format!("{least}-{most}"));
+                    v.text(to_hit, format!("{:+}", w.attack_bonus_of(pc, slot)));
+                }
+                None => v.hide(&[attack, to_hit]),
+            }
+        }
+        // An item under the cursor shows its words where the portrait and the slots are, as the panel's own place for
+        // them lies over those. **Assumed:** the game keeps them apart in some such way.
+        let about = self.menus.about.and_then(|i| self.game.world.item_view(i));
+        v.hide(&["LBL_CANTEQUIP"]);
+        match about {
+            Some(a) => {
+                v.text("LB_DESC", a.description);
+                v.font("LB_DESC", SMALL_FONT);
+                v.hide(&[
+                    "LBL_PORT_BORD",
+                    "LBL_PORTRAIT",
+                    "LBL_SLOTNAME",
+                    "LBL_TXTBAR",
+                ]);
+                for (button, label, _, _) in EQUIP_SLOTS {
+                    v.hide(&[button, label]);
+                }
+            }
+            None => v.hide(&["LB_DESC"]),
+        }
+        if self.menus.refused {
+            v.message = self.ui.strref(STR_CANNOT_EQUIP);
+        }
+        v
+    }
+
+    /// The I key: the inventory, or back to the game if it is up.
+    pub fn open_inventory(&mut self) {
+        self.open_items(Screen::Inventory);
+    }
+
+    /// The U key: the equipment, or back to the game if it is up.
+    pub fn open_equip(&mut self) {
+        self.open_items(Screen::Equip);
+    }
+
+    fn open_items(&mut self, screen: Screen) {
+        let top = self.menus.stack.last().copied();
+        if top == Some(screen) {
+            self.menus.stack.pop();
+            return;
+        }
+        let from_game = top.is_none() && self.started && !self.game.world.in_dialogue();
+        let swapping = matches!(top, Some(Screen::Inventory | Screen::Equip));
+        if from_game || swapping {
+            self.menus.stack.pop();
+            self.menus.stack.push(screen);
+            self.menus.first = 0;
+            self.menus.slot = None;
+            self.menus.about = None;
+            self.menus.hover_slot = None;
+            self.menus.refused = false;
+            self.menus.hover = None;
+        }
+    }
+
+    /// A click on an item: wear it, in the chosen slot if one is chosen. Anything else just shows its words.
+    fn use_listed_item(&mut self, row: usize) {
+        let Some(item) = self.listed_items().get(row).copied() else {
+            return;
+        };
+        self.menus.about = Some(item);
+        let pc = self.game.world.pc;
+        let slot = self.menus.slot;
+        match self.game.world.equip(pc, item, slot) {
+            Ok(_) => {
+                // The cursor stays on the row, which now holds the next item.
+                self.menus.about = None;
+                self.menus.refused = false;
+                self.menus.slot = None;
+                self.menus.first = 0;
+            }
+            Err(CannotEquip::NotWearable) => {}
+            Err(CannotEquip::BothHandsFull) => {
+                self.menus.refused = false;
+                self.menus.message = "A weapon in the right hand takes both hands.".to_string();
+            }
+            Err(_) => self.menus.refused = true,
+        }
+    }
+
+    /// A click on a slot: take off what is there. An empty slot shows what fits it.
+    fn use_slot(&mut self, slot: i32) {
+        let pc = self.game.world.pc;
+        self.menus.refused = false;
+        self.menus.first = 0;
+        if self.game.world.unequip(pc, slot) {
+            self.menus.slot = None;
+        } else {
+            self.menus.slot = (self.menus.slot != Some(slot)).then_some(slot);
+        }
+        self.menus.about = None;
+    }
+
     fn menu_layout_point(&self, pixel: (f32, f32), size: (u32, u32)) -> (f32, f32) {
         (
             pixel.0 * self.ui_width as f32 / size.0.max(1) as f32,
@@ -248,6 +529,18 @@ impl Stage {
         let Some(view) = self.menu_view() else { return };
         let (x, y) = self.menu_layout_point(pixel, size);
         self.menus.hover = self.ui.menu_hit(&view, x, y);
+        self.menus.hover_slot = match &self.menus.hover {
+            Some(Hit::Button(t)) => EQUIP_SLOTS.iter().find(|s| s.0 == t).map(|s| s.2),
+            _ => None,
+        };
+        if let Some(Hit::Row(_, row)) = self.menus.hover {
+            if let Some(item) = self.listed_items().get(row).copied() {
+                self.menus.about = Some(item);
+                self.menus.refused = false;
+            }
+        } else if self.menus.stack.last() == Some(&Screen::Equip) {
+            self.menus.about = None;
+        }
     }
 
     /// A left click on a screen.
@@ -265,7 +558,10 @@ impl Stage {
             }
             Some(Hit::Row(_, row)) => {
                 self.menus.delete_armed = None;
-                self.menus.selected = Some(row);
+                match self.menus.stack.last() {
+                    Some(Screen::Inventory | Screen::Equip) => self.use_listed_item(row),
+                    _ => self.menus.selected = Some(row),
+                }
             }
             None => self.menus.delete_armed = None,
         }
@@ -299,6 +595,14 @@ impl Stage {
             (Screen::Name, "BTN_OK") => self.write_save(),
             (Screen::Name, "BTN_CANCEL") => {
                 self.menus.stack.pop();
+            }
+            (Screen::Inventory, "BTN_EXIT") | (Screen::Equip, "BTN_BACK") => {
+                self.menus.stack.pop();
+            }
+            (Screen::Equip, _) => {
+                if let Some(s) = EQUIP_SLOTS.iter().find(|s| s.0 == tag) {
+                    self.use_slot(s.2);
+                }
             }
             _ => {}
         }

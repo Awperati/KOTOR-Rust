@@ -10,6 +10,7 @@ mod follow;
 mod force;
 mod game;
 mod host;
+mod items;
 mod play;
 mod rules;
 mod save;
@@ -30,6 +31,10 @@ pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use game::{Clip, Game, Pose};
 pub use host::RoutineStatus;
+pub use items::{
+    CannotEquip, ItemView, SLOTS, SLOT_BELT, SLOT_BODY, SLOT_HANDS, SLOT_HEAD, SLOT_IMPLANT,
+    SLOT_LEFT_ARM, SLOT_LEFT_HAND, SLOT_RIGHT_ARM, SLOT_RIGHT_HAND,
+};
 pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,
 };
