@@ -19,6 +19,8 @@ pub struct Install {
     bifs: Vec<Option<Bif>>,
     /// Archives searched before the BIFs, newest first (modules, patch.erf).
     overlays: Vec<Erf>,
+    /// Read loose files from `<install>/Override` first. Off by default.
+    honour_override: bool,
 }
 
 impl Install {
@@ -40,6 +42,7 @@ impl Install {
             index,
             bifs,
             overlays: Vec::new(),
+            honour_override: false,
         })
     }
 
@@ -49,6 +52,21 @@ impl Install {
 
     pub fn key(&self) -> &Key {
         &self.key
+    }
+
+    /// Whether loose files in the `Override` folder win over everything else.
+    /// Off by default so the engine sees the stock game; the folder is only ever read.
+    pub fn set_honour_override(&mut self, on: bool) {
+        self.honour_override = on;
+    }
+
+    fn override_file(&self, resref: &str, restype: ResType) -> Option<PathBuf> {
+        if !self.honour_override {
+            return None;
+        }
+        let ext = restype.extension()?;
+        let p = self.dir.join("Override").join(format!("{resref}.{ext}"));
+        p.is_file().then_some(p)
     }
 
     /// Add an archive that takes priority over everything added before it.
@@ -113,7 +131,8 @@ impl Install {
 
     pub fn contains(&self, resref: &str, restype: ResType) -> bool {
         let rr = ResRef::new(resref);
-        self.overlays.iter().any(|o| o.find(&rr, restype).is_some())
+        self.override_file(resref, restype).is_some()
+            || self.overlays.iter().any(|o| o.find(&rr, restype).is_some())
             || self.index.contains_key(&ResourceId {
                 resref: rr,
                 restype,
@@ -122,6 +141,9 @@ impl Install {
 
     /// Read a resource: overlays first, then the BIFs named by the key file.
     pub fn read(&mut self, resref: &str, restype: ResType) -> Result<Vec<u8>> {
+        if let Some(p) = self.override_file(resref, restype) {
+            return Ok(std::fs::read(p)?);
+        }
         let rr = ResRef::new(resref);
         for o in &self.overlays {
             if let Some(e) = o.find(&rr, restype) {
@@ -167,6 +189,19 @@ mod tests {
         assert_eq!(&data[..8], b"2DA V2.b");
         assert!(inst.read("no_such_thing", ResType::TWODA).is_err());
         assert!(inst.list(ResType::TWODA).len() > 50);
+    }
+
+    #[test]
+    fn override_is_ignored_unless_enabled() {
+        let Some(dir) = kotor_core::install_dir() else {
+            return;
+        };
+        // The owner's Override holds a loose model (CP_CommF02.mdl); the BIFs do not.
+        let mut inst = Install::open(dir).unwrap();
+        let in_override = inst.dir().join("Override").join("CP_CommF02.mdl").is_file();
+        assert!(!inst.contains("cp_commf02", ResType::MDL));
+        inst.set_honour_override(true);
+        assert_eq!(inst.contains("cp_commf02", ResType::MDL), in_override);
     }
 
     #[test]
