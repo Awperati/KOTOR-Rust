@@ -39,10 +39,12 @@ const PRESENTATION: &[&str] = &[
     "SetTutorialWindowsEnabled",
     "ShowTutorialWindow",
     "SetMinOneHP",
-    "SetFacing",
     "SetFacingPoint",
-    "AddAvailableNPCByTemplate",
     "SetPartyLeader",
+    "PlayAnimation",
+    "CutsceneAttack",
+    "MusicBattleStop",
+    "RevealMap",
     "SetCurrentAction",
     "PlayRumblePattern",
     "AurPostString",
@@ -134,6 +136,31 @@ impl Adapter<'_> {
             Some(Value::Action(s)) => Some((self.script.clone(), s.clone())),
             _ => None,
         }
+    }
+
+    fn new_location(&mut self, rec: ([f32; 3], f32)) -> Value {
+        self.world.locations.push(rec);
+        Value::Engine(2, self.world.locations.len() as u32)
+    }
+
+    /// Position and facing behind a location value.
+    fn location(&self, v: Option<&Value>) -> Option<([f32; 3], f32)> {
+        match v {
+            Some(Value::Engine(2, h)) => h
+                .checked_sub(1)
+                .and_then(|i| self.world.locations.get(i as usize))
+                .copied(),
+            _ => None,
+        }
+    }
+
+    /// Count a routine answered with a fixed value on purpose.
+    fn default_hit(&mut self, name: &str) {
+        *self
+            .world
+            .constant_defaults
+            .entry(name.to_string())
+            .or_default() += 1;
     }
 
     fn record(&mut self, name: &str, args: &[Value]) {
@@ -304,8 +331,275 @@ impl Host for Adapter<'_> {
                     _ => 0.0,
                 }))
             }
-            "GetLocation" => Some(Value::Engine(2, self.obj(caller, args, 0))),
-            "Location" => Some(Value::Engine(2, 0)),
+            "GetLocation" => {
+                let o = self.world.object(self.obj(caller, args, 0));
+                let rec = o.map_or(([0.0; 3], 0.0), |o| (o.position, o.facing));
+                Some(self.new_location(rec))
+            }
+            "Location" => {
+                let at = match args.first() {
+                    Some(Value::Vector(v)) => *v,
+                    _ => [0.0; 3],
+                };
+                Some(self.new_location((at, float(args, 1))))
+            }
+            "GetPositionFromLocation" => Some(Value::Vector(
+                self.location(args.first()).map_or([0.0; 3], |l| l.0),
+            )),
+            "GetFacingFromLocation" => Some(Value::Float(
+                self.location(args.first()).map_or(0.0, |l| l.1),
+            )),
+            "SetFacing" => {
+                if let Some(o) = self.world.object_mut(caller) {
+                    o.facing = float(args, 0);
+                }
+                None
+            }
+            "GetFacing" => Some(Value::Float(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0.0, |o| o.facing),
+            )),
+            "JumpToLocation" | "ActionJumpToLocation" | "JumpToObject" | "ActionJumpToObject" => {
+                let at = if name.ends_with("Location") {
+                    self.location(args.first()).map(|l| l.0)
+                } else {
+                    let o = self.obj(caller, args, 0);
+                    self.world.object(o).map(|o| o.position)
+                };
+                if let Some(at) = at {
+                    if name.starts_with("Action") {
+                        self.world.queue(caller, Action::Jump(at));
+                    } else {
+                        self.world.teleport(caller, at);
+                    }
+                }
+                self.record(name, args);
+                None
+            }
+            "GetDistanceToObject" | "GetDistanceToObject2D" | "GetDistanceBetween2D" => {
+                let (a, c) = if name == "GetDistanceBetween2D" {
+                    (self.obj(caller, args, 0), self.obj(caller, args, 1))
+                } else {
+                    (caller, self.obj(caller, args, 0))
+                };
+                let (a, c) = (self.world.object(a), self.world.object(c));
+                Some(Value::Float(match (a, c) {
+                    (Some(a), Some(c)) => (0..2)
+                        .map(|k| (a.position[k] - c.position[k]).powi(2))
+                        .sum::<f32>()
+                        .sqrt(),
+                    _ => -1.0,
+                }))
+            }
+            "GetNearestCreature" => {
+                // Criteria are ignored: the nearest other creature, `nth` counted from 1.
+                let from = self.obj(caller, args, 2);
+                let from = if self.valid(from) { from } else { caller };
+                let here = self.world.object(from).map_or([0.0; 3], |o| o.position);
+                let mut c: Vec<(f32, ObjId)> = self
+                    .world
+                    .objects
+                    .values()
+                    .filter(|o| o.kind == Kind::Creature && o.id != from && !o.dead)
+                    .map(|o| {
+                        (
+                            (0..2).map(|k| (o.position[k] - here[k]).powi(2)).sum(),
+                            o.id,
+                        )
+                    })
+                    .collect();
+                c.sort_by(|a, b| a.0.total_cmp(&b.0));
+                let nth = (int(args, 3).unwrap_or(1).max(1) - 1) as usize;
+                self.default_hit(name);
+                Some(Value::Object(c.get(nth).map_or(OBJECT_INVALID, |x| x.1)))
+            }
+            // ---- factions and races
+            "GetStandardFaction" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.faction),
+            )),
+            "ChangeToStandardFaction" => {
+                let id = self.obj(caller, args, 0);
+                let f = int(args, 1)?;
+                if let Some(o) = self.world.object_mut(id) {
+                    o.faction = f;
+                }
+                None
+            }
+            "GetIsEnemy" | "GetIsFriend" | "GetIsNeutral" => {
+                let target = self.obj(caller, args, 0);
+                let source = if args.len() > 1 {
+                    self.obj(caller, args, 1)
+                } else {
+                    caller
+                };
+                let rep = self.world.reputation(source, target);
+                b(match name {
+                    "GetIsEnemy" => rep <= 10,
+                    "GetIsFriend" => rep >= 90,
+                    _ => rep > 10 && rep < 90,
+                })
+            }
+            "GetRacialType" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(28, |o| o.race),
+            )),
+            "GetSubRace" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.subrace),
+            )),
+            // ---- talents: a handle is (kind + 1) << 24 | id, kind 0 spell, 1 feat, 2 skill
+            "TalentSpell" | "TalentFeat" | "TalentSkill" => {
+                let kind = match name {
+                    "TalentSpell" => 0,
+                    "TalentFeat" => 1,
+                    _ => 2,
+                };
+                Some(Value::Engine(3, ((kind + 1) << 24) | int(args, 0)? as u32))
+            }
+            "GetIdFromTalent" => Some(Value::Int(match args.first() {
+                Some(Value::Engine(_, h)) => (h & 0xFF_FFFF) as i32,
+                _ => -1,
+            })),
+            "GetTypeFromTalent" => Some(Value::Int(match args.first() {
+                Some(Value::Engine(_, h)) if *h != 0 => (h >> 24) as i32 - 1,
+                _ => -1,
+            })),
+            "GetIsTalentValid" => b(matches!(args.first(), Some(Value::Engine(_, h)) if *h != 0)),
+            "GetHasSpell" | "GetHasFeat" => {
+                let (id, who) = (int(args, 0)?, self.obj(caller, args, 1));
+                let who = if self.valid(who) { who } else { caller };
+                b(self.world.object(who).is_some_and(|o| {
+                    if name == "GetHasSpell" {
+                        o.spells.contains(&id)
+                    } else {
+                        o.feats.contains(&id)
+                    }
+                }))
+            }
+            "GetCreatureHasTalent" => {
+                let who = self.obj(caller, args, 1);
+                b(match args.first() {
+                    Some(Value::Engine(_, h)) if *h != 0 => {
+                        let id = (h & 0xFF_FFFF) as i32;
+                        self.world.object(who).is_some_and(|o| match h >> 24 {
+                            1 => o.spells.contains(&id),
+                            2 => o.feats.contains(&id),
+                            _ => false,
+                        })
+                    }
+                    _ => false,
+                })
+            }
+            "GetCreatureTalentRandom" | "GetCreatureTalentBest" => {
+                // The category is ignored: the creature's first known force power, else an invalid talent.
+                let who = self.obj(caller, args, if name.ends_with("Best") { 2 } else { 1 });
+                let first = self
+                    .world
+                    .object(who)
+                    .and_then(|o| o.spells.iter().next().copied());
+                self.default_hit(name);
+                Some(Value::Engine(3, first.map_or(0, |s| (1 << 24) | s as u32)))
+            }
+            // ---- effects
+            "GetFirstEffect" | "GetNextEffect" => {
+                let id = self.obj(caller, args, 0);
+                let cur = self.world.effect_cursor.entry(id).or_insert(0);
+                if name == "GetFirstEffect" {
+                    *cur = 0;
+                }
+                let h = self
+                    .world
+                    .objects
+                    .get(&id)
+                    .and_then(|o| o.effects.get(*cur).copied());
+                if h.is_some() {
+                    *cur += 1;
+                }
+                Some(Value::Engine(0, h.unwrap_or(0)))
+            }
+            "GetIsEffectValid" => b(matches!(args.first(), Some(Value::Engine(_, h)) if *h != 0)),
+            "ClearAllEffects" => {
+                if let Some(o) = self.world.object_mut(caller) {
+                    o.effects.clear();
+                }
+                None
+            }
+            "ApplyEffectToObject" => {
+                let target = self.obj(caller, args, 2);
+                if let Some(Value::Engine(_, h)) = args.get(1) {
+                    let deadly = h
+                        .checked_sub(1)
+                        .and_then(|i| self.world.effects.get(i as usize))
+                        .is_some_and(|e| e.name == "EffectDeath");
+                    if let Some(o) = self.world.object_mut(target) {
+                        if deadly {
+                            o.dead = true;
+                            o.hp = 0;
+                        }
+                        o.effects.push(*h);
+                    }
+                }
+                self.record(name, args);
+                None
+            }
+            n if n.starts_with("Effect") && matches!(routine.ret, Ty::Engine(0)) => {
+                let shown = args.iter().map(|a| format!("{a:?}")).collect();
+                self.world.effects.push(crate::world::EffectRec {
+                    name: n.to_string(),
+                    args: shown,
+                });
+                Some(Value::Engine(0, self.world.effects.len() as u32))
+            }
+            // ---- text, experience, available party members
+            "GetStringByStrRef" => Some(Value::Str(self.world.strref_text(int(args, 0)?))),
+            "ObjectToString" => Some(Value::Str(format!("{:x}", self.obj(caller, args, 0)))),
+            "GivePlotXP" => {
+                let amount = self.world.plot_xp(&string(args, 0)) * int(args, 1)? / 100;
+                let pc = self.world.pc;
+                if let Some(o) = self.world.object_mut(pc) {
+                    o.xp += amount;
+                }
+                self.record(name, args);
+                None
+            }
+            "IsAvailableCreature" => b(self.world.available.contains_key(&int(args, 0)?)),
+            "AddAvailableNPCByTemplate" => {
+                let (slot, t) = (int(args, 0)?, string(args, 1));
+                self.world.available.insert(slot, t);
+                self.record(name, args);
+                b(true)
+            }
+            "RemoveAvailableNPC" => {
+                let slot = int(args, 0)?;
+                b(self.world.available.remove(&slot).is_some())
+            }
+            "ShipBuild" => Some(Value::Int(1)),
+            // ---- last-event queries
+            "GetExitingObject" => Some(Value::Object(self.world.exiting)),
+            "GetLastOpenedBy" => Some(Value::Object(self.world.last_opened_by)),
+            "GetLastUsedBy" => Some(Value::Object(self.world.last_used_by)),
+            // Combat and interface state this world does not have: a fixed answer, counted apart from stubs.
+            "GetLastHostileTarget" | "GetItemActivator" | "GetItemActivated" => {
+                self.default_hit(name);
+                Some(Value::Object(OBJECT_INVALID))
+            }
+            "GetObjectSeen"
+            | "GetLastAttackAction"
+            | "GetUserActionsPending"
+            | "GetIsDebilitated"
+            | "GetPlayerRestrictMode"
+            | "GetPartyAIStyle"
+            | "GetNPCAIStyle"
+            | "GetIsEncounterCreature"
+            | "GetSubScreenID" => {
+                self.default_hit(name);
+                Some(Value::Int(0))
+            }
             "GetPosition" => Some(Value::Vector(
                 self.world
                     .object(self.obj(caller, args, 0))
@@ -420,13 +714,11 @@ impl Host for Adapter<'_> {
                     4 => (Kind::Trigger, ResType(2032)),
                     _ => (Kind::Creature, ResType(2027)),
                 };
-                let at = match args.get(2) {
-                    Some(Value::Engine(2, id)) => {
-                        self.world.object(*id).map_or([0.0; 3], |o| o.position)
-                    }
-                    _ => [0.0; 3],
-                };
+                let (at, facing) = self.location(args.get(2)).unwrap_or(([0.0; 3], 0.0));
                 let id = self.world.spawn(kind, &string(args, 1), ty, at);
+                if let Some(o) = self.world.object_mut(id) {
+                    o.facing = facing;
+                }
                 self.record("CreateObject", args);
                 Some(Value::Object(id))
             }

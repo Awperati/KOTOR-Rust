@@ -1,5 +1,5 @@
 use kotor_archive::Install;
-use kotor_game::{pixel_ray, Kind, ObjId, World};
+use kotor_game::{pixel_ray, DoorState, Kind, ObjId, World};
 use kotor_script::disassemble;
 
 fn world() -> Option<World> {
@@ -42,6 +42,15 @@ fn a_closed_door_cuts_the_route_and_opening_it_restores_it() {
     );
     let d = door(&w, "end_door01", 21.1);
     assert!(w.open_door(d));
+    assert!(
+        !route_exists(&w, beyond),
+        "the doorway stays blocked while the door swings"
+    );
+    assert!(matches!(w.object(d).unwrap().door, DoorState::Opening(_)));
+    for _ in 0..22 {
+        w.step(0.05);
+    }
+    assert_eq!(w.object(d).unwrap().door, DoorState::Open);
     assert!(
         route_exists(&w, beyond),
         "opening the door should unblock it"
@@ -103,7 +112,9 @@ fn clicking_trask_walks_through_the_opened_door_and_talks() {
     );
     let d = door(&w, "end_door01", 21.1);
     w.click(d);
-    run(&mut w, 30.0, |w| w.object(d).unwrap().open);
+    run(&mut w, 30.0, |w| {
+        w.object(d).unwrap().door == DoorState::Open
+    });
     assert!(w.click(trask), "Trask is reachable once the door is open");
     run(&mut w, 40.0, |w| w.transcript.len() >= 10);
     assert!(
@@ -233,12 +244,20 @@ fn call_program(w: &World, calls: &[(&str, Vec<Vec<u8>>)]) -> kotor_script::Prog
         for p in pushes {
             body.extend_from_slice(p);
         }
+        // An empty name only pushes; "Name/N" calls with N arguments instead of the number just pushed.
+        if name.is_empty() {
+            continue;
+        }
+        let (name, argc) = match name.split_once('/') {
+            Some((n, c)) => (n, c.parse::<u8>().unwrap()),
+            None => (*name, pushes.len() as u8),
+        };
         let id = w
             .routine_id(name)
             .unwrap_or_else(|| panic!("no routine {name}"));
         body.extend_from_slice(&[0x05, 0x00]);
         body.extend_from_slice(&id.to_be_bytes());
-        body.push(pushes.len() as u8);
+        body.push(argc);
     }
     // RSADD (return slot is not needed for void), JSR main, RETN, then main.
     let mut b = vec![0x1E, 0x00, 0, 0, 0, 8, 0x20, 0x00];
@@ -320,6 +339,150 @@ fn routines_change_journal_xp_party_and_inventory() {
     assert!(w.object(before).is_some(), "carried items must come along");
     assert_eq!(w.object(w.pc).unwrap().xp, 300);
     assert!(w.errors.is_empty(), "{:?}", w.errors);
+}
+
+fn cf(v: f32) -> Vec<u8> {
+    let mut b = vec![0x04, 0x04];
+    b.extend_from_slice(&v.to_be_bytes());
+    b
+}
+
+#[test]
+fn effects_jumps_factions_and_experience_levels_work() {
+    let Some(mut w) = world() else { return };
+    let trask = w.by_tag("end_trask")[0];
+    let pc = w.pc;
+    // ApplyEffectToObject(nDurationType, eEffect, oTarget, fDuration): EffectDeath() is made between the pushes.
+    let prog = call_program(
+        &w,
+        &[
+            ("", vec![cf(0.0), co(trask as i32)]),
+            ("EffectDeath/0", vec![]),
+            ("", vec![ci(0)]),
+            ("ApplyEffectToObject/4", vec![]),
+            ("ActionJumpToObject/1", vec![co(trask as i32)]),
+        ],
+    );
+    w.run_program(&prog, pc).unwrap();
+    assert!(w.object(trask).unwrap().dead, "EffectDeath should kill");
+    assert_eq!(w.object(trask).unwrap().effects.len(), 1);
+    w.step(0.05);
+    assert_eq!(
+        w.object(pc).unwrap().position,
+        w.object(trask).unwrap().position,
+        "the queued jump should land on the target"
+    );
+    assert!(w.level_for_xp(0) == 1 && w.level_for_xp(1_000_000) > 1);
+    let rep = w.reputation(pc, trask);
+    assert!((0..=100).contains(&rep), "{rep}");
+    assert!(w.strref_text(-1).is_empty());
+    assert!(w.errors.is_empty(), "{:?}", w.errors);
+}
+
+fn flat_dist(a: [f32; 3], b: [f32; 3]) -> f32 {
+    (a[0] - b[0]).hypot(a[1] - b[1])
+}
+
+/// Open end_door01 and let it finish swinging.
+fn open_first_door(w: &mut World) {
+    let d = door(w, "end_door01", 21.1);
+    assert!(w.open_door(d));
+    for _ in 0..22 {
+        w.step(0.05);
+    }
+}
+
+#[test]
+fn a_party_member_follows_the_walking_player() {
+    let Some(mut w) = world() else { return };
+    open_first_door(&mut w);
+    let trask = w.by_tag("end_trask")[0];
+    // Trask joins the party and starts beside the player.
+    w.party.push(trask);
+    w.object_mut(trask).unwrap().party_member = true;
+    let start = w.object(w.pc).unwrap().position;
+    w.teleport(trask, [start[0] - 1.0, start[1], start[2]]);
+    assert!(w.walk_to([30.8, 20.7, -1.275]), "the far room is reachable");
+    let mut worst: f32 = 0.0;
+    let t = run(&mut w, 40.0, |w| {
+        worst = worst.max(flat_dist(
+            w.object(w.pc).unwrap().position,
+            w.object(trask).unwrap().position,
+        ));
+        !w.pc_walking()
+    });
+    assert!(!w.pc_walking(), "the player never arrived ({t}s)");
+    assert!(
+        worst <= kotor_game::FOLLOW_START + 0.5,
+        "follower fell {worst} m behind"
+    );
+    for _ in 0..200 {
+        w.step(0.05);
+    }
+    let gap = flat_dist(
+        w.object(w.pc).unwrap().position,
+        w.object(trask).unwrap().position,
+    );
+    assert!(
+        gap <= kotor_game::FOLLOW_START,
+        "follower settled {gap} m away"
+    );
+    assert!(w.errors.is_empty(), "{:?}", w.errors);
+}
+
+#[test]
+fn the_player_goes_around_a_creature_in_its_way() {
+    let Some(mut w) = world() else { return };
+    open_first_door(&mut w);
+    let trask = w.by_tag("end_trask")[0];
+    // Put Trask in the middle of the walk from the spawn to the far room, on the straight line.
+    let a = w.object(w.pc).unwrap().position;
+    let goal = [30.8, 20.7, -1.275];
+    let mid = [(a[0] + goal[0]) / 2.0, (a[1] + goal[1]) / 2.0, a[2]];
+    w.teleport(trask, mid);
+    assert!(w.walk_to(goal));
+    let mut closest = f32::MAX;
+    run(&mut w, 40.0, |w| {
+        closest = closest.min(flat_dist(
+            w.object(w.pc).unwrap().position,
+            w.object(trask).unwrap().position,
+        ));
+        !w.pc_walking()
+    });
+    assert!(!w.pc_walking(), "the player got stuck behind the creature");
+    assert!(
+        closest >= 2.0 * kotor_game::CREATURE_RADIUS - 0.01,
+        "walked into the creature: {closest} m"
+    );
+}
+
+#[test]
+fn doors_pose_through_their_clips() {
+    use kotor_game::Game;
+    let Some(w) = world() else { return };
+    let mut g = Game::new(w);
+    let d = door(&g.world, "end_door01", 21.1);
+    let clip = |g: &Game| {
+        g.poses()
+            .into_iter()
+            .find(|p| p.id == d)
+            .and_then(|p| p.clip)
+            .unwrap()
+    };
+    assert_eq!(clip(&g).name, "closed");
+    assert!(g.world.open_door(d));
+    g.advance(0.25);
+    let c = clip(&g);
+    assert_eq!(c.name, "opening1");
+    assert!(c.time > 0.1 && c.time < 0.4, "{c:?}");
+    g.advance(0.25);
+    g.advance(0.25);
+    g.advance(0.25);
+    g.advance(0.25);
+    assert_eq!(clip(&g).name, "opened1");
+    g.world.close_door(d);
+    g.advance(0.1);
+    assert_eq!(clip(&g).name, "closing1");
 }
 
 #[test]

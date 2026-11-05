@@ -1,7 +1,8 @@
-//! Interaction and movement on top of the world: picking, click-to-walk, doors, triggers, module
+﻿//! Interaction and movement on top of the world: picking, click-to-walk, doors, triggers, module
 //! transitions and the per-step update.
 
-use crate::world::{Kind, ObjId, Object, World};
+use crate::follow::{dist2d, trim_route};
+use crate::world::{DoorState, Kind, ObjId, Object, World};
 use kotor_core::{Error, ResType, Result};
 use kotor_script::OBJECT_INVALID;
 use kotor_walkmesh::{parse_bwm, parse_lyt, Bwm, MoveStatus, NavMesh};
@@ -11,12 +12,10 @@ use std::collections::HashSet;
 pub const DOOR_BLOCK_RADIUS: f32 = 1.1;
 /// How close the player must get before using a door, talking to a creature, or using a placeable.
 pub const DOOR_RANGE: f32 = 1.6;
+/// Seconds a door takes to open or close. Measured: `opening1` and `closing1` of door model DOR_LHR01 last 1.0 s.
+pub const DOOR_ANIM_SECONDS: f32 = 1.0;
 pub const TALK_RANGE: f32 = 1.8;
 pub const USE_RANGE: f32 = 1.6;
-
-fn dist2d(a: [f32; 3], b: [f32; 3]) -> f32 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
-}
 
 /// Ray from a camera through a pixel: `(origin, unit direction)`. The camera looks from `eye` to `target`
 /// with Z up and a vertical field of view of `fov_deg`; `(px, py)` is measured from the top-left.
@@ -156,26 +155,7 @@ impl World {
         if let Some(p) = door_pos {
             nav.block_disc(p, DOOR_BLOCK_RADIUS);
         }
-        let mut route = route?;
-        // Cut `stop` metres off the end.
-        let mut left = stop;
-        while route.len() >= 2 {
-            let (a, b) = (route[route.len() - 2], route[route.len() - 1]);
-            let seg = dist2d(a, b);
-            if seg > left {
-                let t = (seg - left) / seg;
-                let last = route.len() - 1;
-                route[last] = [
-                    a[0] + (b[0] - a[0]) * t,
-                    a[1] + (b[1] - a[1]) * t,
-                    a[2] + (b[2] - a[2]) * t,
-                ];
-                return Some(route);
-            }
-            left -= seg;
-            route.pop();
-        }
-        Some(Vec::new())
+        Some(trim_route(route?, stop))
     }
 
     /// Click on an object: walk up to it, then talk to it, use it, or open it. Returns false when there is
@@ -238,6 +218,7 @@ impl World {
             Kind::Door => self.use_door(target),
             Kind::Placeable => {
                 self.last_speaker = self.pc;
+                self.last_used_by = self.pc;
                 let (script, conv) = (o.scripts.get("OnUsed").cloned(), o.conversation.clone());
                 self.events.push(format!("used {}", self.describe(target)));
                 if let Some(s) = script {
@@ -276,7 +257,7 @@ impl World {
         if d.open || d.kind != Kind::Door {
             return d.open;
         }
-        let (pos, locked) = (d.position, d.locked);
+        let locked = d.locked;
         let (on_open, on_fail) = (
             d.scripts.get("OnOpen").cloned(),
             d.scripts.get("OnFailToOpen").cloned(),
@@ -290,10 +271,9 @@ impl World {
         }
         if let Some(d) = self.objects.get_mut(&id) {
             d.open = true;
+            d.door = DoorState::Opening(0.0);
         }
-        if let Some(n) = self.nav.as_mut() {
-            n.unblock_disc(pos, DOOR_BLOCK_RADIUS);
-        }
+        self.last_opened_by = self.pc;
         self.events.push(format!("{} opens", self.describe(id)));
         if let Some(s) = on_open {
             let _ = self.run_script(&s, id);
@@ -311,6 +291,7 @@ impl World {
         let (pos, on_closed) = (d.position, d.scripts.get("OnClosed").cloned());
         if let Some(d) = self.objects.get_mut(&id) {
             d.open = false;
+            d.door = DoorState::Closing(0.0);
         }
         if let Some(n) = self.nav.as_mut() {
             n.block_disc(pos, DOOR_BLOCK_RADIUS);
@@ -363,6 +344,7 @@ impl World {
                     }
                 } else if !now && was {
                     self.inside.remove(&(t, w));
+                    self.exiting = w;
                     self.events
                         .push(format!("{} leaves {}", self.describe(w), self.describe(t)));
                     let script = self
@@ -412,6 +394,7 @@ impl World {
                     p.position = wp;
                 }
                 self.pc_mover = kotor_walkmesh::Mover::new(wp, std::f32::consts::FRAC_PI_2);
+                self.place_party_near(wp);
             }
         }
         self.events
@@ -424,16 +407,20 @@ impl World {
     /// interaction waiting at the end of it, trigger enter/exit, and any requested module change.
     pub fn step(&mut self, dt: f32) {
         self.tick(dt);
+        self.update_doors(dt);
+        let before = self.pc_mover.pos;
         let status = match self.nav.as_ref() {
             Some(nav) if self.pc_mover.has_route() => {
                 self.pc_mover.step(nav, &self.move_params, dt)
             }
             _ => MoveStatus::Idle,
         };
+        self.collide_pc(before);
         let pc = self.pc;
         if let Some(p) = self.objects.get_mut(&pc) {
             p.position = self.pc_mover.pos;
         }
+        self.update_followers(dt);
         if status == MoveStatus::Arrived {
             if let Some(t) = self.pending.take() {
                 self.interact(t);
@@ -443,6 +430,34 @@ impl World {
         if let Some((module, wp)) = self.transition_request.take() {
             if let Err(e) = self.transition(&module, &wp) {
                 self.errors.push(format!("transition to {module}: {e}"));
+            }
+        }
+    }
+
+    /// Advance door animations; a door that finished opening lets the party through.
+    fn update_doors(&mut self, dt: f32) {
+        let doors: Vec<ObjId> = self
+            .objects
+            .values()
+            .filter(|o| matches!(o.door, DoorState::Opening(_) | DoorState::Closing(_)))
+            .map(|o| o.id)
+            .collect();
+        for id in doors {
+            let Some(o) = self.objects.get_mut(&id) else {
+                continue;
+            };
+            let pos = o.position;
+            match o.door {
+                DoorState::Opening(t) if t + dt >= DOOR_ANIM_SECONDS => {
+                    o.door = DoorState::Open;
+                    if let Some(n) = self.nav.as_mut() {
+                        n.unblock_disc(pos, DOOR_BLOCK_RADIUS);
+                    }
+                }
+                DoorState::Opening(t) => o.door = DoorState::Opening(t + dt),
+                DoorState::Closing(t) if t + dt >= DOOR_ANIM_SECONDS => o.door = DoorState::Closed,
+                DoorState::Closing(t) => o.door = DoorState::Closing(t + dt),
+                _ => {}
             }
         }
     }

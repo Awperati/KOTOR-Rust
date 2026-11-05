@@ -6,9 +6,9 @@ use kotor_gff::{Gff, LocString, Struct, Value as GffValue};
 use kotor_script::{
     disassemble, Outcome, Program, Routines, SavedState, Vm, VmError, OBJECT_INVALID,
 };
-use kotor_tables::Tlk;
+use kotor_tables::{Tlk, TwoDa};
 use kotor_walkmesh::{MoveParams, Mover, NavMesh};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 pub type ObjId = u32;
@@ -44,6 +44,8 @@ pub enum Action {
     Recorded(String),
     OpenDoor(ObjId),
     CloseDoor(ObjId),
+    /// Move to a position at once (`ActionJumpToLocation`).
+    Jump([f32; 3]),
 }
 
 /// A command scheduled by `DelayCommand`.
@@ -77,6 +79,9 @@ pub struct Object {
     pub actions: VecDeque<Action>,
     /// Doors: open now. Closed doors block the navigation mesh around them.
     pub open: bool,
+    /// Doors: where the opening or closing animation is. `open` flips at once; the doorway only changes
+    /// passability when the animation ends (opening) or at once (closing).
+    pub door: DoorState,
     /// Doors and triggers that lead to another module: its name and the tag of the waypoint to arrive at.
     pub link_module: String,
     pub link_to: String,
@@ -88,6 +93,33 @@ pub struct Object {
     /// Items: the `baseitems.2da` row.
     pub base_item: i32,
     pub xp: i32,
+    /// `repute.2da` row (`FactionID`), `racialtypes.2da` row (`Race`) and `SubraceIndex`.
+    pub faction: i32,
+    pub race: i32,
+    pub subrace: i32,
+    /// Force powers and feats the creature knows.
+    pub spells: BTreeSet<i32>,
+    pub feats: BTreeSet<i32>,
+    /// Effects applied to it: handles into `World::effects`.
+    pub effects: Vec<u32>,
+    /// Facing in degrees, 0 = east, counter-clockwise (`GetFacing`).
+    pub facing: f32,
+}
+
+/// A door's animation state; the number is seconds into the clip.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DoorState {
+    Closed,
+    Opening(f32),
+    Open,
+    Closing(f32),
+}
+
+/// An effect created by one of the `Effect*` routines.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EffectRec {
+    pub name: String,
+    pub args: Vec<String>,
 }
 
 impl Object {
@@ -110,6 +142,7 @@ impl Object {
             local_booleans: HashMap::new(),
             actions: VecDeque::new(),
             open: false,
+            door: DoorState::Closed,
             link_module: String::new(),
             link_to: String::new(),
             polygon: Vec::new(),
@@ -117,6 +150,13 @@ impl Object {
             equipped: BTreeMap::new(),
             base_item: 0,
             xp: 0,
+            faction: 0,
+            race: 0,
+            subrace: 0,
+            spells: BTreeSet::new(),
+            feats: BTreeSet::new(),
+            effects: Vec::new(),
+            facing: 0.0,
         }
     }
 }
@@ -161,6 +201,9 @@ pub struct World {
     /// Walkable faces of the area; closed doors block it.
     pub nav: Option<NavMesh>,
     pub pc_mover: Mover,
+    /// Movers of party members that are walking after the player, and the time until they replan.
+    pub(crate) followers: BTreeMap<ObjId, Mover>,
+    pub(crate) replan_in: f32,
     pub move_params: MoveParams,
     /// Object the player is walking to; reaching it triggers the interaction.
     pub pending: Option<ObjId>,
@@ -175,11 +218,47 @@ pub struct World {
     /// A module change requested by a door or trigger: (module, waypoint tag). Carried out by `step`.
     pub transition_request: Option<(String, String)>,
     pub(crate) inv_cursor: HashMap<ObjId, usize>,
+    /// Effects created so far; a handle is the index plus one (0 is the invalid effect).
+    pub effects: Vec<EffectRec>,
+    pub(crate) effect_cursor: HashMap<ObjId, usize>,
+    /// Locations made by `Location` and `GetLocation`: position and facing in degrees. Handle = index + 1.
+    pub locations: Vec<([f32; 3], f32)>,
+    /// Creatures offered to the party by `AddAvailableNPCByTemplate`, by slot.
+    pub available: BTreeMap<i32, String>,
+    /// Who left the last trigger, who last opened a door, who last used a placeable.
+    pub exiting: ObjId,
+    pub last_opened_by: ObjId,
+    pub last_used_by: ObjId,
+    /// Routines answered with a fixed value because the feature behind them (combat, perception, item use) does not
+    /// exist yet, with call counts. Unlike `stubbed` these are deliberate: "nothing is happening".
+    pub constant_defaults: BTreeMap<String, usize>,
+    pub(crate) repute: Option<TwoDa>,
+    pub(crate) exptable: Vec<i32>,
+    pub(crate) plot: Option<TwoDa>,
     pub(crate) rng: u64,
 }
 
 fn creature_defaults(o: &mut Object, utc: &Struct) {
-    o.level = utc.int("ClassList").unwrap_or(1) as i32;
+    let classes = utc.list("ClassList").unwrap_or_default();
+    let level: i64 = classes.iter().filter_map(|c| c.int("ClassLevel")).sum();
+    o.level = level.max(1) as i32;
+    for c in classes {
+        for list in ["KnownList0", "KnownList1", "KnownList2"] {
+            for s in c.list(list).unwrap_or_default() {
+                if let Some(sp) = s.int("Spell") {
+                    o.spells.insert(sp as i32);
+                }
+            }
+        }
+    }
+    for f in utc.list("FeatList").unwrap_or_default() {
+        if let Some(ft) = f.int("Feat") {
+            o.feats.insert(ft as i32);
+        }
+    }
+    o.faction = utc.int("FactionID").unwrap_or(0) as i32;
+    o.race = utc.int("Race").unwrap_or(0) as i32;
+    o.subrace = utc.int("SubraceIndex").unwrap_or(0) as i32;
     if let Some(hp) = utc.int("CurrentHitPoints") {
         o.hp = hp as i32;
     }
@@ -219,6 +298,8 @@ impl World {
             module: String::new(),
             nav: None,
             pc_mover: Mover::new([0.0; 3], 0.0),
+            followers: BTreeMap::new(),
+            replan_in: 0.0,
             move_params: MoveParams::default(),
             pending: None,
             inside: HashSet::new(),
@@ -227,8 +308,28 @@ impl World {
             npc_slots: HashMap::new(),
             transition_request: None,
             inv_cursor: HashMap::new(),
+            effects: Vec::new(),
+            effect_cursor: HashMap::new(),
+            locations: Vec::new(),
+            available: BTreeMap::new(),
+            exiting: OBJECT_INVALID,
+            last_opened_by: OBJECT_INVALID,
+            last_used_by: OBJECT_INVALID,
+            constant_defaults: BTreeMap::new(),
+            repute: None,
+            exptable: Vec::new(),
+            plot: None,
             rng: 0x2545_F491_4F6C_DD1D,
         };
+        let table =
+            |w: &mut World, n: &str| TwoDa::parse(&w.inst.read(n, ResType::TWODA).ok()?).ok();
+        w.repute = table(&mut w, "repute");
+        w.plot = table(&mut w, "plot");
+        if let Some(t) = table(&mut w, "exptable") {
+            w.exptable = (0..t.row_count())
+                .filter_map(|r| t.int(r, "xp").map(|v| v as i32))
+                .collect();
+        }
         let mut pc = Object::new(1, Kind::Creature, "player");
         pc.name = "Player".into();
         pc.hp = 30;
@@ -347,6 +448,9 @@ impl World {
                 f("YPosition") + f("Y"),
                 f("ZPosition") + f("Z"),
             ];
+            if placement.float("XOrientation").is_some() {
+                o.facing = f("YOrientation").atan2(f("XOrientation")).to_degrees();
+            }
             if let Some(t) = tag.filter(|t| !t.is_empty()) {
                 o.tag = t;
             }
@@ -601,6 +705,7 @@ impl World {
                 self.open_door(d);
             }
             Action::CloseDoor(d) => self.close_door(d),
+            Action::Jump(p) => self.teleport(id, p),
             Action::Recorded(what) => self.events.push(format!("{}: {what}", self.describe(id))),
             Action::DoCommand { script, state } => {
                 let _ = self.run_saved(&script, &state, id);
@@ -609,6 +714,68 @@ impl World {
                 let _ = self.converse(id, target, &dialogue, &mut crate::FirstReply);
             }
         }
+    }
+
+    /// Put an object somewhere at once; the player's walk is cancelled.
+    pub fn teleport(&mut self, id: ObjId, pos: [f32; 3]) {
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.position = pos;
+        }
+        if id == self.pc {
+            self.pc_mover = Mover::new(pos, self.pc_mover.heading);
+        }
+    }
+
+    /// Experience level for a total of experience points, from `exptable.2da`.
+    pub fn level_for_xp(&self, xp: i32) -> i32 {
+        self.exptable
+            .iter()
+            .take_while(|&&need| need <= xp)
+            .count()
+            .max(1) as i32
+    }
+
+    /// Text of a talk-table entry, empty when missing.
+    pub fn strref_text(&self, strref: i32) -> String {
+        if strref < 0 {
+            return String::new();
+        }
+        self.tlk
+            .as_ref()
+            .and_then(|t| t.get(strref as u32))
+            .unwrap_or_default()
+    }
+
+    /// Experience a plot is worth (`plot.2da`, row labelled with the plot name, column `xp`).
+    pub fn plot_xp(&self, plot: &str) -> i32 {
+        let Some(t) = self.plot.as_ref() else {
+            return 0;
+        };
+        (0..t.row_count())
+            .find(|&r| {
+                t.get(r, "label")
+                    .is_some_and(|l| l.eq_ignore_ascii_case(plot))
+            })
+            .and_then(|r| t.int(r, "xp"))
+            .unwrap_or(0) as i32
+    }
+
+    /// `GetIsEnemy`-style reputation of `target` as seen by `source`, 0..=100, from `repute.2da` (50 when unknown).
+    pub fn reputation(&self, source: ObjId, target: ObjId) -> i32 {
+        let (Some(s), Some(t), Some(table)) = (
+            self.objects.get(&source),
+            self.objects.get(&target),
+            self.repute.as_ref(),
+        ) else {
+            return 50;
+        };
+        // Rows are factions by id; each faction's column is named after its row label.
+        let label = table
+            .get(t.faction.max(0) as usize, "label")
+            .map(str::to_ascii_lowercase);
+        label
+            .and_then(|l| table.int(s.faction.max(0) as usize, &l))
+            .map_or(50, |v| v as i32)
     }
 
     pub(crate) fn describe(&self, id: ObjId) -> String {

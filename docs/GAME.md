@@ -32,12 +32,20 @@ cargo run -p kotor-game --example opening     # Endar Spire opening, prints the 
 - DelayCommand replay is exercised for real: the conversation only starts because a saved state was replayed, and Trask only
   disappears because a second saved state ran after the delay.
 
-## Still stubbed by the Endar Spire scripts (calls counted when all 195 are run once)
+## Routines the Endar Spire scripts call (all 195 run once: 0 failed, 0 stubbed)
 
-Talents and spells (`GetHasSpell` 33, `GetIdFromTalent` 16, `GetCreatureHasTalent` 18, `TalentSpell`, ...), items and slots
-(`GetItemInSlot` 37, `GetItemPossessedBy`), factions (`ChangeToStandardFaction` 10, `GetStandardFaction` 9), `GetRacialType` 13,
-`GetSubRace` 9, `ShipBuild` 31, effects (`EffectDeath`, `ApplyEffectToObject`, `ClearAllEffects`), `CutsceneAttack` 9, `PlayAnimation` 9,
-party handling (`SetPartyLeader`, `RemovePartyMember`), XP (`GetXP`, `SetXP`, `GivePlotXP`), `JumpToLocation`.
+Implemented against data: factions (`repute.2da`, enemy <= 10, friend >= 90), racial type and subrace, spells and feats from the UTC,
+talents (a handle is `(kind + 1) << 24 | id`, kind 0 spell, 1 feat, 2 skill), `GetHasSpell`/`GetHasFeat`, effects (any `Effect*` makes a
+record; `ApplyEffectToObject` attaches it, `EffectDeath` kills; `GetFirstEffect`/`GetNextEffect`/`ClearAllEffects`), locations (a table, handle = index + 1),
+`JumpToLocation`/`ActionJumpToObject`, `GetFacing`/`SetFacing`, XP levels from `exptable.2da`, `GivePlotXP` from `plot.2da`, `GetStringByStrRef`,
+available party members, `GetExitingObject`, `GetLastOpenedBy`, `GetLastUsedBy`. Animations, `CutsceneAttack`, battle music and `RevealMap` are recorded only.
+
+Answered with a fixed value on purpose (counted in `World::constant_defaults`, because this world has no combat, perception or UI):
+`GetLastHostileTarget`, `GetObjectSeen`, `GetLastAttackAction`, `GetUserActionsPending`, `GetIsDebilitated`, `GetPlayerRestrictMode`, `GetPartyAIStyle`,
+`GetNPCAIStyle`, `GetIsEncounterCreature`, `GetSubScreenID`, `GetItemActivated`, `GetItemActivator`, and the criteria of `GetNearestCreature` and
+`GetCreatureTalentRandom/Best`. `ShipBuild` returns 1: its meaning is unknown.
+
+Assumed, not measured: the standard-faction ids are used directly as `repute.2da` rows; the talent type numbers above.
 
 ## Interaction, state and the real-time loop
 
@@ -46,7 +54,9 @@ party handling (`SetPartyLeader`, `RemovePartyMember`), XP (`GetXP`, `SetXP`, `G
 | Navigation | `World::nav` is the area's `NavMesh` (room walkmeshes welded); closed doors block a disc of 1.1 m around them (`block_disc`), opening lifts it |
 | Picking | `pixel_ray(eye, target, fov, size, pixel)` and `World::pick(origin, dir)`: nearest bounding sphere of a creature, door or placeable |
 | Click | `World::click(object)` plans a route to within range (1.8 m creatures, 1.6 m doors and placeables), walks it with the `Mover`, then talks (`talk_to`), toggles the door, or runs the placeable's `OnUsed` and conversation. Unreachable objects ("cannot reach") return false |
-| Doors | `open_door` (locked doors stay shut and run `OnFailToOpen`), `close_door`, `use_door`; a door with `LinkedToModule` requests a module change instead |
+| Doors | `open_door` (locked doors stay shut and run `OnFailToOpen`), `close_door`, `use_door`; a door with `LinkedToModule` requests a module change instead. `Object::door` is `Closed`, `Opening(t)`, `Open`, `Closing(t)`; `DOOR_ANIM_SECONDS` = 1.0 (measured: `opening1`/`closing1` of DOR_LHR01). `open` flips at once; the doorway is passable only once opening ends, and blocks again the moment closing starts. `Game::poses()` gives doors the clips `closed`, `opening1`, `opened1`, `closing1` (always the `1` side: which side the player is on is not modelled) |
+| Party | party members walk after the player when more than 3.5 m away, stop within 2.0 m, replan about every second (`follow.rs`; distances assumed); on a module change they are placed on free floor spots around the arrival waypoint |
+| Collision | creatures are discs of 0.4 m radius; the player and followers are pushed out of other creatures and slide round them (the player passes through its own party); only creatures that moved are checked |
 | Triggers | outline polygons from the GIT; `step` fires `ScriptOnEnter` / `ScriptOnExit` once per crossing for the player and party; a trigger with a link requests a module change |
 | Transitions | `transition(module, waypoint)`: keeps the player, party and carried items, globals, journal and XP; replaces everything else; arrives at the named waypoint; runs the new area's `OnEnter` |
 | State | journal (`AddJournalQuestEntry`), XP (`GiveXPToCreature`, `GetXP`, `SetXP`), party (`AddPartyMember`, `RemovePartyMember`), inventory (`CreateItemOnObject`, `GetItemPossessedBy`, first/next item, `GetItemInSlot`, `ActionEquipItem`, base item type from the UTI) |
@@ -58,8 +68,8 @@ plays the conversation; a ray through the screen centre picks Trask, a ray at a 
 enter script exactly once; the door `end_door10` takes the player to `end_m01ab` at waypoint `from_01a` with globals, journal, party and
 carried items intact; a hand-assembled script drives the journal, XP, party and inventory routines.
 
-Not done / assumed: door blocks are a plain disc (not the door's real footprint); doors never animate; party members do not follow; picking uses
-spheres, not the models; the player has no collision with creatures; module transitions leave old module archives layered in the install view;
+Not done / assumed: door blocks are a plain disc (not the door's real footprint); picking uses
+spheres, not the models; creatures that stand still are never pushed; collision radius and follow distances are guesses; module transitions leave old module archives layered in the install view;
 clip time for idle uses a made-up per-object offset.
 
 ## What is left for a first playable (walk the Endar Spire, talk to Trask)
@@ -74,7 +84,7 @@ Engine pieces that do not exist yet:
 6. Game state: party members and following, inventory and equipment (items, slots), journal, XP, saving and loading.
 7. Combat: rounds, attack and damage rules, effects, talents/Force powers, perception and the AI master script's heartbeat events.
 8. Character creation (the player is a placeholder object).
-9. The remaining engine routines: roughly 650 of 767 are still stubbed.
+9. The remaining engine routines: the Endar Spire needs none more, but roughly 600 of 767 are still stubbed for the rest of the game.
 
 Unknown how the original orders some of this: the timing of cutscene dialogue steps (camera, animation lists, `Delay`, pauses are
 ignored), what `ActionPauseConversation` really waits for, and several stubbed routines' exact results.

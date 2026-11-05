@@ -1,7 +1,7 @@
 //! The real-time loop: a fixed-timestep driver that joins world updates, the player's movement and animation
 //! clips. A renderer asks it for [`Pose`] requests each frame; nothing here draws.
 
-use crate::world::{Kind, ObjId, World};
+use crate::world::{DoorState, Kind, ObjId, World};
 use std::collections::HashMap;
 
 /// The animation an object is playing: a clip name from its supermodel and seconds into it.
@@ -116,7 +116,27 @@ impl Game {
                 } else {
                     0.0
                 },
-                clip: self.clips.get(&o.id).cloned(),
+                clip: match o.kind {
+                    Kind::Door => Some(match o.door {
+                        DoorState::Closed => Clip {
+                            name: "closed",
+                            time: 0.0,
+                        },
+                        DoorState::Opening(t) => Clip {
+                            name: "opening1",
+                            time: t,
+                        },
+                        DoorState::Open => Clip {
+                            name: "opened1",
+                            time: 0.0,
+                        },
+                        DoorState::Closing(t) => Clip {
+                            name: "closing1",
+                            time: t,
+                        },
+                    }),
+                    _ => self.clips.get(&o.id).cloned(),
+                },
             })
             .collect()
     }
