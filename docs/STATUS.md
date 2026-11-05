@@ -1,7 +1,7 @@
-﻿# Status of kotor-rs (6 Nov 2026)
+# Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**224 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**228 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -49,8 +49,8 @@ Most to least blocking, all absent unless stated:
 1. **Inventory and equip screen.** Items can be taken from a footlocker but not worn or used, so the opening's own tutorial cannot be followed.
 2. **Character creation and a main menu.** The game starts straight in the Endar Spire as a fixed Soldier. There is no new game, load or save screen, though saves work underneath.
 3. **Combat controls.** A click attacks, and that is all: no action queue, feats, powers or items from the slots, no pause. Only the first slot is drawn.
-4. **Sound effects.** Only voice and music are wired, and nobody has heard those. No blaster, door or footstep sounds.
-5. **Blaster bolts, particles and hit effects.** Rounds resolve with animation only.
+4. **Hearing the sound.** Voice, music, shots, blows, doors and steps are wired from the stock tables, and nobody has listened to them yet.
+5. **Force power visuals and the other emitter types.** Bolts, muzzle flashes, sparks and rooms' `Fountain` emitters are in.
 6. **Level-up, journal, map and party screens.** The rules exist; there are no screens.
 7. **Locks, skills and traps on doors.** A locked door just stays shut.
 8. **Line of sight, and camera against walls.** Enemies notice through walls, so distant fights start at once. The camera can sink into doors and furniture.
