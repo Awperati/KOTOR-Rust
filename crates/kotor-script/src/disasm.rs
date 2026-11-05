@@ -4,21 +4,34 @@ use std::fmt;
 /// Decoded operation with its operands. Branch targets are absolute offsets.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
-    CpDownSp { offset: i32, size: u16 },
+    CpDownSp {
+        offset: i32,
+        size: u16,
+    },
     RsAdd,
-    CpTopSp { offset: i32, size: u16 },
+    CpTopSp {
+        offset: i32,
+        size: u16,
+    },
     ConstI(i32),
     ConstF(f32),
     ConstS(String),
     ConstO(i32),
-    Action { routine: u16, args: u8 },
+    Action {
+        routine: u16,
+        args: u8,
+    },
     LogAnd,
     LogOr,
     IncOr,
     ExcOr,
     BoolAnd,
-    Equal { size: Option<u16> },
-    NEqual { size: Option<u16> },
+    Equal {
+        size: Option<u16>,
+    },
+    NEqual {
+        size: Option<u16>,
+    },
     Geq,
     Gt,
     Lt,
@@ -40,17 +53,30 @@ pub enum Op {
     Jz(u32),
     Jnz(u32),
     Retn,
-    Destruct { size: u16, keep_offset: i16, keep_size: u16 },
+    Destruct {
+        size: u16,
+        keep_offset: i16,
+        keep_size: u16,
+    },
     Not,
     DecISp(i32),
     IncISp(i32),
-    CpDownBp { offset: i32, size: u16 },
-    CpTopBp { offset: i32, size: u16 },
+    CpDownBp {
+        offset: i32,
+        size: u16,
+    },
+    CpTopBp {
+        offset: i32,
+        size: u16,
+    },
     DecIBp(i32),
     IncIBp(i32),
     SaveBp,
     RestoreBp,
-    StoreState { bp_size: u32, sp_size: u32 },
+    StoreState {
+        bp_size: u32,
+        sp_size: u32,
+    },
     Nop,
 }
 
@@ -96,7 +122,11 @@ fn type_name(q: u8) -> String {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let t = type_name(self.qualifier);
-        let sfx = if t.is_empty() { String::new() } else { format!(".{t}") };
+        let sfx = if t.is_empty() {
+            String::new()
+        } else {
+            format!(".{t}")
+        };
         write!(f, "{:08x}  ", self.offset)?;
         match &self.op {
             Op::CpDownSp { offset, size } => write!(f, "CPDOWNSP{sfx} {offset}, {size}"),
@@ -112,8 +142,16 @@ impl fmt::Display for Instruction {
             Op::IncOr => write!(f, "INCOR{sfx}"),
             Op::ExcOr => write!(f, "EXCOR{sfx}"),
             Op::BoolAnd => write!(f, "BOOLAND{sfx}"),
-            Op::Equal { size } => write!(f, "EQUAL{sfx}{}", size.map(|s| format!(" {s}")).unwrap_or_default()),
-            Op::NEqual { size } => write!(f, "NEQUAL{sfx}{}", size.map(|s| format!(" {s}")).unwrap_or_default()),
+            Op::Equal { size } => write!(
+                f,
+                "EQUAL{sfx}{}",
+                size.map(|s| format!(" {s}")).unwrap_or_default()
+            ),
+            Op::NEqual { size } => write!(
+                f,
+                "NEQUAL{sfx}{}",
+                size.map(|s| format!(" {s}")).unwrap_or_default()
+            ),
             Op::Geq => write!(f, "GEQ{sfx}"),
             Op::Gt => write!(f, "GT{sfx}"),
             Op::Lt => write!(f, "LT{sfx}"),
@@ -135,7 +173,11 @@ impl fmt::Display for Instruction {
             Op::Jz(t) => write!(f, "JZ {t:08x}"),
             Op::Jnz(t) => write!(f, "JNZ {t:08x}"),
             Op::Retn => write!(f, "RETN"),
-            Op::Destruct { size, keep_offset, keep_size } => {
+            Op::Destruct {
+                size,
+                keep_offset,
+                keep_size,
+            } => {
                 write!(f, "DESTRUCT {size}, {keep_offset}, {keep_size}")
             }
             Op::Not => write!(f, "NOT{sfx}"),
@@ -154,7 +196,8 @@ impl fmt::Display for Instruction {
 }
 
 fn target(at: u32, rel: i32) -> Result<u32> {
-    u32::try_from(at as i64 + rel as i64).map_err(|_| Error::format("branch target before start of program"))
+    u32::try_from(at as i64 + rel as i64)
+        .map_err(|_| Error::format("branch target before start of program"))
 }
 
 /// Decode a whole NCS file into instructions.
@@ -163,15 +206,22 @@ pub fn disassemble(data: &[u8]) -> Result<Program> {
     let tag = r.tag()?;
     let ver = r.tag()?;
     if &tag != b"NCS " || &ver != b"V1.0" {
-        return Err(Error::format(format!("not an NCS V1.0 file: {tag:?} {ver:?}")));
+        return Err(Error::format(format!(
+            "not an NCS V1.0 file: {tag:?} {ver:?}"
+        )));
     }
     let marker = r.u8()?;
     if marker != 0x42 {
-        return Err(Error::format(format!("unexpected NCS size marker {marker:#x}")));
+        return Err(Error::format(format!(
+            "unexpected NCS size marker {marker:#x}"
+        )));
     }
     let size = r.u32_be()?;
     if size as usize != data.len() {
-        return Err(Error::format(format!("NCS header says {size} bytes, file is {}", data.len())));
+        return Err(Error::format(format!(
+            "NCS header says {size} bytes, file is {}",
+            data.len()
+        )));
     }
     let mut instructions = Vec::new();
     while r.pos() < data.len() {
@@ -179,9 +229,15 @@ pub fn disassemble(data: &[u8]) -> Result<Program> {
         let opcode = r.u8()?;
         let q = r.u8()?;
         let op = match opcode {
-            0x01 => Op::CpDownSp { offset: r.i32_be()?, size: r.u16_be()? },
+            0x01 => Op::CpDownSp {
+                offset: r.i32_be()?,
+                size: r.u16_be()?,
+            },
             0x02 => Op::RsAdd,
-            0x03 => Op::CpTopSp { offset: r.i32_be()?, size: r.u16_be()? },
+            0x03 => Op::CpTopSp {
+                offset: r.i32_be()?,
+                size: r.u16_be()?,
+            },
             0x04 => match q {
                 0x03 => Op::ConstI(r.i32_be()?),
                 0x04 => Op::ConstF(r.f32_be()?),
@@ -192,14 +248,21 @@ pub fn disassemble(data: &[u8]) -> Result<Program> {
                 0x06 => Op::ConstO(r.i32_be()?),
                 _ => return Err(Error::format(format!("CONST of type {q:#x} at {start:#x}"))),
             },
-            0x05 => Op::Action { routine: r.u16_be()?, args: r.u8()? },
+            0x05 => Op::Action {
+                routine: r.u16_be()?,
+                args: r.u8()?,
+            },
             0x06 => Op::LogAnd,
             0x07 => Op::LogOr,
             0x08 => Op::IncOr,
             0x09 => Op::ExcOr,
             0x0A => Op::BoolAnd,
-            0x0B => Op::Equal { size: (q == 0x24).then(|| r.u16_be()).transpose()? },
-            0x0C => Op::NEqual { size: (q == 0x24).then(|| r.u16_be()).transpose()? },
+            0x0B => Op::Equal {
+                size: (q == 0x24).then(|| r.u16_be()).transpose()?,
+            },
+            0x0C => Op::NEqual {
+                size: (q == 0x24).then(|| r.u16_be()).transpose()?,
+            },
             0x0D => Op::Geq,
             0x0E => Op::Gt,
             0x0F => Op::Lt,
@@ -220,21 +283,36 @@ pub fn disassemble(data: &[u8]) -> Result<Program> {
             0x1E => Op::Jsr(target(start as u32, r.i32_be()?)?),
             0x1F => Op::Jz(target(start as u32, r.i32_be()?)?),
             0x20 => Op::Retn,
-            0x21 => Op::Destruct { size: r.u16_be()?, keep_offset: r.i16_be()?, keep_size: r.u16_be()? },
+            0x21 => Op::Destruct {
+                size: r.u16_be()?,
+                keep_offset: r.i16_be()?,
+                keep_size: r.u16_be()?,
+            },
             0x22 => Op::Not,
             0x23 => Op::DecISp(r.i32_be()?),
             0x24 => Op::IncISp(r.i32_be()?),
             0x25 => Op::Jnz(target(start as u32, r.i32_be()?)?),
-            0x26 => Op::CpDownBp { offset: r.i32_be()?, size: r.u16_be()? },
-            0x27 => Op::CpTopBp { offset: r.i32_be()?, size: r.u16_be()? },
+            0x26 => Op::CpDownBp {
+                offset: r.i32_be()?,
+                size: r.u16_be()?,
+            },
+            0x27 => Op::CpTopBp {
+                offset: r.i32_be()?,
+                size: r.u16_be()?,
+            },
             0x28 => Op::DecIBp(r.i32_be()?),
             0x29 => Op::IncIBp(r.i32_be()?),
             0x2A => Op::SaveBp,
             0x2B => Op::RestoreBp,
-            0x2C => Op::StoreState { bp_size: r.u32_be()?, sp_size: r.u32_be()? },
+            0x2C => Op::StoreState {
+                bp_size: r.u32_be()?,
+                sp_size: r.u32_be()?,
+            },
             0x2D => Op::Nop,
             other => {
-                return Err(Error::format(format!("unknown opcode {other:#04x} at {start:#x}")));
+                return Err(Error::format(format!(
+                    "unknown opcode {other:#04x} at {start:#x}"
+                )));
             }
         };
         instructions.push(Instruction {
@@ -250,11 +328,15 @@ pub fn disassemble(data: &[u8]) -> Result<Program> {
 impl Program {
     /// Check every branch lands on the start of an instruction.
     pub fn check_branches(&self) -> Result<()> {
-        let starts: std::collections::HashSet<u32> = self.instructions.iter().map(|i| i.offset).collect();
+        let starts: std::collections::HashSet<u32> =
+            self.instructions.iter().map(|i| i.offset).collect();
         for i in &self.instructions {
             if let Op::Jmp(t) | Op::Jsr(t) | Op::Jz(t) | Op::Jnz(t) = i.op {
                 if !starts.contains(&t) {
-                    return Err(Error::format(format!("branch at {:#x} to {t:#x} is not an instruction", i.offset)));
+                    return Err(Error::format(format!(
+                        "branch at {:#x} to {t:#x} is not an instruction",
+                        i.offset
+                    )));
                 }
             }
         }

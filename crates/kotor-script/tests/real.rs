@@ -4,7 +4,9 @@ use kotor_script::{disassemble, Op};
 
 #[test]
 fn every_base_ncs_decodes_with_valid_branches() {
-    let Some(dir) = kotor_core::install_dir() else { return };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
     let mut inst = Install::open(dir).unwrap();
     let names = inst.list(ResType::NCS);
     assert!(names.len() > 1000);
@@ -24,6 +26,9 @@ fn every_base_ncs_decodes_with_valid_branches() {
         }
         instrs += p.instructions.len();
     }
-    println!("{} scripts, {instrs} instructions, highest ACTION id {max_routine}", names.len());
+    println!(
+        "{} scripts, {instrs} instructions, highest ACTION id {max_routine}",
+        names.len()
+    );
     assert!(max_routine > 700 && max_routine < 1200);
 }

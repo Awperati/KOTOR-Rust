@@ -10,3 +10,6 @@ workspace = true
 
 [dependencies]
 kotor-core = { path = "../kotor-core" }
+
+[dev-dependencies]
+kotor-archive = { path = "../kotor-archive" }

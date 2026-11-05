@@ -1,0 +1,6 @@
+#!/bin/sh
+# CI-style gate: formatting, lints, tests.
+set -e
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace

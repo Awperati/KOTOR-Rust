@@ -77,6 +77,30 @@ impl Install {
         Ok(())
     }
 
+    /// Add the texture pack archives (`TexturePacks/*.erf`) as overlays, with the
+    /// highest-resolution pack taking priority.
+    pub fn load_texture_packs(&mut self) -> Result<()> {
+        for pack in [
+            "swpc_tex_gui",
+            "swpc_tex_tpc",
+            "swpc_tex_tpb",
+            "swpc_tex_tpa",
+        ] {
+            let path = self.dir.join("TexturePacks").join(format!("{pack}.erf"));
+            if path.is_file() {
+                self.push_overlay(Erf::open(Source::file(path))?);
+            }
+        }
+        Ok(())
+    }
+
+    /// Resources of one type in the overlays (modules, texture packs, ...), unsorted.
+    pub fn overlay_resources(&self) -> impl Iterator<Item = (&kotor_core::ResRef, ResType, u32)> {
+        self.overlays
+            .iter()
+            .flat_map(|o| o.entries.iter().map(|e| (&e.resref, e.restype, e.size)))
+    }
+
     fn bif(&mut self, i: u32) -> Result<&Bif> {
         let i = i as usize;
         if self.bifs[i].is_none() {

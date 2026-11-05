@@ -71,7 +71,9 @@ pub fn parse_tpc(data: &[u8]) -> Result<Tpc> {
         TpcFormat::Dxt5 => dxt::decode(body, width, height, true),
         TpcFormat::Gray8 => body.iter().flat_map(|&g| [g, g, g, 255]).collect(),
         TpcFormat::Rgb8 => body
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         TpcFormat::Rgba8 => body.to_vec(),
