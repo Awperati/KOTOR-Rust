@@ -13,3 +13,4 @@ kotor-core = { path = "../kotor-core" }
 
 [dev-dependencies]
 kotor-archive = { path = "../kotor-archive" }
+kotor-gff = { path = "../kotor-gff" }

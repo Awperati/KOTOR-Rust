@@ -24,7 +24,7 @@ kotor-tool <command> [args]
   obj <model> <out.obj>        export a model's rest pose as OBJ
   view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
                                software-render an area's rooms with textures and lightmaps
-  walk <area> <out_dir> [--module M] [--frames N] [--size WxH] [--appearance row] [--path x,y x,y ...]
+  walk <area> <out_dir> [--module M] [--frames N] [--size WxH] [--appearance row] [--path x,y x,y ...] [--goto x,y]
                                a character walks the walkmesh with a follow camera; frames + contact.png
   creature <template> <out.png> [--module M] [--anim name] [--time s]
                                draw a creature template via appearance.2da (body + head, texture variation)
@@ -262,6 +262,24 @@ fn run(args: &[String]) -> Result<()> {
             };
             let ifo = Gff::parse(&inst.read("module", ResType::IFO)?)?;
             let entry = |l: &str| ifo.root.float(l).unwrap_or(0.0) as f32;
+            let goto = opt("--goto").and_then(|g| {
+                let (x, y) = g.split_once(',')?;
+                Some([x.parse::<f32>().ok()?, y.parse::<f32>().ok()?])
+            });
+            if let (true, Some(g)) = (waypoints.is_empty(), goto) {
+                // Click-to-move: route over the walkmesh from the spawn point to the clicked spot.
+                let nav = kotor_render::Floor::load(&mut inst, area)?.navmesh();
+                let from = [
+                    entry("Mod_Entry_X"),
+                    entry("Mod_Entry_Y"),
+                    entry("Mod_Entry_Z"),
+                ];
+                let route = nav
+                    .find_path(from, [g[0], g[1], from[2]])
+                    .ok_or_else(|| Error::format("no route to that point"))?;
+                waypoints = route.iter().map(|p| [p[0], p[1]]).collect();
+                println!("route of {} points over the walkmesh", waypoints.len());
+            }
             if waypoints.is_empty() {
                 let (ex, ey) = (entry("Mod_Entry_X"), entry("Mod_Entry_Y"));
                 waypoints = vec![[ex, ey], [ex + 15.0, ey + 0.5], [ex + 23.0, ey + 0.5]];

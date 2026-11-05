@@ -27,6 +27,11 @@ impl Floor {
         Ok(Floor { meshes })
     }
 
+    /// The walkable faces as a navigation mesh (doors count as open).
+    pub fn navmesh(&self) -> kotor_walkmesh::NavMesh {
+        kotor_walkmesh::NavMesh::from_meshes(&self.meshes)
+    }
+
     /// Highest walkable floor under `(x, y)` that is at or below `max_z`.
     pub fn height(&self, x: f32, y: f32, max_z: f32) -> Option<f32> {
         self.meshes

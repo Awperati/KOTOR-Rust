@@ -39,6 +39,21 @@ target\debug\kotor-tool.exe character p_bastilabb out\bastila.png --head p_basti
 - Tests: scene size, texture resolution, lightmap UVs, determinism, coverage of the frame, character height 1.5-2.0 m, feet near
   the floor, idle pose differs from rest.
 
+## Navigation (kotor-walkmesh)
+
+- `NavMesh::from_meshes` joins the walkable faces of all room walkmeshes by welding coincident edges (2 cm), so faces inside a
+  room and across room borders end up in one graph. 540 faces for the Endar Spire; all 14 rooms that have a walkmesh are reachable
+  from the spawn point (doors are treated as open: the graph has no door state).
+- `NavMesh::find_path`: A* over face centres, then string pulling (funnel) through the shared edges. Corners lie exactly on edges,
+  so a walker brushes walls; there is no agent radius.
+- `Mover` (click-to-move): turns towards the next waypoint, walks, stays on the floor. **Assumed constants, not measured from the
+  game**: 1.6 m/s, 4.0 rad/s turn rate, walks only within 30 degrees of the target direction, otherwise turns on the spot.
+- Checked on the Endar Spire: random pairs of faces give routes with every 10 cm sample on floor (53,126 samples, 60 routes),
+  routes are never longer than the face-centre chain, the route to room `m01aa_03a` passes a door, and a mover walks a 44.3 m route
+  in 28.0 s with at most 0.2 rad of turning per 50 ms step. Not checked: locked or closed doors, other areas, moving obstacles,
+  how the original engine smooths corners.
+- `kotor-tool walk ... --goto x,y` renders a click-to-move walk from the spawn point to that spot.
+
 ## Not done / wrong on purpose (be honest about these)
 
 - **Creatures** are drawn in their default outfit and the `pause1` idle only (no equipment, no per-creature animation, no
