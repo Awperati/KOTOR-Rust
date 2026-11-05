@@ -31,7 +31,9 @@ Any size works, and 1280x720, 1920x1080, 2560x1440 and 3840x2160 are tested. The
 
 From 960 pixels high the stock interface pictures would be enlarged at least twice. `scripts/upscale_ui.ps1` exports them, upscales them with Topaz Gigapixel, and leaves them in `%LOCALAPPDATA%\kotor-rs\hd`, outside the repository and the install because they are made from game files. The interface uses them from then on, and `--no-hd` turns them off. A picture's alpha is upscaled separately as a grey picture (`name__a.png`), because the colour upscale cannot be relied on to keep it.
 
-Upscaled 3D textures work the same way: `scripts/upscale_area.ps1` makes them for one area, 2x by default, in `%LOCALAPPDATA%\kotor-rs\hd3d`, leaving out lightmaps and pictures over 1024 pixels. They are used whenever they are there, and `--no-hd` turns them off.
+Upscaled 3D textures work the same way: `scripts/upscale_area.ps1` makes them for one area, 2x by default, in `%LOCALAPPDATA%\kotor-rs\hd3d`, leaving out lightmaps and pictures over 1024 pixels. The owner asked for HD, so they are used by default whenever they are there, and `--no-hd` turns them off.
+
+Both scripts go through `scripts/gigapixel_guard.ps1`, because the GPU is shared: one job at a time, below normal priority, and they will not start, or will stop, with under 6 GB of video memory free. A stopped run can be started again, and it skips what is done.
 
 ### Frame times
 Measured on this PC (AMD Radeon AI PRO R9700) in a hidden window, `--mute`, Endar Spire opening, 600 frames, with particles:

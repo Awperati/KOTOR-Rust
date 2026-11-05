@@ -8,6 +8,7 @@ param(
     [int]$Scale = 2,
     [int]$Limit = 0
 )
+. (Join-Path $PSScriptRoot "gigapixel_guard.ps1")
 $hd = Join-Path $env:LOCALAPPDATA "kotor-rs\hd3d"
 $src = Join-Path $env:LOCALAPPDATA "kotor-rs\hd3d_source\$Module"
 New-Item -ItemType Directory -Force $hd, $src | Out-Null
@@ -22,11 +23,10 @@ if (Test-Path $batch) { Remove-Item -Recurse -Force $batch }
 New-Item -ItemType Directory $batch | Out-Null
 $inputs | ForEach-Object { Copy-Item $_.FullName $batch }
 $log = Join-Path $env:TEMP "kotor_gp_area.log"
-$t = Get-Date
 # The default model is used: -m std makes this version's engine fail.
-$p = Start-Process -FilePath $Gigapixel -ArgumentList @("-i", $batch, "-o", $hd, "--cf", "--scale", "$Scale", "-f", "png", "--bd", "8", "--se", "-q") -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru -NoNewWindow
-$p.WaitForExit()
+$r = Invoke-GuardedGigapixel -Exe $Gigapixel -Log $log -Arguments @("-i", $batch, "-o", $hd, "--cf", "--scale", "$Scale", "-f", "png", "--bd", "8", "--se", "-q")
+$r
 Remove-Item -Recurse -Force $batch
 $files = Get-ChildItem $hd -Filter *.png
-"$($inputs.Count) pictures in $([int]((Get-Date) - $t).TotalSeconds) s; $($files.Count) files, $([int](($files | Measure-Object Length -Sum).Sum / 1MB)) MB in $hd"
+"$($r.Seconds) s; $($files.Count) files, $([int](($files | Measure-Object Length -Sum).Sum / 1MB)) MB in $hd"
 Get-Content "$log.err" -Tail 3
