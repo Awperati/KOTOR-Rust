@@ -21,7 +21,7 @@ struct Globals {
 @group(1) @binding(0) var diffuse_tex: texture_2d<f32>;
 @group(1) @binding(1) var lightmap_tex: texture_2d<f32>;
 @group(1) @binding(2) var samp: sampler;
-@group(1) @binding(3) var<uniform> params: vec4<f32>; // x = 1 when the mesh has a lightmap
+@group(1) @binding(3) var<uniform> params: vec4<f32>; // x = 1 with a lightmap, y = alpha below this is cut, z = 1 to blend
 
 struct VsIn {
     @location(0) pos: vec3<f32>,
@@ -49,12 +49,16 @@ fn vs_main(v: VsIn) -> VsOut {
 
 @fragment
 fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
-    let base = textureSample(diffuse_tex, samp, i.uv).rgb;
+    let tex = textureSample(diffuse_tex, samp, i.uv);
+    if (tex.a < params.y) {
+        discard;
+    }
+    let base = tex.rgb;
     var lit = vec3<f32>(0.55 + 0.45 * abs(dot(normalize(i.normal + vec3<f32>(0.0, 0.0, 1e-4)), g.light.xyz)));
     if (params.x > 0.5) {
         lit = textureSample(lightmap_tex, samp, i.uv2).rgb;
     }
-    return vec4<f32>(base * lit, 1.0);
+    return vec4<f32>(base * lit, mix(1.0, tex.a, params.z));
 }
 "#;
 
@@ -76,6 +80,37 @@ struct Globals {
 
 struct Tex {
     view: wgpu::TextureView,
+    look: AlphaLook,
+}
+
+/// What a picture's alpha channel does on screen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum AlphaLook {
+    Opaque,
+    /// Mostly fully there or fully gone: pixels are cut, and depth still works.
+    Cutout,
+    /// Many pixels in between: drawn after everything solid, far to near.
+    Blend,
+}
+
+/// **Assumption:** the shares that tell these apart are chosen by eye, not read from the game.
+fn alpha_look(img: &Image) -> AlphaLook {
+    let (mut gone, mut between) = (0usize, 0usize);
+    for p in img.rgba.chunks(4) {
+        match p[3] {
+            0..=19 => gone += 1,
+            20..=234 => between += 1,
+            _ => {}
+        }
+    }
+    let n = (img.rgba.len() / 4).max(1);
+    if (gone + between) * 200 < n {
+        AlphaLook::Opaque
+    } else if between * 3 > gone + between {
+        AlphaLook::Blend
+    } else {
+        AlphaLook::Cutout
+    }
 }
 
 pub struct GpuRenderer {
@@ -84,6 +119,8 @@ pub struct GpuRenderer {
     pipeline: wgpu::RenderPipeline,
     sky_pipeline: wgpu::RenderPipeline,
     sky_at_infinity: bool,
+    blend_pipeline: wgpu::RenderPipeline,
+    transparency: bool,
     globals_layout: wgpu::BindGroupLayout,
     mesh_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -101,6 +138,8 @@ struct Draw {
     indices: wgpu::Buffer,
     count: u32,
     bind: wgpu::BindGroup,
+    blended: bool,
+    centre: [f32; 3],
     /// A sky: the centre of its mesh, which is kept on the camera.
     sky: Option<[f32; 3]>,
 }
@@ -189,48 +228,54 @@ impl GpuRenderer {
             push_constant_ranges: &[],
         });
         let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x2];
-        let make = |depth_write: bool, compare: wgpu::CompareFunction| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("kotor"),
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Vertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &attrs,
-                    }],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: None,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: depth_write,
-                    depth_compare: compare,
-                    stencil: Default::default(),
-                    bias: Default::default(),
-                }),
-                multisample: Default::default(),
-                multiview: None,
-                cache: None,
-            })
-        };
-        let pipeline = make(true, wgpu::CompareFunction::Less);
-        let sky_pipeline = make(false, wgpu::CompareFunction::Always);
+        let make =
+            |depth_write: bool, compare: wgpu::CompareFunction, blend: Option<wgpu::BlendState>| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("kotor"),
+                    layout: Some(&layout),
+                    vertex: wgpu::VertexState {
+                        module: &module,
+                        entry_point: Some("vs_main"),
+                        compilation_options: Default::default(),
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<Vertex>() as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &attrs,
+                        }],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &module,
+                        entry_point: Some("fs_main"),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            blend,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: None,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: wgpu::TextureFormat::Depth32Float,
+                        depth_write_enabled: depth_write,
+                        depth_compare: compare,
+                        stencil: Default::default(),
+                        bias: Default::default(),
+                    }),
+                    multisample: Default::default(),
+                    multiview: None,
+                    cache: None,
+                })
+            };
+        let pipeline = make(true, wgpu::CompareFunction::Less, None);
+        let sky_pipeline = make(false, wgpu::CompareFunction::Always, None);
+        let blend_pipeline = make(
+            false,
+            wgpu::CompareFunction::Less,
+            Some(wgpu::BlendState::ALPHA_BLENDING),
+        );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::Repeat,
             address_mode_v: wgpu::AddressMode::Repeat,
@@ -279,6 +324,8 @@ impl GpuRenderer {
         Ok(GpuRenderer {
             sky_pipeline,
             sky_at_infinity: true,
+            blend_pipeline,
+            transparency: true,
             white,
             tex_cache: HashMap::new(),
             static_draws: Vec::new(),
@@ -310,6 +357,11 @@ impl GpuRenderer {
     /// the camera can never leave it. Off, it is an ordinary mesh, as in the software renderer.
     pub fn set_sky_at_infinity(&mut self, on: bool) {
         self.sky_at_infinity = on;
+    }
+
+    /// By default alpha cuts holes or blends. Off, everything is solid, as in the software renderer.
+    pub fn set_transparency(&mut self, on: bool) {
+        self.transparency = on;
     }
 
     /// Keep `scene` on the GPU and draw it in every later frame, behind whatever each frame passes in.
@@ -356,7 +408,23 @@ impl GpuRenderer {
             let indices: Vec<u32> = m.triangles.iter().flatten().copied().collect();
             let diffuse = self.texture_view(&m.texture, textures);
             let lightmap = self.texture_view(&m.lightmap, textures);
-            let params = [if lightmap.is_some() { 1.0f32 } else { 0.0 }, 0.0, 0.0, 0.0];
+            let look = match m.texture.as_ref().map(|n| n.to_ascii_lowercase()) {
+                Some(n) if self.transparency => self.tex_cache[&n]
+                    .as_ref()
+                    .map_or(AlphaLook::Opaque, |t| t.look),
+                _ => AlphaLook::Opaque,
+            };
+            let (cut, blend) = match look {
+                AlphaLook::Opaque => (0.0, 0.0),
+                AlphaLook::Cutout => (0.5, 0.0),
+                AlphaLook::Blend => (0.02, 1.0),
+            };
+            let params = [
+                if lightmap.is_some() { 1.0f32 } else { 0.0 },
+                cut,
+                blend,
+                0.0,
+            ];
             let params_buf = self
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -408,6 +476,8 @@ impl GpuRenderer {
                     }),
                 count: indices.len() as u32,
                 bind,
+                blended: look == AlphaLook::Blend,
+                centre: mesh_centre(m),
                 sky: sky_centre(m),
             });
         }
@@ -520,8 +590,25 @@ impl GpuRenderer {
                 .static_draws
                 .iter()
                 .chain(&draws)
-                .filter(|d| !self.sky_at_infinity || d.sky.is_none())
+                .filter(|d| !d.blended && (!self.sky_at_infinity || d.sky.is_none()))
             {
+                pass.set_bind_group(1, &d.bind, &[]);
+                pass.set_vertex_buffer(0, d.vertices.slice(..));
+                pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..d.count, 0, 0..1);
+            }
+            let mut see_through: Vec<&Draw> = self
+                .static_draws
+                .iter()
+                .chain(&draws)
+                .filter(|d| d.blended && (!self.sky_at_infinity || d.sky.is_none()))
+                .collect();
+            see_through.sort_by(|a, b| {
+                let far = |d: &Draw| Vec3::from(d.centre).distance_squared(eye);
+                far(b).total_cmp(&far(a))
+            });
+            pass.set_pipeline(&self.blend_pipeline);
+            for d in see_through {
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(..));
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -602,6 +689,17 @@ impl GpuRenderer {
 /// **Assumption:** a mesh wider than this with no lightmap is a sky (the Endar Spire's star sphere is 409 m across).
 const SKY_WIDTH: f32 = 150.0;
 
+fn mesh_centre(m: &kotor_render::SceneMesh) -> [f32; 3] {
+    let n = m.positions.len().max(1) as f32;
+    let mut c = [0.0; 3];
+    for p in &m.positions {
+        for (a, v) in c.iter_mut().zip(p) {
+            *a += *v / n;
+        }
+    }
+    c
+}
+
 /// The centre of a mesh that is a sky.
 fn sky_centre(m: &kotor_render::SceneMesh) -> Option<[f32; 3]> {
     if m.lightmap.is_some() {
@@ -641,6 +739,7 @@ fn upload_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &Image) -> Tex 
     );
     Tex {
         view: t.create_view(&Default::default()),
+        look: alpha_look(img),
     }
 }
 

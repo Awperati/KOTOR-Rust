@@ -104,6 +104,26 @@ impl Rig {
         self.posed(pose.as_ref())
     }
 
+    /// A named animation sampled at `t`, from the nearest supermodel that has it.
+    pub fn sample(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
+        self.sup
+            .iter()
+            .find_map(|m| m.animation(name).map(|a| a.sample(m, t)))
+    }
+
+    /// Add `item` to `scene` at a node of the body (`rhand`, `lhand`), for a body in `pose`.
+    pub fn attach(
+        &self,
+        scene: &mut Scene,
+        pose: Option<&kotor_model::Pose>,
+        node: &str,
+        item: &Model,
+    ) {
+        if let Some(at) = find(&self.body.world_matrices(pose), node) {
+            scene.add_model_with(item, None, &at, &[], None, None);
+        }
+    }
+
     /// The character in a pose sampled elsewhere, such as a cutscene's stunt model.
     pub fn posed(&self, pose: Option<&kotor_model::Pose>) -> Result<Scene> {
         let mut scene = Scene {
@@ -146,8 +166,6 @@ impl Rig {
                     scene.add_model_with(head_m, None, &xf, &[], self.head_tex.as_deref(), None);
                 }
                 _ => {
-                    // **Assumption:** `hairalpha` needs a transparency this renderer does not have: its texture has
-                    // no alpha, and drawn solid it lays spikes over the face.
                     if let (Some(posed), Some(mut turn)) =
                         (find(&posed_mats, "headhook"), find(&rest_mats, "headhook"))
                     {
@@ -159,7 +177,7 @@ impl Rig {
                             head_m,
                             None,
                             &xf,
-                            &["hairalpha"],
+                            &[],
                             self.head_tex.as_deref(),
                             None,
                         );
@@ -209,11 +227,27 @@ pub fn rig_for_appearance(
     appearance_row: usize,
     texture_var: u32,
 ) -> Result<Rig> {
+    rig_for_outfit(inst, appearance_row, texture_var, None)
+}
+
+/// [`rig_for_appearance`] in armour: `letter` picks the `modelX` and `texX` columns (the `bodyvar` of the armour's
+/// `baseitems.2da` row) when the row has that column, and `texture_var` is then the armour's `TextureVar`.
+pub fn rig_for_outfit(
+    inst: &mut Install,
+    appearance_row: usize,
+    texture_var: u32,
+    letter: Option<char>,
+) -> Result<Rig> {
     let app = TwoDa::parse(&inst.read("appearance", ResType::TWODA)?)?;
-    let get = |c: &str| app.get(appearance_row, c).map(str::to_string);
+    let get = |c: &str| {
+        app.get(appearance_row, c)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    let worn = letter.and_then(|l| get(&format!("model{}", l.to_ascii_lowercase())));
     // **Assumption:** the player's rows name no `race`, and column b is the starting clothes (a is underwear).
-    let race = get("race")
-        .filter(|r| !r.is_empty())
+    let race = worn
+        .or_else(|| get("race"))
         .or_else(|| get("modelb"))
         .ok_or_else(|| Error::NotFound(format!("appearance row {appearance_row} model")))?;
     if get("modeltype").as_deref() != Some("B") {

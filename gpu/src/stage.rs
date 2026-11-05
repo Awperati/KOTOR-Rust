@@ -23,6 +23,11 @@ const DRAW_RANGE: f32 = 45.0;
 const FIRST_STUNT_ANIMATION: u32 = 1200;
 /// The follow camera: metres behind the player and above its feet, and the height it looks at. As `render_walk`.
 const CAMERA_FOV: f32 = 55.0;
+/// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
+/// combat reads.
+const ARMOUR_SLOT: i32 = 1;
+const RIGHT_HAND_SLOT: i32 = 4;
+const LEFT_HAND_SLOT: i32 = 5;
 /// Metres within which the E key finds something to use.
 const USE_REACH: f32 = 2.5;
 const CAMERA_BEHIND: f32 = 3.3;
@@ -124,7 +129,10 @@ pub struct Stage {
     static_scene: Scene,
     /// Goes up whenever `static_scene` is replaced.
     pub static_version: u64,
-    rigs: HashMap<(i32, u32), Option<Rc<Rig>>>,
+    rigs: HashMap<(i32, u32, Option<char>), Option<Rc<Rig>>>,
+    baseitems: Option<TwoDa>,
+    /// An item's model, by item.
+    held: HashMap<ObjId, Option<Rc<Model>>>,
     doors: HashMap<ObjId, Option<Rc<DoorBody>>>,
     textures: HashMap<String, Option<Image>>,
     /// Camera direction in radians (0 = looking along +x) and distance behind the player.
@@ -197,6 +205,8 @@ impl Stage {
             static_scene: Scene::default(),
             static_version: 0,
             rigs: HashMap::new(),
+            baseitems: None,
+            held: HashMap::new(),
             doors: HashMap::new(),
             textures: HashMap::new(),
             yaw: 0.0,
@@ -712,26 +722,99 @@ impl Stage {
     }
 
     fn rig_of(&mut self, id: ObjId) -> Option<Rc<Rig>> {
-        let (appearance, template) = {
-            let o = self.game.world.object(id)?;
-            (o.appearance, o.template.clone())
+        let (appearance, template, armour) = {
+            let w = &self.game.world;
+            let o = w.object(id)?;
+            let armour = o
+                .equipped
+                .get(&ARMOUR_SLOT)
+                .and_then(|i| w.object(*i))
+                .map(|i| (i.base_item, i.template.clone()));
+            (o.appearance, o.template.clone(), armour)
         };
-        let var = self
-            .inst
-            .read(&template, ResType(2027))
-            .ok()
-            .and_then(|b| Gff::parse(&b).ok())
-            .and_then(|g| g.root.int("TextureVar"))
-            .unwrap_or(1) as u32;
+        let number = |inst: &mut Install, name: &str, ty: ResType, field: &str| {
+            inst.read(name, ty)
+                .ok()
+                .and_then(|b| Gff::parse(&b).ok())
+                .and_then(|g| g.root.int(field))
+        };
+        let mut var = number(&mut self.inst, &template, ResType(2027), "TextureVar").unwrap_or(1);
+        let mut letter = None;
+        if let Some((base, item)) = armour {
+            letter = self
+                .baseitem(base as usize, "bodyvar")
+                .and_then(|v| v.chars().next());
+            if let Some(v) = number(&mut self.inst, &item, ResType(2025), "TextureVar") {
+                var = v;
+            }
+        }
+        let key = (appearance, var as u32, letter);
         let inst = &mut self.inst;
         self.rigs
-            .entry((appearance, var))
+            .entry(key)
             .or_insert_with(|| {
-                kotor_render::rig_for_appearance(inst, appearance as usize, var)
+                kotor_render::rig_for_outfit(inst, appearance as usize, var as u32, letter)
                     .ok()
                     .map(Rc::new)
             })
             .clone()
+    }
+
+    fn baseitem(&mut self, row: usize, column: &str) -> Option<String> {
+        if self.baseitems.is_none() {
+            self.baseitems = TwoDa::parse(&self.inst.read("baseitems", ResType::TWODA).ok()?).ok();
+        }
+        self.baseitems
+            .as_ref()?
+            .get(row, column)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    }
+
+    /// The model of a held item: `itemclass` of its `baseitems.2da` row and its `ModelVariation`, for example
+    /// `w_Blstrrfl_001`, else the row's `defaultmodel`.
+    fn item_model(&mut self, item: ObjId) -> Option<Rc<Model>> {
+        if let Some(m) = self.held.get(&item) {
+            return m.clone();
+        }
+        let (base, template) = {
+            let o = self.game.world.object(item)?;
+            (o.base_item as usize, o.template.clone())
+        };
+        let variation = self
+            .inst
+            .read(&template, ResType(2025))
+            .ok()
+            .and_then(|b| Gff::parse(&b).ok())
+            .and_then(|g| g.root.int("ModelVariation"))
+            .unwrap_or(1);
+        let class = self.baseitem(base, "itemclass").unwrap_or_default();
+        let named = format!("{class}_{variation:03}");
+        let model = self.model(&named).or_else(|| {
+            let d = self.baseitem(base, "defaultmodel")?;
+            self.model(&d)
+        });
+        self.held.insert(item, model.clone());
+        model
+    }
+
+    /// What a creature holds: hand node and model.
+    fn hands(&mut self, id: ObjId) -> Vec<(&'static str, Rc<Model>)> {
+        let items: Vec<(&'static str, ObjId)> = self
+            .game
+            .world
+            .object(id)
+            .map(|o| {
+                [(RIGHT_HAND_SLOT, "rhand"), (LEFT_HAND_SLOT, "lhand")]
+                    .iter()
+                    .filter_map(|(slot, node)| Some((*node, *o.equipped.get(slot)?)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        items
+            .into_iter()
+            .filter_map(|(node, item)| Some((node, self.item_model(item)?)))
+            .collect()
     }
 
     fn door_body(&mut self, id: ObjId) -> Option<Rc<DoorBody>> {
@@ -783,14 +866,25 @@ impl Stage {
                     let Some(rig) = self.rig_of(pose.id) else {
                         continue;
                     };
+                    let hands = self.hands(pose.id);
                     if let Some(p) = self.stunt_pose(pose.id) {
                         // A stunt is in world space, like the camera beside it.
-                        if let Ok(body) = rig.posed(Some(&p)) {
+                        if let Ok(mut body) = rig.posed(Some(&p)) {
+                            for (node, item) in &hands {
+                                rig.attach(&mut body, Some(&p), node, item);
+                            }
                             scene.append_transformed(&body, &placement([0.0; 3], 0.0));
                         }
                         continue;
                     }
-                    self.add_creature(&mut scene, &rig, &pose.clip, pose.position, pose.heading);
+                    self.add_creature(
+                        &mut scene,
+                        &rig,
+                        &hands,
+                        &pose.clip,
+                        pose.position,
+                        pose.heading,
+                    );
                 }
                 Kind::Door => {
                     let Some(body) = self.door_body(pose.id) else {
@@ -813,6 +907,7 @@ impl Stage {
         &self,
         scene: &mut Scene,
         rig: &Rig,
+        hands: &[(&'static str, Rc<Model>)],
         clip: &Option<Clip>,
         at: [f32; 3],
         heading: f32,
@@ -832,9 +927,13 @@ impl Stage {
         let t = len
             .filter(|l| *l > 0.0)
             .map_or(0.0, |l| if name == "die" { t.min(l) } else { t % l });
-        let Ok(body) = rig.pose(len.map(|_| (name, t))) else {
+        let pose = len.and_then(|_| rig.sample(name, t));
+        let Ok(mut body) = rig.posed(pose.as_ref()) else {
             return;
         };
+        for (node, item) in hands {
+            rig.attach(&mut body, pose.as_ref(), node, item);
+        }
         let xf = if flat {
             placement_flat(at, angle)
         } else {

@@ -35,7 +35,9 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 
 ## Other assumptions
 - The player is the recommended Soldier until there is a character creation screen.
-- The player's body is column b of `appearance.2da`. Equipped armour does not change it yet.
+- The player's body is column b of `appearance.2da` until armour is worn. Worn armour picks the column from its `bodyvar` in `baseitems.2da`.
+- Held weapons are always drawn in the hand, in and out of combat.
+- Alpha: a TXI that names an environment or bump map makes it a shininess mask, so opaque. `blending additive` makes alpha follow brightness. Otherwise mostly clear-or-solid pictures are cut out and pictures with many in-between pixels are blended, with shares chosen by eye.
 - A body whose supermodels have no `dead` clip is laid flat.
 - A node with no replies lasts its cutscene beat (`docs/CUTSCENE.md`), then moves on.
 - Combat clips: `weaponwield` in `baseitems.2da` picks the digit in the clip name (1, 2, 3 as they are; pistol 5, rifle 7, heavy 9; no weapon 8), read from the clip names. `b<n>a1` fires, `c<n>a1` swings a one-handed or double weapon, `g<n>a1` swings anything else, `g<n>g1` is a flinch, `g<n>d1` a dodge and `g<n>r1` the ready stance. Only the first of each is used. All of it is unchecked against the game.
@@ -45,13 +47,12 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 - A speaker runs up to the listener before a conversation starts, unless the script says to talk from where it stands. Trask's first talk is one that does (`k_pend_cut09`, from 7.5 m).
 - In a conversation the camera shows the owner close up, 1.3 m in front of them. It stands in for the game's dialogue camera angles, which are not modelled.
 - Creatures walk where scripts send them, and open doors that are not locked on the way, with no collision. Their speed and the rule that a queued action waits for arrival are assumed.
-- The `hairalpha` mesh of player heads is not drawn: its texture has no alpha, and solid it lays spikes over the face.
 
 ## Measured
+- TPC rows are stored bottom-up. `load_texture` flips them, so every picture has its first row on top. Before this fix all model textures were upside down, which scrambled faces and clothes.
 - A camera model's `camerahook` and a stunt's animation are in world space, and the hook looks along its local -z: in the opening's 18 shots the stunt's head lies at -0.91 to -1.00 along that axis.
 - A player's head model has its origin at the neck and rides the body's `headhook`.
 
 ## Not done
-- Weapons and armour are not drawn on bodies.
-- Target display and action slots on the HUD, the map picture, and notices.
-- Transparent textures and effects. Everything is drawn opaque.
+- Action slot icons on the HUD (the target's name, bar and action word are shown), the map picture, and notices.
+- Particle effects, and placeable open animations.

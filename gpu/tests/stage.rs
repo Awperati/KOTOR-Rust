@@ -399,3 +399,32 @@ fn kotor_ui_row(s: &mut Stage) -> (f32, f32) {
     s.set_view((853, 480));
     (120.0, 385.0)
 }
+
+#[test]
+fn soldiers_hold_their_weapons() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    let foe = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003")
+        .map(|o| o.id)
+        .expect("a Sith soldier");
+    assert!(
+        s.game.world.object(foe).unwrap().equipped.contains_key(&4),
+        "it has a weapon in hand"
+    );
+    let at = s.game.world.object(foe).unwrap().position;
+    s.game.world.teleport(pc, [at[0] - 1.5, at[1], at[2]]);
+    s.update(DT);
+    let scene = s.dynamic_scene();
+    assert!(
+        scene.meshes.iter().any(|m| m
+            .texture
+            .as_ref()
+            .is_some_and(|t| t.to_ascii_lowercase().starts_with("w_"))),
+        "a weapon's mesh is drawn"
+    );
+}

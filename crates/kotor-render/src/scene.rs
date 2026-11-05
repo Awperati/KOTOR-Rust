@@ -332,9 +332,76 @@ pub fn load_area(inst: &mut Install, area: &str) -> Result<Scene> {
 /// Texture by name from the texture packs (TPC) or the base data (TGA). The caller must
 /// have called `Install::load_texture_packs` for TPC lookups.
 pub fn load_texture(inst: &mut Install, name: &str) -> Option<Image> {
-    if let Ok(d) = inst.read(name, ResType::TPC) {
-        return kotor_image::parse_tpc(&d).ok().map(|t| t.image);
+    let mut txi = inst
+        .read(name, ResType::TXI)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let mut img = if let Ok(d) = inst.read(name, ResType::TPC) {
+        let t = kotor_image::parse_tpc(&d).ok()?;
+        txi.push_str(&t.txi);
+        // TPC rows are stored bottom-up; `Image` and the renderers have the first row on top.
+        flip_rows(t.image)
+    } else {
+        kotor_image::parse_tga(&inst.read(name, ResType::TGA).ok()?).ok()?
+    };
+    apply_txi_alpha(&mut img, &txi.to_ascii_lowercase());
+    Some(img)
+}
+
+fn flip_rows(img: Image) -> Image {
+    let row = (img.width as usize * 4).max(1);
+    let rgba = img.rgba.chunks(row).rev().flatten().copied().collect();
+    Image { rgba, ..img }
+}
+
+/// Make the alpha channel mean transparency. With an environment or bump map named in the TXI it is a shininess mask,
+/// so the picture becomes opaque. With additive blending, alpha follows brightness, so dark parts add nothing.
+fn apply_txi_alpha(img: &mut Image, txi: &str) {
+    let shiny = ["envmaptexture", "bumpyshinytexture", "bumpmaptexture"]
+        .iter()
+        .any(|k| txi.contains(k));
+    let additive = txi.contains("blending") && txi.contains("additive");
+    if !shiny && !additive {
+        return;
     }
-    let d = inst.read(name, ResType::TGA).ok()?;
-    kotor_image::parse_tga(&d).ok()
+    for p in img.rgba.chunks_mut(4) {
+        p[3] = if additive {
+            p[0].max(p[1]).max(p[2])
+        } else {
+            255
+        };
+    }
+}
+
+#[cfg(test)]
+mod alpha_tests {
+    use super::*;
+
+    #[test]
+    fn tpc_rows_are_turned_top_side_up() {
+        let bottom_up = Image {
+            width: 1,
+            height: 2,
+            rgba: vec![1, 1, 1, 255, 2, 2, 2, 255],
+        };
+        assert_eq!(flip_rows(bottom_up).rgba, vec![2, 2, 2, 255, 1, 1, 1, 255]);
+    }
+
+    #[test]
+    fn the_txi_decides_what_alpha_means() {
+        let image = || Image {
+            width: 1,
+            height: 1,
+            rgba: vec![200, 10, 10, 50],
+        };
+        let mut a = image();
+        apply_txi_alpha(&mut a, "envmaptexture cm_chrome");
+        assert_eq!(a.rgba[3], 255);
+        let mut b = image();
+        apply_txi_alpha(&mut b, "blending additive");
+        assert_eq!(b.rgba[3], 200);
+        let mut c = image();
+        apply_txi_alpha(&mut c, "blending punchthrough");
+        assert_eq!(c.rgba[3], 50);
+    }
 }

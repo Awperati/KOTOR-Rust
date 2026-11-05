@@ -35,6 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("software: {:.2}s", t.elapsed().as_secs_f32());
     let mut gpu = GpuRenderer::new(w, h)?;
     gpu.set_sky_at_infinity(false);
+    gpu.set_transparency(false);
     let t = std::time::Instant::now();
     let img = gpu.render(
         &scene,
