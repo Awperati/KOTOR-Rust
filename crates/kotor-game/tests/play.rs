@@ -365,7 +365,8 @@ fn effects_jumps_factions_and_experience_levels_work() {
     );
     w.run_program(&prog, pc).unwrap();
     assert!(w.object(trask).unwrap().dead, "EffectDeath should kill");
-    assert_eq!(w.object(trask).unwrap().effects.len(), 1);
+    // Death acts at once and is not kept as an active effect.
+    assert_eq!(w.object(trask).unwrap().effects.len(), 0);
     w.step(0.05);
     assert_eq!(
         w.object(pc).unwrap().position,

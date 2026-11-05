@@ -48,6 +48,12 @@ pub enum Action {
     Jump([f32; 3]),
     /// Start attacking an object (`ActionAttack`).
     Attack(ObjId),
+    /// Cast a Force power at an object.
+    Cast {
+        spell: i32,
+        target: ObjId,
+        cheat: bool,
+    },
 }
 
 /// A command scheduled by `DelayCommand`.
@@ -114,6 +120,17 @@ pub struct Object {
     pub class: i32,
     /// Metres within which an enemy is noticed.
     pub perception: f32,
+    /// Ranks per skill row of `skills.2da`, unspent skill points, unspent (regular, bonus) feat choices.
+    pub skills: Vec<i32>,
+    pub skill_points: i32,
+    pub feat_slots: (i32, i32),
+    /// Knocked out (party members at 0 hit points).
+    pub down: bool,
+    pub force: i32,
+    pub max_force: i32,
+    pub challenge_rating: f32,
+    /// `appearance.2da` row.
+    pub appearance: i32,
 }
 
 /// A door's animation state; the number is seconds into the clip.
@@ -130,6 +147,10 @@ pub enum DoorState {
 pub struct EffectRec {
     pub name: String,
     pub args: Vec<String>,
+    /// The numeric arguments (ints and floats) in order.
+    pub nums: Vec<f32>,
+    /// For `EffectLinkEffects`: the effects joined.
+    pub links: Vec<u32>,
 }
 
 impl Object {
@@ -172,6 +193,14 @@ impl Object {
             max_hp: 10,
             class: 0,
             perception: 20.0,
+            skills: Vec::new(),
+            skill_points: 0,
+            feat_slots: (0, 0),
+            down: false,
+            force: 0,
+            max_force: 0,
+            challenge_rating: 1.0,
+            appearance: 0,
         }
     }
 }
@@ -252,6 +281,19 @@ pub struct World {
     pub(crate) plot: Option<TwoDa>,
     pub(crate) rng: u64,
     pub combat: crate::combat::CombatState,
+    /// The Force power being cast, for scripts that ask.
+    pub spell: crate::force::SpellContext,
+    /// When each temporary effect (by handle) runs out.
+    pub(crate) effect_expiry: HashMap<u32, f32>,
+    /// Every player-side creature is knocked out.
+    pub game_over: bool,
+    /// When set, every routine a script calls is appended here (a debugging aid).
+    pub trace: Option<Vec<String>>,
+    /// Which spell cast each effect (`GetHasSpellEffect`).
+    pub(crate) effect_spell: HashMap<u32, i32>,
+    pub(crate) shape_hits: Vec<ObjId>,
+    pub(crate) shape_next: usize,
+    pub(crate) shape_started: bool,
     tables: HashMap<String, Option<Rc<TwoDa>>>,
 }
 
@@ -281,6 +323,16 @@ fn creature_defaults(o: &mut Object, utc: &Struct) {
     }
     o.natural_ac = utc.int("NaturalAC").unwrap_or(0) as i32;
     o.class = classes.first().and_then(|c| c.int("Class")).unwrap_or(0) as i32;
+    o.force = utc.int("CurrentForce").unwrap_or(0) as i32;
+    o.max_force = utc.int("ForcePoints").unwrap_or(0) as i32;
+    o.appearance = utc.int("Appearance_Type").unwrap_or(0) as i32;
+    o.challenge_rating = utc.float("ChallengeRating").unwrap_or(1.0) as f32;
+    o.skills = utc
+        .list("SkillList")
+        .unwrap_or_default()
+        .iter()
+        .map(|s| s.int("Rank").unwrap_or(0) as i32)
+        .collect();
     o.faction = utc.int("FactionID").unwrap_or(0) as i32;
     o.race = utc.int("Race").unwrap_or(0) as i32;
     o.subrace = utc.int("SubraceIndex").unwrap_or(0) as i32;
@@ -350,6 +402,14 @@ impl World {
             plot: None,
             rng: 0x2545_F491_4F6C_DD1D,
             combat: crate::combat::CombatState::new(),
+            spell: crate::force::SpellContext::default(),
+            effect_expiry: HashMap::new(),
+            game_over: false,
+            trace: None,
+            effect_spell: HashMap::new(),
+            shape_hits: Vec::new(),
+            shape_next: 0,
+            shape_started: false,
             tables: HashMap::new(),
         };
         let table =
@@ -782,6 +842,16 @@ impl World {
             Action::CloseDoor(d) => self.close_door(d),
             Action::Jump(p) => self.teleport(id, p),
             Action::Attack(t) => self.perform_attack(id, t),
+            Action::Cast {
+                spell,
+                target,
+                cheat,
+            } => {
+                if let Err(e) = self.cast_spell(id, spell, target, cheat) {
+                    self.events
+                        .push(format!("{} cannot cast {spell}: {e}", self.describe(id)));
+                }
+            }
             Action::Recorded(what) => self.events.push(format!("{}: {what}", self.describe(id))),
             Action::DoCommand { script, state } => {
                 let _ = self.run_saved(&script, &state, id);
@@ -838,6 +908,10 @@ impl World {
 
     /// `GetIsEnemy`-style reputation of `target` as seen by `source`, 0..=100, from `repute.2da` (50 when unknown).
     pub fn reputation(&self, source: ObjId, target: ObjId) -> i32 {
+        // Everyone is their own friend.
+        if source == target && self.objects.contains_key(&source) {
+            return 100;
+        }
         let (Some(s), Some(t), Some(table)) = (
             self.objects.get(&source),
             self.objects.get(&target),

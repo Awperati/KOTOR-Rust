@@ -249,6 +249,16 @@ impl World {
             ("Faction", Value::Int(o.faction)),
             ("Race", Value::Int(o.race)),
             ("Subrace", Value::Int(o.subrace)),
+            ("Down", Value::Byte(o.down as u8)),
+            ("Force", Value::Int(o.force)),
+            ("MaxForce", Value::Int(o.max_force)),
+            ("SkillPoints", Value::Int(o.skill_points)),
+            ("FeatRegular", Value::Int(o.feat_slots.0)),
+            ("FeatBonus", Value::Int(o.feat_slots.1)),
+            (
+                "Skills",
+                list_of(o.skills.iter(), |r| st(vec![("Value", Value::Int(*r))])),
+            ),
             ("Spells", ints(&o.spells)),
             ("Feats", ints(&o.feats)),
             (
@@ -288,6 +298,12 @@ impl World {
                             "Args",
                             list_of(e.map(|e| e.args.clone()).unwrap_or_default(), |a| {
                                 st(vec![("Value", s(&a))])
+                            }),
+                        ),
+                        (
+                            "Nums",
+                            list_of(e.map(|e| e.nums.clone()).unwrap_or_default(), |n| {
+                                st(vec![("Value", Value::Float(n))])
                             }),
                         ),
                     ])
@@ -431,15 +447,20 @@ impl World {
                 .collect();
             let mut effects = Vec::new();
             for f in e.list("Effects").unwrap_or_default() {
-                self.effects.push(crate::world::EffectRec {
-                    name: f.str("Name").unwrap_or("").to_string(),
-                    args: f
-                        .list("Args")
-                        .unwrap_or_default()
-                        .iter()
-                        .map(|a| a.str("Value").unwrap_or("").to_string())
-                        .collect(),
-                });
+                let mut rec = crate::world::EffectRec::new(f.str("Name").unwrap_or(""));
+                rec.args = f
+                    .list("Args")
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|a| a.str("Value").unwrap_or("").to_string())
+                    .collect();
+                rec.nums = f
+                    .list("Nums")
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|a| a.float("Value").unwrap_or(0.0) as f32)
+                    .collect();
+                self.effects.push(rec);
                 effects.push(self.effects.len() as u32);
             }
             let Some(o) = self.objects.get_mut(&id) else {
@@ -476,6 +497,20 @@ impl World {
                     .filter_map(|x| Some(x.int("Value")? as i32))
                     .collect()
             };
+            o.down = flag("Down");
+            o.force = e.int("Force").unwrap_or(0) as i32;
+            o.max_force = e.int("MaxForce").unwrap_or(0) as i32;
+            o.skill_points = e.int("SkillPoints").unwrap_or(0) as i32;
+            o.feat_slots = (
+                e.int("FeatRegular").unwrap_or(0) as i32,
+                e.int("FeatBonus").unwrap_or(0) as i32,
+            );
+            o.skills = e
+                .list("Skills")
+                .unwrap_or_default()
+                .iter()
+                .map(|x| x.int("Value").unwrap_or(0) as i32)
+                .collect();
             o.spells = ints("Spells");
             o.feats = ints("Feats");
             o.inventory = inventory;

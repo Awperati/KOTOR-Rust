@@ -184,7 +184,8 @@ impl World {
         let Some(o) = self.objects.get(&id) else {
             return 10;
         };
-        let (dex, natural) = (o.abilities[DEX], o.natural_ac);
+        let natural = o.natural_ac;
+        let dex = self.ability_score(id, DEX);
         let items: Vec<i32> = o
             .equipped
             .values()
@@ -198,7 +199,8 @@ impl World {
                 .sum(),
             None => 0,
         };
-        10 + armor + natural + ability_mod(dex)
+        10 + armor + natural + ability_mod(dex) + self.effect_sum(id, "EffectACIncrease", None)
+            - self.effect_sum(id, "EffectACDecrease", None)
     }
 
     /// Base attack bonus: the class's attack-table value at the creature's level.
@@ -246,11 +248,12 @@ impl World {
     /// Resolve one attack and everything that follows from it: damage, scripts, death.
     fn resolve(&mut self, attacker: ObjId, target: ObjId) {
         let weapon = self.weapon_of(attacker);
-        let (str_mod, dex_mod) = {
-            let a = &self.objects[&attacker];
-            (ability_mod(a.abilities[STR]), ability_mod(a.abilities[DEX]))
-        };
-        let bonus = self.base_attack_of(attacker) + if weapon.ranged { dex_mod } else { str_mod };
+        let str_mod = ability_mod(self.ability_score(attacker, STR));
+        let dex_mod = ability_mod(self.ability_score(attacker, DEX));
+        let bonus = self.base_attack_of(attacker)
+            + if weapon.ranged { dex_mod } else { str_mod }
+            + self.effect_sum(attacker, "EffectAttackIncrease", None)
+            - self.effect_sum(attacker, "EffectAttackDecrease", None);
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
         let outcome = resolve_attack(roll, confirm, bonus, defense, weapon.threat);
@@ -260,17 +263,8 @@ impl World {
             let mod_ = if weapon.ranged { 0 } else { str_mod };
             dealt = damage(dice, mod_, outcome, weapon.multiplier);
         }
-        let mut died = false;
-        let hp_after = {
-            let t = self.objects.get_mut(&target).expect("target exists");
-            t.hp -= dealt;
-            if t.hp <= 0 && !t.dead {
-                t.hp = 0;
-                t.dead = true;
-                died = true;
-            }
-            t.hp
-        };
+        let fell = self.hurt(attacker, target, dealt);
+        let hp_after = self.objects.get(&target).map_or(0, |t| t.hp);
         self.combat.log.push(AttackLog {
             round: self.combat.round,
             attacker,
@@ -292,20 +286,53 @@ impl World {
         if dealt > 0 {
             self.combat.last_damager.insert(target, attacker);
         }
-        if !died {
+        if !fell {
             self.run_event(target, "ScriptAttacked");
             if dealt > 0 {
                 self.run_event(target, "ScriptDamaged");
             }
-        } else {
-            self.combat.last_killer = attacker;
-            self.events.push(format!("{} dies", self.describe(target)));
-            self.combat
-                .target
-                .retain(|a, t| *a != target && *t != target);
-            self.combat.chasers.remove(&target);
-            self.run_event(target, "ScriptDeath");
         }
+    }
+
+    /// Take `amount` hit points off `target`. At 0 a party member is knocked out and anyone else dies (their
+    /// death script runs and the party earns the kill's experience). Returns whether the target fell.
+    pub(crate) fn hurt(&mut self, source: ObjId, target: ObjId, amount: i32) -> bool {
+        if amount <= 0 {
+            return false;
+        }
+        let party_side = target == self.pc || self.party.contains(&target);
+        let Some(t) = self.objects.get_mut(&target) else {
+            return false;
+        };
+        if t.dead || t.down {
+            return false;
+        }
+        t.hp -= amount;
+        if t.hp > 0 {
+            return false;
+        }
+        t.hp = 0;
+        if party_side {
+            t.down = true;
+        } else {
+            t.dead = true;
+        }
+        self.combat
+            .target
+            .retain(|a, t| *a != target && *t != target);
+        self.combat.chasers.remove(&target);
+        if party_side {
+            self.events
+                .push(format!("{} is knocked out", self.describe(target)));
+        } else {
+            self.combat.last_killer = source;
+            self.events.push(format!("{} dies", self.describe(target)));
+            self.run_event(target, "ScriptDeath");
+            if source == self.pc || self.party.contains(&source) {
+                self.award_kill(target);
+            }
+        }
+        true
     }
 
     /// Run one of an object's event scripts, if it has one.
@@ -457,6 +484,9 @@ impl World {
             }
             // The attacker may have been killed earlier in this round by someone else's attack.
             if self.combat.target.get(&a) != Some(&t) {
+                continue;
+            }
+            if self.is_disabled(a) {
                 continue;
             }
             let reach = self.reach_of(a);

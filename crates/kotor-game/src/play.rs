@@ -422,6 +422,8 @@ impl World {
         }
         self.update_followers(dt);
         self.update_combat(dt);
+        self.expire_effects();
+        self.update_knockouts();
         if status == MoveStatus::Arrived {
             if let Some(t) = self.pending.take() {
                 self.interact(t);

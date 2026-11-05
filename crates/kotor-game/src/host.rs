@@ -53,6 +53,8 @@ const PRESENTATION: &[&str] = &[
     "SpeakString",
     "CancelCombat",
     "PauseGame",
+    "DisplayFeedBackText",
+    "ApplyEffectAtLocation",
 ];
 
 /// Routines that become queued actions with no effect on the headless world.
@@ -191,6 +193,9 @@ impl Host for Adapter<'_> {
     ) -> Result<Option<Value>, String> {
         let b = |v: bool| Some(Value::Int(v as i32));
         let name = routine.name.as_str();
+        if let Some(t) = self.world.trace.as_mut() {
+            t.push(format!("{name}({args:?}) caller #{caller}"));
+        }
         Ok(match name {
             // ---- numbers and strings
             "Random" => {
@@ -555,30 +560,243 @@ impl Host for Adapter<'_> {
                 None
             }
             "ApplyEffectToObject" => {
-                let target = self.obj(caller, args, 2);
+                let (dur, target, secs) =
+                    (int(args, 0)?, self.obj(caller, args, 2), float(args, 3));
                 if let Some(Value::Engine(_, h)) = args.get(1) {
-                    let deadly = h
-                        .checked_sub(1)
-                        .and_then(|i| self.world.effects.get(i as usize))
-                        .is_some_and(|e| e.name == "EffectDeath");
-                    if let Some(o) = self.world.object_mut(target) {
-                        if deadly {
-                            o.dead = true;
-                            o.hp = 0;
-                        }
-                        o.effects.push(*h);
-                    }
+                    self.world.apply_effect(caller, target, *h, dur, secs);
                 }
                 self.record(name, args);
                 None
             }
-            n if n.starts_with("Effect") && matches!(routine.ret, Ty::Engine(0)) => {
-                let shown = args.iter().map(|a| format!("{a:?}")).collect();
-                self.world.effects.push(crate::world::EffectRec {
-                    name: n.to_string(),
-                    args: shown,
-                });
+            "RemoveEffect" => {
+                let target = self.obj(caller, args, 0);
+                if let Some(Value::Engine(_, h)) = args.get(1) {
+                    if let Some(o) = self.world.object_mut(target) {
+                        o.effects.retain(|e| e != h);
+                    }
+                }
+                None
+            }
+            "EffectLinkEffects" => {
+                let links: Vec<u32> = args
+                    .iter()
+                    .filter_map(|a| match a {
+                        Value::Engine(0, h) => Some(*h),
+                        _ => None,
+                    })
+                    .collect();
+                let mut rec = crate::world::EffectRec::new(name);
+                rec.links = links;
+                self.world.effects.push(rec);
                 Some(Value::Engine(0, self.world.effects.len() as u32))
+            }
+            n if n.starts_with("Effect") && matches!(routine.ret, Ty::Engine(0)) => {
+                let mut rec = crate::world::EffectRec::new(n);
+                rec.args = args.iter().map(|a| format!("{a:?}")).collect();
+                rec.nums = args
+                    .iter()
+                    .filter_map(|a| match a {
+                        Value::Int(i) => Some(*i as f32),
+                        Value::Float(f) => Some(*f),
+                        _ => None,
+                    })
+                    .collect();
+                self.world.effects.push(rec);
+                Some(Value::Engine(0, self.world.effects.len() as u32))
+            }
+            // ---- Force powers, saves, abilities and skills
+            "GetObjectType" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| match o.kind {
+                        Kind::Creature => 1,
+                        Kind::Item => 2,
+                        Kind::Trigger => 4,
+                        Kind::Door => 8,
+                        Kind::Waypoint => 32,
+                        Kind::Placeable => 64,
+                        _ => 0,
+                    }),
+            )),
+            "GetFactionEqual" => {
+                let (a, c) = (self.obj(caller, args, 0), self.obj(caller, args, 1));
+                let c = if self.valid(c) { c } else { caller };
+                b(match (self.world.object(a), self.world.object(c)) {
+                    (Some(a), Some(c)) => a.faction == c.faction,
+                    _ => false,
+                })
+            }
+            "GetHasSpellEffect" => {
+                let (spell, who) = (int(args, 0)?, self.obj(caller, args, 1));
+                let who = if self.valid(who) { who } else { caller };
+                b(self.world.object(who).is_some_and(|o| {
+                    o.effects
+                        .iter()
+                        .any(|h| self.world.effect_spell.get(h) == Some(&spell))
+                }))
+            }
+            "GetEffectSpellId" => Some(Value::Int(match args.first() {
+                Some(Value::Engine(_, h)) => self.world.effect_spell.get(h).copied().unwrap_or(-1),
+                _ => -1,
+            })),
+            "GetIsPoisoned" => b(self
+                .world
+                .object(self.obj(caller, args, 0))
+                .is_some_and(|o| {
+                    o.effects.iter().any(|h| {
+                        self.world
+                            .effects
+                            .get(h.wrapping_sub(1) as usize)
+                            .is_some_and(|e| e.name == "EffectPoison")
+                    })
+                })),
+            "SetEffectIcon" => Some(args.first().cloned().unwrap_or(Value::Engine(0, 0))),
+            "EventSpellCastAt" => Some(Value::Engine(1, 0x4000_0000 | int(args, 1)? as u32)),
+            "GetAppearanceType" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.appearance),
+            )),
+            // Immunities, force resistance, creature size and movement type are not modelled: fixed answers.
+            "ResistForce" | "GetIsLinkImmune" | "GetCreatureMovmentType" | "GetEffectType" => {
+                self.default_hit(name);
+                Some(Value::Int(0))
+            }
+            "GetCreatureSize" => {
+                self.default_hit(name);
+                Some(Value::Int(3))
+            }
+            "GetFirstObjectInShape" | "GetNextObjectInShape" => {
+                // Shapes are all treated as a circle of radius `size` round the location (assumption), filtered by
+                // the object-type mask (1 creature, 2 item, 4 trigger, 8 door, 64 placeable).
+                // A Next with no First before it starts a new walk (the powers' scripts do this; assumption).
+                if name == "GetFirstObjectInShape" || !self.world.shape_started {
+                    self.world.shape_started = true;
+                    let at = self.location(args.get(2)).map_or([0.0; 3], |l| l.0);
+                    let (r, mask) = (
+                        float(args, 1),
+                        if args.len() > 4 { int(args, 4)? } else { 1 },
+                    );
+                    let mut c: Vec<(f32, ObjId)> = self
+                        .world
+                        .objects
+                        .values()
+                        .filter(|o| {
+                            let bit = match o.kind {
+                                Kind::Creature => 1,
+                                Kind::Item => 2,
+                                Kind::Trigger => 4,
+                                Kind::Door => 8,
+                                Kind::Placeable => 64,
+                                _ => 0,
+                            };
+                            bit & mask != 0 && !o.dead && dist2d(o.position, at) <= r
+                        })
+                        .map(|o| (dist2d(o.position, at), o.id))
+                        .collect();
+                    c.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    self.world.shape_hits = c.into_iter().map(|x| x.1).collect();
+                    self.world.shape_next = 0;
+                }
+                let hit = self.world.shape_hits.get(self.world.shape_next).copied();
+                self.world.shape_next += 1;
+                if hit.is_none() {
+                    self.world.shape_started = false;
+                }
+                Some(Value::Object(hit.unwrap_or(OBJECT_INVALID)))
+            }
+            "GetSpellId" | "GetLastSpell" => Some(Value::Int(self.world.spell.id)),
+            "GetSpellTargetObject" | "GetSpellTarget" => {
+                Some(Value::Object(self.world.spell.target))
+            }
+            "GetLastSpellCaster" => Some(Value::Object(self.world.spell.caster)),
+            "GetSpellSaveDC" => Some(Value::Int(
+                self.world.spell_save_dc(self.world.spell.caster),
+            )),
+            "GetCasterLevel" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.level),
+            )),
+            "GetLastSpellHarmful" => b(self
+                .world
+                .reputation(self.world.spell.target, self.world.spell.caster)
+                <= 10),
+            "FortitudeSave" | "ReflexSave" | "WillSave" => {
+                let (who, dc) = (self.obj(caller, args, 0), int(args, 1)?);
+                let save = match name {
+                    "FortitudeSave" => crate::rules::Save::Fortitude,
+                    "ReflexSave" => crate::rules::Save::Reflex,
+                    _ => crate::rules::Save::Will,
+                };
+                Some(Value::Int(
+                    self.world.saving_throw(who, save, dc).passed as i32,
+                ))
+            }
+            "GetAbilityScore" => Some(Value::Int(self.world.ability_score(
+                self.obj(caller, args, 1),
+                int(args, 0)?.clamp(0, 5) as usize,
+            ))),
+            "GetAbilityModifier" => {
+                let who = if args.len() > 1 {
+                    self.obj(caller, args, 1)
+                } else {
+                    caller
+                };
+                Some(Value::Int(crate::combat::ability_mod(
+                    self.world
+                        .ability_score(who, int(args, 0)?.clamp(0, 5) as usize),
+                )))
+            }
+            "GetSkillRank" => {
+                let who = if args.len() > 1 {
+                    self.obj(caller, args, 1)
+                } else {
+                    caller
+                };
+                Some(Value::Int(
+                    self.world.skill_ranks(who, int(args, 0)?.max(0) as usize),
+                ))
+            }
+            "GetCurrentForcePoints" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.force),
+            )),
+            "GetMaxForcePoints" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.max_force),
+            )),
+            "ActionCastSpellAtObject" | "ActionUseTalentOnObject" => {
+                let (spell, target, cheat) = if name == "ActionCastSpellAtObject" {
+                    (
+                        int(args, 0)?,
+                        self.obj(caller, args, 1),
+                        int(args, 3).unwrap_or(0) != 0,
+                    )
+                } else {
+                    match args.first() {
+                        // A talent handle: kind 0 is a Force power.
+                        Some(Value::Engine(_, h)) if h >> 24 == 1 => {
+                            ((h & 0xFF_FFFF) as i32, self.obj(caller, args, 1), false)
+                        }
+                        _ => {
+                            self.record(name, args);
+                            return Ok(None);
+                        }
+                    }
+                };
+                self.world.queue(
+                    caller,
+                    Action::Cast {
+                        spell,
+                        target,
+                        cheat,
+                    },
+                );
+                self.record(name, args);
+                None
             }
             // ---- text, experience, available party members
             "GetStringByStrRef" => Some(Value::Str(self.world.strref_text(int(args, 0)?))),
@@ -586,9 +804,7 @@ impl Host for Adapter<'_> {
             "GivePlotXP" => {
                 let amount = self.world.plot_xp(&string(args, 0)) * int(args, 1)? / 100;
                 let pc = self.world.pc;
-                if let Some(o) = self.world.object_mut(pc) {
-                    o.xp += amount;
-                }
+                self.world.grant_xp(pc, amount);
                 self.record(name, args);
                 None
             }
@@ -892,6 +1108,10 @@ impl Host for Adapter<'_> {
                     Some(Value::Engine(_, n)) => *n as i32,
                     _ => 0,
                 };
+                if event & 0x4000_0000 != 0 {
+                    self.world.run_event(target, "ScriptSpellAt");
+                    return Ok(None);
+                }
                 let script = self.world.object(target).and_then(|o| {
                     o.scripts
                         .get("ScriptUserDefine")
@@ -969,8 +1189,11 @@ impl Host for Adapter<'_> {
             "GiveXPToCreature" => {
                 let id = self.obj(caller, args, 0);
                 let amount = int(args, 1)?;
-                if let Some(o) = self.world.object_mut(id) {
-                    o.xp += amount;
+                for u in self.world.grant_xp(id, amount) {
+                    let who = self.world.describe(id);
+                    self.world
+                        .events
+                        .push(format!("{who} reaches level {}", u.level));
                 }
                 self.record(name, args);
                 None
