@@ -101,6 +101,47 @@ pub struct Mesh {
     pub skin: Option<Skin>,
 }
 
+/// Light node data (K1 layout, 92 bytes after the node header). Colour, radius and multiplier are
+/// controllers on the node, not fields here.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Light {
+    pub flare_radius: f32,
+    pub priority: i32,
+    pub ambient_only: bool,
+    pub dynamic_type: u32,
+    pub affect_dynamic: bool,
+    pub shadow: bool,
+    pub flare: bool,
+    pub fading: bool,
+    pub flare_sizes: Vec<f32>,
+    pub flare_positions: Vec<f32>,
+    pub flare_color_shifts: Vec<[f32; 3]>,
+    pub flare_textures: Vec<String>,
+}
+
+/// Particle emitter node data (K1 layout). Names are the strings the game's particle code switches on,
+/// e.g. update `Fountain`, render `Normal`, blend `Lighten`.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Emitter {
+    pub dead_space: f32,
+    pub blast_radius: f32,
+    pub blast_length: f32,
+    pub branch_count: u32,
+    pub control_point_smoothing: u32,
+    pub grid: [u32; 2],
+    pub spawn_type: u32,
+    pub update: String,
+    pub render: String,
+    pub blend: String,
+    pub texture: String,
+    pub chunk_name: String,
+    pub two_sided: bool,
+    pub looping: bool,
+    pub render_order: u16,
+    pub frame_blending: bool,
+    pub depth_texture: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub name: String,
@@ -111,6 +152,8 @@ pub struct Node {
     pub orientation: [f32; 4],
     pub controllers: Vec<Controller>,
     pub mesh: Option<Mesh>,
+    pub light: Option<Light>,
+    pub emitter: Option<Emitter>,
     pub children: Vec<Node>,
 }
 

@@ -74,8 +74,17 @@ from the data (e.g. 2031) are left out.
 - Test: all 2,832 models parse (76,782 meshes, 968 skins, 11.6M vertices, 6,213 animations); face indices are below the vertex
   count, positions are finite, and the node count equals the header count for every model without a supermodel.
 - Visual check: `kotor-tool render p_bastilabb` shows an assembled, upright humanoid body.
-- Not done: light, emitter, camera, reference, dangly, saber and AABB-node extra headers (skipped, children still walk);
-  vertex colours; second index arrays; texture-animation fields; animation playback; supermodel resolution.
+- Light header (92 bytes after the node header): flare radius f32 at +80, four flare arrays at +96..+144 (sizes, positions,
+  colour shifts, texture-name offsets), then priority (signed i32; stock range -7..5), ambient-only, dynamic type, affect-dynamic,
+  shadow, flare, fading as u32. Checked: 5,563 lights, sane value ranges. **Partly unverified:** no stock light sets the flare flag,
+  so the four flare arrays have never held data here and their layout is from memory.
+- Emitter header (K1): dead space, blast radius, blast length, branch count, smoothing, grid x/y, spawn type, then the strings
+  update[32], render[32], blend[32], texture[32], chunk[32], two-sided, loop, render order u16, frame blending u8, depth texture[16].
+  Checked on 8,870 emitters: update is one of Explosion, Fountain, Lightning, Single; render one of 7 known names (Normal,
+  Linked, Billboard_to_Local_Z, ...); blend one of Normal, Lighten, Punch-Through (and 2 spelled PunchThrough). A wrong offset
+  would have produced junk strings, so the layout up to the depth texture is solid. Emitter *controllers* are generic keys only.
+- Not done: camera, reference, dangly, saber and AABB-node extra headers (skipped, children still walk); vertex colours; second
+  index arrays; texture-animation fields; animation playback; supermodel resolution.
 
 ## WOK / DWK / PWK = BWM V1.0 (`kotor-walkmesh`) - verified
 - Header 136 bytes: tag, version, kind u32, 4 use-position vectors, position, then counts and offsets for vertices, face indices,
@@ -85,7 +94,13 @@ from the data (e.g. 2031) are left out.
   adjacency count in every one. In area walkmeshes walkable faces come first. Door and placeable meshes have no adjacency table.
 - Area walkmesh vertices are in world space (not room-local): at the Endar Spire entry point (15.42, 20.12) room m01aa_01a gives z = -1.275, the IFO entry height, with no layout offset applied. Door and placeable meshes are local.
 - A point-in-triangle height query returns the face height at a face centroid for the Endar Spire rooms.
-- Not done: AABB-tree queries, edge transitions, door-hook positions.
+- AABB tree: nodes are 44 bytes (min, max, face index or -1, unknown, plane, left, right); children are node *indices*, and the
+  tree has one leaf per face (all faces, not only walkable ones; 189,558 leaves over 1,202 meshes). 21 stock meshes carry boxes that
+  are stale by up to 0.7 m; they are recomputed from the triangles on load (`Bwm::tree_refit` tells you). After that every tree is
+  well formed.
+- Queries (`floor_at`, `raycast`, `nearest_walkable`): checked against brute force on every area walkmesh, 19,376 floor and ray
+  samples and 4,844 nearest-point samples, 0 mismatches. Not tested on door/placeable meshes.
+- Not done: edge transitions, door-hook positions, pathfinding across rooms.
 
 ## LYT / VIS (`kotor-walkmesh`) - verified on m01aa (Endar Spire)
 - Text. LYT lists `roomcount` rooms (name x y z); other sections are only counted. VIS lists each room and the rooms visible from it.

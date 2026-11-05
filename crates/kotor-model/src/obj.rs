@@ -126,6 +126,8 @@ mod tests {
             orientation: [1., 0., 0., 0.],
             controllers: vec![],
             mesh: Some(mesh),
+            light: None,
+            emitter: None,
             children: vec![],
         };
         let model = Model {

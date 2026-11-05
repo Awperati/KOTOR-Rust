@@ -142,6 +142,18 @@ impl Ctx<'_> {
         } else {
             None
         };
+        let (light, emitter) = if anim {
+            (None, None)
+        } else {
+            (
+                (flags & NODE_LIGHT != 0)
+                    .then(|| self.light(off))
+                    .transpose()?,
+                (flags & NODE_EMITTER != 0)
+                    .then(|| self.emitter(off))
+                    .transpose()?,
+            )
+        };
         let mut children = Vec::with_capacity(child_n.min(1024));
         let mut cr = Reader::at(self.d, child_off);
         for _ in 0..child_n {
@@ -154,7 +166,104 @@ impl Ctx<'_> {
             orientation,
             controllers,
             mesh,
+            light,
+            emitter,
             children,
+        })
+    }
+
+    fn light(&self, node: usize) -> Result<Light> {
+        let mut r = Reader::at(self.d, node + 80);
+        let flare_radius = r.f32()?;
+        r.skip(12);
+        let array = |r: &mut Reader| -> Result<(usize, usize)> {
+            let o = r.u32()? as usize;
+            let n = r.u32()? as usize;
+            r.skip(4);
+            Ok((o, n.min(1024)))
+        };
+        let (sizes, positions, shifts, textures) = (
+            array(&mut r)?,
+            array(&mut r)?,
+            array(&mut r)?,
+            array(&mut r)?,
+        );
+        let priority = r.i32()?;
+        let ambient_only = r.u32()? != 0;
+        let dynamic_type = r.u32()?;
+        let affect_dynamic = r.u32()? != 0;
+        let shadow = r.u32()? != 0;
+        let flare = r.u32()? != 0;
+        let fading = r.u32()? != 0;
+        let floats = |(o, n): (usize, usize)| -> Result<Vec<f32>> {
+            let mut r = Reader::at(self.d, o);
+            (0..n).map(|_| r.f32()).collect()
+        };
+        let mut light = Light {
+            flare_radius,
+            priority,
+            ambient_only,
+            dynamic_type,
+            affect_dynamic,
+            shadow,
+            flare,
+            fading,
+            flare_sizes: floats(sizes)?,
+            flare_positions: floats(positions)?,
+            ..Light::default()
+        };
+        let mut sr = Reader::at(self.d, shifts.0);
+        for _ in 0..shifts.1 {
+            light.flare_color_shifts.push(sr.vec3()?);
+        }
+        let mut tr = Reader::at(self.d, textures.0);
+        for _ in 0..textures.1 {
+            let o = tr.u32()? as usize;
+            let len = 64.min(self.d.len().saturating_sub(o));
+            light
+                .flare_textures
+                .push(Reader::at(self.d, o).fixed_str(len)?);
+        }
+        Ok(light)
+    }
+
+    fn emitter(&self, node: usize) -> Result<Emitter> {
+        let mut r = Reader::at(self.d, node + 80);
+        let dead_space = r.f32()?;
+        let blast_radius = r.f32()?;
+        let blast_length = r.f32()?;
+        let branch_count = r.u32()?;
+        let control_point_smoothing = r.u32()?;
+        let grid = [r.u32()?, r.u32()?];
+        let spawn_type = r.u32()?;
+        let update = r.fixed_str(32)?;
+        let render = r.fixed_str(32)?;
+        let blend = r.fixed_str(32)?;
+        let texture = r.fixed_str(32)?;
+        let chunk_name = r.fixed_str(32)?;
+        let two_sided = r.u32()? != 0;
+        let looping = r.u32()? != 0;
+        let render_order = r.u16()?;
+        let frame_blending = r.u8()? != 0;
+        let depth_texture = r.fixed_str(16)?;
+        Ok(Emitter {
+            dead_space,
+            blast_radius,
+            blast_length,
+            branch_count,
+            control_point_smoothing,
+            grid,
+            spawn_type,
+            update,
+            render,
+            blend,
+            texture,
+            chunk_name,
+            two_sided,
+            looping,
+            render_order,
+            frame_blending,
+            depth_texture,
         })
     }
 
