@@ -22,6 +22,7 @@ dependencies = [
  "kotor-gff",
  "kotor-script",
  "kotor-tables",
+ "kotor-walkmesh",
 ]
 
 [[package]]

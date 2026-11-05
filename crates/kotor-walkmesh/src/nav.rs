@@ -25,6 +25,9 @@ pub struct NavMesh {
     tris: Vec<[V3; 3]>,
     centroids: Vec<V3>,
     links: Vec<Vec<Link>>,
+    /// Faces covered by a closed door or other obstacle; routes cannot enter them. A count, so
+    /// overlapping obstacles can be lifted independently.
+    blocked: Vec<u16>,
 }
 
 fn key(p: V3) -> [i32; 3] {
@@ -107,11 +110,42 @@ impl NavMesh {
                 }
             }
         }
+        let blocked = vec![0; tris.len()];
         NavMesh {
             tris,
             centroids,
             links,
+            blocked,
         }
+    }
+
+    /// Block every face whose centre is within `radius` (metres, in 3D) of `centre`. Returns how many faces
+    /// were affected. Undo with [`NavMesh::unblock_disc`] using the same arguments.
+    pub fn block_disc(&mut self, centre: V3, radius: f32) -> usize {
+        let mut n = 0;
+        for (i, c) in self.centroids.iter().enumerate() {
+            if dist(*c, centre) <= radius {
+                self.blocked[i] = self.blocked[i].saturating_add(1);
+                n += 1;
+            }
+        }
+        n
+    }
+
+    pub fn unblock_disc(&mut self, centre: V3, radius: f32) -> usize {
+        let mut n = 0;
+        for (i, c) in self.centroids.iter().enumerate() {
+            if dist(*c, centre) <= radius && self.blocked[i] > 0 {
+                self.blocked[i] -= 1;
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// Number of faces currently blocked.
+    pub fn blocked_count(&self) -> usize {
+        self.blocked.iter().filter(|&&b| b > 0).count()
     }
 
     pub fn face_count(&self) -> usize {
@@ -188,7 +222,7 @@ impl NavMesh {
                 path.reverse();
                 return Some(path);
             }
-            for l in &self.links[node] {
+            for l in self.links[node].iter().filter(|l| self.blocked[l.to] == 0) {
                 let ng = g[node] + dist(self.centroids[node], self.centroids[l.to]);
                 if ng < g[l.to] {
                     g[l.to] = ng;
@@ -376,6 +410,28 @@ mod tests {
         assert!(nav.find_path([1.0, 1.0, 0.0], [21.0, 1.0, 0.0]).is_none());
         // A point far from any floor does not snap.
         assert!(nav.find_path([1.0, 1.0, 0.0], [10.0, 1.0, 0.0]).is_none());
+    }
+
+    #[test]
+    fn blocked_faces_stop_routes_until_unblocked() {
+        let a = floor(&[[0.0, 0.0, 10.0, 4.0]]);
+        let b = floor(&[[10.0, 0.0, 20.0, 4.0]]);
+        let mut nav = NavMesh::from_meshes(&[a, b]);
+        let (from, to) = ([1.0, 2.0, 0.0], [19.0, 2.0, 0.0]);
+        assert!(nav.find_path(from, to).is_some());
+        let n = nav.block_disc([10.0, 2.0, 0.0], 5.0);
+        assert!(n >= 2 && nav.blocked_count() == n);
+        assert!(
+            nav.find_path(from, to).is_none(),
+            "a blocked doorway must cut the route"
+        );
+        // Two obstacles on the same faces are lifted one at a time.
+        nav.block_disc([10.0, 2.0, 0.0], 5.0);
+        nav.unblock_disc([10.0, 2.0, 0.0], 5.0);
+        assert!(nav.find_path(from, to).is_none());
+        nav.unblock_disc([10.0, 2.0, 0.0], 5.0);
+        assert_eq!(nav.blocked_count(), 0);
+        assert!(nav.find_path(from, to).is_some());
     }
 
     #[test]

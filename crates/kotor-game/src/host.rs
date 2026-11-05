@@ -41,9 +41,8 @@ const PRESENTATION: &[&str] = &[
     "SetMinOneHP",
     "SetFacing",
     "SetFacingPoint",
-    "AddJournalQuestEntry",
-    "GiveXPToCreature",
     "AddAvailableNPCByTemplate",
+    "SetPartyLeader",
     "SetCurrentAction",
     "PlayRumblePattern",
     "AurPostString",
@@ -65,8 +64,6 @@ const RECORDED_ACTIONS: &[&str] = &[
     "ActionForceMoveToLocation",
     "ActionEquipItem",
     "ActionUnequipItem",
-    "ActionOpenDoor",
-    "ActionCloseDoor",
     "ActionLockObject",
     "ActionUnlockObject",
     "ActionAttack",
@@ -434,9 +431,17 @@ impl Host for Adapter<'_> {
                 Some(Value::Object(id))
             }
             "CreateItemOnObject" => {
+                let target = if args.len() > 1 {
+                    self.obj(caller, args, 1)
+                } else {
+                    caller
+                };
                 let id = self
                     .world
                     .spawn(Kind::Item, &string(args, 0), ResType(2025), [0.0; 3]);
+                if let Some(o) = self.world.object_mut(target) {
+                    o.inventory.push(id);
+                }
                 self.record("CreateItemOnObject", args);
                 Some(Value::Object(id))
             }
@@ -519,6 +524,124 @@ impl Host for Adapter<'_> {
             "ClearAllActions" => {
                 if let Some(o) = self.world.object_mut(caller) {
                     o.actions.clear();
+                }
+                None
+            }
+            "ActionOpenDoor" => {
+                let d = self.obj(caller, args, 0);
+                self.world.queue(caller, Action::OpenDoor(d));
+                None
+            }
+            "ActionCloseDoor" => {
+                let d = self.obj(caller, args, 0);
+                self.world.queue(caller, Action::CloseDoor(d));
+                None
+            }
+            "GetIsOpen" => b(self
+                .world
+                .object(self.obj(caller, args, 0))
+                .is_some_and(|o| o.open)),
+            // ---- game state: journal, experience, party, items
+            "AddJournalQuestEntry" => {
+                self.world.journal.insert(string(args, 0), int(args, 1)?);
+                self.record(name, args);
+                None
+            }
+            "RemoveJournalQuestEntry" => {
+                self.world.journal.remove(&string(args, 0));
+                None
+            }
+            "GetJournalEntry" => Some(Value::Int(
+                *self.world.journal.get(&string(args, 0)).unwrap_or(&0),
+            )),
+            "GiveXPToCreature" => {
+                let id = self.obj(caller, args, 0);
+                let amount = int(args, 1)?;
+                if let Some(o) = self.world.object_mut(id) {
+                    o.xp += amount;
+                }
+                self.record(name, args);
+                None
+            }
+            "GetXP" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.xp),
+            )),
+            "SetXP" => {
+                let (id, v) = (self.obj(caller, args, 0), int(args, 1)?);
+                if let Some(o) = self.world.object_mut(id) {
+                    o.xp = v;
+                }
+                None
+            }
+            "AddPartyMember" => {
+                let (slot, id) = (int(args, 0)?, self.obj(caller, args, 1));
+                if self.valid(id) && !self.world.party.contains(&id) && id != self.world.pc {
+                    self.world.party.push(id);
+                    self.world.npc_slots.insert(slot, id);
+                    if let Some(o) = self.world.object_mut(id) {
+                        o.party_member = true;
+                    }
+                }
+                b(self.valid(id))
+            }
+            "RemovePartyMember" => {
+                let slot = int(args, 0)?;
+                if let Some(id) = self.world.npc_slots.remove(&slot) {
+                    self.world.party.retain(|p| *p != id);
+                    if let Some(o) = self.world.object_mut(id) {
+                        o.party_member = false;
+                    }
+                }
+                b(true)
+            }
+            "GetFirstItemInInventory" | "GetNextItemInInventory" => {
+                let id = self.obj(caller, args, 0);
+                let cur = self.world.inv_cursor.entry(id).or_insert(0);
+                if name == "GetFirstItemInInventory" {
+                    *cur = 0;
+                }
+                let item = self
+                    .world
+                    .objects
+                    .get(&id)
+                    .and_then(|o| o.inventory.get(*cur).copied());
+                if item.is_some() {
+                    *cur += 1;
+                }
+                Some(Value::Object(item.unwrap_or(OBJECT_INVALID)))
+            }
+            "GetItemPossessedBy" => {
+                let (id, tag) = (self.obj(caller, args, 0), string(args, 1));
+                let found = self.world.objects.get(&id).and_then(|o| {
+                    o.inventory.iter().copied().find(|i| {
+                        self.world
+                            .objects
+                            .get(i)
+                            .is_some_and(|it| it.tag.eq_ignore_ascii_case(&tag))
+                    })
+                });
+                Some(Value::Object(found.unwrap_or(OBJECT_INVALID)))
+            }
+            "GetItemInSlot" => {
+                let (slot, id) = (int(args, 0)?, self.obj(caller, args, 1));
+                let item = self
+                    .world
+                    .objects
+                    .get(&id)
+                    .and_then(|o| o.equipped.get(&slot).copied());
+                Some(Value::Object(item.unwrap_or(OBJECT_INVALID)))
+            }
+            "GetBaseItemType" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.base_item),
+            )),
+            "ActionEquipItem" => {
+                let (item, slot) = (self.obj(caller, args, 0), int(args, 1)?);
+                if let Some(o) = self.world.object_mut(caller) {
+                    o.equipped.insert(slot, item);
                 }
                 None
             }

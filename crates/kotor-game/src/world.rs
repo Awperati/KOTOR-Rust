@@ -7,7 +7,8 @@ use kotor_script::{
     disassemble, Outcome, Program, Routines, SavedState, Vm, VmError, OBJECT_INVALID,
 };
 use kotor_tables::Tlk;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use kotor_walkmesh::{MoveParams, Mover, NavMesh};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 pub type ObjId = u32;
@@ -35,9 +36,14 @@ pub enum Action {
         state: Box<SavedState>,
     },
     /// Talk with `target`, using `dialogue` (the owner's own conversation when empty).
-    StartConversation { target: ObjId, dialogue: String },
+    StartConversation {
+        target: ObjId,
+        dialogue: String,
+    },
     /// Accepted and recorded, no effect on the headless world (animations, movement, ...).
     Recorded(String),
+    OpenDoor(ObjId),
+    CloseDoor(ObjId),
 }
 
 /// A command scheduled by `DelayCommand`.
@@ -69,6 +75,19 @@ pub struct Object {
     pub local_numbers: HashMap<i32, i32>,
     pub local_booleans: HashMap<i32, bool>,
     pub actions: VecDeque<Action>,
+    /// Doors: open now. Closed doors block the navigation mesh around them.
+    pub open: bool,
+    /// Doors and triggers that lead to another module: its name and the tag of the waypoint to arrive at.
+    pub link_module: String,
+    pub link_to: String,
+    /// Triggers: outline in world XY.
+    pub polygon: Vec<[f32; 2]>,
+    /// Items carried, and which are equipped by slot.
+    pub inventory: Vec<ObjId>,
+    pub equipped: BTreeMap<i32, ObjId>,
+    /// Items: the `baseitems.2da` row.
+    pub base_item: i32,
+    pub xp: i32,
 }
 
 impl Object {
@@ -90,6 +109,14 @@ impl Object {
             local_numbers: HashMap::new(),
             local_booleans: HashMap::new(),
             actions: VecDeque::new(),
+            open: false,
+            link_module: String::new(),
+            link_to: String::new(),
+            polygon: Vec::new(),
+            inventory: Vec::new(),
+            equipped: BTreeMap::new(),
+            base_item: 0,
+            xp: 0,
         }
     }
 }
@@ -129,6 +156,25 @@ pub struct World {
     pub(crate) script_vars: Vec<i32>,
     /// A conversation is being played.
     pub in_conversation: bool,
+    /// Name of the module loaded last.
+    pub module: String,
+    /// Walkable faces of the area; closed doors block it.
+    pub nav: Option<NavMesh>,
+    pub pc_mover: Mover,
+    pub move_params: MoveParams,
+    /// Object the player is walking to; reaching it triggers the interaction.
+    pub pending: Option<ObjId>,
+    /// (trigger, object) pairs whose object is currently inside the trigger.
+    pub inside: HashSet<(ObjId, ObjId)>,
+    /// Journal: quest tag to the entry state last set.
+    pub journal: BTreeMap<String, i32>,
+    /// Party members besides the player, in join order.
+    pub party: Vec<ObjId>,
+    /// Which creature holds each `AddPartyMember` slot.
+    pub npc_slots: HashMap<i32, ObjId>,
+    /// A module change requested by a door or trigger: (module, waypoint tag). Carried out by `step`.
+    pub transition_request: Option<(String, String)>,
+    pub(crate) inv_cursor: HashMap<ObjId, usize>,
     pub(crate) rng: u64,
 }
 
@@ -170,6 +216,17 @@ impl World {
             last_speaker: OBJECT_INVALID,
             script_vars: Vec::new(),
             in_conversation: false,
+            module: String::new(),
+            nav: None,
+            pc_mover: Mover::new([0.0; 3], 0.0),
+            move_params: MoveParams::default(),
+            pending: None,
+            inside: HashSet::new(),
+            journal: BTreeMap::new(),
+            party: Vec::new(),
+            npc_slots: HashMap::new(),
+            transition_request: None,
+            inv_cursor: HashMap::new(),
             rng: 0x2545_F491_4F6C_DD1D,
         };
         let mut pc = Object::new(1, Kind::Creature, "player");
@@ -185,6 +242,11 @@ impl World {
 
     pub fn object_mut(&mut self, id: ObjId) -> Option<&mut Object> {
         self.objects.get_mut(&id)
+    }
+
+    /// Id of an engine routine by name, from the game's own table.
+    pub fn routine_id(&self, name: &str) -> Option<u16> {
+        self.routines.by_name(name).map(|r| r.id)
     }
 
     /// Objects with this tag, lowest id first.
@@ -233,7 +295,13 @@ impl World {
     }
 
     /// Fill an object from a GFF template and its placement in the GIT.
-    fn fill_from_template(&mut self, id: ObjId, template: &str, ty: ResType, placement: &Struct) {
+    pub(crate) fn fill_from_template(
+        &mut self,
+        id: ObjId,
+        template: &str,
+        ty: ResType,
+        placement: &Struct,
+    ) {
         let utx = self
             .inst
             .read(template, ty)
@@ -285,7 +353,35 @@ impl World {
             if let Some(g) = &utx {
                 creature_defaults(o, &g.root);
                 o.hp = g.root.int("CurrentHitPoints").map_or(o.hp, |h| h as i32);
+                o.locked = g.root.int("Locked").is_some_and(|l| l != 0);
+                o.base_item = g.root.int("BaseItem").unwrap_or(0) as i32;
             }
+            // Links to other modules come from the placement, else the template.
+            let link = |field: &str| {
+                placement
+                    .str(field)
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| {
+                        utx.as_ref()
+                            .and_then(|g| g.root.str(field))
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            o.link_module = link("LinkedToModule");
+            o.link_to = link("LinkedTo");
+            o.polygon = placement
+                .list("Geometry")
+                .unwrap_or_default()
+                .iter()
+                .map(|p| {
+                    [
+                        o.position[0] + p.float("PointX").unwrap_or(0.0) as f32,
+                        o.position[1] + p.float("PointY").unwrap_or(0.0) as f32,
+                    ]
+                })
+                .collect();
         }
     }
 
@@ -349,6 +445,10 @@ impl World {
                 self.fill_from_template(id, &tpl, ty, s);
             }
         }
+        self.module = module.to_string();
+        self.build_nav(&area_name)?;
+        let pos = self.objects.get(&pc).map_or([0.0; 3], |p| p.position);
+        self.pc_mover = Mover::new(pos, std::f32::consts::FRAC_PI_2);
         Ok(())
     }
 
@@ -385,6 +485,22 @@ impl World {
             script: name.to_ascii_lowercase(),
         };
         vm.run(caller, &mut ad).map_err(|e| self.note(name, e))
+    }
+
+    /// Run an already decoded program (tests and tools use this for hand-built scripts).
+    pub fn run_program(
+        &mut self,
+        prog: &Program,
+        caller: ObjId,
+    ) -> std::result::Result<Outcome, String> {
+        let routines = self.routines.clone();
+        let vm = Vm::new(prog, &routines);
+        let mut ad = Adapter {
+            world: self,
+            script: "<inline>".into(),
+        };
+        vm.run(caller, &mut ad)
+            .map_err(|e| self.note("<inline>", e))
     }
 
     /// Replay a deferred block that `script` saved with `STORESTATE`.
@@ -481,6 +597,10 @@ impl World {
     fn perform(&mut self, id: ObjId, a: Action) {
         match a {
             Action::Wait(_) => {}
+            Action::OpenDoor(d) => {
+                self.open_door(d);
+            }
+            Action::CloseDoor(d) => self.close_door(d),
             Action::Recorded(what) => self.events.push(format!("{}: {what}", self.describe(id))),
             Action::DoCommand { script, state } => {
                 let _ = self.run_saved(&script, &state, id);

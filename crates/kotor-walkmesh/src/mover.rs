@@ -83,6 +83,23 @@ impl Mover {
         }
     }
 
+    /// Follow a ready-made route (its first point is taken to be where the mover already is).
+    pub fn follow(&mut self, route: Vec<[f32; 3]>) {
+        self.route = route;
+        self.next = 1;
+    }
+
+    /// Stop and forget the route.
+    pub fn stop(&mut self) {
+        self.route.clear();
+        self.next = 0;
+    }
+
+    /// Whether there is still route to walk.
+    pub fn has_route(&self) -> bool {
+        self.next < self.route.len()
+    }
+
     /// Metres of route left, measured through the remaining waypoints.
     pub fn remaining(&self) -> f32 {
         let mut p = self.pos;

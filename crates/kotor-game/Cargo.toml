@@ -14,3 +14,4 @@ kotor-archive = { path = "../kotor-archive" }
 kotor-gff = { path = "../kotor-gff" }
 kotor-tables = { path = "../kotor-tables" }
 kotor-script = { path = "../kotor-script" }
+kotor-walkmesh = { path = "../kotor-walkmesh" }

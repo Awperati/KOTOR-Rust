@@ -39,6 +39,29 @@ Talents and spells (`GetHasSpell` 33, `GetIdFromTalent` 16, `GetCreatureHasTalen
 `GetSubRace` 9, `ShipBuild` 31, effects (`EffectDeath`, `ApplyEffectToObject`, `ClearAllEffects`), `CutsceneAttack` 9, `PlayAnimation` 9,
 party handling (`SetPartyLeader`, `RemovePartyMember`), XP (`GetXP`, `SetXP`, `GivePlotXP`), `JumpToLocation`.
 
+## Interaction, state and the real-time loop
+
+| Piece | Notes |
+|---|---|
+| Navigation | `World::nav` is the area's `NavMesh` (room walkmeshes welded); closed doors block a disc of 1.1 m around them (`block_disc`), opening lifts it |
+| Picking | `pixel_ray(eye, target, fov, size, pixel)` and `World::pick(origin, dir)`: nearest bounding sphere of a creature, door or placeable |
+| Click | `World::click(object)` plans a route to within range (1.8 m creatures, 1.6 m doors and placeables), walks it with the `Mover`, then talks (`talk_to`), toggles the door, or runs the placeable's `OnUsed` and conversation. Unreachable objects ("cannot reach") return false |
+| Doors | `open_door` (locked doors stay shut and run `OnFailToOpen`), `close_door`, `use_door`; a door with `LinkedToModule` requests a module change instead |
+| Triggers | outline polygons from the GIT; `step` fires `ScriptOnEnter` / `ScriptOnExit` once per crossing for the player and party; a trigger with a link requests a module change |
+| Transitions | `transition(module, waypoint)`: keeps the player, party and carried items, globals, journal and XP; replaces everything else; arrives at the named waypoint; runs the new area's `OnEnter` |
+| State | journal (`AddJournalQuestEntry`), XP (`GiveXPToCreature`, `GetXP`, `SetXP`), party (`AddPartyMember`, `RemovePartyMember`), inventory (`CreateItemOnObject`, `GetItemPossessedBy`, first/next item, `GetItemInSlot`, `ActionEquipItem`, base item type from the UTI) |
+| `Game` | fixed 1/60 s steps fed with real frame time (capped at 0.25 s), per-creature `Clip` (`walk` while the player has a route, `pause1` otherwise, one-second walk cycle) and `poses()` for a renderer |
+
+Checked on the Endar Spire: the first door cuts the corridor and opening it restores the route (and closing it cuts it again); the locked
+door stays shut; clicking the door walks about 4 m and opens it; Trask is unreachable until then, and clicking him afterwards walks to him and
+plays the conversation; a ray through the screen centre picks Trask, a ray at a corner picks nobody; stepping into `end_trig02` fires its
+enter script exactly once; the door `end_door10` takes the player to `end_m01ab` at waypoint `from_01a` with globals, journal, party and
+carried items intact; a hand-assembled script drives the journal, XP, party and inventory routines.
+
+Not done / assumed: door blocks are a plain disc (not the door's real footprint); doors never animate; party members do not follow; picking uses
+spheres, not the models; the player has no collision with creatures; module transitions leave old module archives layered in the install view;
+clip time for idle uses a made-up per-object offset.
+
 ## What is left for a first playable (walk the Endar Spire, talk to Trask)
 
 Engine pieces that do not exist yet:
