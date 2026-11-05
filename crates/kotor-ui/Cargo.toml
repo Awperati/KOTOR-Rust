@@ -1,0 +1,19 @@
+﻿[package]
+name = "kotor-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kotor-core = { path = "../kotor-core" }
+kotor-archive = { path = "../kotor-archive" }
+kotor-image = { path = "../kotor-image" }
+kotor-gff = { path = "../kotor-gff" }
+kotor-tables = { path = "../kotor-tables" }
+kotor-render = { path = "../kotor-render" }
+kotor-game = { path = "../kotor-game" }
+

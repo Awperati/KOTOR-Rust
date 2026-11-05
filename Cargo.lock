@@ -94,6 +94,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kotor-ui"
+version = "0.1.0"
+dependencies = [
+ "kotor-archive",
+ "kotor-core",
+ "kotor-game",
+ "kotor-gff",
+ "kotor-image",
+ "kotor-render",
+ "kotor-tables",
+]
+
+[[package]]
 name = "kotor-walkmesh"
 version = "0.1.0"
 dependencies = [
