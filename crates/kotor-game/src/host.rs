@@ -2,6 +2,7 @@
 //! game's own `nwscript.nss`). Routines that are not implemented are counted in `World::stubbed` and return a
 //! default value of the right type, so a script keeps running and the gap is visible.
 
+use crate::follow::dist2d;
 use crate::world::{Action, Delayed, Kind, ObjId, World};
 use kotor_core::ResType;
 use kotor_script::{Host, Routine, Ty, Value, OBJECT_INVALID, OBJECT_SELF};
@@ -393,25 +394,49 @@ impl Host for Adapter<'_> {
                 }))
             }
             "GetNearestCreature" => {
-                // Criteria are ignored: the nearest other creature, `nth` counted from 1.
+                // GetNearestCreature(type1, value1, target, nth, type2, value2, type3, value3): the creatures
+                // matching every criterion, nearest to `target` first. Criteria this world cannot answer
+                // (class, spell effects) match everything.
                 let from = self.obj(caller, args, 2);
                 let from = if self.valid(from) { from } else { caller };
                 let here = self.world.object(from).map_or([0.0; 3], |o| o.position);
-                let mut c: Vec<(f32, ObjId)> = self
-                    .world
-                    .objects
-                    .values()
-                    .filter(|o| o.kind == Kind::Creature && o.id != from && !o.dead)
-                    .map(|o| {
-                        (
-                            (0..2).map(|k| (o.position[k] - here[k]).powi(2)).sum(),
-                            o.id,
-                        )
-                    })
+                let criteria: Vec<(i32, i32)> = [(0, 1), (4, 5), (6, 7)]
+                    .iter()
+                    .filter_map(|(t, v)| Some((int(args, *t).ok()?, int(args, *v).ok()?)))
+                    .filter(|(t, _)| *t >= 0)
                     .collect();
+                let mut c: Vec<(f32, ObjId)> = Vec::new();
+                for o in self.world.objects.values() {
+                    if o.kind != Kind::Creature || o.id == from {
+                        continue;
+                    }
+                    let ok = criteria.iter().all(|(t, v)| match t {
+                        0 => o.race == *v,
+                        1 => (o.id == self.world.pc) == (*v != 0),
+                        3 => {
+                            let rep = self.world.reputation(from, o.id);
+                            match v {
+                                0 => rep >= 90,
+                                1 => rep <= 10,
+                                _ => rep > 10 && rep < 90,
+                            }
+                        }
+                        4 => o.dead != (*v != 0),
+                        7 => {
+                            let seen = self.world.combat.perceived.contains(&(from, o.id));
+                            match v {
+                                0 | 7 | 3 | 5 => seen,
+                                _ => !seen,
+                            }
+                        }
+                        _ => true,
+                    });
+                    if ok {
+                        c.push((dist2d(here, o.position), o.id));
+                    }
+                }
                 c.sort_by(|a, b| a.0.total_cmp(&b.0));
                 let nth = (int(args, 3).unwrap_or(1).max(1) - 1) as usize;
-                self.default_hit(name);
                 Some(Value::Object(c.get(nth).map_or(OBJECT_INVALID, |x| x.1)))
             }
             // ---- factions and races
@@ -579,16 +604,110 @@ impl Host for Adapter<'_> {
                 b(self.world.available.remove(&slot).is_some())
             }
             "ShipBuild" => Some(Value::Int(1)),
+            // ---- combat
+            "ActionAttack" => {
+                let t = self.obj(caller, args, 0);
+                self.world.queue(caller, Action::Attack(t));
+                self.record(name, args);
+                None
+            }
+            "CancelCombat" => {
+                self.world.stop_attacking(caller);
+                None
+            }
+            "GetIsInCombat" => b(self.world.combat.in_combat(self.obj(caller, args, 0))),
+            "GetAttackTarget" => Some(Value::Object(
+                self.world
+                    .combat
+                    .target
+                    .get(&self.obj(caller, args, 0))
+                    .copied()
+                    .unwrap_or(OBJECT_INVALID),
+            )),
+            "GetLastAttacker" | "GetLastHostileActor" => {
+                let v = if args.is_empty() {
+                    caller
+                } else {
+                    self.obj(caller, args, 0)
+                };
+                Some(Value::Object(
+                    self.world
+                        .combat
+                        .last_attacker
+                        .get(&v)
+                        .copied()
+                        .unwrap_or(OBJECT_INVALID),
+                ))
+            }
+            "GetLastDamager" => Some(Value::Object(
+                self.world
+                    .combat
+                    .last_damager
+                    .get(&caller)
+                    .copied()
+                    .unwrap_or(OBJECT_INVALID),
+            )),
+            "GetLastHostileTarget" => {
+                let v = if args.is_empty() {
+                    caller
+                } else {
+                    self.obj(caller, args, 0)
+                };
+                Some(Value::Object(
+                    self.world
+                        .combat
+                        .last_hostile
+                        .get(&v)
+                        .copied()
+                        .unwrap_or(OBJECT_INVALID),
+                ))
+            }
+            "GetLastKiller" => Some(Value::Object(self.world.combat.last_killer)),
+            "GetLastPerceived" => Some(Value::Object(self.world.combat.last_perceived)),
+            "GetLastPerceptionSeen" => b(self.world.combat.last_perceived != OBJECT_INVALID),
+            "GetLastPerceptionHeard"
+            | "GetLastPerceptionVanished"
+            | "GetLastPerceptionInaudible" => b(false),
+            "GetObjectSeen" | "GetObjectHeard" => {
+                let (t, s) = (self.obj(caller, args, 0), self.obj(caller, args, 1));
+                let s = if self.valid(s) { s } else { caller };
+                b(self.world.combat.perceived.contains(&(s, t)))
+            }
+            "GetCurrentAction" => {
+                let who = if args.is_empty() {
+                    caller
+                } else {
+                    self.obj(caller, args, 0)
+                };
+                let first = self.world.object(who).and_then(|o| o.actions.front());
+                Some(Value::Int(if self.world.combat.target.contains_key(&who) {
+                    3
+                } else {
+                    match first {
+                        Some(Action::Wait(_)) => 36,
+                        Some(_) => 65535,
+                        None => 65534,
+                    }
+                }))
+            }
             // ---- last-event queries
             "GetExitingObject" => Some(Value::Object(self.world.exiting)),
             "GetLastOpenedBy" => Some(Value::Object(self.world.last_opened_by)),
             "GetLastUsedBy" => Some(Value::Object(self.world.last_used_by)),
             // Combat and interface state this world does not have: a fixed answer, counted apart from stubs.
-            "GetLastHostileTarget" | "GetItemActivator" | "GetItemActivated" => {
+            "GetAttemptedAttackTarget" => Some(Value::Object(
+                self.world
+                    .combat
+                    .target
+                    .get(&caller)
+                    .copied()
+                    .unwrap_or(OBJECT_INVALID),
+            )),
+            "GetAttemptedSpellTarget" | "GetItemActivator" | "GetItemActivated" => {
                 self.default_hit(name);
                 Some(Value::Object(OBJECT_INVALID))
             }
-            "GetObjectSeen"
+            "GetSoloMode"
             | "GetLastAttackAction"
             | "GetUserActionsPending"
             | "GetIsDebilitated"
@@ -746,7 +865,7 @@ impl Host for Adapter<'_> {
             "GetMaxHitPoints" => Some(Value::Int(
                 self.world
                     .object(self.obj(caller, args, 0))
-                    .map_or(0, |o| o.hp.max(1)),
+                    .map_or(0, |o| o.max_hp.max(1)),
             )),
             "d2" | "d3" | "d4" | "d6" | "d8" | "d10" | "d12" | "d20" | "d100" => {
                 let sides: u64 = name[1..].parse().unwrap_or(6);
@@ -814,6 +933,7 @@ impl Host for Adapter<'_> {
                 None
             }
             "ClearAllActions" => {
+                self.world.stop_attacking(caller);
                 if let Some(o) = self.world.object_mut(caller) {
                     o.actions.clear();
                 }

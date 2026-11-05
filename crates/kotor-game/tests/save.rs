@@ -115,9 +115,19 @@ fn loading_removes_what_was_destroyed_and_restores_what_was_created() {
         b.by_tag("end_trask").is_empty(),
         "destroyed creature is gone"
     );
+    // Creatures come with the items their templates equip, so compare with the saved world, and look for the
+    // script-made item by its template.
+    let items = |w: &World, t: &str| {
+        w.objects
+            .values()
+            .filter(|o| o.kind == Kind::Item && o.template == t)
+            .count()
+    };
+    assert!(items(&a, "g_w_blstrpstl001") >= 1);
+    assert_eq!(items(&b, "g_w_blstrpstl001"), items(&a, "g_w_blstrpstl001"));
     assert_eq!(
         b.objects.values().filter(|o| o.kind == Kind::Item).count(),
-        1
+        a.objects.values().filter(|o| o.kind == Kind::Item).count()
     );
     assert_eq!(a.state_digest(), b.state_digest());
 }

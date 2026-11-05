@@ -1,6 +1,7 @@
 //! The game world without graphics: objects, a clock, per-object action queues, delayed commands,
 //! the routines scripts call, and the dialogue runner. It reads the installed game and never writes it.
 
+mod combat;
 mod dialogue;
 mod follow;
 mod game;
@@ -9,6 +10,10 @@ mod play;
 mod save;
 mod world;
 
+pub use combat::{
+    ability_mod, damage, resolve_attack, AttackLog, CombatState, Outcome, Weapon,
+    HEARTBEAT_SECONDS, MELEE_REACH, RANGED_REACH, ROUND_SECONDS,
+};
 pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
 pub use game::{Clip, Game, Pose};

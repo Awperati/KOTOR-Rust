@@ -421,6 +421,7 @@ impl World {
             p.position = self.pc_mover.pos;
         }
         self.update_followers(dt);
+        self.update_combat(dt);
         if status == MoveStatus::Arrived {
             if let Some(t) = self.pending.take() {
                 self.interact(t);

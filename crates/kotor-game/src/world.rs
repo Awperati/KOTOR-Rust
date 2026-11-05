@@ -46,6 +46,8 @@ pub enum Action {
     CloseDoor(ObjId),
     /// Move to a position at once (`ActionJumpToLocation`).
     Jump([f32; 3]),
+    /// Start attacking an object (`ActionAttack`).
+    Attack(ObjId),
 }
 
 /// A command scheduled by `DelayCommand`.
@@ -104,6 +106,14 @@ pub struct Object {
     pub effects: Vec<u32>,
     /// Facing in degrees, 0 = east, counter-clockwise (`GetFacing`).
     pub facing: f32,
+    /// Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma.
+    pub abilities: [i32; 6],
+    pub natural_ac: i32,
+    pub max_hp: i32,
+    /// `classes.2da` row of the first class.
+    pub class: i32,
+    /// Metres within which an enemy is noticed.
+    pub perception: f32,
 }
 
 /// A door's animation state; the number is seconds into the clip.
@@ -157,6 +167,11 @@ impl Object {
             feats: BTreeSet::new(),
             effects: Vec::new(),
             facing: 0.0,
+            abilities: [10; 6],
+            natural_ac: 0,
+            max_hp: 10,
+            class: 0,
+            perception: 20.0,
         }
     }
 }
@@ -236,6 +251,8 @@ pub struct World {
     pub(crate) exptable: Vec<i32>,
     pub(crate) plot: Option<TwoDa>,
     pub(crate) rng: u64,
+    pub combat: crate::combat::CombatState,
+    tables: HashMap<String, Option<Rc<TwoDa>>>,
 }
 
 fn creature_defaults(o: &mut Object, utc: &Struct) {
@@ -256,12 +273,24 @@ fn creature_defaults(o: &mut Object, utc: &Struct) {
             o.feats.insert(ft as i32);
         }
     }
+    for (i, a) in ["Str", "Dex", "Con", "Int", "Wis", "Cha"]
+        .iter()
+        .enumerate()
+    {
+        o.abilities[i] = utc.int(a).unwrap_or(10) as i32;
+    }
+    o.natural_ac = utc.int("NaturalAC").unwrap_or(0) as i32;
+    o.class = classes.first().and_then(|c| c.int("Class")).unwrap_or(0) as i32;
     o.faction = utc.int("FactionID").unwrap_or(0) as i32;
     o.race = utc.int("Race").unwrap_or(0) as i32;
     o.subrace = utc.int("SubraceIndex").unwrap_or(0) as i32;
     if let Some(hp) = utc.int("CurrentHitPoints") {
         o.hp = hp as i32;
     }
+    o.max_hp = utc
+        .int("MaxHitPoints")
+        .or_else(|| utc.int("HitPoints"))
+        .map_or(o.hp.max(1), |h| h as i32);
 }
 
 impl World {
@@ -320,6 +349,8 @@ impl World {
             exptable: Vec::new(),
             plot: None,
             rng: 0x2545_F491_4F6C_DD1D,
+            combat: crate::combat::CombatState::new(),
+            tables: HashMap::new(),
         };
         let table =
             |w: &mut World, n: &str| TwoDa::parse(&w.inst.read(n, ResType::TWODA).ok()?).ok();
@@ -335,6 +366,21 @@ impl World {
         pc.hp = 30;
         w.objects.insert(1, pc);
         Ok(w)
+    }
+
+    /// A 2DA table from the install, read once.
+    pub(crate) fn table(&mut self, name: &str) -> Option<Rc<TwoDa>> {
+        let key = name.to_ascii_lowercase();
+        if !self.tables.contains_key(&key) {
+            let t = self
+                .inst
+                .read(&key, ResType::TWODA)
+                .ok()
+                .and_then(|b| TwoDa::parse(&b).ok())
+                .map(Rc::new);
+            self.tables.insert(key.clone(), t);
+        }
+        self.tables[&key].clone()
     }
 
     pub fn object(&self, id: ObjId) -> Option<&Object> {
@@ -442,6 +488,21 @@ impl World {
                 }
             }
         }
+        let equip: Vec<(i32, String)> = utx
+            .as_ref()
+            .and_then(|g| g.root.list("Equip_ItemList"))
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|e| {
+                // The struct id is a bit mask with one bit per inventory slot.
+                let r = e.str("EquippedRes")?;
+                (e.id > 0 && !r.is_empty()).then(|| (e.id.trailing_zeros() as i32, r.to_string()))
+            })
+            .collect();
+        let perception = utx
+            .as_ref()
+            .and_then(|g| g.root.int("PerceptionRange"))
+            .and_then(|r| self.table("ranges")?.int(r as usize, "primaryrange"));
         let f = |l: &str| placement.float(l).unwrap_or(0.0) as f32;
         if let Some(o) = self.objects.get_mut(&id) {
             o.template = template.to_string();
@@ -464,6 +525,9 @@ impl World {
                 o.hp = g.root.int("CurrentHitPoints").map_or(o.hp, |h| h as i32);
                 o.locked = g.root.int("Locked").is_some_and(|l| l != 0);
                 o.base_item = g.root.int("BaseItem").unwrap_or(0) as i32;
+            }
+            if let Some(p) = perception {
+                o.perception = p as f32;
             }
             // Links to other modules come from the placement, else the template.
             let link = |field: &str| {
@@ -491,6 +555,12 @@ impl World {
                     ]
                 })
                 .collect();
+        }
+        for (slot, res) in equip {
+            let item = self.spawn_item(&res);
+            if let Some(o) = self.objects.get_mut(&id) {
+                o.equipped.insert(slot, item);
+            }
         }
     }
 
@@ -711,6 +781,7 @@ impl World {
             }
             Action::CloseDoor(d) => self.close_door(d),
             Action::Jump(p) => self.teleport(id, p),
+            Action::Attack(t) => self.perform_attack(id, t),
             Action::Recorded(what) => self.events.push(format!("{}: {what}", self.describe(id))),
             Action::DoCommand { script, state } => {
                 let _ = self.run_saved(&script, &state, id);
