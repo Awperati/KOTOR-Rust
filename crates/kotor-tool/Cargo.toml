@@ -21,3 +21,4 @@ kotor-image = { path = "../kotor-image" }
 kotor-model = { path = "../kotor-model" }
 kotor-walkmesh = { path = "../kotor-walkmesh" }
 kotor-script = { path = "../kotor-script" }
+kotor-render = { path = "../kotor-render" }

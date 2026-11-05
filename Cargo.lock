@@ -38,6 +38,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kotor-render"
+version = "0.1.0"
+dependencies = [
+ "kotor-archive",
+ "kotor-core",
+ "kotor-image",
+ "kotor-model",
+ "kotor-walkmesh",
+]
+
+[[package]]
 name = "kotor-script"
 version = "0.1.0"
 dependencies = [
@@ -62,6 +73,7 @@ dependencies = [
  "kotor-gff",
  "kotor-image",
  "kotor-model",
+ "kotor-render",
  "kotor-script",
  "kotor-tables",
  "kotor-walkmesh",

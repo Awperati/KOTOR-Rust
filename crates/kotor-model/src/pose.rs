@@ -190,6 +190,26 @@ impl Model {
         out
     }
 
+    /// Every node that carries a render-flagged mesh, with its world matrix under `pose`.
+    pub fn mesh_nodes(&self, pose: Option<&Pose>) -> Vec<(&Node, [[f32; 4]; 4])> {
+        fn go<'a>(n: &'a Node, parent: &Mat, pose: Option<&Pose>, out: &mut Vec<(&'a Node, Mat)>) {
+            let (p, o) = match pose.and_then(|p| p.get(&n.name.to_ascii_lowercase())) {
+                Some(np) => (np.position, np.orientation),
+                None => (n.position, n.orientation),
+            };
+            let m = mul(parent, &matrix(p, o));
+            if n.mesh.as_ref().is_some_and(|m| m.render) {
+                out.push((n, m));
+            }
+            for c in &n.children {
+                go(c, &m, pose, out);
+            }
+        }
+        let mut out = Vec::new();
+        go(&self.root, &identity(), pose, &mut out);
+        out
+    }
+
     /// World-space position of a named node under `pose`.
     pub fn node_position(&self, name: &str, pose: Option<&Pose>) -> Option<[f32; 3]> {
         self.world_matrices(pose)

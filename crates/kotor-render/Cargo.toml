@@ -1,0 +1,16 @@
+[package]
+name = "kotor-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kotor-core = { path = "../kotor-core" }
+kotor-archive = { path = "../kotor-archive" }
+kotor-image = { path = "../kotor-image" }
+kotor-model = { path = "../kotor-model" }
+kotor-walkmesh = { path = "../kotor-walkmesh" }

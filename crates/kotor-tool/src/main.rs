@@ -22,6 +22,8 @@ kotor-tool <command> [args]
   disasm <name>                disassemble an NCS script
   png <name> <out.png>         decode a TGA/TPC texture to PNG
   obj <model> <out.obj>        export a model's rest pose as OBJ
+  view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
+                               software-render an area's rooms with textures and lightmaps
   render <model> <out.png> [px]  software-render a model (front view)
   author clone <module> <display name> <out.mod> [new_area|-] [--npc <id> <name> <dialogue.txt> [template]]
                                copy a module to a new .mod; with new_area it can sit beside the original
@@ -159,6 +161,52 @@ fn run(args: &[String]) -> Result<()> {
                 kotor_image::parse_tga(&inst.read(name, ResType::TGA)?)?
             };
             std::fs::write(need(args, 2)?, kotor_image::to_png(&img))?;
+        }
+        "view" => {
+            // view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
+            let area = need(args, 1)?;
+            let out = need(args, 2)?;
+            let flag = |name: &str, n: usize| -> Option<Vec<f32>> {
+                let i = args.iter().position(|a| a == name)?;
+                (1..=n).map(|k| args.get(i + k)?.parse().ok()).collect()
+            };
+            let mut inst = open()?;
+            if let Some(i) = args.iter().position(|a| a == "--module") {
+                inst.load_module(need(args, i + 1)?)?;
+            }
+            inst.load_texture_packs()?;
+            let scene = kotor_render::load_area(&mut inst, area)?;
+            let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
+            let eye = flag("--eye", 3).map_or([mid[0], scene.min[1] - 2.0, mid[2] + 6.0], |v| {
+                [v[0], v[1], v[2]]
+            });
+            let target = flag("--target", 3).map_or(mid, |v| [v[0], v[1], v[2]]);
+            let (w, h) = args
+                .iter()
+                .position(|a| a == "--size")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|s| s.split_once('x'))
+                .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+                .unwrap_or((960u32, 540u32));
+            let fov = flag("--fov", 1).map_or(70.0, |v| v[0]);
+            let cam = kotor_render::Camera { eye, target, fov };
+            let t0 = std::time::Instant::now();
+            let img = kotor_render::render(
+                &scene,
+                &mut |n| kotor_render::load_texture(&mut inst, n),
+                &cam,
+                w,
+                h,
+            );
+            println!(
+                "{} meshes, {} triangles, bounds {:?}..{:?}, {w}x{h} in {:.1}s",
+                scene.meshes.len(),
+                scene.triangle_count(),
+                scene.min,
+                scene.max,
+                t0.elapsed().as_secs_f32()
+            );
+            std::fs::write(out, kotor_image::to_png(&img))?;
         }
         "obj" | "render" => {
             let name = need(args, 1)?;
