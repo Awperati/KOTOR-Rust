@@ -71,3 +71,91 @@ fn module_layout_visibility_and_walkmesh_height() {
     }
     assert!(checked >= 3, "only {checked} rooms had walkable floor");
 }
+
+/// Small deterministic generator so failures reproduce.
+struct Lcg(u64);
+impl Lcg {
+    fn next(&mut self) -> f32 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((self.0 >> 33) as f32) / (1u64 << 31) as f32
+    }
+}
+
+#[test]
+fn aabb_tree_queries_match_brute_force_on_every_area_walkmesh() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let mut rng = Lcg(12345);
+    let (mut meshes, mut leaves_total, mut floor_checks, mut near_checks, mut ray_checks) =
+        (0, 0, 0, 0, 0);
+    for name in inst.list(ResType::WOK) {
+        let b = parse_bwm(&inst.read(&name, ResType::WOK).unwrap()).unwrap();
+        let leaves = b.check_tree().unwrap_or_else(|e| panic!("{name}: {e}"));
+        leaves_total += leaves;
+        meshes += 1;
+        let walk: Vec<usize> = (0..b.faces.len())
+            .filter(|&i| b.faces[i].walkable())
+            .collect();
+        if walk.is_empty() {
+            assert!(b.nearest_walkable([0.0; 3]).is_none(), "{name}");
+            continue;
+        }
+        for k in 0..20 {
+            let f = walk[(rng.next() * walk.len() as f32) as usize % walk.len()];
+            let v = b.faces[f].vertices.map(|i| b.vertices[i as usize]);
+            // A point inside the face, found with random barycentric weights.
+            let (u, w) = (rng.next(), rng.next());
+            let (u, w) = if u + w > 1.0 {
+                (1.0 - u, 1.0 - w)
+            } else {
+                (u, w)
+            };
+            let x = v[0][0] + u * (v[1][0] - v[0][0]) + w * (v[2][0] - v[0][0]);
+            let y = v[0][1] + u * (v[1][1] - v[0][1]) + w * (v[2][1] - v[0][1]);
+            let slow = b.height_at(x, y);
+            let fast = b.floor_at(x, y, f32::MAX).map(|(_, z)| z);
+            match (slow, fast) {
+                (Some(s), Some(t)) => assert!((s - t).abs() < 1e-4, "{name}: floor {s} vs {t}"),
+                // Both miss on sliver triangles where float rounding pushes the sample just outside.
+                (None, None) => continue,
+                other => panic!("{name}: floor mismatch {other:?} at ({x}, {y})"),
+            }
+            floor_checks += 1;
+            // A ray straight down onto the floor hits it at the right height.
+            let z = fast.unwrap();
+            let hit = b.raycast([x, y, z + 5.0], [0.0, 0.0, -1.0], 100.0, true);
+            let hit = hit.unwrap_or_else(|| panic!("{name}: ray missed floor at ({x}, {y})"));
+            assert!(
+                (hit.point[2] - z).abs() < 1e-3,
+                "{name}: ray z {} vs floor {z}",
+                hit.point[2]
+            );
+            ray_checks += 1;
+            // Nearest walkable to a point off the floor agrees with a full scan.
+            if k < 5 {
+                let p = [
+                    x + (rng.next() - 0.5) * 6.0,
+                    y + (rng.next() - 0.5) * 6.0,
+                    z + (rng.next() - 0.5) * 4.0,
+                ];
+                let (_, q1) = b.nearest_walkable(p).unwrap();
+                let (_, q2) = b.nearest_walkable_linear(p).unwrap();
+                let d = |q: [f32; 3]| (0..3).map(|i| (q[i] - p[i]).powi(2)).sum::<f32>();
+                assert!(
+                    (d(q1) - d(q2)).abs() < 1e-3,
+                    "{name}: nearest {} vs {}",
+                    d(q1),
+                    d(q2)
+                );
+                near_checks += 1;
+            }
+        }
+    }
+    println!("{meshes} meshes, {leaves_total} leaves, {floor_checks} floor, {ray_checks} ray, {near_checks} nearest checks");
+    assert!(floor_checks > 5000);
+}

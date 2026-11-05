@@ -34,10 +34,27 @@ Copy `C:\Users\User\Desktop\kotor-test\zz_test01.mod` to `E:\Games\Star Wars - K
 
 ## 3. Enter the module (open question, I have not verified this)
 
-A new module is not reachable from the menus. The usual way is the debug console command `warp zz_test01`, which I
-believe needs cheats enabled in `swkotor.ini`. **I have not checked that and will not edit your ini.** Top Dog should
-ask the 1440p Builder whether cheats/console are already on in your setup. If they are not, say so and decide whether you
-want to turn them on; that is your call.
+A new module name is not reachable from the menus. Two routes; pick one. **I do not edit your ini or your game folder.**
+
+**Route 1, no cheats needed (replace the Endar Spire for a new game).** The game should prefer `modules\end_m01aa.mod` over
+`end_m01aa.rim` (this is how module mods normally work; I have not confirmed it on your install). Build the clone *without*
+renaming the area and save it under the stock name, then start a new game:
+
+```powershell
+target\debug\kotor-tool.exe author clone end_m01aa "Endar Spire" C:\Users\User\Desktop\kotor-test\end_m01aa.mod -
+```
+
+For test B add `--npc zz_guide Guide docs\examples\guide.dlg.txt` to that command. Copy the file into `modules`. Undo =
+delete `modules\end_m01aa.mod` (the original `.rim` files are untouched). New games then start in the copy; existing
+saves that are inside the Endar Spire may load the copy too, so keep the step 0 backup.
+
+**Route 2, console `warp`.** The 1440p Builder checked `swkotor.ini`: there is **no** cheats/console key and the tilde key is
+unbound, so `warp` does not work today. It would need one added line under `[Game Options]` (the key name is, I believe,
+`EnableCheats=1`, not verified). Either add that single line yourself after the step 0 backup, or tell Top Dog to have the
+1440p Builder do it after a backup. With it on, press `~` in game and run `warp zz_test01`.
+
+Route 1 is the lower-risk choice: it adds one file and changes no settings. The steps below say `warp zz_test01`; with
+route 1 read that as "start a new game".
 
 ## 4. What to check
 

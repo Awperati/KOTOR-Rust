@@ -45,6 +45,8 @@ pub struct Bwm {
     /// `(edge index, transition)` pairs on the outer border.
     pub edges: Vec<(i32, i32)>,
     pub perimeters: Vec<u32>,
+    /// True if the stored AABB boxes did not match their triangles (by more than 1 mm) and were recomputed on load.
+    pub tree_refit: bool,
 }
 
 fn count_bytes(n: u32, each: usize) -> Result<usize> {
@@ -165,7 +167,7 @@ pub fn parse_bwm(data: &[u8]) -> Result<Bwm> {
         perimeters.push(pr.u32()?);
     }
 
-    Ok(Bwm {
+    let mut bwm = Bwm {
         kind,
         position,
         use_positions,
@@ -174,7 +176,10 @@ pub fn parse_bwm(data: &[u8]) -> Result<Bwm> {
         aabbs,
         edges,
         perimeters,
-    })
+        tree_refit: false,
+    };
+    bwm.tree_refit = bwm.refit_tree();
+    Ok(bwm)
 }
 
 impl Bwm {

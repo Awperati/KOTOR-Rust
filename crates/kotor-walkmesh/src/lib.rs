@@ -2,6 +2,8 @@
 
 mod bwm;
 mod layout;
+mod query;
 
 pub use bwm::{parse_bwm, Aabb, Bwm, Face, WALKABLE_SURFACES};
 pub use layout::{parse_lyt, parse_vis, Layout, Room, VisEntry};
+pub use query::Hit;
