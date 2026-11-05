@@ -29,4 +29,20 @@ If a future session reads their source for a hard format, record the file and li
 
 ## Crates
 
-None so far. The format crates use only `std`. Phase 2 crates are proposed in `PLAN.md` and need approval.
+The main workspace uses only `std`.
+
+The standalone package `gpu/` (kotor-gpu) is approved by the owner (via Top Dog, 6 Nov) to use these crates.io crates only, no git or
+path dependencies for them, exact versions fixed by `gpu/Cargo.lock`:
+
+| Crate | Requested | Use |
+|---|---|---|
+| wgpu | 24 | GPU rendering |
+| winit | 0.30 | window and input (not used by code yet) |
+| pollster | 0.4 | block on wgpu setup |
+| glam | 0.29 | matrices |
+| bytemuck | 1 (derive) | upload vertex data |
+| log | 0.4 | logging |
+| env_logger | 0.11 | log output |
+
+The exact versions that Cargo resolves, with their transitive dependencies, are to be listed here after the first
+`cargo fetch --manifest-path gpu/Cargo.toml` (not yet run: the lockfile does not exist).

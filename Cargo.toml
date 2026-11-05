@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+# gpu/ is a separate package with its own lockfile: it needs crates.io downloads that are not made yet.
+exclude = ["gpu"]
 members = [
     "crates/kotor-core",
     "crates/kotor-archive",

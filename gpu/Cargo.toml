@@ -1,0 +1,32 @@
+# GPU renderer and viewer. A standalone package (not a member of the main workspace) so that the main
+# workspace builds and tests with no network. Its dependencies come from crates.io only:
+#
+#   cargo fetch --manifest-path C:\Users\User\Projects\kotor-rs\gpu\Cargo.toml
+#
+# creates gpu/Cargo.lock and downloads the sources; after that `cargo build --offline` works.
+# See docs/SOURCES.md for what gets downloaded.
+[package]
+name = "kotor-gpu"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# An empty table makes this package its own workspace root.
+[workspace]
+
+[dependencies]
+kotor-core = { path = "../crates/kotor-core" }
+kotor-archive = { path = "../crates/kotor-archive" }
+kotor-image = { path = "../crates/kotor-image" }
+kotor-render = { path = "../crates/kotor-render" }
+wgpu = "24"
+pollster = "0.4"
+glam = "0.29"
+bytemuck = { version = "1", features = ["derive"] }
+log = "0.4"
+winit = "0.30"
+env_logger = "0.11"
+
+[lints.rust]
+unsafe_code = "forbid"
