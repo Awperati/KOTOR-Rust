@@ -368,6 +368,25 @@ impl<'a> Ui<'a> {
         Some(cv.into_image())
     }
 
+    /// Write one line of text at the top left of `img`, on a dark strip.
+    pub fn caption(&mut self, img: Image, text: &str) -> Option<Image> {
+        let font = self.font("fnt_console")?.clone();
+        let mut cv = Canvas {
+            width: img.width,
+            height: img.height,
+            rgba: img.rgba,
+        };
+        cv.fill_rect(
+            0,
+            0,
+            font.measure(text) + 8,
+            font.line_height + 4,
+            [0, 0, 0, 170],
+        );
+        font.draw_line(&mut cv, 4, 2, text, [0.8, 0.9, 1.0]);
+        Some(cv.into_image())
+    }
+
     /// The main HUD (`maininterface.gui`) with up to three party members' portraits and bars.
     /// Controls the screen does not use right now (level-up badges, the action queue, the target bar) are hidden.
     pub fn hud(&mut self, party: &[HudMember], target: Option<(&str, i32, i32)>) -> Option<Image> {

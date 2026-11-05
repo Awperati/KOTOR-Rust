@@ -21,6 +21,10 @@ type Mat = [[f32; 4]; 4];
 const DRAW_RANGE: f32 = 45.0;
 /// Reading speed for a line with no voice-over, characters per second, as in `kotor_game::cutscene`.
 const READING_SPEED: f32 = 15.0;
+/// The follow camera: metres behind the player and above its feet, and the height it looks at. As `render_walk`.
+const CAMERA_BEHIND: f32 = 3.3;
+const CAMERA_ABOVE: f32 = 1.7;
+const CAMERA_LOOKS_AT: f32 = 1.2;
 
 /// Something the window should play. Files are found here; decoding and output belong to the window.
 #[derive(Clone, Debug, PartialEq)]
@@ -69,6 +73,9 @@ pub struct Stage {
     inst: Install,
     ui: Ui<'static>,
     dir: PathBuf,
+    original: bool,
+    /// Degrees per second the camera turns round the player by itself while nothing else moves it.
+    pub orbit: f32,
     module: String,
     floor: Option<Floor>,
     static_scene: Scene,
@@ -97,12 +104,12 @@ pub struct Stage {
 }
 
 impl Stage {
-    /// Load `module` and enter its area. Conversations wait for the player.
+    /// Load `module` from its original files and enter its area. Conversations wait for the player.
     pub fn new(module: &str) -> Result<Stage, String> {
-        Stage::open(module, false)
+        Stage::open(module, true)
     }
 
-    /// `new`; with `original` a module's `.rim` pair is used even if an installed mod left a `.mod` beside it.
+    /// `new`; without `original` a `.mod` that an installed mod left beside a module's `.rim` pair wins.
     pub fn open(module: &str, original: bool) -> Result<Stage, String> {
         let e = |e: kotor_core::Error| e.to_string();
         let dir = kotor_core::install_dir().ok_or("no KotOR install found")?;
@@ -125,6 +132,8 @@ impl Stage {
             inst,
             ui: Ui::new(ui_inst),
             dir,
+            original,
+            orbit: 0.0,
             module: String::new(),
             floor: None,
             static_scene: Scene::default(),
@@ -133,7 +142,7 @@ impl Stage {
             doors: HashMap::new(),
             textures: HashMap::new(),
             yaw: 0.0,
-            distance: 4.5,
+            distance: CAMERA_BEHIND,
             turn: 0.0,
             overlay: None,
             overlay_key: String::new(),
@@ -278,6 +287,9 @@ impl Stage {
     fn update_camera(&mut self, dt: f32) {
         self.yaw += self.turn.to_radians() * dt;
         let w = &self.game.world;
+        if !w.pc_walking() && !w.in_dialogue() {
+            self.yaw += self.orbit.to_radians() * dt;
+        }
         // In a conversation look past the player at the speaker; on a walk swing slowly round behind the player.
         let here = self.pc_position();
         let wanted = match w.dialogue_owner().and_then(|id| w.object(id)) {
@@ -301,7 +313,7 @@ impl Stage {
     /// The camera behind the player, drawn in where the floor ends so that it stays on this side of the walls.
     pub fn camera(&self) -> Camera {
         let p = self.pc_position();
-        let target = [p[0], p[1], p[2] + 1.4];
+        let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
         let mut d = 0.8;
         if let Some(f) = &self.floor {
@@ -315,7 +327,11 @@ impl Stage {
             d = self.distance;
         }
         Camera {
-            eye: [p[0] - dx * d, p[1] - dy * d, p[2] + 1.4 + 0.2 * d],
+            eye: [
+                p[0] - dx * d,
+                p[1] - dy * d,
+                p[2] + CAMERA_LOOKS_AT + (CAMERA_ABOVE - CAMERA_LOOKS_AT) * d / CAMERA_BEHIND,
+            ],
             target,
             fov: 55.0,
         }
@@ -534,9 +550,10 @@ impl Stage {
         let view = self.game.world.dialogue_view();
         let party = self.party_view();
         let key = match &view {
-            Some(v) => format!("d{v:?}"),
+            Some(v) => format!("{}d{v:?}", self.module),
             None => format!(
-                "h{:?}",
+                "{}h{:?}",
+                self.module,
                 party
                     .iter()
                     .map(|m| (&m.portrait, m.hp, m.max_hp, m.force, m.max_force))
@@ -546,6 +563,7 @@ impl Stage {
         if key == self.overlay_key {
             return;
         }
+        self.overlay_key = key;
         self.overlay = match view {
             Some((speaker, subtitle, _, replies)) => self.ui.dialogue_overlay(&DialogueView {
                 speaker,
@@ -555,7 +573,8 @@ impl Stage {
             }),
             None => self.ui.hud_overlay(&party, None),
         };
-        self.overlay_key = key;
+        let label = self.label();
+        self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &label));
         self.overlay_version += 1;
     }
 
@@ -577,6 +596,26 @@ impl Stage {
                 max_force: o.max_force,
             })
             .collect()
+    }
+
+    /// What is on screen, in words: the module, which files it came from, the area and the camera.
+    pub fn label(&self) -> String {
+        let installed = !self.original
+            && self
+                .dir
+                .join("modules")
+                .join(format!("{}.mod", self.module))
+                .is_file();
+        format!(
+            "kotor-rs | {} | {} | area {} | camera on the player",
+            self.module,
+            if installed {
+                "installed .mod"
+            } else {
+                "original files"
+            },
+            self.area_name()
+        )
     }
 
     /// The window's shape: the interface is laid out 480 units high and as wide as that makes it.

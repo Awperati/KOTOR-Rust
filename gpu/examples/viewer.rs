@@ -3,7 +3,8 @@
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example viewer -- [options]
 //!     --module M      module to load (default end_m01aa)
-//!     --original      ignore a mod's .mod file and load the module's own .rim pair
+//!     --installed-mod use a .mod file that a mod left beside the module (default: the original .rim pair)
+//!     --orbit D       turn the camera round the player by D degrees a second while idle
 //!     --volume V      0 to 1 (default 0.8); --mute opens no sound device
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
@@ -177,6 +178,7 @@ impl App {
         }
         let stage = &mut self.stage;
         if st.static_seen != stage.static_version {
+            st.window.set_title(&stage.label());
             st.static_seen = stage.static_version;
             let scene = stage.static_scene().clone();
             st.gpu.set_static_scene(&scene, &mut |n| stage.texture(n));
@@ -312,7 +314,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let volume = opt("--volume")
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(0.8);
-    let stage = Stage::open(&module, flag("--original"))?;
+    let mut stage = Stage::open(&module, !flag("--installed-mod"))?;
+    stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
     let out = if flag("--mute") {
         None
     } else {

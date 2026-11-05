@@ -82,6 +82,8 @@ pub struct GpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
+    sky_pipeline: wgpu::RenderPipeline,
+    sky_at_infinity: bool,
     globals_layout: wgpu::BindGroupLayout,
     mesh_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -99,6 +101,8 @@ struct Draw {
     indices: wgpu::Buffer,
     count: u32,
     bind: wgpu::BindGroup,
+    /// A sky: the centre of its mesh, which is kept on the camera.
+    sky: Option<[f32; 3]>,
 }
 
 impl GpuRenderer {
@@ -185,44 +189,48 @@ impl GpuRenderer {
             push_constant_ranges: &[],
         });
         let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x2];
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("kotor"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &attrs,
-                }],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                cull_mode: None,
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: Default::default(),
-            multiview: None,
-            cache: None,
-        });
+        let make = |depth_write: bool, compare: wgpu::CompareFunction| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("kotor"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &attrs,
+                    }],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: depth_write,
+                    depth_compare: compare,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                multiview: None,
+                cache: None,
+            })
+        };
+        let pipeline = make(true, wgpu::CompareFunction::Less);
+        let sky_pipeline = make(false, wgpu::CompareFunction::Always);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::Repeat,
             address_mode_v: wgpu::AddressMode::Repeat,
@@ -269,6 +277,8 @@ impl GpuRenderer {
             },
         );
         Ok(GpuRenderer {
+            sky_pipeline,
+            sky_at_infinity: true,
             white,
             tex_cache: HashMap::new(),
             static_draws: Vec::new(),
@@ -294,6 +304,12 @@ impl GpuRenderer {
     ) -> Result<Image, String> {
         self.draw(scene, textures, cam);
         self.read_back()
+    }
+
+    /// By default a sky is drawn first, around the camera, with no depth, so it is never in front of anything and
+    /// the camera can never leave it. Off, it is an ordinary mesh, as in the software renderer.
+    pub fn set_sky_at_infinity(&mut self, on: bool) {
+        self.sky_at_infinity = on;
     }
 
     /// Keep `scene` on the GPU and draw it in every later frame, behind whatever each frame passes in.
@@ -392,6 +408,7 @@ impl GpuRenderer {
                     }),
                 count: indices.len() as u32,
                 bind,
+                sky: sky_centre(m),
             });
         }
         draws
@@ -431,6 +448,35 @@ impl GpuRenderer {
             }],
         });
         let draws = self.build_draws(scene, textures);
+        let sky_binds: Vec<(wgpu::BindGroup, &Draw)> = self
+            .static_draws
+            .iter()
+            .chain(&draws)
+            .filter(|_| self.sky_at_infinity)
+            .filter_map(|d| {
+                let shift = Mat4::from_translation(eye - Vec3::from(d.sky?));
+                let g = Globals {
+                    view_proj: (proj * view * shift).to_cols_array_2d(),
+                    light: globals.light,
+                };
+                let buf = self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("sky"),
+                        contents: bytemuck::bytes_of(&g),
+                        usage: wgpu::BufferUsages::UNIFORM,
+                    });
+                let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("sky"),
+                    layout: &self.globals_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: buf.as_entire_binding(),
+                    }],
+                });
+                Some((bind, d))
+            })
+            .collect();
         let color_view = self.color.create_view(&Default::default());
         let mut enc = self.device.create_command_encoder(&Default::default());
         {
@@ -460,9 +506,22 @@ impl GpuRenderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+            pass.set_pipeline(&self.sky_pipeline);
+            for (g, d) in &sky_binds {
+                pass.set_bind_group(0, g, &[]);
+                pass.set_bind_group(1, &d.bind, &[]);
+                pass.set_vertex_buffer(0, d.vertices.slice(..));
+                pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..d.count, 0, 0..1);
+            }
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &globals_bind, &[]);
-            for d in self.static_draws.iter().chain(&draws) {
+            for d in self
+                .static_draws
+                .iter()
+                .chain(&draws)
+                .filter(|d| !self.sky_at_infinity || d.sky.is_none())
+            {
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(..));
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -538,6 +597,26 @@ impl GpuRenderer {
         self.draw(scene, textures, cam);
         presenter.show(self)
     }
+}
+
+/// **Assumption:** a mesh wider than this with no lightmap is a sky (the Endar Spire's star sphere is 409 m across).
+const SKY_WIDTH: f32 = 150.0;
+
+/// The centre of a mesh that is a sky.
+fn sky_centre(m: &kotor_render::SceneMesh) -> Option<[f32; 3]> {
+    if m.lightmap.is_some() {
+        return None;
+    }
+    let mut lo = [f32::MAX; 3];
+    let mut hi = [f32::MIN; 3];
+    for p in &m.positions {
+        for (k, v) in p.iter().enumerate() {
+            lo[k] = lo[k].min(*v);
+            hi[k] = hi[k].max(*v);
+        }
+    }
+    (hi[0] - lo[0] > SKY_WIDTH || hi[1] - lo[1] > SKY_WIDTH)
+        .then(|| [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0))
 }
 
 fn upload_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &Image) -> Tex {
