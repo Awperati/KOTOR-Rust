@@ -53,6 +53,30 @@ want to turn them on; that is your call.
 Known limits: compiled scripts that mention `m01aa` by name were not rewritten, so some scripted events may behave oddly or
 point back at the original area. That is expected and is useful to report.
 
+## Test B: a talking NPC (only after test A passes)
+
+Same module plus one new creature ("Guide", copied from Trask's template, invulnerable, stock AI scripts, no story scripts)
+standing about 3 m east of where you spawn, with an authored conversation.
+
+```powershell
+target\debug\kotor-tool.exe author clone end_m01aa "Test Spire B" C:\Users\User\Desktop\kotor-test\zz_test02.mod zz_spireb --npc zz_guide Guide docs\examples\guide.dlg.txt
+```
+
+Expected output also lists `added creature zz_guide at (x, y, z) talking zz_guide.dlg`. Copy `zz_test02.mod` to `modules` the
+same way and `warp zz_test02`. Check:
+
+| # | Check | Pass looks like |
+|---|---|---|
+| B1 | Guide appears near the spawn point, standing on the floor | visible, not floating or in a wall |
+| B2 | Click Guide | the conversation opens with "You made it off the bridge. Few do." |
+| B3 | Reply options | "Who are you?" and "I have no time for this." appear and lead where the text says |
+| B4 | Ending the talk | the conversation closes cleanly, the game continues |
+| B5 | Guide in a fight | Guide cannot be killed (plot flag set) |
+
+Known unknowns: the stock `k_hen_dialogue01` script is what starts the talk; I believe it opens the creature's own
+conversation but have not run it. If B2 does nothing, tell Top Dog; the likely fix is a different stock dialogue script.
+Names stay "Guide" because the text is stored inline, not in `dialog.tlk`.
+
 ## 5. Report back / undo
 
 - Tell Top Dog: which checks passed, any crash text, any screenshot.
@@ -66,5 +90,6 @@ point back at the original area. That is expected and is useful to report.
 target\debug\kotor-tool.exe author dlg docs\examples\hello.dlg.txt C:\Users\User\Desktop\kotor-test\hello.dlg
 ```
 
-A DLG only runs when a creature or placeable points at it, so testing it in game needs a creature template and a module
-script step that are not built yet. It is checked here by reading it back and by 117 real dialogues round-tripping.
+A DLG only runs when a creature or placeable points at it. Test B above does that without any compiled script, using the
+creature's `Conversation` field and a stock base-game dialogue script. The authoring path is checked here by reading
+everything back and by 117 real dialogues round-tripping; running it in the game is test B.

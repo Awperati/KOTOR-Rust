@@ -7,6 +7,10 @@ it has **not** been loaded in the real game.
 With a fourth argument (`... out.mod zz_spire`) the entry area is renamed so the copy sits beside the original
 (resources, LYT/VIS and IFO/ARE/GIT strings; compiled scripts are not rewritten).
 `kotor-tool author dlg <text> <out.dlg>` builds a conversation from the text format documented in `crates/kotor-gff/src/dlg.rs`.
+... --npc <id> <name> <dialogue.txt> [template] also adds a talking creature: a copy of an existing creature template
+(default Trask: stock AI scripts kept, story scripts cleared, plot flag set) whose Conversation field names the new DLG,
+placed on walkable floor near the entry point. No compiled script is needed; the stock dialogue script starts the talk
+(not yet confirmed in the real game).
 The test plan for the owner is `docs/OWNER_TEST_SHEET.md` (prepared, not run).
 
 ## What a new area needs

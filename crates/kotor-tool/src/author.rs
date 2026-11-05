@@ -56,6 +56,7 @@ pub fn clone_module(
     src: &str,
     display_name: &str,
     new_area: Option<&str>,
+    npc: Option<&NpcSpec>,
 ) -> Result<Cloned> {
     inst.load_module(src)?;
     let area = {
@@ -77,6 +78,7 @@ pub fn clone_module(
             )));
         }
     }
+    let npc_prep = npc.map(|n| prepare_npc(inst, &area, n)).transpose()?;
     let listing: Vec<(String, ResType)> = inst
         .overlay_resources()
         .map(|(n, t, _)| (n.to_string(), t))
@@ -105,6 +107,11 @@ pub fn clone_module(
             string_edits += replace_strings(&mut g.root, &area, new);
             data = g.to_bytes()?;
         }
+        if let (Some(p), true) = (&npc_prep, ty == ResType::GIT && is_area_res) {
+            let mut g = Gff::parse(&data)?;
+            add_creature(&mut g.root, &p.id, p.spot);
+            data = g.to_bytes()?;
+        }
         let out_name = match new_area {
             Some(new) if is_area_res => {
                 renamed.push(format!("{name}.{ty} -> {new}.{ty}"));
@@ -113,6 +120,14 @@ pub fn clone_module(
             _ => name,
         };
         resources.push(NewResource::new(&out_name, ty, data));
+    }
+    if let Some(p) = npc_prep {
+        renamed.push(format!(
+            "added creature {} at ({:.2}, {:.2}, {:.2}) talking {}.dlg",
+            p.id, p.spot[0], p.spot[1], p.spot[2], p.id
+        ));
+        resources.push(NewResource::new(&p.id, ResType(2027), p.utc));
+        resources.push(NewResource::new(&p.id, ResType::DLG, p.dlg));
     }
     if let Some(new) = new_area {
         for ty in [ResType::LYT, ResType::VIS] {
@@ -127,6 +142,137 @@ pub fn clone_module(
         renamed,
         string_edits,
     })
+}
+
+/// An authored talking NPC to add to a cloned module.
+pub struct NpcSpec {
+    /// Template resref, tag and dialogue resref (1-16 chars, a-z 0-9 _).
+    pub id: String,
+    pub name: String,
+    /// Dialogue in the kotor-gff text format.
+    pub dialogue: String,
+    /// Existing creature template to copy appearance, stats and stock AI scripts from.
+    pub template: String,
+}
+
+struct NpcPrep {
+    id: String,
+    utc: Vec<u8>,
+    dlg: Vec<u8>,
+    spot: [f32; 3],
+}
+
+/// Floor position near the module entry point: a few offsets are tried and the first one
+/// that has walkable floor at about the entry height in some room of the area is used.
+fn find_spot(inst: &mut Install, area: &str, entry: [f32; 3]) -> Result<[f32; 3]> {
+    let lyt = kotor_walkmesh::parse_lyt(&inst.read(area, ResType::LYT)?)?;
+    // Area walkmesh vertices are already in world space (checked at the Endar Spire entry
+    // point), so the room offsets from the layout are not applied.
+    let walkmeshes: Vec<_> = lyt
+        .rooms
+        .iter()
+        .filter_map(|r| kotor_walkmesh::parse_bwm(&inst.read(&r.model, ResType::WOK).ok()?).ok())
+        .collect();
+    for (dx, dy) in [
+        (3.0, 0.0),
+        (-3.0, 0.0),
+        (0.0, 3.0),
+        (0.0, -3.0),
+        (2.0, 2.0),
+        (4.0, 0.0),
+    ] {
+        let (x, y) = (entry[0] + dx, entry[1] + dy);
+        for bwm in &walkmeshes {
+            if let Some(z) = bwm.height_at(x, y) {
+                if (z - entry[2]).abs() < 0.6 {
+                    return Ok([x, y, z]);
+                }
+            }
+        }
+    }
+    Err(Error::format(
+        "no walkable floor found near the module entry point",
+    ))
+}
+
+fn prepare_npc(inst: &mut Install, area: &str, n: &NpcSpec) -> Result<NpcPrep> {
+    if !valid_name(&n.id) {
+        return Err(Error::format(
+            "npc id must be 1-16 chars of a-z, 0-9 or _ (lower case)",
+        ));
+    }
+    if inst.contains(&n.id, ResType(2027)) || inst.contains(&n.id, ResType::DLG) {
+        return Err(Error::format(format!(
+            "npc id {} is already used by a creature or dialogue",
+            n.id
+        )));
+    }
+    let mut g = Gff::parse(&inst.read(&n.template, ResType(2027))?)?;
+    if g.file_type != "UTC " {
+        return Err(Error::format("npc template is not a creature"));
+    }
+    let name = Value::LocString(LocString {
+        strref: -1,
+        strings: vec![(0, n.name.clone())],
+    });
+    for (label, v) in [
+        ("TemplateResRef", Value::ResRef(n.id.clone())),
+        ("Tag", Value::String(n.id.clone())),
+        ("Conversation", Value::ResRef(n.id.clone())),
+        ("FirstName", name),
+        (
+            "LastName",
+            Value::LocString(LocString {
+                strref: -1,
+                strings: vec![],
+            }),
+        ),
+        // A talking NPC must survive stray fights and must not run the template's story
+        // scripts (spawn, death, user-defined).
+        ("Plot", Value::Byte(1)),
+        ("ScriptSpawn", Value::ResRef(String::new())),
+        ("ScriptDeath", Value::ResRef(String::new())),
+        ("ScriptUserDefine", Value::ResRef(String::new())),
+    ] {
+        g.root.set(label, v);
+    }
+    let utc = g.to_bytes()?;
+    let dlg = dialog_from_text(&n.dialogue)?;
+
+    let ifo = Gff::parse(&inst.read("module", ResType::IFO)?)?;
+    let f = |l: &str| ifo.root.float(l).unwrap_or(0.0) as f32;
+    let spot = find_spot(
+        inst,
+        area,
+        [f("Mod_Entry_X"), f("Mod_Entry_Y"), f("Mod_Entry_Z")],
+    )?;
+    Ok(NpcPrep {
+        id: n.id.clone(),
+        utc,
+        dlg,
+        spot,
+    })
+}
+
+/// Append a creature placement (facing -x, towards a player who enters from the west) to a GIT.
+fn add_creature(git: &mut Struct, template: &str, spot: [f32; 3]) {
+    let entry = Struct {
+        id: 4,
+        fields: vec![
+            ("XPosition".into(), Value::Float(spot[0])),
+            ("YPosition".into(), Value::Float(spot[1])),
+            ("ZPosition".into(), Value::Float(spot[2])),
+            ("XOrientation".into(), Value::Float(-1.0)),
+            ("YOrientation".into(), Value::Float(0.0)),
+            ("TemplateResRef".into(), Value::ResRef(template.to_string())),
+        ],
+    };
+    match git.fields.iter_mut().find(|(l, _)| l == "Creature List") {
+        Some((_, Value::List(l))) => l.push(entry),
+        _ => git
+            .fields
+            .push(("Creature List".into(), Value::List(vec![entry]))),
+    }
 }
 
 /// Turn a dialogue authoring text into DLG file bytes.
@@ -161,7 +307,7 @@ mod tests {
             return;
         };
         let mut inst = Install::open(&dir).unwrap();
-        let c = clone_module(&mut inst, "end_m01aa", "Test Spire", None).unwrap();
+        let c = clone_module(&mut inst, "end_m01aa", "Test Spire", None, None).unwrap();
         let new = Erf::open(Source::memory(c.bytes)).unwrap();
         assert_eq!(new.kind, ErfKind::Mod);
 
@@ -182,7 +328,7 @@ mod tests {
             return;
         };
         let mut inst = Install::open(&dir).unwrap();
-        let c = clone_module(&mut inst, "end_m01aa", "Spire Copy", Some("zz_spire")).unwrap();
+        let c = clone_module(&mut inst, "end_m01aa", "Spire Copy", Some("zz_spire"), None).unwrap();
         assert!(c.string_edits >= 2, "only {} edits", c.string_edits);
         let new = Erf::open(Source::memory(c.bytes)).unwrap();
         let has = |n: &str, t| new.find(&kotor_core::ResRef::new(n), t).is_some();
@@ -232,10 +378,71 @@ mod tests {
         ] {
             let mut inst = Install::open(&dir).unwrap();
             assert!(
-                clone_module(&mut inst, "end_m01aa", "x", Some(bad)).is_err(),
+                clone_module(&mut inst, "end_m01aa", "x", Some(bad), None).is_err(),
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn talking_npc_is_added_on_walkable_floor() {
+        let Some(dir) = kotor_core::install_dir() else {
+            return;
+        };
+        let mut inst = Install::open(&dir).unwrap();
+        let npc = NpcSpec {
+            id: "zz_guide".into(),
+            name: "Guide".into(),
+            dialogue: "start E0\nentry E0 speaker=Guide: Welcome.\n  link R0\nreply R0: Thanks.\n"
+                .into(),
+            template: "end_trask".into(),
+        };
+        let c = clone_module(
+            &mut inst,
+            "end_m01aa",
+            "NPC Test",
+            Some("zz_spire"),
+            Some(&npc),
+        )
+        .unwrap();
+        let new = Erf::open(Source::memory(c.bytes)).unwrap();
+        let utc = Gff::parse(&new.get("zz_guide", ResType(2027)).unwrap()).unwrap();
+        assert_eq!(utc.root.str("Conversation"), Some("zz_guide"));
+        assert_eq!(utc.root.str("Tag"), Some("zz_guide"));
+        assert_eq!(utc.root.str("ScriptSpawn"), Some(""));
+        assert_eq!(utc.root.str("ScriptDialogue"), Some("k_hen_dialogue01"));
+        let d = Dialog::from_gff(&Gff::parse(&new.get("zz_guide", ResType::DLG).unwrap()).unwrap())
+            .unwrap();
+        assert_eq!(d.entries.len(), 1);
+        let git = Gff::parse(&new.get("zz_spire", ResType::GIT).unwrap()).unwrap();
+        let list = git.root.list("Creature List").unwrap();
+        let mine = list.last().unwrap();
+        assert_eq!(mine.str("TemplateResRef"), Some("zz_guide"));
+        assert_eq!(list.len(), 27, "one creature added to the original 26");
+        let (x, y, z) = (
+            mine.float("XPosition").unwrap() as f32,
+            mine.float("YPosition").unwrap() as f32,
+            mine.float("ZPosition").unwrap() as f32,
+        );
+        assert!(
+            (z - -1.275).abs() < 0.6 && (x - 15.4248).abs() < 5.0 && (y - 20.1215).abs() < 5.0,
+            "{x} {y} {z}"
+        );
+    }
+
+    #[test]
+    fn npc_id_collisions_are_refused() {
+        let Some(dir) = kotor_core::install_dir() else {
+            return;
+        };
+        let mut inst = Install::open(&dir).unwrap();
+        let npc = NpcSpec {
+            id: "end_trask".into(),
+            name: "x".into(),
+            dialogue: "start E0\nentry E0: hi\n".into(),
+            template: "end_trask".into(),
+        };
+        assert!(clone_module(&mut inst, "end_m01aa", "x", None, Some(&npc)).is_err());
     }
 
     #[test]

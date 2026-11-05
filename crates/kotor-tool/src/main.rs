@@ -16,14 +16,14 @@ kotor-tool <command> [args]
   info                         install summary
   module <name>                list a module's resources and layout rooms
   cat <name.ext> <out>         write one resource's raw bytes to a file
-  gff <name.ext>               print a GFF resource as text
+  gff <name.ext> [module]      print a GFF resource as text (module = layer that module first)
   2da <name> [rows]            print a 2DA table
   tlk <strref>                 print a dialog.tlk string
   disasm <name>                disassemble an NCS script
   png <name> <out.png>         decode a TGA/TPC texture to PNG
   obj <model> <out.obj>        export a model's rest pose as OBJ
   render <model> <out.png> [px]  software-render a model (front view)
-  author clone <module> <display name> <out.mod> [new_area]
+  author clone <module> <display name> <out.mod> [new_area|-] [--npc <id> <name> <dialogue.txt> [template]]
                                copy a module to a new .mod; with new_area it can sit beside the original
   author dlg <text> <out.dlg>  build a DLG from the dialogue text format (see kotor-gff dlg docs)
 ";
@@ -111,7 +111,12 @@ fn run(args: &[String]) -> Result<()> {
         }
         "gff" => {
             let (name, ty) = split(need(args, 1)?)?;
-            let g = Gff::parse(&open()?.read(name, ty)?)?;
+            let mut inst = open()?;
+            // Optional third argument: a module to layer first (resources inside modules).
+            if let Some(m) = args.get(2) {
+                inst.load_module(m)?;
+            }
+            let g = Gff::parse(&inst.read(name, ty)?)?;
             let mut s = String::new();
             let _ = writeln!(s, "{} (root struct id {})", g.file_type, g.root.id);
             dump_struct(&g.root, 1, &mut s);
@@ -175,11 +180,30 @@ fn run(args: &[String]) -> Result<()> {
                 let mut inst = open()?;
                 let out = std::path::Path::new(need(args, 4)?);
                 author::check_output_path(&inst, out)?;
+                // Optional 5th arg: new area name ("-" keeps the original), then
+                // `--npc <id> <name> <dialogue.txt> [template]`.
+                let area = args
+                    .get(5)
+                    .map(String::as_str)
+                    .filter(|a| *a != "-" && !a.starts_with("--"));
+                let npc = match args.iter().position(|a| a == "--npc") {
+                    Some(i) => Some(author::NpcSpec {
+                        id: need(args, i + 1)?.to_string(),
+                        name: need(args, i + 2)?.to_string(),
+                        dialogue: std::fs::read_to_string(need(args, i + 3)?)?,
+                        template: args
+                            .get(i + 4)
+                            .cloned()
+                            .unwrap_or_else(|| "end_trask".into()),
+                    }),
+                    None => None,
+                };
                 let c = author::clone_module(
                     &mut inst,
                     need(args, 2)?,
                     need(args, 3)?,
-                    args.get(5).map(String::as_str),
+                    area,
+                    npc.as_ref(),
                 )?;
                 std::fs::write(out, &c.bytes)?;
                 for r in &c.renamed {

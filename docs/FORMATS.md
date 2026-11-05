@@ -83,6 +83,7 @@ from the data (e.g. 2031) are left out.
 - Walkable surface materials are the rows with `walk = 1` in `surfacemat.2da` (1, 3-6, 9-14, 18, 30). A search over all 1,202
   area walkmeshes found that exactly the set {1,3,4,5,6,9,10,11,13} (the ids present) makes walkable-face count equal the
   adjacency count in every one. In area walkmeshes walkable faces come first. Door and placeable meshes have no adjacency table.
+- Area walkmesh vertices are in world space (not room-local): at the Endar Spire entry point (15.42, 20.12) room m01aa_01a gives z = -1.275, the IFO entry height, with no layout offset applied. Door and placeable meshes are local.
 - A point-in-triangle height query returns the face height at a face centroid for the Endar Spire rooms.
 - Not done: AABB-tree queries, edge transitions, door-hook positions.
 
