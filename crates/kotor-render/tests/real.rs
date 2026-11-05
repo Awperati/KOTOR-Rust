@@ -58,3 +58,44 @@ fn endar_spire_loads_and_renders_something_lit_and_textured() {
         .collect();
     assert!(colours.len() > 200, "{} colours", colours.len());
 }
+
+#[test]
+fn bastila_stands_human_height_in_an_idle_pose() {
+    use kotor_render::load_character;
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let rest = load_character(&mut inst, "p_bastilabb", Some("p_bastilah"), None).unwrap();
+    let idle = load_character(
+        &mut inst,
+        "p_bastilabb",
+        Some("p_bastilah"),
+        Some(("pause1", 0.0)),
+    )
+    .unwrap();
+    for (name, s) in [("rest", &rest), ("idle", &idle)] {
+        let h = s.max[2] - s.min[2];
+        assert!((1.5..2.0).contains(&h), "{name}: height {h}");
+        assert!(s.meshes.len() >= 15, "{name}: {} meshes", s.meshes.len());
+        // Feet near the floor and the head above the pelvis.
+        assert!(s.min[2].abs() < 0.2, "{name}: feet at {}", s.min[2]);
+    }
+    // The idle pose really differs from the rest pose.
+    let moved = rest
+        .meshes
+        .iter()
+        .zip(&idle.meshes)
+        .any(|(a, b)| a.positions.first() != b.positions.first());
+    assert!(moved, "idle pose left every mesh where it was");
+    let cam = Camera {
+        eye: [0.0, 4.0, 1.0],
+        target: [0.0, 0.0, 0.9],
+        fov: 40.0,
+    };
+    let img = render(&idle, &mut |n| load_texture(&mut inst, n), &cam, 120, 160);
+    let bg = [18u8, 20, 28];
+    let lit = img.rgba.chunks(4).filter(|p| p[..3] != bg).count();
+    assert!(lit > 120 * 160 / 20, "only {lit} pixels drawn");
+}

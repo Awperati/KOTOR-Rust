@@ -24,6 +24,8 @@ kotor-tool <command> [args]
   obj <model> <out.obj>        export a model's rest pose as OBJ
   view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
                                software-render an area's rooms with textures and lightmaps
+  character <body> <out.png> [--head H] [--anim name] [--time s] [--size WxH]
+                               posed character (body + head) with textures, software-rendered
   render <model> <out.png> [px]  software-render a model (front view)
   author clone <module> <display name> <out.mod> [new_area|-] [--npc <id> <name> <dialogue.txt> [template]]
                                copy a module to a new .mod; with new_area it can sit beside the original
@@ -205,6 +207,45 @@ fn run(args: &[String]) -> Result<()> {
                 scene.min,
                 scene.max,
                 t0.elapsed().as_secs_f32()
+            );
+            std::fs::write(out, kotor_image::to_png(&img))?;
+        }
+        "character" => {
+            // character <body> <out.png> [--head H] [--anim name] [--time s] [--size WxH]
+            let body = need(args, 1)?;
+            let out = need(args, 2)?;
+            let opt = |name: &str| -> Option<&str> {
+                let i = args.iter().position(|a| a == name)?;
+                args.get(i + 1).map(String::as_str)
+            };
+            let time: f32 = opt("--time").and_then(|t| t.parse().ok()).unwrap_or(0.0);
+            let mut inst = open()?;
+            inst.load_texture_packs()?;
+            let anim = opt("--anim").map(|a| (a, time));
+            let scene = kotor_render::load_character(&mut inst, body, opt("--head"), anim)?;
+            let (w, h) = opt("--size")
+                .and_then(|s| s.split_once('x'))
+                .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+                .unwrap_or((480u32, 640u32));
+            let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
+            let height = scene.max[2] - scene.min[2];
+            let cam = kotor_render::Camera {
+                eye: [mid[0], mid[1] + height * 2.2, mid[2] + height * 0.1],
+                target: mid,
+                fov: 40.0,
+            };
+            let img = kotor_render::render(
+                &scene,
+                &mut |n| kotor_render::load_texture(&mut inst, n),
+                &cam,
+                w,
+                h,
+            );
+            println!(
+                "{} meshes, {} triangles, height {:.2} m",
+                scene.meshes.len(),
+                scene.triangle_count(),
+                height
             );
             std::fs::write(out, kotor_image::to_png(&img))?;
         }
