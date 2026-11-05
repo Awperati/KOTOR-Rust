@@ -17,7 +17,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | Left click on the floor | walk there |
 | Left click on a creature, door or placeable | walk up and talk, open or use; an enemy is attacked |
 | E | use the nearest thing within 2.5 m |
-| Left click on a reply, or 1-9 | take that reply, or take an item from a container |
+| Left click on a reply, or 1-9 | take that reply, or take an item from a container or a body |
 | Space or Enter | end a line, or close a container |
 | Wheel | zoom |
 | Esc | back out of a screen, or pause |
@@ -73,6 +73,17 @@ Saving is refused during a conversation or a fight, because neither is saved. Al
 `inventory.gui` and `equip.gui`, for the player only. The inventory lists what is carried with its picture and stack, the portrait, vitality, defense and credits. A click on an item wears it in its slot, and anything else just shows its words. The equipment screen lists what can be worn: a click wears it, a click on a worn slot takes it off, and a click on an empty slot lists only what fits it. Damage and to hit follow `combat.rs`: the left hand's only show when it holds a weapon, and combat does not use them yet.
 
 Item pictures are `i<itemclass>_<number>`. Measured over the 557 item templates in the BIFs: 430 go by `ModelVariation`, 97 (the armour) by `TextureVar`, and 30 have no picture at all, `defaulticon` included. `baseitems.2da` `equipableslots` is a mask of slots. **Assumed, not compared with the game:** every `reqfeat` of a row must be known; `droidorhuman` 1 is humans and 2 droids; a weapon that fits only the right hand takes both hands; identical items join a stack up to `stacking`, weapons included; item words replace the portrait and slots while the cursor is on an item. Party switching, quest items and using an item are not built: the first buttons are hidden and the others greyed.
+
+## Loot
+All of this is the game's own data, measured with `crates/kotor-game/examples/loot_census.rs` over the BIFs and 117 modules. There is no `itemcreate` table in the game: its 2DAs with item in the name are `baseitems`, `itempropdef`, `itemprops`, `itemvalue` and `skillvsitemcost`. `treasurescale.2da` exists and no template or script here was seen using it.
+
+- **Placeables:** 408 of 1,467 templates have `HasInventory`, 354 have an `ItemList` of `InventoryRes` names, and those items go in the first time one is opened. 45 are locked, and since locks are not built they stay shut.
+- **Treasure scripts:** 15 `k_plc_tres*` scripts in the BIFs, one per table of the source `k_inc_treasure` (civilian, military, corpse, shadowlands, droid, Rakatan, sand people), 7 of them set as `OnOpen` on placed containers in Kashyyyk. They roll `Random(100)` against their tables and call `CreateItemOnObject(template, container, count)`. The VM runs them as they are, so no table is copied here.
+- **Creatures:** a UTC's `ItemList` is carried from the start, and an item with `Dropable` set stays on the body at death: 390 of 1,414 such items, and 147 of 2,148 worn ones. The rest goes with the creature. A body with something on it can be clicked, is called what `bodybag.2da` row 0 calls it ("Remains"), and opens like a container. Every creature template has `BodyBag` 0, so the other rows' bag models are not used.
+- **Scripts on containers:** `OnOpen` runs at every opening, `OnClosed` at closing, and `OnInvDisturbed` when something is taken, with `GetLastDisturbed` and `GetInventoryDisturbItem` answering.
+- **Credits** (`baseitems.2da` label `Credits`) become party credits when taken. Identical items join a stack up to `stacking`.
+
+**Assumed, not compared with the game:** an item a script gives a creature stays on the body when it dies; `OnInvDisturbed` only ever hears of a removal, since nothing can be put into a container yet.
 
 ## Menus
 Stock GUI files drawn by `crates/kotor-ui/src/menus.rs`, with the screens' logic in `gpu/src/menus.rs`. **Assumed, not compared with the game:** a 640x480 screen stays centred on a wide window with black at the sides, except the main menu's background, which stretches; controls are drawn in file order, later ones on top (the HUD draws the other way round); a button under the cursor has yellow text. Text alignment is read as bits: horizontal 1 left, 2 centre, 4 right, vertical 8 top, 16 middle, 32 bottom.

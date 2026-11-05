@@ -1356,6 +1356,11 @@ impl Host for Adapter<'_> {
             // ---- last-event queries
             "GetExitingObject" => Some(Value::Object(self.world.exiting)),
             "GetLastOpenedBy" => Some(Value::Object(self.world.last_opened_by)),
+            "GetLastClosedBy" => Some(Value::Object(self.world.last_closed_by)),
+            "GetLastDisturbed" => Some(Value::Object(self.world.last_disturbed_by)),
+            "GetInventoryDisturbItem" => Some(Value::Object(self.world.disturbed_item)),
+            // INVENTORY_DISTURB_TYPE_REMOVED: taking is the only way a container's contents change.
+            "GetInventoryDisturbType" => Some(Value::Int(1)),
             "GetLastUsedBy" => Some(Value::Object(self.world.last_used_by)),
             // Combat and interface state this world does not have: a fixed answer, counted apart from stubs.
             "GetAttemptedAttackTarget" => Some(Value::Object(
@@ -1532,13 +1537,21 @@ impl Host for Adapter<'_> {
                 };
                 self.record("CreateItemOnObject", args);
                 // Scripts ask for items that do not exist, such as the empty template in `k_pend_area01`.
-                let template = string(args, 0);
+                let template = string(args, 0).to_ascii_lowercase();
                 if template.is_empty() || !self.world.inst.contains(&template, ResType(2025)) {
                     return Ok(Some(Value::Object(OBJECT_INVALID)));
                 }
                 let id = self
                     .world
                     .spawn(Kind::Item, &template, ResType(2025), [0.0; 3]);
+                // **Assumption:** what a script gives a creature, it leaves behind when it dies.
+                let stack = args.get(2).and_then(|_| int(args, 2).ok());
+                if let Some(o) = self.world.object_mut(id) {
+                    o.droppable = true;
+                    if let Some(n) = stack {
+                        o.stack = n.max(1);
+                    }
+                }
                 if let Some(o) = self.world.object_mut(target) {
                     o.inventory.push(id);
                 }

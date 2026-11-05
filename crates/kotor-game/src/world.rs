@@ -156,6 +156,8 @@ pub struct Object {
     pub head: i32,
     pub gender: i32,
     pub portrait: String,
+    /// Items: the creature that carries it leaves it behind when it dies (`Dropable` in the UTC's lists).
+    pub droppable: bool,
     /// Items: how many are stacked. Everything: the plot flag (cannot be hurt) and the good-evil value (0-100).
     pub stack: i32,
     pub plot: bool,
@@ -235,6 +237,7 @@ impl Object {
             head: 0,
             gender: 0,
             portrait: String::new(),
+            droppable: false,
             stack: 1,
             plot: false,
             alignment: 50,
@@ -336,6 +339,10 @@ pub struct World {
     pub steer: Option<([f32; 2], bool)>,
     /// The container the player has open.
     pub opened: Option<ObjId>,
+    /// Who last took something out of a container and what, and who last closed one.
+    pub last_disturbed_by: ObjId,
+    pub disturbed_item: ObjId,
+    pub last_closed_by: ObjId,
     pub(crate) filled: std::collections::HashSet<ObjId>,
     pub(crate) conv: Option<crate::dialogue::ConvRun>,
     /// Party credits (`GetGold`).
@@ -479,6 +486,9 @@ impl World {
             interactive_dialogue: false,
             steer: None,
             opened: None,
+            last_disturbed_by: OBJECT_INVALID,
+            disturbed_item: OBJECT_INVALID,
+            last_closed_by: OBJECT_INVALID,
             filled: std::collections::HashSet::new(),
             conv: None,
             gold: 0,
@@ -651,7 +661,8 @@ impl World {
                 }
             }
         }
-        let equip: Vec<(i32, String)> = utx
+        let droppable = |e: &Struct| e.int("Dropable").is_some_and(|d| d != 0);
+        let equip: Vec<(i32, String, bool)> = utx
             .as_ref()
             .and_then(|g| g.root.list("Equip_ItemList"))
             .unwrap_or_default()
@@ -659,8 +670,19 @@ impl World {
             .filter_map(|e| {
                 // The struct id is a bit mask with one bit per inventory slot.
                 let r = e.str("EquippedRes")?;
-                (e.id > 0 && !r.is_empty()).then(|| (e.id.trailing_zeros() as i32, r.to_string()))
+                (e.id > 0 && !r.is_empty())
+                    .then(|| (e.id.trailing_zeros() as i32, r.to_string(), droppable(e)))
             })
+            .collect();
+        // A placeable's `ItemList` waits until it is opened; a creature carries its own from the start.
+        let carried: Vec<(String, bool)> = utx
+            .as_ref()
+            .filter(|_| ty == ResType(2027))
+            .and_then(|g| g.root.list("ItemList"))
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|e| Some((e.str("InventoryRes")?.to_string(), droppable(e))))
+            .filter(|(r, _)| !r.is_empty())
             .collect();
         let perception = utx
             .as_ref()
@@ -725,10 +747,22 @@ impl World {
                 })
                 .collect();
         }
-        for (slot, res) in equip {
+        for (slot, res, drop) in equip {
             let item = self.spawn_item(&res);
+            if let Some(i) = self.objects.get_mut(&item) {
+                i.droppable = drop;
+            }
             if let Some(o) = self.objects.get_mut(&id) {
                 o.equipped.insert(slot, item);
+            }
+        }
+        for (res, drop) in carried {
+            let item = self.spawn_item(&res);
+            if let Some(i) = self.objects.get_mut(&item) {
+                i.droppable = drop;
+            }
+            if let Some(o) = self.objects.get_mut(&id) {
+                o.inventory.push(item);
             }
         }
     }

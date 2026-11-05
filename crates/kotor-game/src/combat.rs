@@ -377,7 +377,7 @@ impl World {
 
     /// Take `amount` hit points off `target`. At 0 a party member is knocked out and anyone else dies (their
     /// death script runs and the party earns the kill's experience). Returns whether the target fell.
-    pub(crate) fn hurt(&mut self, source: ObjId, target: ObjId, amount: i32) -> bool {
+    pub fn hurt(&mut self, source: ObjId, target: ObjId, amount: i32) -> bool {
         if amount <= 0 {
             return false;
         }
@@ -411,6 +411,7 @@ impl World {
         } else {
             self.combat.last_killer = source;
             self.events.push(format!("{} dies", self.describe(target)));
+            self.leave_loot(target);
             self.run_event(target, "ScriptDeath");
             if source == self.pc || self.party.contains(&source) {
                 self.award_kill(target);

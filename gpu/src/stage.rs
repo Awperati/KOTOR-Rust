@@ -977,8 +977,10 @@ impl Stage {
     fn use_thing(&mut self, id: ObjId) {
         let pc = self.game.world.pc;
         let w = &mut self.game.world;
-        let enemy =
-            w.object(id).is_some_and(|t| t.kind == Kind::Creature) && w.reputation(pc, id) <= 10;
+        let enemy = w
+            .object(id)
+            .is_some_and(|t| t.kind == Kind::Creature && !t.dead)
+            && w.reputation(pc, id) <= 10;
         if enemy {
             w.attack(pc, id);
             let at = w.object(id).map(|t| t.position);
@@ -1060,7 +1062,7 @@ impl Stage {
                     self.game.world.take_item(i);
                 }
             } else if n >= 1 && n <= items.len() + 2 {
-                self.game.world.opened = None;
+                self.game.world.close_container();
             }
             return;
         }
@@ -1088,7 +1090,7 @@ impl Stage {
             return self.menu_enter();
         }
         if !self.game.world.in_dialogue() {
-            self.game.world.opened = None;
+            self.game.world.close_container();
             return;
         }
         let waiting = self
@@ -1641,7 +1643,7 @@ impl Stage {
     fn target(&self) -> Option<ObjId> {
         let w = &self.game.world;
         self.hover_target
-            .filter(|id| w.object(*id).is_some_and(|o| !o.dead))
+            .filter(|id| w.object(*id).is_some_and(|o| !o.dead) || w.lootable(*id))
             .or_else(|| w.nearest_usable(USE_REACH))
     }
 
@@ -1708,6 +1710,7 @@ impl Stage {
             o.name.clone()
         };
         Some(match o.kind {
+            Kind::Creature if o.dead => (name, 1, 1, "Use"),
             Kind::Creature if w.reputation(w.pc, id) <= 10 => (name, o.hp, o.max_hp, "Attack"),
             Kind::Creature => (name, o.hp, o.max_hp, "Talk"),
             Kind::Door => (name, 1, 1, if o.open { "Close" } else { "Open" }),

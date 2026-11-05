@@ -63,6 +63,7 @@ pub fn pixel_ray(
 /// Bounding sphere used for picking: centre offset above the object's origin, and radius.
 fn pick_sphere(o: &Object) -> Option<([f32; 3], f32)> {
     let (up, r) = match o.kind {
+        Kind::Creature if o.dead => (0.2, 0.8),
         Kind::Creature => (0.9, 0.7),
         Kind::Door => (1.2, 1.4),
         Kind::Placeable => (0.5, 0.8),
@@ -113,7 +114,11 @@ impl World {
     /// The nearest pickable object hit by a ray, if any (creatures, doors and placeables; not the player).
     pub fn pick(&self, origin: [f32; 3], dir: [f32; 3]) -> Option<ObjId> {
         let mut best: Option<(f32, ObjId)> = None;
-        for o in self.objects.values().filter(|o| o.id != self.pc && !o.dead) {
+        for o in self
+            .objects
+            .values()
+            .filter(|o| o.id != self.pc && (!o.dead || self.lootable(o.id)))
+        {
             let Some((c, r)) = pick_sphere(o) else {
                 continue;
             };
@@ -172,7 +177,7 @@ impl World {
             return false;
         };
         if !matches!(o.kind, Kind::Creature | Kind::Door | Kind::Placeable)
-            || o.dead
+            || (o.dead && !self.lootable(target))
             || target == self.pc
         {
             return false;
@@ -254,6 +259,10 @@ impl World {
             return;
         };
         match o.kind {
+            Kind::Creature if o.dead => {
+                self.last_used_by = self.pc;
+                self.opened = Some(target);
+            }
             Kind::Creature => {
                 self.talk_to(target);
             }
@@ -266,8 +275,8 @@ impl World {
                 if let Some(s) = script {
                     let _ = self.run_script(&s, target);
                 }
-                if self.interactive_dialogue && self.fill_container(target) {
-                    self.opened = Some(target);
+                if self.interactive_dialogue {
+                    self.open_container(target);
                 }
                 if !conv.is_empty() {
                     let pc = self.pc;
@@ -522,7 +531,7 @@ impl World {
             (Some(_), Some((dir, run))) => {
                 self.pc_mover.stop();
                 self.pending = None;
-                self.opened = None;
+                self.close_container();
                 self.steer_pc(dir, run, dt);
                 MoveStatus::Idle
             }
@@ -707,7 +716,7 @@ impl World {
             .filter(|o| {
                 matches!(o.kind, Kind::Creature | Kind::Door | Kind::Placeable)
                     && o.id != self.pc
-                    && !o.dead
+                    && (!o.dead || self.lootable(o.id))
                     && !o.party_member
             })
             .map(|o| (dist2d(o.position, here), o.id))
@@ -716,10 +725,14 @@ impl World {
             .map(|(_, id)| id)
     }
 
-    /// Fill a placeable from its template the first time it is opened, and say whether it holds things at all.
-    fn fill_container(&mut self, id: ObjId) -> bool {
+    /// Open a placeable that has an inventory: unless it is locked, its `ItemList` goes into it the first time, it is
+    /// open, and its `OnOpen` script runs, which is how the game's own treasure scripts fill it.
+    ///
+    /// **Measured over the 117 modules:** 408 of 1,467 placeable templates have `HasInventory`, 354 have an `ItemList`
+    /// and 45 are locked. Locks are not built, so a locked one stays shut.
+    fn open_container(&mut self, id: ObjId) {
         let Some(template) = self.objects.get(&id).map(|o| o.template.clone()) else {
-            return false;
+            return;
         };
         let utp = self
             .inst
@@ -729,6 +742,18 @@ impl World {
         let has = utp
             .as_ref()
             .is_some_and(|g| g.root.int("HasInventory").is_some_and(|h| h != 0));
+        let holds = self
+            .objects
+            .get(&id)
+            .is_some_and(|o| !o.inventory.is_empty());
+        if !has && !holds {
+            return;
+        }
+        if self.objects.get(&id).is_some_and(|o| o.locked) {
+            self.events.push(format!("{} is locked", self.describe(id)));
+            self.run_event(id, "OnFailToOpen");
+            return;
+        }
         if self.filled.insert(id) {
             let names: Vec<String> = utp
                 .as_ref()
@@ -744,13 +769,71 @@ impl World {
                 }
             }
         }
-        has || self
-            .objects
-            .get(&id)
-            .is_some_and(|o| !o.inventory.is_empty())
+        self.opened = Some(id);
+        self.last_opened_by = self.pc;
+        self.run_event(id, "OnOpen");
     }
 
-    /// The items in the open container: id and name.
+    /// Close what is open: its `OnClosed` script runs.
+    pub fn close_container(&mut self) {
+        if let Some(id) = self.opened.take() {
+            self.last_closed_by = self.pc;
+            self.run_event(id, "OnClosed");
+        }
+    }
+
+    /// A body that has something left on it. Those can be clicked and opened.
+    pub fn lootable(&self, id: ObjId) -> bool {
+        self.objects
+            .get(&id)
+            .is_some_and(|o| o.kind == Kind::Creature && o.dead && !o.inventory.is_empty())
+    }
+
+    /// What a creature that has just died leaves on its body: what its template marks `Dropable`, and what scripts
+    /// gave it. The rest goes with it. The name is what `bodybag.2da` calls the default bag, since every creature
+    /// template in the game has `BodyBag` 0 (measured over the BIFs and all 117 modules). The other rows' bags are
+    /// models, and this engine keeps the items on the body.
+    pub(crate) fn leave_loot(&mut self, id: ObjId) {
+        let Some(o) = self.objects.get(&id) else {
+            return;
+        };
+        let (carried, worn): (Vec<ObjId>, Vec<(i32, ObjId)>) = (
+            o.inventory.clone(),
+            o.equipped.iter().map(|(s, i)| (*s, *i)).collect(),
+        );
+        let drops = |w: &World, i: &ObjId| w.objects.get(i).is_some_and(|o| o.droppable);
+        let mut loot = Vec::new();
+        for i in carried {
+            if drops(self, &i) {
+                loot.push(i);
+            } else {
+                self.objects.remove(&i);
+            }
+        }
+        let mut stripped = Vec::new();
+        for (slot, i) in worn {
+            if drops(self, &i) {
+                stripped.push(slot);
+                loot.push(i);
+            }
+        }
+        let remains = self
+            .table("bodybag")
+            .and_then(|t| t.int(0, "name"))
+            .map(|s| self.strref_text(s as i32))
+            .filter(|s| !s.is_empty());
+        if let Some(o) = self.objects.get_mut(&id) {
+            for s in stripped {
+                o.equipped.remove(&s);
+            }
+            o.inventory = loot;
+            if let (false, Some(name)) = (o.inventory.is_empty(), remains) {
+                o.name = name;
+            }
+        }
+    }
+
+    /// The items in the open container: id and name, with the count of a stack.
     pub fn container_items(&self) -> Vec<(ObjId, String)> {
         let Some(c) = self.opened.and_then(|id| self.objects.get(&id)) else {
             return Vec::new();
@@ -764,19 +847,30 @@ impl World {
                 } else {
                     o.name.clone()
                 };
-                (o.id, name)
+                let shown = if o.stack > 1 {
+                    format!("{name} ({})", o.stack)
+                } else {
+                    name
+                };
+                (o.id, shown)
             })
             .collect()
     }
 
-    /// Move an item from the open container to the player.
+    /// Move an item from the open container to the player: its `OnInvDisturbed` script runs, which may destroy the
+    /// container.
     pub fn take_item(&mut self, item: ObjId) {
         let pc = self.pc;
-        if let Some(c) = self.opened.and_then(|id| self.objects.get_mut(&id)) {
+        let Some(from) = self.opened else { return };
+        if let Some(c) = self.objects.get_mut(&from) {
             c.inventory.retain(|i| *i != item);
         }
-        if let Some(p) = self.objects.get_mut(&pc) {
-            p.inventory.push(item);
+        self.last_disturbed_by = pc;
+        self.disturbed_item = item;
+        self.run_event(from, "OnInvDisturbed");
+        self.carry(pc, item);
+        if !self.objects.contains_key(&from) {
+            self.opened = None;
         }
         // `k_pend_chest02` moves the tutorial on from here.
         if let Some(c) = self.opened {

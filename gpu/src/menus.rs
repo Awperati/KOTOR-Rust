@@ -638,7 +638,7 @@ impl Stage {
                 self.menus.message.clear();
                 self.menus.hover = None;
             }
-            None if self.game.world.opened.is_some() => self.game.world.opened = None,
+            None if self.game.world.opened.is_some() => self.game.world.close_container(),
             None if self.started => self.menus.stack.push(Screen::Pause),
             None => {}
         }

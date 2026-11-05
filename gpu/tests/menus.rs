@@ -435,3 +435,40 @@ fn the_equipment_screen_wears_takes_off_and_filters_by_slot() {
         "the pistol is drawn in the hand"
     );
 }
+
+#[test]
+fn a_body_with_loot_is_a_target_and_opens_as_a_list() {
+    let Some((mut s, _)) = in_game("loot") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let at = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 1.0, at[1], at[2]]);
+    let hp = s.game.world.object(foe).unwrap().hp;
+    s.game.world.hurt(pc, foe, hp + 1);
+    s.update(DT);
+    assert!(
+        s.state_line().contains("target=Remains"),
+        "{}",
+        s.state_line()
+    );
+    // E uses it, and it opens as a list on the screen.
+    s.interact();
+    s.update(DT);
+    assert_eq!(s.game.world.opened, Some(foe), "{}", s.state_line());
+    assert!(!s.game.world.container_items().is_empty());
+    let before = s.game.world.carried(pc).len();
+    s.number_key(1);
+    assert!(
+        s.game.world.carried(pc).len() > before,
+        "one item was taken"
+    );
+    // Esc closes the list before it pauses anything.
+    s.escape();
+    assert_eq!(s.game.world.opened, None);
+    assert_eq!(s.menu_name(), "-");
+    assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
+}

@@ -386,10 +386,15 @@ fn a_footlocker_opens_and_gives_up_its_items() {
     );
     s.number_key(s.game.world.container_items().len() + 1);
     assert!(s.game.world.container_items().is_empty());
-    assert_eq!(
-        s.game.world.object(pc).unwrap().inventory.len(),
-        before + items.len()
-    );
+    // Identical items share a stack.
+    let carried: i32 = s
+        .game
+        .world
+        .carried(pc)
+        .iter()
+        .map(|i| s.game.world.object(*i).unwrap().stack)
+        .sum();
+    assert_eq!(carried as usize, before + items.len());
     s.continue_line();
     assert_eq!(s.game.world.opened, None);
 }

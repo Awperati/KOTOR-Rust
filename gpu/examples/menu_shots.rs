@@ -125,5 +125,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let p = s.menu_pixel("LB_ITEMS", Some(0), size).unwrap();
     s.hover(p, size);
     shot(&mut gpu, &mut s, "equip_item", &out);
+    s.escape();
+
+    // A body that left something, as a list, then with treasure.
+    let at = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 1.0, at[1], at[2]]);
+    let hp = s.game.world.object(foe).map_or(1, |o| o.hp);
+    s.game.world.hurt(pc, foe, hp + 1);
+    s.update(0.1);
+    shot(&mut gpu, &mut s, "remains_target", &out);
+    s.interact();
+    s.update(0.1);
+    shot(&mut gpu, &mut s, "remains_open", &out);
     Ok(())
 }

@@ -148,6 +148,11 @@ fn main() {
         for (n, t) in listed {
             if t == UTP {
                 if let Some(g) = i.read(&n, UTP).ok().and_then(|b| Gff::parse(&b).ok()) {
+                    if let Some(Value::ResRef(s)) = g.root.get("OnOpen") {
+                        if s.to_ascii_lowercase().starts_with("k_plc_tres") {
+                            println!("treasure script: {m}/{n} {s}");
+                        }
+                    }
                     area.placeable(&g.root);
                 }
             } else if t == UTC {

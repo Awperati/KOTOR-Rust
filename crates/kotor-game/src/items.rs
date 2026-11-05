@@ -150,6 +150,11 @@ impl World {
         })
     }
 
+    /// Put a creature from a template at a place, as `CreateObject` does.
+    pub fn spawn_creature(&mut self, template: &str, at: [f32; 3]) -> ObjId {
+        self.spawn(Kind::Creature, template, ResType(2027), at)
+    }
+
     /// What a creature carries and does not wear.
     pub fn carried(&self, who: ObjId) -> Vec<ObjId> {
         let Some(o) = self.objects.get(&who) else {

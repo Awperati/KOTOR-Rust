@@ -300,6 +300,7 @@ impl World {
             ("DoorTime", Value::Float(door_t)),
             ("BaseItem", Value::Int(o.base_item)),
             ("Filled", Value::Byte(self.filled.contains(&o.id) as u8)),
+            ("Droppable", Value::Byte(o.droppable as u8)),
             ("Conversation", s(&o.conversation)),
             (
                 "Scripts",
@@ -630,6 +631,7 @@ impl World {
                     .collect()
             };
             o.down = flag("Down");
+            o.droppable = flag("Droppable");
             o.stack = e.int("Stack").unwrap_or(1) as i32;
             o.plot = flag("PlotFlag");
             o.alignment = e.int("Alignment").unwrap_or(50) as i32;
@@ -804,9 +806,11 @@ impl World {
                 .map(|e| format!("{}{:?}", e.name, e.args))
                 .collect();
             rows.push(format!(
-                "{} filled={} name={:?} pos=({:.3},{:.3},{:.3}) face={:.2} hp={} dead={} party={} locked={} lvl={} open={} door={:?} base={} xp={} fac={}/{}/{} spells={:?} feats={:?} inv={inv:?} eq={eq:?} ln={ln:?} lb={lb:?} fx={fx:?}",
+                "{} filled={} drop={} stack={} name={:?} pos=({:.3},{:.3},{:.3}) face={:.2} hp={} dead={} party={} locked={} lvl={} open={} door={:?} base={} xp={} fac={}/{}/{} spells={:?} feats={:?} inv={inv:?} eq={eq:?} ln={ln:?} lb={lb:?} fx={fx:?}",
                 name(&o.id),
                 self.filled.contains(&o.id),
+                o.droppable,
+                o.stack,
                 o.name,
                 o.position[0],
                 o.position[1],
