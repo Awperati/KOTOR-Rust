@@ -70,7 +70,21 @@ from the data (e.g. 2031) are left out.
   normal / colour / uv1 / uv2 offsets inside a vertex row at 340..364, vertex count u16 at 384, flags at 388..393,
   MDX data start at 404. Skin extras: bone weight offset at 424, bone index offset at 428, bone map offset/count at 432/436.
 - Controllers: key 16 bytes (type, pad, rows, time start, data start, columns, pad). Orientation with 2 columns is a
-  single packed word per key. The packed decoder is written from memory and is **not checked against animation playback**.
+  single packed word per key: x = (bits & 0x7FF)/1023 - 1, y = ((bits >> 11) & 0x7FF)/1023 - 1, z = (bits >> 22)/511 - 1,
+  w = sqrt(1 - x^2 - y^2 - z^2). **Checked on 580,545 packed keys: x^2+y^2+z^2 never exceeds 1.0059** (a wrong bit layout
+  would break the unit-length bound constantly), so the layout is right; the 0.0059 is quantisation.
+- Animation sampling (`Animation::sample`, `Model::world_matrices`): position keys are linearly interpolated, orientation keys
+  slerped, both clamped to the first/last key. **Position keys are offsets added to the node's rest position**, not absolute
+  (the pelvis root rests at z = 1.063 and its idle keys are about 0.02). Found by pose-checking, see below. Animations live in the
+  supermodel (for example `S_Female03`) and are applied to the body model by node name.
+- Animation checks: 6,213 animations, 182,636 animated nodes; key times never decrease and never pass the animation length; rest
+  poses of a body and its supermodel agree to millimetres (so node transforms and quaternion order are right). Sampling the
+  supermodel's `pause1` idle at t = 0 and applying it to 31 full-skeleton `p_`/`n_` bodies moves nodes by a median of 0.14 m
+  and at most 0.51 m for 90% of bodies (outliers: Zaalbar 1.10 m and Yoda 1.04 m, whose proportions differ from the human
+  skeleton the animation was made for).
+- Animation **stays unverified**: Bezier keys (columns with bit 0x10; assumed value-first, then two tangents per column; no stock
+  position key was checked), the scale controller (ignored), blending between animations and transition times, root motion, and
+  how the original engine rescales a long or short skeleton. No frame was compared with the real game.
 - Test: all 2,832 models parse (76,782 meshes, 968 skins, 11.6M vertices, 6,213 animations); face indices are below the vertex
   count, positions are finite, and the node count equals the header count for every model without a supermodel.
 - Visual check: `kotor-tool render p_bastilabb` shows an assembled, upright humanoid body.

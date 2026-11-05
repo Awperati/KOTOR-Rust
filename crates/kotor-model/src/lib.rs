@@ -6,9 +6,11 @@
 
 mod obj;
 mod parse;
+mod pose;
 
 pub use obj::to_obj;
 pub use parse::parse_model;
+pub use pose::{unpack_quat, NodePose, Pose};
 
 pub const NODE_HEADER: u16 = 0x0001;
 pub const NODE_LIGHT: u16 = 0x0002;
@@ -42,19 +44,7 @@ impl Controller {
             return None;
         }
         if self.columns == 2 {
-            return Some(
-                self.values
-                    .iter()
-                    .map(|v| {
-                        let bits = v.to_bits();
-                        let x = (bits & 0x7FF) as f32 / 1023.0 - 1.0;
-                        let y = ((bits >> 11) & 0x7FF) as f32 / 1023.0 - 1.0;
-                        let z = (bits >> 22) as f32 / 511.0 - 1.0;
-                        let w2 = 1.0 - x * x - y * y - z * z;
-                        [if w2 > 0.0 { w2.sqrt() } else { 0.0 }, x, y, z]
-                    })
-                    .collect(),
-            );
+            return Some(self.values.iter().map(|v| unpack_quat(*v).0).collect());
         }
         // Stored x, y, z, w in animation keys.
         (self.columns == 4).then(|| {

@@ -1,9 +1,9 @@
 use crate::{Model, Node};
 use std::fmt::Write;
 
-type Mat = [[f32; 4]; 4];
+pub(crate) type Mat = [[f32; 4]; 4];
 
-fn identity() -> Mat {
+pub(crate) fn identity() -> Mat {
     [
         [1., 0., 0., 0.],
         [0., 1., 0., 0.],
@@ -12,7 +12,7 @@ fn identity() -> Mat {
     ]
 }
 
-fn mul(a: &Mat, b: &Mat) -> Mat {
+pub(crate) fn mul(a: &Mat, b: &Mat) -> Mat {
     let mut o = [[0.0; 4]; 4];
     for (i, row) in o.iter_mut().enumerate() {
         for (j, v) in row.iter_mut().enumerate() {
@@ -24,7 +24,12 @@ fn mul(a: &Mat, b: &Mat) -> Mat {
 
 /// Local transform: rotation from `[w, x, y, z]`, then translation. Column-vector convention.
 fn local(n: &Node) -> Mat {
-    let [w, x, y, z] = n.orientation;
+    matrix(n.position, n.orientation)
+}
+
+/// Transform from a position and a `[w, x, y, z]` quaternion (normalised here).
+pub(crate) fn matrix(position: [f32; 3], orientation: [f32; 4]) -> Mat {
+    let [w, x, y, z] = orientation;
     let len = (w * w + x * x + y * y + z * z).sqrt();
     let (w, x, y, z) = if len > 0.0 {
         (w / len, x / len, y / len, z / len)
@@ -36,25 +41,25 @@ fn local(n: &Node) -> Mat {
             1. - 2. * (y * y + z * z),
             2. * (x * y - z * w),
             2. * (x * z + y * w),
-            n.position[0],
+            position[0],
         ],
         [
             2. * (x * y + z * w),
             1. - 2. * (x * x + z * z),
             2. * (y * z - x * w),
-            n.position[1],
+            position[1],
         ],
         [
             2. * (x * z - y * w),
             2. * (y * z + x * w),
             1. - 2. * (x * x + y * y),
-            n.position[2],
+            position[2],
         ],
         [0., 0., 0., 1.],
     ]
 }
 
-fn apply(m: &Mat, p: [f32; 3]) -> [f32; 3] {
+pub(crate) fn apply(m: &Mat, p: [f32; 3]) -> [f32; 3] {
     let f = |r: usize| m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2] + m[r][3];
     [f(0), f(1), f(2)]
 }
