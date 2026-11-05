@@ -348,7 +348,28 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                 };
-                self.stage.distance = (self.stage.distance - d * 0.4).clamp(1.5, 12.0);
+                if self.stage.menu_open() {
+                    self.stage.menu_wheel(d);
+                } else {
+                    self.stage.distance = (self.stage.distance - d * 0.4).clamp(1.5, 12.0);
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. } if self.stage.typing() => {
+                if event.state != ElementState::Pressed {
+                    return;
+                }
+                match event.physical_key {
+                    PhysicalKey::Code(KeyCode::Escape) => self.stage.escape(),
+                    PhysicalKey::Code(KeyCode::Enter | KeyCode::NumpadEnter) => {
+                        self.stage.continue_line()
+                    }
+                    PhysicalKey::Code(KeyCode::Backspace) => self.stage.backspace(),
+                    _ => {
+                        if let Some(t) = &event.text {
+                            self.stage.type_text(t);
+                        }
+                    }
+                }
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {

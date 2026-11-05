@@ -29,6 +29,8 @@ pub struct Row {
     pub selected: bool,
     /// Greyed: it cannot be chosen.
     pub dim: bool,
+    /// Another font for the row's text.
+    pub font: Option<String>,
 }
 
 /// What is under the cursor.
@@ -74,6 +76,11 @@ impl MenuView {
 
     pub fn fill(&mut self, tag: &str, fill: impl Into<String>) {
         self.patches.entry(tag.to_string()).or_default().fill = Some(fill.into());
+    }
+
+    /// Draw this control's text in another font.
+    pub fn font(&mut self, tag: &str, font: &str) {
+        self.patches.entry(tag.to_string()).or_default().font = Some(font.to_string());
     }
 
     /// Grey these buttons: they do nothing yet.
@@ -176,7 +183,8 @@ impl Ui<'_> {
             (true, None) => LIT,
             (false, None) => t.color,
         };
-        self.draw_text(cv, &t.font, &text, r, t.alignment, color);
+        let font = patch.font.as_deref().unwrap_or(&t.font);
+        self.draw_text(cv, font, &text, r, t.alignment, color);
     }
 
     fn draw_list(&mut self, cv: &mut Canvas, view: &MenuView, list: &Control, at: (i32, i32)) {
@@ -235,7 +243,8 @@ impl Ui<'_> {
                 }
                 None => (r, t.alignment),
             };
-            self.draw_text(cv, &t.font, &row.text, text_rect, alignment, color);
+            let font = row.font.as_deref().unwrap_or(&t.font);
+            self.draw_text(cv, font, &row.text, text_rect, alignment, color);
         }
         if rows.len() > fits {
             if let Some(bar) = list.children.iter().find(|k| k.kind == SCROLLBAR) {

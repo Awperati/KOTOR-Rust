@@ -44,8 +44,9 @@ pub struct Patch {
     pub text: Option<String>,
     pub value: Option<(i32, i32)>,
     pub hidden: bool,
-    /// Replacement colour for the control's text.
+    /// Replacement colour and font for the control's text.
     pub color: Option<[f32; 3]>,
+    pub font: Option<String>,
 }
 
 /// What the dialogue box shows.

@@ -94,3 +94,62 @@ fn test_modes_still_start_in_the_game() {
     assert!(!s.menu_open());
     assert_eq!(s.game.world.module, "end_m01aa");
 }
+
+/// A game past its opening.
+fn in_game() -> Option<Stage> {
+    let mut s = at_menu()?;
+    press(&mut s, "BTN_NEWGAME");
+    for _ in 0..12000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.number_key(1);
+            s.continue_line();
+        } else if s.game.world.transcript.len() > 3 && s.game.world.delayed.is_empty() {
+            break;
+        }
+    }
+    Some(s)
+}
+
+#[test]
+fn esc_pauses_the_game_and_exit_game_goes_back_to_the_main_menu() {
+    let Some(mut s) = in_game() else {
+        return;
+    };
+    let t = s.game.world.time;
+    s.escape();
+    assert_eq!(s.menu_name(), "pause");
+    s.update(DT);
+    s.update(DT);
+    assert_eq!(s.game.world.time, t, "the clock stops");
+    let drawn = s.overlay().unwrap().clone();
+    assert!(drawn.rgba.chunks(4).all(|p| p[3] == 255));
+    // The greyed pages do nothing.
+    press(&mut s, "BTN_GRAPHICS");
+    assert_eq!(s.menu_name(), "pause");
+    // Close and Esc both go back to the game.
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+    s.escape();
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    s.update(DT);
+    s.update(DT);
+    assert!(s.game.world.time > t, "the clock runs on");
+
+    s.escape();
+    press(&mut s, "BTN_QUIT");
+    assert_eq!(s.menu_name(), "main");
+    assert!(s.game.world.module.is_empty());
+    assert!(s.dynamic_scene().meshes.is_empty());
+    assert!(s.static_scene().meshes.is_empty());
+    let cues = s.update(DT);
+    assert!(cues.contains(&kotor_gpu::stage::Cue::StopMusic), "{cues:?}");
+    // And a new game starts from nothing.
+    press(&mut s, "BTN_NEWGAME");
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(s.game.world.module, "end_m01aa");
+    assert!(s.game.world.time < 1.0);
+    s.update(DT);
+    assert!(!s.dynamic_scene().meshes.is_empty());
+}

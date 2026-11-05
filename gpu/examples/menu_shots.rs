@@ -41,5 +41,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = Stage::menu("end_m01aa", true)?;
     hover(&mut s, "BTN_NEWGAME");
     shot(&mut gpu, &mut s, "main_menu", &out);
+    let size = SIZES[0];
+    s.set_view(size);
+    let p = s.menu_pixel("BTN_NEWGAME", None, size).unwrap();
+    s.click(p, size);
+    s.update(0.03);
+    s.escape();
+    hover(&mut s, "BTN_LOADGAME");
+    shot(&mut gpu, &mut s, "pause", &out);
     Ok(())
 }

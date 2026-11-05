@@ -17,6 +17,7 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
+pub use menus::default_saves_dir;
 
 type Mat = [[f32; 4]; 4];
 
@@ -286,6 +287,7 @@ impl Stage {
     /// `new`; without `original` a `.mod` that an installed mod left beside a module's `.rim` pair wins.
     pub fn open(module: &str, original: bool) -> Result<Stage, String> {
         let mut s = Stage::boot(original)?;
+        s.first_module = module.to_string();
         s.start_module(module)?;
         Ok(s)
     }
@@ -1083,7 +1085,7 @@ impl Stage {
     /// Space or a click: finish a line that has no replies.
     pub fn continue_line(&mut self) {
         if self.menu_open() {
-            return;
+            return self.menu_enter();
         }
         if !self.game.world.in_dialogue() {
             self.game.world.opened = None;
@@ -1583,7 +1585,7 @@ impl Stage {
 
     fn refresh_overlay(&mut self) {
         if let Some(view) = self.menu_view() {
-            let key = format!("{view:?}");
+            let key = format!("{view:?}{}", self.ui_width);
             if key != self.overlay_key {
                 self.overlay_key = key;
                 self.overlay = self.ui.menu_overlay(&view);
