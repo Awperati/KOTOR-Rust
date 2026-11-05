@@ -5,18 +5,19 @@
 //!     --size WxH      window and picture size (default 1280x720; anything up to 3840x2160 and past it)
 //!     --fullscreen    a borderless window over the whole monitor, which does not take the focus
 //!     --no-hd         do not use upscaled interface pictures
-//!     --module M      module to load (default end_m01aa)
+//!     --module M      where New Game starts (default end_m01aa)
+//!     --skip-menu     start straight in the game, not on the main menu
 //!     --installed-mod use a .mod file that a mod left beside the module (default: the original .rim pair)
 //!     --orbit D       turn the camera round the player by D degrees a second while idle
 //!     --volume V      0 to 1 (default 0.8); --mute opens no sound device
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
-//!     --near TAG      start beside the object with this tag, for a test scene
+//!     --near TAG      start beside the object with this tag, for a test scene (needs --skip-menu)
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
 //!
 //! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
-//! Tab: the next party member takes over. Space: end a line, or close a container. Wheel: zoom. Esc: quit.
+//! Tab: the next party member takes over. Space: end a line, or close a container. Wheel: zoom. Esc: back out of a screen.
 use kotor_audio::Audio;
 use kotor_audio_out::{decode_any, AudioOut};
 use kotor_gpu::stage::{Cue, Stage};
@@ -247,12 +248,12 @@ impl App {
         if self.state_log && self.frames.is_multiple_of(6) {
             println!("{}", self.stage.state_line());
         }
-        if self.max_frames.is_some_and(|m| self.frames >= m) {
+        if self.stage.wants_exit() || self.max_frames.is_some_and(|m| self.frames >= m) {
             el.exit();
         }
     }
 
-    fn key(&mut self, el: &ActiveEventLoop, code: KeyCode, pressed: bool) {
+    fn key(&mut self, code: KeyCode, pressed: bool) {
         let digit = match code {
             KeyCode::Digit1 | KeyCode::Numpad1 => 1,
             KeyCode::Digit2 | KeyCode::Numpad2 => 2,
@@ -279,7 +280,7 @@ impl App {
             KeyCode::ArrowRight => {
                 self.turning = if pressed { -TURN_SPEED } else { 0.0 };
             }
-            KeyCode::Escape if pressed => el.exit(),
+            KeyCode::Escape if pressed => self.stage.escape(),
             KeyCode::Space | KeyCode::Enter if pressed => self.stage.continue_line(),
             _ if pressed && digit > 0 => self.stage.number_key(digit),
             _ => {}
@@ -351,7 +352,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
-                    self.key(el, code, event.state == ElementState::Pressed);
+                    self.key(code, event.state == ElementState::Pressed);
                 }
             }
             WindowEvent::RedrawRequested => self.frame(el),
@@ -395,7 +396,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
         })
         .unwrap_or((1280, 720));
-    let mut stage = Stage::open(&module, !flag("--installed-mod"))?;
+    let original = !flag("--installed-mod");
+    let mut stage = if flag("--skip-menu") {
+        Stage::open(&module, original)?
+    } else {
+        Stage::menu(&module, original)?
+    };
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
     if flag("--no-hd") {
         stage.no_hd();

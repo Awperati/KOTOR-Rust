@@ -15,6 +15,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+#[path = "menus.rs"]
+mod menus;
+
 type Mat = [[f32; 4]; 4];
 
 /// Creatures farther than this from the player are not drawn (metres).
@@ -267,6 +270,11 @@ pub struct Stage {
     /// Lines of conversation shown so far.
     pub lines_shown: usize,
     last_status: String,
+    menus: menus::Menus,
+    /// A game is under way: a module is loaded and drawn. Off on the main menu.
+    started: bool,
+    /// Where New Game starts.
+    first_module: String,
 }
 
 impl Stage {
@@ -277,18 +285,35 @@ impl Stage {
 
     /// `new`; without `original` a `.mod` that an installed mod left beside a module's `.rim` pair wins.
     pub fn open(module: &str, original: bool) -> Result<Stage, String> {
+        let mut s = Stage::boot(original)?;
+        s.start_module(module)?;
+        Ok(s)
+    }
+
+    /// Open on the main menu, with no game running. New Game starts `module`.
+    pub fn menu(module: &str, original: bool) -> Result<Stage, String> {
+        let mut s = Stage::boot(original)?;
+        s.first_module = module.to_string();
+        s.menus.stack.push(menus::Screen::Main);
+        s.refresh_overlay();
+        Ok(s)
+    }
+
+    /// A world for a new game: the player exists and no module is loaded.
+    fn fresh_world(dir: &std::path::Path, original: bool) -> Result<World, String> {
         let e = |e: kotor_core::Error| e.to_string();
-        let dir = kotor_core::install_dir().ok_or("no KotOR install found")?;
-        let mut base = Install::open(&dir).map_err(e)?;
+        let mut base = Install::open(dir).map_err(e)?;
         base.set_prefer_rim(original);
         let mut world = World::new(base).map_err(e)?;
         world.interactive_dialogue = true;
-        world.load_module(module).map_err(e)?;
-        // **Assumption:** until there is a character creation screen the player is the recommended Soldier.
-        let spec = world
-            .recommended_character("Player", 0, 1)
-            .ok_or("no recommended character")?;
-        world.create_character(&spec)?;
+        Ok(world)
+    }
+
+    /// Everything but the game: the files, the interface and an empty scene.
+    fn boot(original: bool) -> Result<Stage, String> {
+        let e = |e: kotor_core::Error| e.to_string();
+        let dir = kotor_core::install_dir().ok_or("no KotOR install found")?;
+        let world = Stage::fresh_world(&dir, original)?;
         let mut inst = Install::open(&dir).map_err(e)?;
         inst.set_prefer_rim(original);
         inst.load_texture_packs().map_err(e)?;
@@ -343,15 +368,48 @@ impl Stage {
             line_left: None,
             lines_shown: 0,
             last_status: String::new(),
+            menus: menus::Menus::default(),
+            started: false,
+            first_module: String::new(),
         };
-        s.enter_module()?;
-        s.yaw = s.game.world.pc_mover.heading;
-        s.game.world.enter_area();
         // Upscaled interface pictures, when `scripts/upscale_ui.ps1` has made them.
         let hd = default_hd_dir().filter(|d| d.is_dir());
         s.ui.set_hd_dir(hd);
         s.set_view((1280, 720));
         Ok(s)
+    }
+
+    /// A new game in `module`, in place of whatever was running.
+    fn start_module(&mut self, module: &str) -> Result<(), String> {
+        let e = |e: kotor_core::Error| e.to_string();
+        let mut world = Stage::fresh_world(&self.dir, self.original)?;
+        world.load_module(module).map_err(e)?;
+        // **Assumption:** until there is a character creation screen the player is the recommended Soldier.
+        let spec = world
+            .recommended_character("Player", 0, 1)
+            .ok_or("no recommended character")?;
+        world.create_character(&spec)?;
+        self.game = Game::new(world);
+        self.forget_view();
+        self.enter_module()?;
+        self.started = true;
+        self.yaw = self.game.world.pc_mover.heading;
+        self.game.world.enter_area();
+        self.refresh_overlay();
+        Ok(())
+    }
+
+    /// Everything kept by object id or about the last game. Ids start over in a new world.
+    fn forget_view(&mut self) {
+        self.held.clear();
+        self.doors.clear();
+        self.hover_reply = 0;
+        self.hover_target = None;
+        self.line_key = None;
+        self.line_left = None;
+        self.beat = None;
+        self.overlay_key.clear();
+        self.events_seen = 0;
     }
 
     fn area_name(&self) -> String {
@@ -413,6 +471,10 @@ impl Stage {
 
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
+        if self.menu_open() {
+            self.refresh_overlay();
+            return std::mem::take(&mut self.cues);
+        }
         let (ahead, right, walk) = self.steer;
         let (cos, sin) = (self.yaw.cos(), self.yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
@@ -895,6 +957,9 @@ impl Stage {
 
     /// The cursor moved: light the reply under it, or name what is under it.
     pub fn hover(&mut self, pixel: (f32, f32), size: (u32, u32)) {
+        if self.menu_open() {
+            return self.menu_hover(pixel, size);
+        }
         if self.choice_view().is_some() {
             if let Some(i) = self.reply_at(pixel, size) {
                 self.hover_reply = i;
@@ -925,7 +990,7 @@ impl Stage {
 
     /// The E key: use the nearest thing in reach.
     pub fn interact(&mut self) {
-        if self.choice_view().is_some() {
+        if self.menu_open() || self.choice_view().is_some() {
             return;
         }
         if let Some(id) = self.game.world.nearest_usable(USE_REACH) {
@@ -935,6 +1000,9 @@ impl Stage {
 
     /// A left click at `pixel` of a window of `size`: acknowledge a line, or use what is under the cursor, or walk.
     pub fn click(&mut self, pixel: (f32, f32), size: (u32, u32)) {
+        if self.menu_open() {
+            return self.menu_click(pixel, size);
+        }
         if self.choice_view().is_some() {
             match self.reply_at(pixel, size) {
                 Some(i) => self.number_key(i + 1),
@@ -977,6 +1045,9 @@ impl Stage {
 
     /// Key `n` (1-9): take that reply.
     pub fn number_key(&mut self, n: usize) {
+        if self.menu_open() {
+            return;
+        }
         self.hover_reply = 0;
         if !self.game.world.in_dialogue() && self.game.world.opened.is_some() {
             let items = self.game.world.container_items();
@@ -1011,6 +1082,9 @@ impl Stage {
 
     /// Space or a click: finish a line that has no replies.
     pub fn continue_line(&mut self) {
+        if self.menu_open() {
+            return;
+        }
         if !self.game.world.in_dialogue() {
             self.game.world.opened = None;
             return;
@@ -1390,6 +1464,9 @@ impl Stage {
     /// Everything that moves, posed for this frame: creatures near the player and every door.
     pub fn dynamic_scene(&mut self) -> Scene {
         let mut scene = Scene::default();
+        if !self.started {
+            return scene;
+        }
         let here = self.pc_position();
         for pose in self.game.poses() {
             match pose.kind {
@@ -1505,6 +1582,15 @@ impl Stage {
     }
 
     fn refresh_overlay(&mut self) {
+        if let Some(view) = self.menu_view() {
+            let key = format!("{view:?}");
+            if key != self.overlay_key {
+                self.overlay_key = key;
+                self.overlay = self.ui.menu_overlay(&view);
+                self.overlay_version += 1;
+            }
+            return;
+        }
         let view = self.choice_view();
         let party = self.party_view();
         let target = self.target_view();
@@ -1590,7 +1676,9 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
+            "state menu={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
+            self.menu_name(),
+            if self.module.is_empty() { "-" } else { &self.module },
             here[0],
             here[1],
             self.game.clip(w.pc).map_or("-", |c| c.name),

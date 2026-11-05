@@ -2,8 +2,9 @@
 //!
 //! Coordinates are in the 640x480 layout space the files are written for; a control's extent is relative to its
 //! panel. Control types seen: 2 panel, 4 label, 5 button, 6 toggle, 8 slider, 9 scrollbar, 10 progress bar,
-//! 11 list box. Text alignment is read as `horizontal (1 left, 2 centre, 3 right) + vertical (0 top, 8 middle,
-//! 16 bottom)`: **an assumption** that fits the values the game uses (9, 10, 17, 18).
+//! 11 list box. Text alignment is read as bits: horizontal 1 left, 2 centre, 4 right; vertical 8 top, 16 middle,
+//! 32 bottom. **Read from the values, not checked against the game:** the files use 9, 10, 17, 18, 20 and 34, the
+//! buttons are 18, the credits figure is 20 and the notice at the foot of the main menu is 34.
 
 use kotor_core::{Error, Result};
 use kotor_gff::{Gff, Struct, Value};
@@ -41,6 +42,8 @@ pub struct Control {
     pub tag: String,
     pub extent: Extent,
     pub border: Border,
+    /// What a button shows under the cursor.
+    pub hilight: Option<Border>,
     pub text: Option<GuiText>,
     /// Progress bars: the fill drawn for the filled part, and the value range.
     pub progress_fill: Option<Border>,
@@ -111,6 +114,7 @@ fn control(s: &Struct) -> Control {
         tag: s.str("TAG").unwrap_or("").to_string(),
         extent: s.strukt("EXTENT").map(extent).unwrap_or_default(),
         border: s.strukt("BORDER").map(border).unwrap_or_default(),
+        hilight: s.strukt("HILIGHT").map(border),
         text,
         progress_fill: s.strukt("PROGRESS").map(border),
         cur_value: s.int("CURVALUE").unwrap_or(0) as i32,

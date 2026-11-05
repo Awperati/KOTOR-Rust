@@ -8,6 +8,8 @@ cargo run --offline --release --manifest-path C:\Users\User\Projects\kotor-rs\gp
 
 The window opens only on DISPLAY2, and never takes focus by itself: click it to give it the keyboard.
 
+It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and Exit closes the window. `--skip-menu` starts straight in the game, which is what `Stage::open` and the test driver do. The movie button, the 3D model behind the menu, the debug warp and the new-content notice are left out; Options says it is not built.
+
 | Input | What it does |
 |---|---|
 | W A S D | run in that direction, relative to the camera; Shift walks |
@@ -18,9 +20,9 @@ The window opens only on DISPLAY2, and never takes focus by itself: click it to 
 | Left click on a reply, or 1-9 | take that reply, or take an item from a container |
 | Space or Enter | end a line, or close a container |
 | Wheel | zoom |
-| Esc | quit |
+| Esc | back out of a screen |
 
-Options: `--module M`, `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG` and `--autopilot` (a scripted player takes the controls and prints what stalls).
+Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG` and `--autopilot` (a scripted player takes the controls and prints what stalls).
 
 `scripts/drive_window.ps1` plays the running window with messages posted to its own handle only, with no global input and no focus change, and prints PASS or FAIL for replies, the footlocker, WASD and click-to-walk.
 
@@ -56,6 +58,9 @@ The camera starts 3.3 m behind and 1.7 m above the player, and comes closer wher
 
 ## Interface on a wide screen
 GUI files lay out 640x480. The interface is drawn 480 units high and as wide as the window's shape makes it, then stretched over the whole window. **Assumed, not compared with the game:** the left of the HUD stays, the party and map keep their distance from the right edge, the action slot and notice icons stay centred, and the dialogue box is a bar from edge to edge.
+
+## Menus
+Stock GUI files drawn by `crates/kotor-ui/src/menus.rs`, with the screens' logic in `gpu/src/menus.rs`. **Assumed, not compared with the game:** a 640x480 screen stays centred on a wide window with black at the sides, except the main menu's background, which stretches; controls are drawn in file order, later ones on top (the HUD draws the other way round); a button under the cursor has yellow text. Text alignment is read as bits: horizontal 1 left, 2 centre, 4 right, vertical 8 top, 16 middle, 32 bottom.
 
 ## Other assumptions
 - The player is the recommended Soldier until there is a character creation screen.

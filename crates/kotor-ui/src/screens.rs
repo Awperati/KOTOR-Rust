@@ -19,12 +19,12 @@ const HD_FROM_SCALE: f32 = 2.0;
 
 /// Caches for textures, fonts and GUIs while drawing.
 pub struct Ui<'a> {
-    inst: &'a mut Install,
+    pub(crate) inst: &'a mut Install,
     /// Width of the layout space: 640, or more on a wider screen (the height stays 480).
-    width: u32,
+    pub(crate) width: u32,
     /// Pixels per layout unit, and the size of the picture in pixels.
-    scale: f32,
-    pixels: (u32, u32),
+    pub(crate) scale: f32,
+    pub(crate) pixels: (u32, u32),
     /// A folder of upscaled pictures (see `docs/PLAY.md`), used once the interface is drawn at twice the file's size.
     hd_dir: Option<std::path::PathBuf>,
     /// What the left mouse button would do to the target, shown under its name.
@@ -33,6 +33,8 @@ pub struct Ui<'a> {
     action_icon: String,
     textures: HashMap<String, Option<Image>>,
     fonts: HashMap<String, Option<Font>>,
+    /// The talk table, read the first time a control needs it.
+    tlk: Option<Option<kotor_tables::Tlk>>,
 }
 
 /// Per-control changes a screen applies on top of the file: replacement fill, text, bar value, or hiding.
@@ -42,6 +44,8 @@ pub struct Patch {
     pub text: Option<String>,
     pub value: Option<(i32, i32)>,
     pub hidden: bool,
+    /// Replacement colour for the control's text.
+    pub color: Option<[f32; 3]>,
 }
 
 /// What the dialogue box shows.
@@ -78,6 +82,7 @@ impl<'a> Ui<'a> {
             action_icon: String::new(),
             textures: HashMap::new(),
             fonts: HashMap::new(),
+            tlk: None,
         }
     }
 
@@ -132,7 +137,16 @@ impl<'a> Ui<'a> {
             .chain(["fnt_console", "fnt_dialog16x16", "fnt_d16x16"].iter())
             .map(|s| s.to_string())
             .collect();
-        for g in ["maininterface", "dialog"] {
+        for g in [
+            "maininterface",
+            "dialog",
+            "mainmenu",
+            "optionsingame",
+            "saveload",
+            "savename",
+            "inventory",
+            "equip",
+        ] {
             if let Some(g) = self.gui(g) {
                 gather_pictures(&g.panel, &mut names);
             }
@@ -205,17 +219,27 @@ impl<'a> Ui<'a> {
         self.fonts[&key].as_ref()
     }
 
-    /// Text from the talk table.
+    /// Text from the talk table, `dialog.tlk` beside the game's data files.
     pub fn strref(&mut self, strref: u32) -> String {
-        self.inst
-            .read("dialog", kotor_core::ResType(2018))
-            .ok()
-            .and_then(|b| kotor_tables::Tlk::parse(&b).ok())
+        let dir = self.inst.dir().to_path_buf();
+        self.tlk
+            .get_or_insert_with(|| {
+                std::fs::read(dir.join("dialog.tlk"))
+                    .ok()
+                    .and_then(|b| kotor_tables::Tlk::parse(&b).ok())
+            })
+            .as_ref()
             .and_then(|t| t.get(strref))
             .unwrap_or_default()
     }
 
-    fn draw_border(&mut self, cv: &mut Canvas, b: &Border, r: [i32; 4], fill: Option<&str>) {
+    pub(crate) fn draw_border(
+        &mut self,
+        cv: &mut Canvas,
+        b: &Border,
+        r: [i32; 4],
+        fill: Option<&str>,
+    ) {
         let fill = fill.unwrap_or(&b.fill).to_string();
         if let Some(img) = self.texture(&fill).cloned() {
             let full = [0, 0, img.width as i32, img.height as i32];
@@ -261,7 +285,7 @@ impl<'a> Ui<'a> {
     }
 
     /// Draw wrapped text inside `r`, aligned by the GUI alignment code. Returns the lines' total height.
-    fn draw_text(
+    pub(crate) fn draw_text(
         &mut self,
         cv: &mut Canvas,
         font: &str,
@@ -275,16 +299,16 @@ impl<'a> Ui<'a> {
         };
         let lines = f.wrap(text, r[2]);
         let total = lines.len() as i32 * f.line_height;
-        let mut y = match alignment & 0x18 {
-            8 => r[1] + (r[3] - total) / 2,
-            16 => r[1] + r[3] - total,
+        let mut y = match alignment & 0x38 {
+            16 => r[1] + (r[3] - total) / 2,
+            32 => r[1] + r[3] - total,
             _ => r[1],
         };
         for l in &lines {
             let w = f.measure(l);
             let x = match alignment & 7 {
                 2 => r[0] + (r[2] - w) / 2,
-                3 => r[0] + r[2] - w,
+                4 => r[0] + r[2] - w,
                 _ => r[0],
             };
             f.draw_line(cv, x, y, l, color);
