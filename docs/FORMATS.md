@@ -133,4 +133,19 @@ from the data (e.g. 2031) are left out.
   `EQUAL/NEQUAL` with qualifier 0x24 carry a u16 struct size.
 - Test: all 1,784 base-game scripts decode with instructions tiling the file exactly, every branch target on an instruction
   boundary, highest ACTION routine id 761. That confirms operand sizes. It does not confirm what each opcode does.
-- Not done: the VM, the engine-routine table (about 760 routines), vector and struct semantics.
+- **Routine table** (`Routines`): read at runtime from the install's own `nwscript.nss`; each prototype is preceded by a numbered comment
+  (`// 12: text`, a few `// 703.` or `// 12. Name`), 767 routines for ids 0..771 (some ids in that range have no prototype). Check: of 20,938
+  ACTION instructions in the base scripts, 20,937 have an argument count inside the prototype's range (required..=all parameters);
+  the one exception is `nw_s0_lghtnbolt` calling `EffectBlasterDeflectionIncrease` with an extra argument (a stock script quirk).
+  A table off by even one id would break thousands of calls.
+- **VM** (`Vm`, `Host`, `HeadlessHost`): stack of 4-byte cells (vector = 3 float cells, z on top); offsets in bytes / 4. Findings:
+  arguments are pushed last-to-first so the first parameter is on top; an `action` parameter is not on the stack but is the state
+  saved by the last `STORESTATE`; `SAVEBP` sets BP to the index of the cell it is about to push (the saved BP) so globals sit at
+  negative BP offsets just below it. The first reading (BP after the pushed cell) gave type errors on real scripts; this one gave none.
+  `JSR` return addresses are kept apart from the value stack.
+- VM checks: all 1,784 base scripts run against the headless host: 975 finish with a balanced stack, 809 stop at a routine the host
+  does not implement, **0 VM faults** (no underflow, type error, bad offset or jump). Endar Spire dialogue conditions answer 0/1
+  and change with the global they read; an action script writes to OBJECT_SELF's locals. 22 routines are implemented by the host
+  (see `host.rs`); everything else errors by name.
+- Not done: the other ~745 routines, deferred actions (`STORESTATE` snapshots are counted, not replayed), `DelayCommand`/`AssignCommand`
+  scheduling, script-defined structs beyond cell copies, effect and talent objects, saving a running script.

@@ -19,7 +19,7 @@ kotor-tool <command> [args]
   gff <name.ext> [module]      print a GFF resource as text (module = layer that module first)
   2da <name> [rows]            print a 2DA table
   tlk <strref>                 print a dialog.tlk string
-  disasm <name>                disassemble an NCS script
+  disasm <name> [module]       disassemble an NCS script (module = layer that module first)
   png <name> <out.png>         decode a TGA/TPC texture to PNG
   obj <model> <out.obj>        export a model's rest pose as OBJ
   view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
@@ -154,7 +154,11 @@ fn run(args: &[String]) -> Result<()> {
             );
         }
         "disasm" => {
-            let p = kotor_script::disassemble(&open()?.read(need(args, 1)?, ResType::NCS)?)?;
+            let mut inst = open()?;
+            if let Some(m) = args.get(2) {
+                inst.load_module(m)?;
+            }
+            let p = kotor_script::disassemble(&inst.read(need(args, 1)?, ResType::NCS)?)?;
             print!("{}", p.listing());
         }
         "png" => {
