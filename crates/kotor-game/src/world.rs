@@ -134,6 +134,10 @@ pub struct Object {
     pub head: i32,
     pub gender: i32,
     pub portrait: String,
+    /// Items: how many are stacked. Everything: the plot flag (cannot be hurt) and the good-evil value (0-100).
+    pub stack: i32,
+    pub plot: bool,
+    pub alignment: i32,
 }
 
 /// A door's animation state; the number is seconds into the clip.
@@ -207,6 +211,9 @@ impl Object {
             head: 0,
             gender: 0,
             portrait: String::new(),
+            stack: 1,
+            plot: false,
+            alignment: 50,
         }
     }
 }
@@ -293,6 +300,17 @@ pub struct World {
     pub(crate) effect_expiry: HashMap<u32, f32>,
     /// Every player-side creature is knocked out.
     pub game_over: bool,
+    /// Party credits (`GetGold`).
+    pub gold: i32,
+    /// `SetCustomToken` values, substituted for `<CUSTOMn>` in text.
+    pub tokens: HashMap<i32, String>,
+    /// The world was loaded from a save (`GetLoadFromSaveGame`).
+    pub loaded_from_save: bool,
+    /// The last power each creature cast: (spell, it ran).
+    pub last_power: HashMap<ObjId, (i32, bool)>,
+    pub(crate) area_hits: Vec<ObjId>,
+    pub(crate) area_next: usize,
+    pub(crate) area_started: bool,
     /// The conversation played last, with each node's presentation data (for the cutscene sequencer).
     pub conversation: Option<crate::cutscene::Conversation>,
     /// When set, every routine a script calls is appended here (a debugging aid).
@@ -335,6 +353,7 @@ fn creature_defaults(o: &mut Object, utc: &Struct) {
     o.max_force = utc.int("ForcePoints").unwrap_or(0) as i32;
     o.appearance = utc.int("Appearance_Type").unwrap_or(0) as i32;
     o.gender = utc.int("Gender").unwrap_or(0) as i32;
+    o.alignment = utc.int("GoodEvil").unwrap_or(50) as i32;
     o.challenge_rating = utc.float("ChallengeRating").unwrap_or(1.0) as f32;
     o.skills = utc
         .list("SkillList")
@@ -414,6 +433,13 @@ impl World {
             spell: crate::force::SpellContext::default(),
             effect_expiry: HashMap::new(),
             game_over: false,
+            gold: 0,
+            tokens: HashMap::new(),
+            loaded_from_save: false,
+            last_power: HashMap::new(),
+            area_hits: Vec::new(),
+            area_next: 0,
+            area_started: false,
             conversation: None,
             trace: None,
             effect_spell: HashMap::new(),
@@ -505,6 +531,20 @@ impl World {
 
     /// Text of a localised string: the talk table entry if it has a reference, else the first inline string.
     pub fn text(&self, l: &LocString) -> String {
+        self.fill_tokens(self.raw_text(l))
+    }
+
+    /// Replace `<CUSTOMn>` with the value set by `SetCustomToken`.
+    pub(crate) fn fill_tokens(&self, mut s: String) -> String {
+        if s.contains("<CUSTOM") {
+            for (n, v) in &self.tokens {
+                s = s.replace(&format!("<CUSTOM{n}>"), v);
+            }
+        }
+        s
+    }
+
+    fn raw_text(&self, l: &LocString) -> String {
         if l.strref >= 0 {
             if let Some(t) = self.tlk.as_ref().and_then(|t| t.get(l.strref as u32)) {
                 return t;
@@ -595,6 +635,8 @@ impl World {
                 o.hp = g.root.int("CurrentHitPoints").map_or(o.hp, |h| h as i32);
                 o.locked = g.root.int("Locked").is_some_and(|l| l != 0);
                 o.base_item = g.root.int("BaseItem").unwrap_or(0) as i32;
+                o.stack = g.root.int("StackSize").unwrap_or(1).max(1) as i32;
+                o.plot = g.root.int("Plot").is_some_and(|p| p != 0);
             }
             if let Some(p) = perception {
                 o.perception = p as f32;
@@ -896,10 +938,12 @@ impl World {
         if strref < 0 {
             return String::new();
         }
-        self.tlk
-            .as_ref()
-            .and_then(|t| t.get(strref as u32))
-            .unwrap_or_default()
+        self.fill_tokens(
+            self.tlk
+                .as_ref()
+                .and_then(|t| t.get(strref as u32))
+                .unwrap_or_default(),
+        )
     }
 
     /// Experience a plot is worth (`plot.2da`, row labelled with the plot name, column `xp`).

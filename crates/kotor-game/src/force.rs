@@ -261,9 +261,11 @@ impl World {
             caster,
             target,
         };
+        let ran = script.is_some();
         if let Some(s) = script {
             let _ = self.run_script(&s, caster);
         }
+        self.last_power.insert(caster, (spell, ran));
         self.spell = saved;
         // A hostile cast makes the target an attacker's business: the target is told it was attacked.
         if self.reputation(target, caster) <= 10 && target != caster {

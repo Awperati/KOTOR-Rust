@@ -183,6 +183,13 @@ impl World {
                         st(vec![("Tag", s(tag)), ("State", Value::Int(*state))])
                     }),
                 ),
+                ("PT_GOLD", Value::Int(self.gold)),
+                (
+                    "PT_TOKENS",
+                    list_of(self.tokens.iter(), |(n, t)| {
+                        st(vec![("Number", Value::Int(*n)), ("Text", s(t))])
+                    }),
+                ),
                 ("PT_PLAYER_POS", Value::Vector(self.pc_mover.pos)),
                 ("PT_PLAYER_HEAD", Value::Float(self.pc_mover.heading)),
                 ("PT_RNG", Value::Int64(self.rng as i64)),
@@ -250,6 +257,9 @@ impl World {
             ("Race", Value::Int(o.race)),
             ("Subrace", Value::Int(o.subrace)),
             ("Down", Value::Byte(o.down as u8)),
+            ("Stack", Value::Int(o.stack)),
+            ("PlotFlag", Value::Byte(o.plot as u8)),
+            ("Alignment", Value::Int(o.alignment)),
             ("Class", Value::Int(o.class)),
             ("MaxHP", Value::Int(o.max_hp)),
             (
@@ -508,6 +518,9 @@ impl World {
                     .collect()
             };
             o.down = flag("Down");
+            o.stack = e.int("Stack").unwrap_or(1) as i32;
+            o.plot = flag("PlotFlag");
+            o.alignment = e.int("Alignment").unwrap_or(50) as i32;
             o.class = e.int("Class").unwrap_or(0) as i32;
             o.max_hp = e.int("MaxHP").unwrap_or(o.hp as i64) as i32;
             let scores: Vec<i32> = e
@@ -596,6 +609,14 @@ impl World {
             .iter()
             .filter_map(|x| Some((x.int("Slot")? as i32, x.str("Template")?.to_string())))
             .collect();
+        self.gold = p.int("PT_GOLD").unwrap_or(0) as i32;
+        self.tokens = p
+            .list("PT_TOKENS")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| Some((x.int("Number")? as i32, x.str("Text")?.to_string())))
+            .collect();
+        self.loaded_from_save = true;
         if let Some(r) = p.int("PT_RNG") {
             self.rng = r as u64;
         }

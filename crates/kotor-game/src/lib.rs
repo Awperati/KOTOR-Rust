@@ -27,6 +27,7 @@ pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use game::{Clip, Game, Pose};
+pub use host::RoutineStatus;
 pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, TALK_RANGE, USE_RANGE,
 };

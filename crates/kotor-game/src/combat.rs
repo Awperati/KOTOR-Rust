@@ -115,6 +115,8 @@ pub struct CombatState {
     pub last_attacker: BTreeMap<ObjId, ObjId>,
     pub last_damager: BTreeMap<ObjId, ObjId>,
     pub last_hostile: BTreeMap<ObjId, ObjId>,
+    /// The result of each attacker's last attack, as the script constants (1 hit, 2 critical, 4 miss).
+    pub last_result: BTreeMap<ObjId, i32>,
     pub last_killer: ObjId,
     pub last_perceived: ObjId,
     pub round: u32,
@@ -283,6 +285,14 @@ impl World {
         ));
         self.combat.last_attacker.insert(target, attacker);
         self.combat.last_hostile.insert(attacker, target);
+        self.combat.last_result.insert(
+            attacker,
+            match outcome {
+                Outcome::Hit => 1,
+                Outcome::Critical => 2,
+                Outcome::Miss => 4,
+            },
+        );
         if dealt > 0 {
             self.combat.last_damager.insert(target, attacker);
         }

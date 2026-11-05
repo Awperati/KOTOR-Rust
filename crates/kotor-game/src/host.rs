@@ -55,6 +55,32 @@ const PRESENTATION: &[&str] = &[
     "PauseGame",
     "DisplayFeedBackText",
     "ApplyEffectAtLocation",
+    "PlayRoomAnimation",
+    "SetDialogPlaceableCamera",
+    "HoldWorldFadeInForDialog",
+    "MusicBattlePlay",
+    "SoundObjectFadeAndStop",
+    "SoundObjectSetVolume",
+    "SetMapPinEnabled",
+    "SetPlanetSelectable",
+    "SetPlanetAvailable",
+    "SetLightsaberPowered",
+    "ShowPartySelectionGUI",
+    "ShowUpgradeScreen",
+    "OpenStore",
+    "EndGame",
+    "SetEncounterActive",
+    "SurrenderToEnemies",
+    "SaveNPCState",
+    "AwardStealthXP",
+    "SetSoloMode",
+    "SetNPCSelectability",
+    "SetPlayerRestrictMode",
+    "PlayPazaak",
+    "SetItemNonEquippable",
+    "SetIsDestroyable",
+    "AdjustAlignment",
+    "AdjustReputation",
 ];
 
 /// Routines that become queued actions with no effect on the headless world.
@@ -65,6 +91,11 @@ const RECORDED_ACTIONS: &[&str] = &[
     "ActionJumpToObject",
     "ActionJumpToLocation",
     "ActionRandomWalk",
+    "ActionMoveAwayFromObject",
+    "ActionFollowLeader",
+    "ActionSurrenderToEnemies",
+    "ActionCastFakeSpellAtObject",
+    "ActionCastFakeSpellAtLocation",
     "ActionForceMoveToObject",
     "ActionForceMoveToLocation",
     "ActionEquipItem",
@@ -798,6 +829,341 @@ impl Host for Adapter<'_> {
                 self.record(name, args);
                 None
             }
+            // ---- strings and numbers
+            "GetStringLength" => Some(Value::Int(string(args, 0).chars().count() as i32)),
+            "GetStringLeft" | "GetStringRight" => {
+                let (s, n) = (string(args, 0), int(args, 1)?.max(0) as usize);
+                let chars: Vec<char> = s.chars().collect();
+                let n = n.min(chars.len());
+                Some(Value::Str(if name == "GetStringLeft" {
+                    chars[..n].iter().collect()
+                } else {
+                    chars[chars.len() - n..].iter().collect()
+                }))
+            }
+            "GetSubString" => {
+                let s: Vec<char> = string(args, 0).chars().collect();
+                let (from, n) = (int(args, 1)?.max(0) as usize, int(args, 2)?.max(0) as usize);
+                let from = from.min(s.len());
+                Some(Value::Str(
+                    s[from..(from + n).min(s.len())].iter().collect(),
+                ))
+            }
+            "FindSubString" => {
+                let (s, sub) = (string(args, 0), string(args, 1));
+                Some(Value::Int(
+                    s.find(&sub).map_or(-1, |b| s[..b].chars().count() as i32),
+                ))
+            }
+            "StringToInt" => {
+                // Like C's atoi: leading spaces, an optional sign, digits; anything else is 0.
+                let s = string(args, 0);
+                let t = s.trim_start();
+                let (neg, digits) = match t.strip_prefix('-') {
+                    Some(r) => (true, r),
+                    None => (false, t.strip_prefix('+').unwrap_or(t)),
+                };
+                let n: i64 = digits
+                    .chars()
+                    .take_while(char::is_ascii_digit)
+                    .fold(0i64, |a, c| {
+                        (a * 10 + c as i64 - 48).min(i32::MAX as i64 + 1)
+                    });
+                Some(Value::Int(
+                    if neg { -n } else { n }.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+                ))
+            }
+            "FloatToString" => {
+                let w = if args.len() > 1 {
+                    int(args, 1)?.max(0) as usize
+                } else {
+                    18
+                };
+                let d = if args.len() > 2 {
+                    int(args, 2)?.max(0) as usize
+                } else {
+                    9
+                };
+                Some(Value::Str(format!("{:>w$.d$}", float(args, 0))))
+            }
+            "abs" => Some(Value::Int(int(args, 0)?.wrapping_abs())),
+            "VectorNormalize" => {
+                let v = match args.first() {
+                    Some(Value::Vector(v)) => *v,
+                    _ => [0.0; 3],
+                };
+                let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                Some(Value::Vector(if l > 0.0 {
+                    [v[0] / l, v[1] / l, v[2] / l]
+                } else {
+                    [0.0; 3]
+                }))
+            }
+            // ---- credits, items, stacks
+            "GetGold" => Some(Value::Int(self.world.gold)),
+            "GiveGoldToCreature" => {
+                self.world.gold += int(args, 1)?;
+                self.record(name, args);
+                None
+            }
+            "TakeGoldFromCreature" => {
+                let n = int(args, 0)?.min(self.world.gold).max(0);
+                self.world.gold -= n;
+                self.record(name, args);
+                None
+            }
+            "GetItemStackSize" | "GetNumStackedItems" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.stack),
+            )),
+            "SetItemStackSize" => {
+                let (id, n) = (self.obj(caller, args, 0), int(args, 1)?);
+                if let Some(o) = self.world.object_mut(id) {
+                    o.stack = n.max(1);
+                }
+                None
+            }
+            "GiveItem" | "ActionGiveItem" | "ActionTakeItem" => {
+                let item = self.obj(caller, args, 0);
+                let to = if name == "ActionTakeItem" {
+                    caller
+                } else {
+                    self.obj(caller, args, 1)
+                };
+                if self.valid(item) && self.valid(to) {
+                    for o in self.world.objects.values_mut() {
+                        o.inventory.retain(|i| *i != item);
+                        o.equipped.retain(|_, i| *i != item);
+                    }
+                    if let Some(o) = self.world.object_mut(to) {
+                        o.inventory.push(item);
+                    }
+                }
+                self.record(name, args);
+                None
+            }
+            "ActionEquipMostDamagingMelee" | "ActionEquipMostDamagingRanged" => {
+                let want_ranged = name.ends_with("Ranged");
+                let items: Vec<(ObjId, i32)> = self
+                    .world
+                    .object(caller)
+                    .map(|o| {
+                        o.inventory
+                            .iter()
+                            .filter_map(|i| Some((*i, self.world.object(*i)?.base_item)))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut best: Option<(f32, ObjId)> = None;
+                if let Some(t) = self.world.table("baseitems") {
+                    for (item, base) in items {
+                        let row = base.max(0) as usize;
+                        let (dice, sides) = (
+                            t.int(row, "numdice").unwrap_or(0) as f32,
+                            t.int(row, "dietoroll").unwrap_or(0) as f32,
+                        );
+                        let ranged = t.int(row, "rangedweapon").unwrap_or(0) > 0;
+                        let avg = dice * (sides + 1.0) / 2.0;
+                        if dice > 0.0 && ranged == want_ranged && best.is_none_or(|b| avg > b.0) {
+                            best = Some((avg, item));
+                        }
+                    }
+                }
+                if let Some((_, item)) = best {
+                    if let Some(o) = self.world.object_mut(caller) {
+                        o.equipped.insert(4, item);
+                    }
+                }
+                self.record(name, args);
+                None
+            }
+            // ---- module, party and area queries
+            "StartNewModule" => {
+                self.world.transition_request = Some((string(args, 0), string(args, 1)));
+                self.record(name, args);
+                None
+            }
+            "GetModuleFileName" => Some(Value::Str(self.world.module.clone())),
+            "GetLoadFromSaveGame" => b(self.world.loaded_from_save),
+            "IsNPCPartyMember" => {
+                let slot = int(args, 0)?;
+                b(self
+                    .world
+                    .npc_slots
+                    .get(&slot)
+                    .is_some_and(|id| self.world.party.contains(id)))
+            }
+            "AddToParty" => {
+                let id = self.obj(caller, args, 0);
+                if self.valid(id) && id != self.world.pc && !self.world.party.contains(&id) {
+                    self.world.party.push(id);
+                    if let Some(o) = self.world.object_mut(id) {
+                        o.party_member = true;
+                    }
+                }
+                None
+            }
+            "AddAvailableNPCByObject" => {
+                let (slot, id) = (int(args, 0)?, self.obj(caller, args, 1));
+                let t = self.world.object(id).map(|o| o.template.clone());
+                if let Some(t) = t {
+                    self.world.available.insert(slot, t);
+                }
+                b(self.valid(id))
+            }
+            "SpawnAvailableNPC" => {
+                let slot = int(args, 0)?;
+                let (at, facing) = self.location(args.get(1)).unwrap_or(([0.0; 3], 0.0));
+                let id = match self.world.available.get(&slot).cloned() {
+                    Some(t) => {
+                        let id = self.world.spawn(Kind::Creature, &t, ResType(2027), at);
+                        if let Some(o) = self.world.object_mut(id) {
+                            o.facing = facing;
+                        }
+                        id
+                    }
+                    None => OBJECT_INVALID,
+                };
+                self.record(name, args);
+                Some(Value::Object(id))
+            }
+            "GetFirstObjectInArea" | "GetNextObjectInArea" | "GetNearestObject" => {
+                let mask_at = if name == "GetNearestObject" { 0 } else { 1 };
+                let mask = if args.len() > mask_at {
+                    int(args, mask_at)?
+                } else if name == "GetNearestObject" {
+                    32767
+                } else {
+                    1
+                };
+                let matches = |o: &crate::world::Object| {
+                    let bit = match o.kind {
+                        Kind::Creature => 1,
+                        Kind::Item => 2,
+                        Kind::Trigger => 4,
+                        Kind::Door => 8,
+                        Kind::Waypoint => 32,
+                        Kind::Placeable => 64,
+                        _ => 0,
+                    };
+                    bit & mask != 0
+                };
+                if name == "GetNearestObject" {
+                    let from = self.obj(caller, args, 1);
+                    let from = if self.valid(from) { from } else { caller };
+                    let here = self.world.object(from).map_or([0.0; 3], |o| o.position);
+                    let mut c: Vec<(f32, ObjId)> = self
+                        .world
+                        .objects
+                        .values()
+                        .filter(|o| o.id != from && matches(o))
+                        .map(|o| (dist2d(o.position, here), o.id))
+                        .collect();
+                    c.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    let nth = (if args.len() > 2 { int(args, 2)? } else { 1 }.max(1) - 1) as usize;
+                    return Ok(Some(Value::Object(
+                        c.get(nth).map_or(OBJECT_INVALID, |x| x.1),
+                    )));
+                }
+                if name == "GetFirstObjectInArea" || !self.world.area_started {
+                    self.world.area_started = true;
+                    self.world.area_hits = self
+                        .world
+                        .objects
+                        .values()
+                        .filter(|o| matches(o))
+                        .map(|o| o.id)
+                        .collect();
+                    self.world.area_next = 0;
+                }
+                let hit = self.world.area_hits.get(self.world.area_next).copied();
+                self.world.area_next += 1;
+                if hit.is_none() {
+                    self.world.area_started = false;
+                }
+                Some(Value::Object(hit.unwrap_or(OBJECT_INVALID)))
+            }
+            "GetLevelByPosition" => {
+                let who = if args.len() > 1 {
+                    self.obj(caller, args, 1)
+                } else {
+                    caller
+                };
+                Some(Value::Int(if int(args, 0)? == 0 {
+                    self.world.object(who).map_or(0, |o| o.level)
+                } else {
+                    0
+                }))
+            }
+            "GetGoodEvilValue" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.alignment),
+            )),
+            "GetReputation" => Some(Value::Int(
+                self.world
+                    .reputation(self.obj(caller, args, 0), self.obj(caller, args, 1)),
+            )),
+            "GetPlotFlag" => b(self
+                .world
+                .object(if args.is_empty() {
+                    caller
+                } else {
+                    self.obj(caller, args, 0)
+                })
+                .is_some_and(|o| o.plot)),
+            "SetPlotFlag" => {
+                let (id, f) = (self.obj(caller, args, 0), int(args, 1)? != 0);
+                if let Some(o) = self.world.object_mut(id) {
+                    o.plot = f;
+                }
+                self.record(name, args);
+                None
+            }
+            "SetCustomToken" => {
+                let (n, t) = (int(args, 0)?, string(args, 1));
+                self.world.tokens.insert(n, t);
+                None
+            }
+            // ---- what the last attack and power did
+            "GetLastAttackResult" => {
+                let who = if args.is_empty() {
+                    caller
+                } else {
+                    self.obj(caller, args, 0)
+                };
+                Some(Value::Int(
+                    self.world
+                        .combat
+                        .last_result
+                        .get(&who)
+                        .copied()
+                        .unwrap_or(0),
+                ))
+            }
+            "GetLastForcePowerUsed" | "GetWasForcePowerSuccessful" => {
+                let who = if args.is_empty() {
+                    caller
+                } else {
+                    self.obj(caller, args, 0)
+                };
+                let last = self.world.last_power.get(&who).copied();
+                Some(Value::Int(if name == "GetLastForcePowerUsed" {
+                    last.map_or(-1, |l| l.0)
+                } else {
+                    last.is_some_and(|l| l.1) as i32
+                }))
+            }
+            "GetLastCombatFeatUsed" | "GetCategoryFromTalent" => {
+                self.default_hit(name);
+                Some(Value::Int(-1))
+            }
+            // The game clock is not modelled: a fixed time of day.
+            "GetTimeHour" | "GetTimeMinute" | "GetTimeSecond" | "GetTimeMillisecond" => {
+                self.default_hit(name);
+                Some(Value::Int(if name == "GetTimeHour" { 13 } else { 0 }))
+            }
             // ---- text, experience, available party members
             "GetStringByStrRef" => Some(Value::Str(self.world.strref_text(int(args, 0)?))),
             "ObjectToString" => Some(Value::Str(format!("{:x}", self.obj(caller, args, 0)))),
@@ -1310,5 +1676,50 @@ impl Host for Adapter<'_> {
                 default_for(routine.ret)
             }
         })
+    }
+}
+
+/// How a routine is handled by the world.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RoutineStatus {
+    /// Has code that acts on the world (or records what it was asked to do).
+    Implemented,
+    /// Answered with a fixed value because the feature behind it does not exist (`World::constant_defaults`).
+    Constant,
+    /// Not handled: counted in `World::stubbed` and answers a default.
+    Stub,
+    /// No such routine in `nwscript.nss`.
+    Unknown,
+}
+
+impl World {
+    /// Find out how a routine is handled by calling it once with no arguments on a scratch copy of the dispatch
+    /// (arguments default to 0 / invalid, so nothing real happens). Only meant for surveys, not for gameplay.
+    pub fn routine_status(&mut self, name: &str) -> RoutineStatus {
+        let Some(routine) = self.routines.by_name(name).cloned() else {
+            return RoutineStatus::Unknown;
+        };
+        let (stub0, const0) = (
+            self.stubbed.get(name).copied().unwrap_or(0),
+            self.constant_defaults.get(name).copied().unwrap_or(0),
+        );
+        let trace = self.trace.take();
+        let pc = self.pc;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut ad = Adapter {
+                world: self,
+                script: String::new(),
+            };
+            let _ = ad.call(pc, &routine, &[]);
+        }));
+        self.trace = trace;
+        let _ = result;
+        if self.stubbed.get(name).copied().unwrap_or(0) > stub0 {
+            RoutineStatus::Stub
+        } else if self.constant_defaults.get(name).copied().unwrap_or(0) > const0 {
+            RoutineStatus::Constant
+        } else {
+            RoutineStatus::Implemented
+        }
     }
 }
