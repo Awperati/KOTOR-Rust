@@ -24,6 +24,8 @@ kotor-tool <command> [args]
   obj <model> <out.obj>        export a model's rest pose as OBJ
   view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
                                software-render an area's rooms with textures and lightmaps
+  creature <template> <out.png> [--module M] [--anim name] [--time s]
+                               draw a creature template via appearance.2da (body + head, texture variation)
   character <body> <out.png> [--head H] [--anim name] [--time s] [--size WxH]
                                posed character (body + head) with textures, software-rendered
   render <model> <out.png> [px]  software-render a model (front view)
@@ -177,7 +179,9 @@ fn run(args: &[String]) -> Result<()> {
                 inst.load_module(need(args, i + 1)?)?;
             }
             inst.load_texture_packs()?;
-            let scene = kotor_render::load_area(&mut inst, area)?;
+            let mut scene = kotor_render::load_area(&mut inst, area)?;
+            let stats = kotor_render::add_area_objects(&mut scene, &mut inst, area)?;
+            println!("{stats:?}");
             let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
             let eye = flag("--eye", 3).map_or([mid[0], scene.min[1] - 2.0, mid[2] + 6.0], |v| {
                 [v[0], v[1], v[2]]
@@ -207,6 +211,60 @@ fn run(args: &[String]) -> Result<()> {
                 scene.min,
                 scene.max,
                 t0.elapsed().as_secs_f32()
+            );
+            std::fs::write(out, kotor_image::to_png(&img))?;
+        }
+        "creature" => {
+            // creature <template> <out.png> [--module M] [--anim name] [--time s] [--size WxH]
+            let tpl = need(args, 1)?;
+            let out = need(args, 2)?;
+            let opt = |name: &str| -> Option<&str> {
+                let i = args.iter().position(|a| a == name)?;
+                args.get(i + 1).map(String::as_str)
+            };
+            let mut inst = open()?;
+            if let Some(m) = opt("--module") {
+                inst.load_module(m)?;
+            }
+            inst.load_texture_packs()?;
+            // A number means "appearance.2da row" (texture variation 1); a name is a creature template.
+            let (row, var) = match tpl.parse::<usize>() {
+                Ok(row) => (row, 1),
+                Err(_) => {
+                    let utc = Gff::parse(&inst.read(tpl, ResType(2027))?)?;
+                    let row = utc
+                        .root
+                        .int("Appearance_Type")
+                        .ok_or_else(|| Error::format("template has no Appearance_Type"))?
+                        as usize;
+                    (row, utc.root.int("TextureVar").unwrap_or(1) as u32)
+                }
+            };
+            let time: f32 = opt("--time").and_then(|t| t.parse().ok()).unwrap_or(0.0);
+            let anim = opt("--anim").map(|a| (a, time));
+            let scene = kotor_render::load_creature(&mut inst, row, var, anim)?;
+            let (w, h) = opt("--size")
+                .and_then(|s| s.split_once('x'))
+                .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+                .unwrap_or((360u32, 480u32));
+            let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
+            let height = scene.max[2] - scene.min[2];
+            let cam = kotor_render::Camera {
+                eye: [mid[0], mid[1] + height * 2.2, mid[2] + height * 0.1],
+                target: mid,
+                fov: 40.0,
+            };
+            let img = kotor_render::render(
+                &scene,
+                &mut |n| kotor_render::load_texture(&mut inst, n),
+                &cam,
+                w,
+                h,
+            );
+            println!(
+                "appearance row {row}, texture variation {var}: {} meshes, height {:.2} m",
+                scene.meshes.len(),
+                height
             );
             std::fs::write(out, kotor_image::to_png(&img))?;
         }

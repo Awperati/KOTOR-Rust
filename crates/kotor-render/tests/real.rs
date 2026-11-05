@@ -99,3 +99,67 @@ fn bastila_stands_human_height_in_an_idle_pose() {
     let lit = img.rgba.chunks(4).filter(|p| p[..3] != bg).count();
     assert!(lit > 120 * 160 / 20, "only {lit} pixels drawn");
 }
+
+#[test]
+fn endar_spire_doors_and_placeables_are_placed() {
+    use kotor_render::add_area_objects;
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_module("end_m01aa").unwrap();
+    inst.load_texture_packs().unwrap();
+    let mut scene = load_area(&mut inst, "m01aa").unwrap();
+    let rooms = (scene.meshes.len(), scene.triangle_count());
+    let stats = add_area_objects(&mut scene, &mut inst, "m01aa").unwrap();
+    assert_eq!(stats.doors_listed, 15);
+    assert_eq!(stats.doors_drawn, 15, "{stats:?}");
+    assert_eq!(stats.placeables_listed, 61);
+    // The rest are invisible helper placeables (appearance model PLC_Invis and the like).
+    assert!(stats.placeables_drawn >= 50, "{stats:?}");
+    assert_eq!(stats.unresolved, 0, "{stats:?}");
+    assert!(scene.meshes.len() > rooms.0 + 200 && scene.triangle_count() > rooms.1 + 30_000);
+    // Placed objects stay inside the area's bounds: nothing was thrown far away by a bad transform.
+    for m in &scene.meshes[rooms.0..] {
+        for p in &m.positions {
+            assert!(
+                p[0] > -50.0 && p[0] < 150.0 && p[1] > -50.0 && p[1] < 300.0,
+                "{}: {p:?}",
+                m.name
+            );
+        }
+    }
+    // Without the module loaded there is no GIT, so nothing is added and nothing fails.
+    let mut inst2 = Install::open(kotor_core::install_dir().unwrap()).unwrap();
+    let mut s2 = load_area(&mut inst2, "m01aa").unwrap();
+    assert_eq!(
+        add_area_objects(&mut s2, &mut inst2, "m01aa")
+            .unwrap()
+            .doors_listed,
+        0
+    );
+}
+
+#[test]
+fn creature_texture_follows_appearance_row_and_variation() {
+    use kotor_render::load_creature;
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    // appearance.2da row 6 is Carth: body P_CarthBB with texture P_CarthBB + variation.
+    let carth = load_creature(&mut inst, 6, 1, Some(("pause1", 0.0))).unwrap();
+    let textures: BTreeSet<String> = carth
+        .meshes
+        .iter()
+        .filter_map(|m| m.texture.clone())
+        .map(|t| t.to_ascii_lowercase())
+        .collect();
+    assert!(textures.contains("p_carthbb01"), "{textures:?}");
+    let h = carth.max[2] - carth.min[2];
+    assert!((1.6..2.0).contains(&h), "height {h}");
+    // A different variation picks a different (existing) texture name, or falls back without failing.
+    let v2 = load_creature(&mut inst, 6, 2, None).unwrap();
+    assert!(!v2.meshes.is_empty());
+}

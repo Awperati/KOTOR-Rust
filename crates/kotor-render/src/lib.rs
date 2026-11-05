@@ -3,9 +3,11 @@
 //! reference image for a later GPU renderer.
 
 mod character;
+mod objects;
 mod scene;
 mod soft;
 
-pub use character::load_character;
+pub use character::{load_character, load_character_with, load_creature};
+pub use objects::{add_area_objects, ObjectStats};
 pub use scene::{load_area, load_texture, Scene, SceneMesh};
 pub use soft::{render, Camera};

@@ -2,6 +2,7 @@ use crate::scene::{mat_mul, Scene};
 use kotor_archive::Install;
 use kotor_core::{Error, ResType, Result};
 use kotor_model::{parse_model, Model};
+use kotor_tables::TwoDa;
 
 type Mat = [[f32; 4]; 4];
 
@@ -57,14 +58,23 @@ pub fn load_character(
     head: Option<&str>,
     animation: Option<(&str, f32)>,
 ) -> Result<Scene> {
+    load_character_with(inst, body, head, animation, None)
+}
+
+/// Like [`load_character`], with a texture name for body meshes that name none of their own.
+pub fn load_character_with(
+    inst: &mut Install,
+    body: &str,
+    head: Option<&str>,
+    animation: Option<(&str, f32)>,
+    body_texture: Option<String>,
+) -> Result<Scene> {
     let body_m = load(inst, body)?;
     let pose = match (animation, &body_m.supermodel) {
         (Some((anim, t)), Some(sup)) => {
             let sup_m = load(inst, sup)?;
-            let a = sup_m
-                .animation(anim)
-                .ok_or_else(|| Error::NotFound(format!("animation {anim} in {sup}")))?;
-            Some(a.sample(&sup_m, t))
+            // A supermodel without that animation leaves the character in its rest pose.
+            sup_m.animation(anim).map(|a| a.sample(&sup_m, t))
         }
         _ => None,
     };
@@ -79,27 +89,70 @@ pub fn load_character(
     } else {
         &[]
     };
+    let body_tex = body_texture.or_else(|| main_texture(&body_m));
     scene.add_model_with(
         &body_m,
         pose.as_ref(),
         &identity,
         hide_on_body,
-        main_texture(&body_m).as_deref(),
+        body_tex.as_deref(),
     );
     if let Some(h) = head {
         let head_m = load(inst, h)?;
         let body_mats = body_m.world_matrices(pose.as_ref());
         let head_mats = head_m.world_matrices(None);
+        // A body or head model without a `head_g` node cannot be attached: draw the body alone.
         let (Some(mb), Some(mh)) = (find(&body_mats, "head_g"), find(&head_mats, "head_g")) else {
-            return Err(Error::format("body or head model has no head_g node"));
+            return finish(scene);
         };
         let xf = mat_mul(&mb, &rigid_inverse(&mh));
         scene.add_model_with(&head_m, None, &xf, &[], main_texture(&head_m).as_deref());
     }
+    finish(scene)
+}
+
+fn finish(scene: Scene) -> Result<Scene> {
     if scene.meshes.is_empty() {
         return Err(Error::format("character has no drawable meshes"));
     }
     Ok(scene)
+}
+
+/// Build a creature from its `appearance.2da` row and texture variation (the `Appearance_Type` and
+/// `TextureVar` of a creature template).
+///
+/// Model type `B` is a body plus a head: the body is the row's `race` model, its texture is the
+/// `texX` column of the matching `modelX` column plus the two-digit variation (for example
+/// `P_BastilaBB` + 1 = `P_BastilaBB01`), and the head comes from `heads.2da` row `normalhead`.
+/// Any other model type is drawn as a single model named by `race`. Armour variants and equipped
+/// items are not handled.
+pub fn load_creature(
+    inst: &mut Install,
+    appearance_row: usize,
+    texture_var: u32,
+    animation: Option<(&str, f32)>,
+) -> Result<Scene> {
+    let app = TwoDa::parse(&inst.read("appearance", ResType::TWODA)?)?;
+    let get = |c: &str| app.get(appearance_row, c).map(str::to_string);
+    let race = get("race")
+        .ok_or_else(|| Error::NotFound(format!("appearance row {appearance_row} model")))?;
+    if get("modeltype").as_deref() != Some("B") {
+        return load_character_with(inst, &race, None, animation, None);
+    }
+    let letter = "abcdefghij"
+        .chars()
+        .find(|l| get(&format!("model{l}")).is_some_and(|m| m.eq_ignore_ascii_case(&race)))
+        .unwrap_or('a');
+    let body_texture = get(&format!("tex{letter}"))
+        .map(|t| format!("{t}{texture_var:02}"))
+        .filter(|t| inst.contains(t, ResType::TPC) || inst.contains(t, ResType::TGA));
+    let head = get("normalhead")
+        .and_then(|h| h.parse::<usize>().ok())
+        .and_then(|row| {
+            let heads = TwoDa::parse(&inst.read("heads", ResType::TWODA).ok()?).ok()?;
+            heads.get(row, "head").map(str::to_string)
+        });
+    load_character_with(inst, &race, head.as_deref(), animation, body_texture)
 }
 
 #[cfg(test)]

@@ -43,8 +43,10 @@ version = "0.1.0"
 dependencies = [
  "kotor-archive",
  "kotor-core",
+ "kotor-gff",
  "kotor-image",
  "kotor-model",
+ "kotor-tables",
  "kotor-walkmesh",
 ]
 
