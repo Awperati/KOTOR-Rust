@@ -77,11 +77,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         s.update(DT);
     }
     shot(&mut gpu, &mut s, &out.join("walking_hud.png"));
+    // The HUD with a target, its health bar and its action slot, then class 4 armour on the player.
+    let pc = s.game.world.pc;
+    if s.stand_near("end_locker01") {
+        // Turn to where the camera has the most room.
+        let here = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
+        let room = |s: &Stage| {
+            let e = s.camera().eye;
+            (e[0] - here[0]).hypot(e[1] - here[1])
+        };
+        let mut best = (0.0, s.yaw);
+        for k in 0..16 {
+            s.yaw = k as f32 * std::f32::consts::TAU / 16.0;
+            if room(&s) > best.0 {
+                best = (room(&s), s.yaw);
+            }
+        }
+        s.yaw = best.1;
+        s.update(DT);
+        s.update(DT);
+        shot(&mut gpu, &mut s, &out.join("hud_target.png"));
+        let armour = s.game.world.spawn_item("g_a_class4001");
+        if let Some(o) = s.game.world.object_mut(pc) {
+            o.equipped.insert(1, armour);
+        }
+        shot(&mut gpu, &mut s, &out.join("armour.png"));
+    }
     println!(
         "player walking: {}; {} lines shown; {} world errors",
         s.game.world.pc_walking(),
         s.lines_shown,
         s.game.world.errors.len()
     );
+    // A stock texture with alpha: the ivy of Dantooine.
+    if let Ok(mut d) = Stage::open("danm13", true) {
+        let scene = d.static_scene().clone();
+        gpu.set_static_scene(&scene, &mut |n| d.texture(n));
+        let ivy = [82.16, 106.1, 9.38];
+        let cam = kotor_render::Camera {
+            eye: [ivy[0] - 3.5, ivy[1] - 3.5, ivy[2] + 0.8],
+            target: ivy,
+            fov: 55.0,
+        };
+        let moving = kotor_render::Scene::default();
+        let img = gpu.render(&moving, &mut |n| d.texture(n), &cam)?;
+        std::fs::write(out.join("alpha_ivy.png"), kotor_image::to_png(&img))?;
+        gpu.set_transparency(false);
+        gpu.set_static_scene(&scene, &mut |n| d.texture(n));
+        let img = gpu.render(&moving, &mut |n| d.texture(n), &cam)?;
+        std::fs::write(out.join("alpha_ivy_off.png"), kotor_image::to_png(&img))?;
+    }
     Ok(())
 }

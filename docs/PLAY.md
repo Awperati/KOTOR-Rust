@@ -20,7 +20,9 @@ The window opens only on DISPLAY2, and never takes focus by itself: click it to 
 | Wheel | zoom |
 | Esc | quit |
 
-Options: `--module M`, `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`.
+Options: `--module M`, `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log` and `--near TAG`.
+
+`scripts/drive_window.ps1` plays the running window with messages posted to its own handle only, with no global input and no focus change, and prints PASS or FAIL for replies, the footlocker, WASD and click-to-walk.
 
 `gpu/examples/shots.rs` writes frames to `docs/shots/play` from the offscreen renderer: no window and no screen capture.
 
@@ -54,5 +56,5 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 - A player's head model has its origin at the neck and rides the body's `headhook`.
 
 ## Not done
-- Action slot icons on the HUD (the target's name, bar and action word are shown), the map picture, and notices.
+- More than one action slot on the HUD (the first shows the target's action), the map picture, and notices.
 - Particle effects, and placeable open animations.

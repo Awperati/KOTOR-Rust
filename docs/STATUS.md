@@ -1,7 +1,7 @@
-# Status of kotor-rs (6 Nov 2026)
+﻿# Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**215 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**220 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -43,6 +43,19 @@ See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`.
 6. **First fight**: HP of the first Sith soldier (15 in our data), whether a knocked-out party member stands up with 1 HP, and how long a Force Armor lasts.
 7. **Dialogue box and HUD**: compare `cargo run -p kotor-ui --example ui -- <dir>` PNGs with a screenshot (font, spacing, where the reply list sits).
 8. **Level-up**: XP at which level 2 arrives (1,000 from `exptable.2da`) and what the level-up screen offers (we give feats/skill points per `featgain.2da`).
+
+## What a first playable still lacks
+Most to least blocking, all absent unless stated:
+1. **Inventory and equip screen.** Items can be taken from a footlocker but not worn or used, so the opening's own tutorial cannot be followed.
+2. **Character creation and a main menu.** The game starts straight in the Endar Spire as a fixed Soldier. There is no new game, load or save screen, though saves work underneath.
+3. **Combat controls.** A click attacks, and that is all: no action queue, feats, powers or items from the slots, no pause. Only the first slot is drawn.
+4. **Sound effects.** Only voice and music are wired, and nobody has heard those. No blaster, door or footstep sounds.
+5. **Blaster bolts, particles and hit effects.** Rounds resolve with animation only.
+6. **Level-up, journal, map and party screens.** The rules exist; there are no screens.
+7. **Locks, skills and traps on doors.** A locked door just stays shut.
+8. **Line of sight, and camera against walls.** Enemies notice through walls, so distant fights start at once. The camera can sink into doors and furniture.
+9. **Dialogue camera angles, and scripted movement in fights.** Close shots stand in for the game's angles.
+10. **The rest of the game.** Only the Endar Spire has been played; other modules load but are not tested. Vendors, minigames, the galaxy map and stealth are not built.
 
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

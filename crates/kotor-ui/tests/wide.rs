@@ -37,7 +37,7 @@ fn the_interface_reaches_the_edges_of_a_wide_screen() {
         force: 5,
         max_force: 5,
     }];
-    let h = ui.hud_overlay(&party, None, "").unwrap();
+    let h = ui.hud_overlay(&party, None, "", "").unwrap();
     assert_eq!((h.width, h.height), (WIDTH, 480));
     let moved = WIDTH - 640;
     assert!(alpha(&h, 510 + moved, 405) > 0, "portrait at its new place");

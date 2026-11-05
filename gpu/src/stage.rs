@@ -110,6 +110,16 @@ fn fixed_cameras(inst: &mut Install, area: &str) -> HashMap<i32, Camera> {
     out
 }
 
+/// The stock icon for a target's action, read from the texture names in `swpc_tex_gui.erf`.
+fn action_icon(action: &str) -> &'static str {
+    match action {
+        "Attack" => "i_attack",
+        "Talk" => "i_dialog",
+        "Open" | "Close" => "i_opendoor",
+        _ => "i_openplace",
+    }
+}
+
 fn load_model(inst: &mut Install, name: &str) -> Option<Model> {
     let mdl = inst.read(name, ResType::MDL).ok()?;
     let mdx = inst.read(name, ResType::MDX).unwrap_or_default();
@@ -642,6 +652,17 @@ impl Stage {
             }
             return;
         }
+        // The first action slot (`LBH_BORDER1` in `maininterface.gui`) uses the target it shows.
+        let (x, y) = (
+            pixel.0 * self.ui_width as f32 / size.0.max(1) as f32,
+            pixel.1 * 480.0 / size.1.max(1) as f32,
+        );
+        if (40.0..104.0).contains(&x) && (384.0..448.0).contains(&y) {
+            if let Some(id) = self.target() {
+                self.use_thing(id);
+            }
+            return;
+        }
         let cam = self.camera();
         let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
         if let Some(id) = self.game.world.pick(o, d) {
@@ -978,10 +999,12 @@ impl Stage {
             Some(v) => self.ui.dialogue_overlay(&v),
             None => {
                 let t = target.as_ref();
+                let action = t.map_or("", |t| t.3);
                 self.ui.hud_overlay(
                     &party,
                     t.map(|t| (t.0.as_str(), t.1, t.2)),
-                    t.map_or("", |t| t.3),
+                    action,
+                    action_icon(action),
                 )
             }
         };
@@ -990,13 +1013,65 @@ impl Stage {
         self.overlay_version += 1;
     }
 
+    /// The thing under the cursor, else the nearest in reach.
+    fn target(&self) -> Option<ObjId> {
+        let w = &self.game.world;
+        self.hover_target
+            .filter(|id| w.object(*id).is_some_and(|o| !o.dead))
+            .or_else(|| w.nearest_usable(USE_REACH))
+    }
+
+    /// Put the player on the floor beside an object with this tag. For test scenes.
+    pub fn stand_near(&mut self, tag: &str) -> bool {
+        let w = &mut self.game.world;
+        let Some(at) = w
+            .by_tag(tag)
+            .first()
+            .and_then(|i| w.object(*i))
+            .map(|o| o.position)
+        else {
+            return false;
+        };
+        let spot = (0..8).find_map(|k| {
+            let a = k as f32 * std::f32::consts::FRAC_PI_4;
+            let (x, y) = (at[0] + a.cos() * 1.0, at[1] + a.sin() * 1.0);
+            let z = w.nav.as_ref()?.walkable_at(x, y, at[2] + 1.0)?;
+            Some([x, y, z])
+        });
+        match spot {
+            Some(p) => {
+                let pc = w.pc;
+                w.teleport(pc, p);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// One line for a test driver watching the live window.
+    pub fn state_line(&self) -> String {
+        let w = &self.game.world;
+        let here = self.pc_position();
+        let view = w.dialogue_view();
+        format!(
+            "state pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
+            here[0],
+            here[1],
+            self.game.clip(w.pc).map_or("-", |c| c.name),
+            view.is_some(),
+            view.map_or(0, |v| v.3.len()),
+            w.transcript.len(),
+            w.opened.is_some(),
+            w.container_items().len(),
+            w.object(w.pc).map_or(0, |o| o.inventory.len()),
+            self.target_view().map_or("-".to_string(), |t| t.0.replace(' ', "_")),
+        )
+    }
+
     /// The thing under the cursor, else the nearest in reach: name, hit points, and what using it does.
     fn target_view(&self) -> Option<(String, i32, i32, &'static str)> {
         let w = &self.game.world;
-        let id = self
-            .hover_target
-            .filter(|id| w.object(*id).is_some_and(|o| !o.dead))
-            .or_else(|| w.nearest_usable(USE_REACH))?;
+        let id = self.target()?;
         let o = w.object(id)?;
         let name = if o.name.is_empty() {
             o.tag.clone()

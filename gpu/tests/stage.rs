@@ -428,3 +428,63 @@ fn soldiers_hold_their_weapons() {
         "a weapon's mesh is drawn"
     );
 }
+
+#[test]
+fn worn_armour_changes_the_body() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    let body = |s: &mut Stage| -> Vec<String> {
+        let at = s.game.world.object(s.game.world.pc).unwrap().position;
+        let scene = s.dynamic_scene();
+        scene
+            .meshes
+            .iter()
+            .filter(|m| {
+                m.positions
+                    .iter()
+                    .any(|p| (p[0] - at[0]).hypot(p[1] - at[1]) < 0.6)
+            })
+            .filter_map(|m| m.texture.clone())
+            .collect()
+    };
+    s.update(DT);
+    let plain = body(&mut s);
+    assert!(!plain.is_empty(), "the player has a body");
+    let armour = s.game.world.spawn_item("g_a_class4001");
+    s.game
+        .world
+        .object_mut(pc)
+        .unwrap()
+        .equipped
+        .insert(1, armour);
+    let worn = body(&mut s);
+    assert_ne!(plain, worn, "another column of appearance.2da");
+    assert!(
+        worn.iter()
+            .any(|t| t.to_ascii_uppercase().starts_with("PFBC")),
+        "class 4 armour is column c: {worn:?}"
+    );
+}
+
+#[test]
+fn the_hud_shows_the_target_and_its_action() {
+    let Some(mut s) = stage() else { return };
+    past_the_talk(&mut s);
+    s.game.world.events.clear();
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    let with = s.overlay().unwrap().clone();
+    assert!(s.state_line().contains("target="), "{}", s.state_line());
+    assert!(!s.state_line().ends_with("target=-"), "{}", s.state_line());
+    // The action slot at (40, 384) to (104, 448) of the layout has something in it.
+    let w = with.width as usize;
+    let inked = (390..440)
+        .flat_map(|y| (50..100).map(move |x| (x, y)))
+        .filter(|(x, y)| with.rgba[(y * w + x) * 4 + 3] > 100)
+        .count();
+    assert!(inked > 500, "{inked} inked pixels in the slot");
+    // A click on the slot uses the target: the locker opens.
+    s.click((70.0, 410.0), (with.width, with.height));
+    s.update(DT);
+    assert!(s.game.world.opened.is_some(), "{}", s.state_line());
+}

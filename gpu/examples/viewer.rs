@@ -7,6 +7,8 @@
 //!     --orbit D       turn the camera round the player by D degrees a second while idle
 //!     --volume V      0 to 1 (default 0.8); --mute opens no sound device
 //!     --frames N      close after N frames             --hidden     no visible window
+//!     --state-log     print the game's state every few frames, for a test driver
+//!     --near TAG      start beside the object with this tag, for a test scene
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
 //!
 //! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
@@ -102,6 +104,7 @@ struct App {
     monitor: String,
     hidden: bool,
     max_frames: Option<u32>,
+    state_log: bool,
     frames: u32,
     started: std::time::Instant,
     last: std::time::Instant,
@@ -207,6 +210,9 @@ impl App {
             return;
         }
         self.frames += 1;
+        if self.state_log && self.frames.is_multiple_of(6) {
+            println!("{}", self.stage.state_line());
+        }
         if self.max_frames.is_some_and(|m| self.frames >= m) {
             el.exit();
         }
@@ -349,6 +355,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(0.8);
     let mut stage = Stage::open(&module, !flag("--installed-mod"))?;
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    if let Some(tag) = opt("--near") {
+        if !stage.stand_near(&tag) {
+            return Err(format!("no floor beside {tag}").into());
+        }
+    }
     let out = if flag("--mute") {
         None
     } else {
@@ -372,6 +383,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         monitor,
         hidden: flag("--hidden"),
         max_frames: opt("--frames").and_then(|n| n.parse().ok()),
+        state_log: flag("--state-log"),
         frames: 0,
         started: std::time::Instant::now(),
         last: std::time::Instant::now(),

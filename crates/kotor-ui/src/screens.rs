@@ -22,6 +22,8 @@ pub struct Ui<'a> {
     width: u32,
     /// What the left mouse button would do to the target, shown under its name.
     action: String,
+    /// The icon in the first action slot while there is a target.
+    action_icon: String,
     textures: HashMap<String, Option<Image>>,
     fonts: HashMap<String, Option<Font>>,
 }
@@ -63,6 +65,7 @@ impl<'a> Ui<'a> {
             inst,
             width: SCREEN.0,
             action: String::new(),
+            action_icon: String::new(),
             textures: HashMap::new(),
             fonts: HashMap::new(),
         }
@@ -430,8 +433,10 @@ impl<'a> Ui<'a> {
         party: &[HudMember],
         target: Option<(&str, i32, i32)>,
         action: &str,
+        icon: &str,
     ) -> Option<Image> {
         self.action = action.to_string();
+        self.action_icon = icon.to_string();
         self.hud_on(party, target, [0, 0, 0, 0])
     }
 
@@ -521,7 +526,7 @@ impl<'a> Ui<'a> {
         }
         if clear[3] == 0 {
             // Over a live scene, only what is in use: no target yet, so no action slots; no notices to show.
-            let shown_with_target = ["LBL_ACTIONDESC", "LBL_INDICATE"];
+            let shown_with_target = ["LBL_INDICATE"];
             let idle = [
                 "LBL_JOURNAL",
                 "LBL_CASH",
@@ -541,7 +546,12 @@ impl<'a> Ui<'a> {
             let mut hide: Vec<String> = all_tags(&gui.panel)
                 .into_iter()
                 .filter(|t| idle.iter().any(|p| t.starts_with(p)))
-                .filter(|t| target.is_none() || !shown_with_target.iter().any(|p| t.starts_with(p)))
+                .filter(|t| {
+                    target.is_none()
+                        || !(shown_with_target.iter().any(|p| t.starts_with(p))
+                            || t == "LBH_BORDER1"
+                            || t == "LBL_ICON1")
+                })
                 .collect();
             for n in party.len() + 1..=3 {
                 hide.push(format!("LBL_BACK{n}"));
@@ -560,9 +570,9 @@ impl<'a> Ui<'a> {
             }
             if target.is_some() {
                 patches.insert(
-                    "LBL_ACTIONDESC".to_string(),
+                    "LBL_ICON1".to_string(),
                     Patch {
-                        text: Some(self.action.clone()),
+                        fill: Some(self.action_icon.clone()),
                         ..Patch::default()
                     },
                 );
@@ -570,6 +580,18 @@ impl<'a> Ui<'a> {
         }
         let p = &gui.panel;
         self.draw_control(&mut cv, p, (0, 0), &patches);
+        if clear[3] == 0 && target.is_some() {
+            // What the slot does, beside it. The file's description box is for longer text.
+            let word = self.action.clone();
+            self.draw_text(
+                &mut cv,
+                "fnt_console",
+                &word,
+                [108, 404, 160, 20],
+                1,
+                [1.0; 3],
+            );
+        }
         Some(cv.into_image())
     }
 }
