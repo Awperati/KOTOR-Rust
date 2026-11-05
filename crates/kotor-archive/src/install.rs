@@ -21,6 +21,8 @@ pub struct Install {
     overlays: Vec<Erf>,
     /// Read loose files from `<install>/Override` first. Off by default.
     honour_override: bool,
+    /// Load a module from its original `.rim` pair even when a `.mod` of the same name exists. Off by default.
+    prefer_rim: bool,
 }
 
 impl Install {
@@ -43,6 +45,7 @@ impl Install {
             bifs,
             overlays: Vec::new(),
             honour_override: false,
+            prefer_rim: false,
         })
     }
 
@@ -52,6 +55,11 @@ impl Install {
 
     pub fn key(&self) -> &Key {
         &self.key
+    }
+
+    /// A `.mod` beside a module's `.rim` pair is an installed mod. On: ignore it and load the original.
+    pub fn set_prefer_rim(&mut self, on: bool) {
+        self.prefer_rim = on;
     }
 
     /// Whether loose files in the `Override` folder win over everything else.
@@ -79,7 +87,8 @@ impl Install {
     pub fn load_module(&mut self, name: &str) -> Result<()> {
         let modules = self.dir.join("modules");
         let m = modules.join(format!("{name}.mod"));
-        if m.is_file() {
+        let has_rim = modules.join(format!("{name}.rim")).is_file();
+        if m.is_file() && !(self.prefer_rim && has_rim) {
             self.push_overlay(Erf::open(Source::file(m))?);
             return Ok(());
         }

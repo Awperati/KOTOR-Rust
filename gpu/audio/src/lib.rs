@@ -91,3 +91,65 @@ pub fn play_blocking(audio: &Audio) -> Result<(), String> {
     sink.sleep_until_end();
     Ok(())
 }
+
+/// The output device with one voice channel and one looping music channel. Dropping it stops everything.
+pub struct AudioOut {
+    _stream: rodio::OutputStream,
+    handle: rodio::OutputStreamHandle,
+    voice: Option<rodio::Sink>,
+    music: Option<rodio::Sink>,
+    volume: f32,
+}
+
+impl AudioOut {
+    /// Open the default output device. `volume` is 0 (silent) to 1.
+    pub fn new(volume: f32) -> Result<AudioOut, String> {
+        let (stream, handle) = rodio::OutputStream::try_default().map_err(|e| e.to_string())?;
+        Ok(AudioOut {
+            _stream: stream,
+            handle,
+            voice: None,
+            music: None,
+            volume,
+        })
+    }
+
+    fn sink(&self) -> Result<rodio::Sink, String> {
+        let s = rodio::Sink::try_new(&self.handle).map_err(|e| e.to_string())?;
+        s.set_volume(self.volume);
+        Ok(s)
+    }
+
+    /// Say a line, cutting off the one before.
+    pub fn play_voice(&mut self, a: &Audio) -> Result<(), String> {
+        let s = self.sink()?;
+        s.append(rodio::buffer::SamplesBuffer::new(
+            a.channels,
+            a.sample_rate,
+            a.samples.clone(),
+        ));
+        self.voice = Some(s);
+        Ok(())
+    }
+
+    pub fn stop_voice(&mut self) {
+        self.voice = None;
+    }
+
+    /// Replace the music with `a`, looping.
+    pub fn play_music(&mut self, a: &Audio) -> Result<(), String> {
+        use rodio::Source;
+        let s = self.sink()?;
+        s.set_volume(self.volume * 0.6);
+        s.append(
+            rodio::buffer::SamplesBuffer::new(a.channels, a.sample_rate, a.samples.clone())
+                .repeat_infinite(),
+        );
+        self.music = Some(s);
+        Ok(())
+    }
+
+    pub fn stop_music(&mut self) {
+        self.music = None;
+    }
+}

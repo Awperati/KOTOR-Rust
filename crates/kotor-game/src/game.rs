@@ -17,7 +17,7 @@ pub struct Pose {
     pub id: ObjId,
     pub kind: Kind,
     pub position: [f32; 3],
-    /// Facing in radians (0 = +x); only the player's is tracked.
+    /// Facing in radians (0 = +x): the player's walk heading, the direction anyone else last moved, else its facing.
     pub heading: f32,
     pub clip: Option<Clip>,
 }
@@ -29,6 +29,8 @@ pub struct Game {
     pub dt: f32,
     accumulator: f32,
     clips: HashMap<ObjId, Clip>,
+    last_pos: HashMap<ObjId, [f32; 3]>,
+    headings: HashMap<ObjId, f32>,
     /// Steps run so far.
     pub steps: u64,
 }
@@ -44,6 +46,8 @@ impl Game {
             dt: 1.0 / 60.0,
             accumulator: 0.0,
             clips: HashMap::new(),
+            last_pos: HashMap::new(),
+            headings: HashMap::new(),
             steps: 0,
         }
     }
@@ -74,9 +78,24 @@ impl Game {
             .collect();
         self.clips.retain(|id, _| ids.contains(id));
         for id in ids {
-            // The player walks while it has a route; everything else idles. A walk cycle lasts one second,
-            // which is also what `walkdist` (metres per cycle) at 1.6 m/s assumes.
-            let want = if id == pc && (walking || self.world.pc_walking()) {
+            // Whoever moved this step walks; a walk cycle lasts one second, which is also what `walkdist` (metres per
+            // cycle) at 1.6 m/s assumes. A jump of more than a metre is a teleport, not a step.
+            let (pos, down) = {
+                let o = &self.world.objects[&id];
+                (o.position, o.dead || o.down)
+            };
+            let mut moved = false;
+            if let Some(l) = self.last_pos.insert(id, pos) {
+                let (dx, dy) = (pos[0] - l[0], pos[1] - l[1]);
+                let d = (dx * dx + dy * dy).sqrt();
+                if d > 0.002 && d < 1.0 {
+                    moved = true;
+                    self.headings.insert(id, dy.atan2(dx));
+                }
+            }
+            let want = if down {
+                "dead"
+            } else if moved || (id == pc && (walking || self.world.pc_walking())) {
                 "walk"
             } else {
                 "pause1"
@@ -114,7 +133,10 @@ impl Game {
                 heading: if o.id == self.world.pc {
                     self.world.pc_mover.heading
                 } else {
-                    0.0
+                    self.headings
+                        .get(&o.id)
+                        .copied()
+                        .unwrap_or(o.facing.to_radians())
                 },
                 clip: match o.kind {
                     Kind::Door => Some(match o.door {

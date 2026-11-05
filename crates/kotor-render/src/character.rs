@@ -38,8 +38,8 @@ fn main_texture(model: &Model) -> Option<String> {
 pub struct Rig {
     body: Model,
     head: Option<Model>,
-    /// The body's supermodel, which carries the animations.
-    sup: Option<Model>,
+    /// The body's chain of supermodels, nearest first; each carries some of the animations.
+    sup: Vec<Model>,
     body_tex: Option<String>,
     head_tex: Option<String>,
 }
@@ -54,10 +54,21 @@ impl Rig {
         body_texture: Option<String>,
     ) -> Result<Rig> {
         let body_m = load(inst, body)?;
-        let sup = match &body_m.supermodel {
-            Some(s) => Some(load(inst, s)?),
-            None => None,
-        };
+        let mut sup: Vec<Model> = Vec::new();
+        let mut next = body_m.supermodel.clone();
+        while let Some(name) = next.take() {
+            if sup.len() >= 6 {
+                break;
+            }
+            match load(inst, &name) {
+                Ok(m) => {
+                    next = m.supermodel.clone();
+                    sup.push(m);
+                }
+                Err(e) if sup.is_empty() => return Err(e),
+                Err(_) => break,
+            }
+        }
         let head_m = match head {
             Some(h) => Some(load(inst, h)?),
             None => None,
@@ -73,7 +84,10 @@ impl Rig {
 
     /// Length in seconds of a named animation of the supermodel.
     pub fn animation_length(&self, name: &str) -> Option<f32> {
-        self.sup.as_ref()?.animation(name).map(|a| a.length)
+        self.sup
+            .iter()
+            .find_map(|m| m.animation(name))
+            .map(|a| a.length)
     }
 
     /// The character in `animation` (name, time in seconds) at the origin, feet on z = 0, facing +y.
@@ -82,10 +96,11 @@ impl Rig {
     /// The head is attached at the body's `head_g`: rigid head parts follow the posed node and the
     /// skinned head is blended by the body's bones (see `SkinCtx`).
     pub fn pose(&self, animation: Option<(&str, f32)>) -> Result<Scene> {
-        let pose = match (animation, &self.sup) {
-            (Some((name, t)), Some(sup)) => sup.animation(name).map(|a| a.sample(sup, t)),
-            _ => None,
-        };
+        let pose = animation.and_then(|(name, t)| {
+            self.sup
+                .iter()
+                .find_map(|m| m.animation(name).map(|a| a.sample(m, t)))
+        });
         let mut scene = Scene {
             min: [f32::MAX; 3],
             max: [f32::MIN; 3],
@@ -110,14 +125,20 @@ impl Rig {
         );
         if let Some(head_m) = &self.head {
             let head_mats = head_m.world_matrices(None);
-            // A body or head model without a `head_g` node cannot be attached: draw the body alone.
-            if let (Some(mb), Some(mbr), Some(mh)) = (
+            // A creature's body has its own `head_g` to line the head's up with; a player's body has a `headhook` node
+            // where the head model's origin goes. A body with neither is drawn alone.
+            let attach = match (
                 find(&posed_mats, "head_g"),
                 find(&rest_mats, "head_g"),
                 find(&head_mats, "head_g"),
             ) {
-                let xf = mat_mul(&mb, &rigid_inverse(&mh));
-                let xf_rest = mat_mul(&mbr, &rigid_inverse(&mh));
+                (Some(mb), Some(mbr), Some(mh)) => Some((
+                    mat_mul(&mb, &rigid_inverse(&mh)),
+                    mat_mul(&mbr, &rigid_inverse(&mh)),
+                )),
+                _ => find(&posed_mats, "headhook").zip(find(&rest_mats, "headhook")),
+            };
+            if let Some((xf, xf_rest)) = attach {
                 let head_skin = SkinCtx::new(&rest_mats, &posed_mats, xf_rest);
                 scene.add_model_with(
                     head_m,
@@ -173,7 +194,10 @@ pub fn rig_for_appearance(
 ) -> Result<Rig> {
     let app = TwoDa::parse(&inst.read("appearance", ResType::TWODA)?)?;
     let get = |c: &str| app.get(appearance_row, c).map(str::to_string);
+    // **Assumption:** the player's rows name no `race`, and column b is the starting clothes (a is underwear).
     let race = get("race")
+        .filter(|r| !r.is_empty())
+        .or_else(|| get("modelb"))
         .ok_or_else(|| Error::NotFound(format!("appearance row {appearance_row} model")))?;
     if get("modeltype").as_deref() != Some("B") {
         return Rig::load(inst, &race, None, None);

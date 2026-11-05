@@ -300,6 +300,9 @@ pub struct World {
     pub(crate) effect_expiry: HashMap<u32, f32>,
     /// Every player-side creature is knocked out.
     pub game_over: bool,
+    /// Conversations wait for the player instead of running to the end (see `World::dialogue_view`).
+    pub interactive_dialogue: bool,
+    pub(crate) conv: Option<crate::dialogue::ConvRun>,
     /// Party credits (`GetGold`).
     pub gold: i32,
     /// `SetCustomToken` values, substituted for `<CUSTOMn>` in text.
@@ -433,6 +436,8 @@ impl World {
             spell: crate::force::SpellContext::default(),
             effect_expiry: HashMap::new(),
             game_over: false,
+            interactive_dialogue: false,
+            conv: None,
             gold: 0,
             tokens: HashMap::new(),
             loaded_from_save: false,

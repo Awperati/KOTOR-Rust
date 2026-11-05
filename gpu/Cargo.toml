@@ -22,6 +22,13 @@ kotor-core = { path = "../crates/kotor-core" }
 kotor-archive = { path = "../crates/kotor-archive" }
 kotor-image = { path = "../crates/kotor-image" }
 kotor-render = { path = "../crates/kotor-render" }
+kotor-game = { path = "../crates/kotor-game" }
+kotor-ui = { path = "../crates/kotor-ui" }
+kotor-gff = { path = "../crates/kotor-gff" }
+kotor-model = { path = "../crates/kotor-model" }
+kotor-tables = { path = "../crates/kotor-tables" }
+kotor-audio = { path = "../crates/kotor-audio" }
+kotor-audio-out = { path = "audio" }
 wgpu = "24"
 pollster = "0.4"
 glam = "0.29"

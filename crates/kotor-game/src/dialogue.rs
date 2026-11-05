@@ -92,6 +92,9 @@ impl World {
     /// The first start node whose condition passes begins it. Each entry runs its script and speaks; the
     /// available replies are those whose link condition passes. Replies with no text are "continue" links
     /// and are followed without being said. When no entry follows, the dialogue's `EndConversation` script runs.
+    ///
+    /// With `interactive_dialogue` set the chooser is ignored: the conversation runs up to the first line the
+    /// player has to answer or acknowledge and waits there (see `dialogue_view` and `dialogue_choose`).
     pub fn converse(
         &mut self,
         owner: ObjId,
@@ -100,6 +103,59 @@ impl World {
         chooser: &mut dyn Chooser,
     ) -> Result<usize, String> {
         let _ = listener;
+        if self.interactive_dialogue && (self.conv.is_some() || self.in_conversation) {
+            return Ok(0);
+        }
+        let before = self.transcript.len();
+        let mut run = self.conv_begin(owner, dialogue)?;
+        if self.interactive_dialogue {
+            if self.conv_drive(&mut run, None, None) {
+                self.conv_finish(run);
+            } else {
+                self.conv = Some(run);
+            }
+        } else {
+            self.conv_drive(&mut run, None, Some(chooser));
+            self.conv_finish(run);
+        }
+        Ok(self.transcript.len() - before)
+    }
+
+    /// What the player sees of a held conversation: speaker, the line spoken, its voice-over resref, and the
+    /// numbered replies (empty when the line only needs acknowledging).
+    pub fn dialogue_view(&self) -> Option<(String, String, String, Vec<String>)> {
+        let h = self.conv.as_ref()?.held.as_ref()?;
+        Some((
+            h.speaker.clone(),
+            h.text.clone(),
+            h.vo.clone(),
+            h.shown.clone(),
+        ))
+    }
+
+    /// Who a held conversation belongs to.
+    pub fn dialogue_owner(&self) -> Option<ObjId> {
+        self.conv.as_ref().map(|c| c.owner)
+    }
+
+    /// Whether an interactive conversation is waiting for the player.
+    pub fn in_dialogue(&self) -> bool {
+        self.conv.is_some()
+    }
+
+    /// Answer a held conversation: reply number `k` (ignored when the line only needs acknowledging).
+    pub fn dialogue_choose(&mut self, k: usize) {
+        let Some(mut run) = self.conv.take() else {
+            return;
+        };
+        if self.conv_drive(&mut run, Some(k), None) {
+            self.conv_finish(run);
+        } else {
+            self.conv = Some(run);
+        }
+    }
+
+    fn conv_begin(&mut self, owner: ObjId, dialogue: &str) -> Result<ConvRun, String> {
         let name = if dialogue.is_empty() {
             self.object(owner)
                 .map(|o| o.conversation.clone())
@@ -118,13 +174,11 @@ impl World {
         let d = Dialog::from_gff(&gff).map_err(|e| format!("dialogue {name}: {e}"))?;
         d.check().map_err(|e| format!("dialogue {name}: {e}"))?;
         let before = self.transcript.len();
-        let mut steps: Vec<crate::cutscene::Step> = Vec::new();
         self.in_conversation = true;
         self.events.push(format!(
             "conversation {name} begins with {}",
             self.describe(owner)
         ));
-
         // First start node whose condition passes.
         let mut next = None;
         for s in &d.starts {
@@ -133,64 +187,119 @@ impl World {
                 break;
             }
         }
-        let mut visited = 0;
-        while let Some(ei) = next.take() {
-            visited += 1;
-            if visited > MAX_NODES {
-                self.errors
-                    .push(format!("dialogue {name}: stopped after {MAX_NODES} nodes"));
-                break;
-            }
-            let entry = &d.entries[ei];
-            let ev0 = self.events.len();
-            self.run_node_script(entry, owner);
-            let text = self.node_text(entry);
-            steps.push(crate::cutscene::step_of(
-                entry,
-                LineKind::Npc,
-                ei,
-                self.speaker_name(entry, owner),
-                text.clone(),
-                &self.events[ev0..],
-            ));
-            if !text.is_empty() {
-                let speaker = self.speaker_name(entry, owner);
-                self.transcript.push(Line {
-                    speaker,
-                    text,
-                    kind: LineKind::Npc,
-                    node: ei,
-                    dialogue: name.clone(),
-                });
-            }
-            // Available replies.
-            let mut options: Vec<(usize, String)> = Vec::new();
-            for l in &entry.links {
-                if self.check(&l.active, owner) {
-                    let r = l.index as usize;
-                    options.push((r, self.node_text(&d.replies[r])));
-                }
-            }
-            if options.is_empty() {
-                break;
-            }
-            // Continue links (no text) are followed automatically; otherwise the player picks among the texts.
-            let pick = if options.iter().all(|(_, t)| t.is_empty()) {
+        Ok(ConvRun {
+            name,
+            owner,
+            dialog: d,
+            next,
+            visited: 0,
+            before,
+            steps: Vec::new(),
+            held: None,
+        })
+    }
+
+    /// Run the conversation until it ends (`true`) or, with no `chooser`, until it needs the player (`false`).
+    /// `resume` answers the held line first.
+    fn conv_drive(
+        &mut self,
+        run: &mut ConvRun,
+        mut resume: Option<usize>,
+        mut chooser: Option<&mut dyn Chooser>,
+    ) -> bool {
+        let (owner, name) = (run.owner, run.name.clone());
+        loop {
+            let (options, shown, k): (Vec<(usize, String)>, Vec<String>, usize) =
+                if let Some(h) = run.held.take() {
+                    (h.options, h.shown, resume.take().unwrap_or(0))
+                } else {
+                    let Some(ei) = run.next.take() else {
+                        return true;
+                    };
+                    run.visited += 1;
+                    if run.visited > MAX_NODES {
+                        self.errors
+                            .push(format!("dialogue {name}: stopped after {MAX_NODES} nodes"));
+                        return true;
+                    }
+                    let entry = run.dialog.entries[ei].clone();
+                    let ev0 = self.events.len();
+                    self.run_node_script(&entry, owner);
+                    let text = self.node_text(&entry);
+                    let speaker = self.speaker_name(&entry, owner);
+                    let step = crate::cutscene::step_of(
+                        &entry,
+                        LineKind::Npc,
+                        ei,
+                        speaker.clone(),
+                        text.clone(),
+                        &self.events[ev0..],
+                    );
+                    let vo = if step.vo.is_empty() {
+                        step.sound.clone()
+                    } else {
+                        step.vo.clone()
+                    };
+                    run.steps.push(step);
+                    if !text.is_empty() {
+                        self.transcript.push(Line {
+                            speaker: speaker.clone(),
+                            text: text.clone(),
+                            kind: LineKind::Npc,
+                            node: ei,
+                            dialogue: name.clone(),
+                        });
+                    }
+                    // Available replies.
+                    let mut options: Vec<(usize, String)> = Vec::new();
+                    for l in &entry.links {
+                        if self.check(&l.active, owner) {
+                            let r = l.index as usize;
+                            options.push((r, self.node_text(&run.dialog.replies[r])));
+                        }
+                    }
+                    if options.is_empty() {
+                        return true;
+                    }
+                    // Continue links (no text) are followed automatically; otherwise the player picks among the texts.
+                    let shown: Vec<String> = options
+                        .iter()
+                        .filter(|(_, t)| !t.is_empty())
+                        .map(|(_, t)| t.clone())
+                        .collect();
+                    match chooser.as_mut() {
+                        Some(c) => {
+                            let k = if shown.is_empty() {
+                                0
+                            } else {
+                                c.choose(&shown)
+                            };
+                            (options, shown, k)
+                        }
+                        None if text.is_empty() && shown.is_empty() => (options, shown, 0),
+                        None => {
+                            run.held = Some(Held {
+                                speaker,
+                                text,
+                                vo,
+                                options,
+                                shown,
+                            });
+                            return false;
+                        }
+                    }
+                };
+            let pick = if shown.is_empty() {
                 0
             } else {
-                let shown: Vec<String> = options
-                    .iter()
-                    .filter(|(_, t)| !t.is_empty())
-                    .map(|(_, t)| t.clone())
-                    .collect();
-                let k = chooser.choose(&shown).min(shown.len().saturating_sub(1));
+                let k = k.min(shown.len() - 1);
                 options
                     .iter()
                     .position(|(_, t)| *t == shown[k])
                     .unwrap_or(0)
             };
             let (ri, rtext) = options[pick].clone();
-            let reply = &d.replies[ri];
+            let reply = run.dialog.replies[ri].clone();
             if !rtext.is_empty() {
                 let who = self.describe_short(self.pc);
                 self.transcript.push(Line {
@@ -202,22 +311,26 @@ impl World {
                 });
             }
             let ev1 = self.events.len();
-            self.run_node_script(reply, owner);
-            steps.push(crate::cutscene::step_of(
-                reply,
+            self.run_node_script(&reply, owner);
+            run.steps.push(crate::cutscene::step_of(
+                &reply,
                 LineKind::Player,
                 ri,
                 self.describe_short(self.pc),
-                rtext.clone(),
+                rtext,
                 &self.events[ev1..],
             ));
             for l in &reply.links {
                 if self.check(&l.active, owner) {
-                    next = Some(l.index as usize);
+                    run.next = Some(l.index as usize);
                     break;
                 }
             }
         }
+    }
+
+    fn conv_finish(&mut self, run: ConvRun) {
+        let (owner, name, d) = (run.owner, run.name, run.dialog);
         // Scripts that end a conversation.
         let end_script = d.extra.iter().find_map(|(l, v)| match (l.as_str(), v) {
             ("EndConversation", Value::ResRef(s)) if !s.is_empty() => Some(s.clone()),
@@ -227,8 +340,9 @@ impl World {
             let _ = self.run_script(&s, owner);
         }
         self.events.push(format!(
-            "conversation {name} ends after {} lines, {visited} nodes",
-            self.transcript.len() - before
+            "conversation {name} ends after {} lines, {} nodes",
+            self.transcript.len() - run.before,
+            run.visited
         ));
         self.in_conversation = false;
         let stunts = d
@@ -258,11 +372,31 @@ impl World {
             })
             .unwrap_or_default();
         self.conversation = Some(crate::cutscene::Conversation {
-            name: name.clone(),
+            name,
             camera_model,
             stunts,
-            steps,
+            steps: run.steps,
         });
-        Ok(self.transcript.len() - before)
     }
+}
+
+/// A conversation in progress.
+pub struct ConvRun {
+    name: String,
+    owner: ObjId,
+    dialog: Dialog,
+    next: Option<usize>,
+    visited: usize,
+    before: usize,
+    steps: Vec<crate::cutscene::Step>,
+    held: Option<Held>,
+}
+
+/// A spoken line waiting for the player.
+struct Held {
+    speaker: String,
+    text: String,
+    vo: String,
+    options: Vec<(usize, String)>,
+    shown: Vec<String>,
 }

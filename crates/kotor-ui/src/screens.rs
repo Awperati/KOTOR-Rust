@@ -18,6 +18,8 @@ pub const SCREEN: (u32, u32) = (640, 480);
 /// Caches for textures, fonts and GUIs while drawing.
 pub struct Ui<'a> {
     inst: &'a mut Install,
+    /// Width of the layout space: 640, or more on a wider screen (the height stays 480).
+    width: u32,
     textures: HashMap<String, Option<Image>>,
     fonts: HashMap<String, Option<Font>>,
 }
@@ -57,9 +59,15 @@ impl<'a> Ui<'a> {
         let _ = inst.load_texture_packs();
         Ui {
             inst,
+            width: SCREEN.0,
             textures: HashMap::new(),
             fonts: HashMap::new(),
         }
+    }
+
+    /// Lay out for a screen `width` units wide and 480 high. Corners stay at the corners (see `anchored`).
+    pub fn set_width(&mut self, width: u32) {
+        self.width = width.max(SCREEN.0);
     }
 
     pub fn gui(&mut self, name: &str) -> Option<Gui> {
@@ -244,15 +252,30 @@ impl<'a> Ui<'a> {
     /// The dialogue box: the NPC's line, or the numbered list of replies, over `scene` (or black).
     /// Reads `dialog.gui`. Returns `None` if the GUI or its font is missing.
     pub fn dialogue_box(&mut self, view: &DialogueView, scene: Option<&Image>) -> Option<Image> {
+        self.dialogue_on(view, scene, [0, 0, 0, 255])
+    }
+
+    /// The dialogue box on a transparent background, to lay over a 3D frame (colours are premultiplied by alpha).
+    pub fn dialogue_overlay(&mut self, view: &DialogueView) -> Option<Image> {
+        self.dialogue_on(view, None, [0, 0, 0, 0])
+    }
+
+    fn dialogue_on(
+        &mut self,
+        view: &DialogueView,
+        scene: Option<&Image>,
+        clear: [u8; 4],
+    ) -> Option<Image> {
         let gui = self.gui("dialog")?;
-        let mut cv = Canvas::new(SCREEN.0, SCREEN.1);
-        cv.clear([0, 0, 0, 255]);
+        let mut cv = Canvas::new(self.width, SCREEN.1);
+        let extra = (self.width - SCREEN.0) as i32;
+        cv.clear(clear);
         if let Some(s) = scene {
             let full = [0, 0, s.width as i32, s.height as i32];
             cv.draw_image(
                 s,
                 full,
-                [0, 0, SCREEN.0 as i32, SCREEN.1 as i32],
+                [0, 0, self.width as i32, SCREEN.1 as i32],
                 [1.0; 3],
                 1.0,
                 Orient::default(),
@@ -260,19 +283,16 @@ impl<'a> Ui<'a> {
         }
         let p = &gui.panel;
         let (px, py) = (p.extent.left, p.extent.top);
+        // The box is a bar from edge to edge and down to the bottom of the screen; the text keeps the file's margins.
+        let width = p.extent.width + extra;
         cv.fill_rect(
-            px - 4,
+            0,
             py - 4,
-            p.extent.width + 8,
-            p.extent.height + 8,
+            self.width as i32,
+            SCREEN.1 as i32 - py + 4,
             [0, 0, 0, 160],
         );
-        self.draw_border(
-            &mut cv,
-            &p.border,
-            [px, py, p.extent.width, p.extent.height],
-            None,
-        );
+        self.draw_border(&mut cv, &p.border, [px, py, width, p.extent.height], None);
         if !view.speaker.is_empty() {
             let name = view.speaker.clone();
             let font = gui
@@ -283,7 +303,7 @@ impl<'a> Ui<'a> {
                 &mut cv,
                 &font,
                 &name,
-                [px, py - 22, p.extent.width, 20],
+                [px, py - 22, width, 20],
                 1,
                 [1.0, 0.9, 0.3],
             );
@@ -294,7 +314,7 @@ impl<'a> Ui<'a> {
             let r = [
                 px + m.extent.left,
                 py + m.extent.top,
-                m.extent.width,
+                m.extent.width + extra,
                 m.extent.height,
             ];
             self.draw_text(&mut cv, &t.font, &view.subtitle, r, t.alignment, t.color);
@@ -303,7 +323,7 @@ impl<'a> Ui<'a> {
             let proto = list.proto_item.as_ref()?;
             let t = proto.text.as_ref()?;
             let (lx, ly) = (px + list.extent.left, py + list.extent.top);
-            let width = proto.extent.width;
+            let width = proto.extent.width + extra;
             let line_h = self.font(&t.font)?.line_height;
             // Scroll so the selected reply is visible, then draw the rows that fit.
             let rows: Vec<Vec<String>> = {
@@ -351,9 +371,28 @@ impl<'a> Ui<'a> {
     /// The main HUD (`maininterface.gui`) with up to three party members' portraits and bars.
     /// Controls the screen does not use right now (level-up badges, the action queue, the target bar) are hidden.
     pub fn hud(&mut self, party: &[HudMember], target: Option<(&str, i32, i32)>) -> Option<Image> {
-        let gui = self.gui("maininterface")?;
-        let mut cv = Canvas::new(SCREEN.0, SCREEN.1);
-        cv.clear([30, 30, 40, 255]);
+        self.hud_on(party, target, [30, 30, 40, 255])
+    }
+
+    /// The HUD on a transparent background, to lay over a 3D frame (colours are premultiplied by alpha).
+    pub fn hud_overlay(
+        &mut self,
+        party: &[HudMember],
+        target: Option<(&str, i32, i32)>,
+    ) -> Option<Image> {
+        self.hud_on(party, target, [0, 0, 0, 0])
+    }
+
+    fn hud_on(
+        &mut self,
+        party: &[HudMember],
+        target: Option<(&str, i32, i32)>,
+        clear: [u8; 4],
+    ) -> Option<Image> {
+        let mut gui = self.gui("maininterface")?;
+        anchored(&mut gui.panel, self.width);
+        let mut cv = Canvas::new(self.width, SCREEN.1);
+        cv.clear(clear);
         let mut patches: HashMap<String, Patch> = HashMap::new();
         for tag in all_tags(&gui.panel) {
             let hide = [
@@ -428,9 +467,73 @@ impl<'a> Ui<'a> {
                 },
             );
         }
+        if clear[3] == 0 {
+            // Over a live scene, only what is in use: no target yet, so no action slots; no notices to show.
+            let idle = [
+                "LBL_JOURNAL",
+                "LBL_CASH",
+                "LBL_PLOTXP",
+                "LBL_DARKSHIFT",
+                "LBL_ITEMRCVD",
+                "LBL_ITEMLOST",
+                "LBL_LIGHTSHIFT",
+                "LBL_STEALTHXP",
+                "LBL_SOLOMODE",
+                "LBL_ACTIONDESC",
+                "LBL_INDICATE",
+                "LBH_",
+                "LBL_ICON",
+                "LBL_BG1",
+            ];
+            let mut hide: Vec<String> = all_tags(&gui.panel)
+                .into_iter()
+                .filter(|t| idle.iter().any(|p| t.starts_with(p)))
+                .collect();
+            for n in party.len() + 1..=3 {
+                hide.push(format!("LBL_BACK{n}"));
+            }
+            if party.len() < 2 {
+                hide.push("LBL_BG2".to_string());
+            }
+            for tag in hide {
+                patches.insert(
+                    tag,
+                    Patch {
+                        hidden: true,
+                        ..Patch::default()
+                    },
+                );
+            }
+        }
         let p = &gui.panel;
         self.draw_control(&mut cv, p, (0, 0), &patches);
         Some(cv.into_image())
+    }
+}
+
+/// Spread a 640-wide HUD over a wider screen. The left side stays, the party and the map keep their distance from
+/// the right edge, and the action slot and the notice icons stay centred.
+fn anchored(panel: &mut Control, width: u32) {
+    const CENTRED: [&str; 10] = [
+        "LBL_BG1",
+        "LBL_HIGHLIGHT",
+        "LBL_JOURNAL",
+        "LBL_CASH",
+        "LBL_PLOTXP",
+        "LBL_DARKSHIFT",
+        "LBL_ITEMRCVD",
+        "LBL_ITEMLOST",
+        "LBL_LIGHTSHIFT",
+        "LBL_STEALTHXP",
+    ];
+    let extra = width.saturating_sub(SCREEN.0) as i32;
+    panel.extent.width += extra;
+    for c in &mut panel.children {
+        if CENTRED.contains(&c.tag.as_str()) {
+            c.extent.left += extra / 2;
+        } else if c.extent.left >= SCREEN.0 as i32 / 2 {
+            c.extent.left += extra;
+        }
     }
 }
 

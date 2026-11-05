@@ -3,6 +3,8 @@
 //! Checked against the software renderer by `examples/compare.rs` (same camera, same scene). `Presenter` shows
 //! the picture on a window surface for `examples/viewer.rs`.
 
+pub mod stage;
+
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use kotor_image::Image;
@@ -87,6 +89,16 @@ pub struct GpuRenderer {
     height: u32,
     color: wgpu::Texture,
     depth: wgpu::TextureView,
+    white: Tex,
+    tex_cache: HashMap<String, Option<Tex>>,
+    static_draws: Vec<Draw>,
+}
+
+struct Draw {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    count: u32,
+    bind: wgpu::BindGroup,
 }
 
 impl GpuRenderer {
@@ -247,7 +259,19 @@ impl GpuRenderer {
                 view_formats: &[],
             })
             .create_view(&Default::default());
+        let white = upload_image(
+            &device,
+            &queue,
+            &Image {
+                width: 1,
+                height: 1,
+                rgba: vec![255, 255, 255, 255],
+            },
+        );
         Ok(GpuRenderer {
+            white,
+            tex_cache: HashMap::new(),
+            static_draws: Vec::new(),
             device,
             queue,
             pipeline,
@@ -261,32 +285,6 @@ impl GpuRenderer {
         })
     }
 
-    fn upload(&self, img: &Image) -> Tex {
-        let size = wgpu::Extent3d {
-            width: img.width,
-            height: img.height,
-            depth_or_array_layers: 1,
-        };
-        let t = self.device.create_texture_with_data(
-            &self.queue,
-            &wgpu::TextureDescriptor {
-                label: None,
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            },
-            wgpu::util::TextureDataOrder::LayerMajor,
-            &img.rgba,
-        );
-        Tex {
-            view: t.create_view(&Default::default()),
-        }
-    }
-
     /// Render `scene` from `cam`. `textures` maps a texture name to a decoded image.
     pub fn render(
         &mut self,
@@ -296,6 +294,107 @@ impl GpuRenderer {
     ) -> Result<Image, String> {
         self.draw(scene, textures, cam);
         self.read_back()
+    }
+
+    /// Keep `scene` on the GPU and draw it in every later frame, behind whatever each frame passes in.
+    pub fn set_static_scene(
+        &mut self,
+        scene: &Scene,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+    ) {
+        self.static_draws = self.build_draws(scene, textures);
+    }
+
+    /// The view of a named texture, decoding and uploading it the first time.
+    fn texture_view(
+        &mut self,
+        name: &Option<String>,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+    ) -> Option<wgpu::TextureView> {
+        let key = name.as_ref()?.to_ascii_lowercase();
+        if !self.tex_cache.contains_key(&key) {
+            let t = textures(&key).map(|img| upload_image(&self.device, &self.queue, &img));
+            self.tex_cache.insert(key.clone(), t);
+        }
+        self.tex_cache[&key].as_ref().map(|t| t.view.clone())
+    }
+
+    fn build_draws(
+        &mut self,
+        scene: &Scene,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+    ) -> Vec<Draw> {
+        let mut draws = Vec::new();
+        for m in &scene.meshes {
+            if m.positions.is_empty() || m.triangles.is_empty() {
+                continue;
+            }
+            let verts: Vec<Vertex> = (0..m.positions.len())
+                .map(|i| Vertex {
+                    pos: m.positions[i],
+                    normal: m.normals.get(i).copied().unwrap_or([0.0, 0.0, 1.0]),
+                    uv: m.uvs.get(i).copied().unwrap_or([0.0; 2]),
+                    uv2: m.uvs2.get(i).copied().unwrap_or([0.0; 2]),
+                })
+                .collect();
+            let indices: Vec<u32> = m.triangles.iter().flatten().copied().collect();
+            let diffuse = self.texture_view(&m.texture, textures);
+            let lightmap = self.texture_view(&m.lightmap, textures);
+            let params = [if lightmap.is_some() { 1.0f32 } else { 0.0 }, 0.0, 0.0, 0.0];
+            let params_buf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::bytes_of(&params),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
+            let white = self.white.view.clone();
+            let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &self.mesh_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(
+                            diffuse.as_ref().unwrap_or(&white),
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(
+                            lightmap.as_ref().unwrap_or(&white),
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: params_buf.as_entire_binding(),
+                    },
+                ],
+            });
+            draws.push(Draw {
+                vertices: self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(&verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                indices: self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(&indices),
+                        usage: wgpu::BufferUsages::INDEX,
+                    }),
+                count: indices.len() as u32,
+                bind,
+            });
+        }
+        draws
     }
 
     fn draw(
@@ -331,102 +430,7 @@ impl GpuRenderer {
                 resource: globals_buf.as_entire_binding(),
             }],
         });
-
-        let white = self.upload(&Image {
-            width: 1,
-            height: 1,
-            rgba: vec![255, 255, 255, 255],
-        });
-        let mut cache: HashMap<String, Option<Tex>> = HashMap::new();
-        struct Draw {
-            vertices: wgpu::Buffer,
-            indices: wgpu::Buffer,
-            count: u32,
-            bind: wgpu::BindGroup,
-        }
-        let mut draws: Vec<Draw> = Vec::new();
-        for m in &scene.meshes {
-            if m.positions.is_empty() || m.triangles.is_empty() {
-                continue;
-            }
-            let verts: Vec<Vertex> = (0..m.positions.len())
-                .map(|i| Vertex {
-                    pos: m.positions[i],
-                    normal: m.normals.get(i).copied().unwrap_or([0.0, 0.0, 1.0]),
-                    uv: m.uvs.get(i).copied().unwrap_or([0.0; 2]),
-                    uv2: m.uvs2.get(i).copied().unwrap_or([0.0; 2]),
-                })
-                .collect();
-            let indices: Vec<u32> = m.triangles.iter().flatten().copied().collect();
-            let mut get = |name: &Option<String>| -> bool {
-                let Some(n) = name else { return false };
-                let key = n.to_ascii_lowercase();
-                if !cache.contains_key(&key) {
-                    let t = textures(&key).map(|img| self.upload(&img));
-                    cache.insert(key.clone(), t);
-                }
-                cache[&key].is_some()
-            };
-            let (has_d, has_l) = (get(&m.texture), get(&m.lightmap));
-            let pick = |name: &Option<String>, ok: bool| -> wgpu::TextureView {
-                match (ok, name) {
-                    (true, Some(n)) => cache[&n.to_ascii_lowercase()]
-                        .as_ref()
-                        .map(|t| t.view.clone())
-                        .unwrap_or_else(|| white.view.clone()),
-                    _ => white.view.clone(),
-                }
-            };
-            let params = [if has_l { 1.0f32 } else { 0.0 }, 0.0, 0.0, 0.0];
-            let params_buf = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::bytes_of(&params),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-            let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: None,
-                layout: &self.mesh_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&pick(&m.texture, has_d)),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&pick(&m.lightmap, has_l)),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: params_buf.as_entire_binding(),
-                    },
-                ],
-            });
-            draws.push(Draw {
-                vertices: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: None,
-                        contents: bytemuck::cast_slice(&verts),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    }),
-                indices: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: None,
-                        contents: bytemuck::cast_slice(&indices),
-                        usage: wgpu::BufferUsages::INDEX,
-                    }),
-                count: indices.len() as u32,
-                bind,
-            });
-        }
-
+        let draws = self.build_draws(scene, textures);
         let color_view = self.color.create_view(&Default::default());
         let mut enc = self.device.create_command_encoder(&Default::default());
         {
@@ -458,7 +462,7 @@ impl GpuRenderer {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &globals_bind, &[]);
-            for d in &draws {
+            for d in self.static_draws.iter().chain(&draws) {
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(..));
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -536,6 +540,47 @@ impl GpuRenderer {
     }
 }
 
+fn upload_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &Image) -> Tex {
+    let t = device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: img.width,
+                height: img.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &img.rgba,
+    );
+    Tex {
+        view: t.create_view(&Default::default()),
+    }
+}
+
+/// Lay a premultiplied overlay over `scene` in software, the same way `Presenter` does on the GPU (for PNGs).
+pub fn composite(scene: &mut Image, overlay: &Image) {
+    for y in 0..scene.height {
+        let sy = (y * overlay.height / scene.height) as usize;
+        for x in 0..scene.width {
+            let sx = (x * overlay.width / scene.width) as usize;
+            let s = &overlay.rgba[(sy * overlay.width as usize + sx) * 4..][..4];
+            let a = s[3] as u32;
+            let i = ((y * scene.width + x) * 4) as usize;
+            for (d, s) in scene.rgba[i..i + 3].iter_mut().zip(s) {
+                *d = (*s as u32 + *d as u32 * (255 - a) / 255).min(255) as u8;
+            }
+        }
+    }
+}
+
 const BLIT: &str = r#"
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
@@ -557,7 +602,9 @@ pub struct Presenter {
     surface: wgpu::Surface<'static>,
     config: std::cell::RefCell<wgpu::SurfaceConfiguration>,
     pipeline: wgpu::RenderPipeline,
+    overlay_pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
+    overlay: std::cell::RefCell<Option<wgpu::BindGroup>>,
 }
 
 impl Presenter {
@@ -620,35 +667,70 @@ impl Presenter {
                 bind_group_layouts: &[&layout],
                 push_constant_ranges: &[],
             });
-        let pipeline = gpu
-            .device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("blit"),
-                layout: Some(&pl),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some("vs"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some("fs"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(format.into())],
-                }),
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                multiview: None,
-                cache: None,
-            });
+        let make = |blend: Option<wgpu::BlendState>| {
+            gpu.device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("blit"),
+                    layout: Some(&pl),
+                    vertex: wgpu::VertexState {
+                        module: &module,
+                        entry_point: Some("vs"),
+                        compilation_options: Default::default(),
+                        buffers: &[],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &module,
+                        entry_point: Some("fs"),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format,
+                            blend,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: Default::default(),
+                    depth_stencil: None,
+                    multisample: Default::default(),
+                    multiview: None,
+                    cache: None,
+                })
+        };
+        let pipeline = make(None);
+        let overlay_pipeline = make(Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING));
         Presenter {
             surface,
             config: std::cell::RefCell::new(config),
             pipeline,
+            overlay_pipeline,
             layout,
+            overlay: std::cell::RefCell::new(None),
         }
+    }
+
+    fn bind(&self, gpu: &GpuRenderer, view: &wgpu::TextureView) -> wgpu::BindGroup {
+        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&gpu.sampler),
+                },
+            ],
+        })
+    }
+
+    /// Replace the premultiplied picture stretched over the whole scene, or remove it.
+    pub fn set_overlay(&self, gpu: &GpuRenderer, img: Option<&Image>) {
+        let bind = img.map(|i| {
+            let t = upload_image(&gpu.device, &gpu.queue, i);
+            self.bind(gpu, &t.view)
+        });
+        *self.overlay.borrow_mut() = bind;
     }
 
     /// The window changed size.
@@ -673,20 +755,7 @@ impl Presenter {
         };
         let view = frame.texture.create_view(&Default::default());
         let src = gpu.color.create_view(&Default::default());
-        let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&src),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&gpu.sampler),
-                },
-            ],
-        });
+        let bind = self.bind(gpu, &src);
         let mut enc = gpu.device.create_command_encoder(&Default::default());
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -706,6 +775,11 @@ impl Presenter {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind, &[]);
             pass.draw(0..3, 0..1);
+            if let Some(o) = self.overlay.borrow().as_ref() {
+                pass.set_pipeline(&self.overlay_pipeline);
+                pass.set_bind_group(0, o, &[]);
+                pass.draw(0..3, 0..1);
+            }
         }
         gpu.queue.submit([enc.finish()]);
         frame.present();

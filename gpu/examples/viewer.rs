@@ -1,31 +1,110 @@
-//! A window that slowly orbits an area. It only ever opens on the monitor named DISPLAY2, never takes focus,
-//! and needs no input.
+//! Play a module in a window. It only ever opens on the monitor named DISPLAY2 and never takes focus by itself:
+//! click the window to give it the keyboard.
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example viewer -- [options]
-//!     --area A        area name (default m01aa)        --module M   module to load (default end_m01aa)
-//!     --frames N      close after N frames             --hidden     no visible window (renders and presents anyway)
+//!     --module M      module to load (default end_m01aa)
+//!     --original      ignore a mod's .mod file and load the module's own .rim pair
+//!     --volume V      0 to 1 (default 0.8); --mute opens no sound device
+//!     --frames N      close after N frames             --hidden     no visible window
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
-use kotor_archive::Install;
+//!
+//! Left click: walk, or use what is under the cursor; a click or Space ends a line. 1-9: take a reply.
+//! Q/E or the arrow keys: turn the camera. Wheel: zoom. Esc: quit.
+use kotor_audio::Audio;
+use kotor_audio_out::{decode_any, AudioOut};
+use kotor_gpu::stage::{Cue, Stage};
 use kotor_gpu::{GpuRenderer, Presenter};
-use kotor_image::Image;
-use kotor_render::{Camera, Scene};
-use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::WindowEvent;
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
+const WIDTH: u32 = 1280;
+const HEIGHT: u32 = 720;
+const TURN_SPEED: f32 = 90.0;
+
+#[derive(Clone, Copy, PartialEq)]
+enum Channel {
+    Voice,
+    Music,
+}
+
+struct Sound {
+    out: Option<AudioOut>,
+    tx: Sender<(u64, Channel, Result<Audio, String>)>,
+    rx: Receiver<(u64, Channel, Result<Audio, String>)>,
+    /// Decodes finish late: only the newest request per channel plays.
+    newest: [u64; 2],
+}
+
+impl Sound {
+    fn request(&mut self, ch: Channel, path: PathBuf) {
+        if self.out.is_none() {
+            return;
+        }
+        let i = ch as usize;
+        self.newest[i] += 1;
+        let (id, tx) = (self.newest[i], self.tx.clone());
+        std::thread::spawn(move || {
+            let r = std::fs::read(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|d| decode_any(&d));
+            let _ = tx.send((id, ch, r));
+        });
+    }
+
+    fn cue(&mut self, c: Cue) {
+        match c {
+            Cue::Voice(p) => self.request(Channel::Voice, p),
+            Cue::Music(p) => self.request(Channel::Music, p),
+            Cue::StopVoice => {
+                self.newest[Channel::Voice as usize] += 1;
+                if let Some(o) = &mut self.out {
+                    o.stop_voice();
+                }
+            }
+            Cue::StopMusic => {
+                self.newest[Channel::Music as usize] += 1;
+                if let Some(o) = &mut self.out {
+                    o.stop_music();
+                }
+            }
+        }
+    }
+
+    fn pump(&mut self) {
+        while let Ok((id, ch, r)) = self.rx.try_recv() {
+            if id != self.newest[ch as usize] {
+                continue;
+            }
+            let Some(o) = &mut self.out else { continue };
+            let done = r.and_then(|a| match ch {
+                Channel::Voice => o.play_voice(&a),
+                Channel::Music => o.play_music(&a),
+            });
+            if let Err(e) = done {
+                eprintln!("sound: {e}");
+            }
+        }
+    }
+}
+
 struct App {
-    inst: Install,
-    scene: Scene,
-    textures: HashMap<String, Option<Image>>,
+    stage: Stage,
+    sound: Sound,
     monitor: String,
     hidden: bool,
     max_frames: Option<u32>,
     frames: u32,
     started: std::time::Instant,
+    last: std::time::Instant,
+    cursor: (f32, f32),
+    turning: f32,
     state: Option<State>,
     failed: Option<String>,
 }
@@ -34,19 +113,16 @@ struct State {
     window: Arc<Window>,
     gpu: GpuRenderer,
     presenter: Presenter,
+    static_seen: u64,
+    overlay_seen: u64,
 }
 
 impl App {
     fn start(&mut self, el: &ActiveEventLoop) -> Result<State, String> {
         let monitors: Vec<_> = el.available_monitors().collect();
-        let names: Vec<String> = monitors
-            .iter()
-            .map(|m| m.name().unwrap_or_default())
-            .collect();
-        println!("monitors: {names:?}");
         let mut attrs = Window::default_attributes()
-            .with_title("kotor-rs viewer")
-            .with_inner_size(PhysicalSize::new(960, 540))
+            .with_title("kotor-rs")
+            .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
             .with_active(false)
             .with_visible(!self.hidden);
         if !self.hidden {
@@ -75,13 +151,81 @@ impl App {
         .ok_or("no adapter for the window")?;
         let formats = surface.get_capabilities(&adapter).formats;
         let size = window.inner_size();
-        let gpu = GpuRenderer::with_instance(&instance, Some(&surface), 960, 540)?;
+        let gpu = GpuRenderer::with_instance(&instance, Some(&surface), WIDTH, HEIGHT)?;
         let presenter = Presenter::new(&gpu, surface, &formats, (size.width, size.height));
         Ok(State {
             window,
             gpu,
             presenter,
+            static_seen: 0,
+            overlay_seen: 0,
         })
+    }
+
+    fn frame(&mut self, el: &ActiveEventLoop) {
+        let Some(st) = &mut self.state else { return };
+        let now = std::time::Instant::now();
+        let dt = (now - self.last).as_secs_f32();
+        self.last = now;
+        self.stage.turn = self.turning;
+        for c in self.stage.update(dt) {
+            self.sound.cue(c);
+        }
+        self.sound.pump();
+        if let Some(s) = self.stage.status() {
+            println!("{s}");
+        }
+        let stage = &mut self.stage;
+        if st.static_seen != stage.static_version {
+            st.static_seen = stage.static_version;
+            let scene = stage.static_scene().clone();
+            st.gpu.set_static_scene(&scene, &mut |n| stage.texture(n));
+        }
+        if st.overlay_seen != stage.overlay_version {
+            st.overlay_seen = stage.overlay_version;
+            st.presenter.set_overlay(&st.gpu, stage.overlay());
+        }
+        let scene = stage.dynamic_scene();
+        let cam = stage.camera();
+        if let Err(e) = st
+            .gpu
+            .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)
+        {
+            self.failed = Some(e);
+            el.exit();
+            return;
+        }
+        self.frames += 1;
+        if self.max_frames.is_some_and(|m| self.frames >= m) {
+            el.exit();
+        }
+    }
+
+    fn key(&mut self, el: &ActiveEventLoop, code: KeyCode, pressed: bool) {
+        let digit = match code {
+            KeyCode::Digit1 | KeyCode::Numpad1 => 1,
+            KeyCode::Digit2 | KeyCode::Numpad2 => 2,
+            KeyCode::Digit3 | KeyCode::Numpad3 => 3,
+            KeyCode::Digit4 | KeyCode::Numpad4 => 4,
+            KeyCode::Digit5 | KeyCode::Numpad5 => 5,
+            KeyCode::Digit6 | KeyCode::Numpad6 => 6,
+            KeyCode::Digit7 | KeyCode::Numpad7 => 7,
+            KeyCode::Digit8 | KeyCode::Numpad8 => 8,
+            KeyCode::Digit9 | KeyCode::Numpad9 => 9,
+            _ => 0,
+        };
+        match code {
+            KeyCode::KeyQ | KeyCode::ArrowLeft => {
+                self.turning = if pressed { TURN_SPEED } else { 0.0 };
+            }
+            KeyCode::KeyE | KeyCode::ArrowRight => {
+                self.turning = if pressed { -TURN_SPEED } else { 0.0 };
+            }
+            KeyCode::Escape if pressed => el.exit(),
+            KeyCode::Space | KeyCode::Enter if pressed => self.stage.continue_line(),
+            _ if pressed && digit > 0 => self.stage.number_key(digit),
+            _ => {}
+        }
     }
 }
 
@@ -106,6 +250,32 @@ impl ApplicationHandler for App {
                 if let Some(st) = &self.state {
                     st.presenter.resize(&st.gpu, (s.width, s.height));
                 }
+                self.stage.set_view((s.width, s.height));
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = (position.x as f32, position.y as f32);
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                if let Some(st) = &self.state {
+                    let s = st.window.inner_size();
+                    self.stage.click(self.cursor, (s.width, s.height));
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let d = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
+                };
+                self.stage.distance = (self.stage.distance - d * 0.4).clamp(1.5, 12.0);
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let PhysicalKey::Code(code) = event.physical_key {
+                    self.key(el, code, event.state == ElementState::Pressed);
+                }
             }
             WindowEvent::RedrawRequested => self.frame(el),
             _ => {}
@@ -122,48 +292,6 @@ impl ApplicationHandler for App {
     }
 }
 
-impl App {
-    fn frame(&mut self, el: &ActiveEventLoop) {
-        {
-            {
-                let Some(st) = &mut self.state else { return };
-                let t = self.started.elapsed().as_secs_f32() * 0.25;
-                let mid = [0, 1, 2].map(|k| (self.scene.min[k] + self.scene.max[k]) / 2.0);
-                let r = (self.scene.max[0] - self.scene.min[0])
-                    .max(self.scene.max[1] - self.scene.min[1])
-                    * 0.45;
-                let cam = Camera {
-                    eye: [mid[0] + r * t.cos(), mid[1] + r * t.sin(), mid[2] + r * 0.5],
-                    target: mid,
-                    fov: 70.0,
-                };
-                let (inst, cache) = (&mut self.inst, &mut self.textures);
-                let mut tex = |n: &str| {
-                    cache
-                        .entry(n.to_string())
-                        .or_insert_with(|| kotor_render::load_texture(inst, n))
-                        .clone()
-                };
-                if let Err(e) = st.gpu.render_to(&st.presenter, &self.scene, &mut tex, &cam) {
-                    self.failed = Some(e);
-                    el.exit();
-                    return;
-                }
-                self.frames += 1;
-                if self.frames == 1 {
-                    println!(
-                        "first frame after {:.2}s",
-                        self.started.elapsed().as_secs_f32()
-                    );
-                }
-                if self.max_frames.is_some_and(|m| self.frames >= m) {
-                    el.exit();
-                }
-            }
-        }
-    }
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let args: Vec<String> = std::env::args().collect();
@@ -173,34 +301,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|i| args.get(i + 1))
             .cloned()
     };
+    let flag = |n: &str| args.iter().any(|a| a == n);
     let monitor = opt("--monitor")
         .unwrap_or_else(|| "DISPLAY2".into())
         .to_ascii_uppercase();
     if monitor.ends_with("DISPLAY1") {
         return Err("DISPLAY1 is off limits".into());
     }
-    let area = opt("--area").unwrap_or_else(|| "m01aa".into());
     let module = opt("--module").unwrap_or_else(|| "end_m01aa".into());
-    let dir = kotor_core::install_dir().ok_or("no KotOR install found")?;
-    let mut inst = Install::open(dir)?;
-    inst.load_module(&module)?;
-    inst.load_texture_packs()?;
-    let mut scene = kotor_render::load_area(&mut inst, &area)?;
-    kotor_render::add_area_objects(&mut scene, &mut inst, &area)?;
-    println!(
-        "{} meshes, {} triangles",
-        scene.meshes.len(),
-        scene.triangle_count()
-    );
+    let volume = opt("--volume")
+        .and_then(|v| v.parse::<f32>().ok())
+        .unwrap_or(0.8);
+    let stage = Stage::open(&module, flag("--original"))?;
+    let out = if flag("--mute") {
+        None
+    } else {
+        match AudioOut::new(volume.clamp(0.0, 1.0)) {
+            Ok(o) => Some(o),
+            Err(e) => {
+                eprintln!("no sound: {e}");
+                None
+            }
+        }
+    };
+    let (tx, rx) = channel();
     let mut app = App {
-        inst,
-        scene,
-        textures: HashMap::new(),
+        stage,
+        sound: Sound {
+            out,
+            tx,
+            rx,
+            newest: [0; 2],
+        },
         monitor,
-        hidden: args.iter().any(|a| a == "--hidden"),
+        hidden: flag("--hidden"),
         max_frames: opt("--frames").and_then(|n| n.parse().ok()),
         frames: 0,
         started: std::time::Instant::now(),
+        last: std::time::Instant::now(),
+        cursor: (0.0, 0.0),
+        turning: 0.0,
         state: None,
         failed: None,
     };
@@ -210,10 +350,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(e) = app.failed {
         return Err(e.into());
     }
+    let secs = app.started.elapsed().as_secs_f32();
     println!(
-        "{} frames in {:.1}s",
+        "{} frames in {secs:.1}s ({:.0} fps), {} lines shown, {} world errors",
         app.frames,
-        app.started.elapsed().as_secs_f32()
+        app.frames as f32 / secs,
+        app.stage.lines_shown,
+        app.stage.game.world.errors.len()
     );
     Ok(())
 }
