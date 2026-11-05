@@ -129,8 +129,11 @@ pub struct Object {
     pub force: i32,
     pub max_force: i32,
     pub challenge_rating: f32,
-    /// `appearance.2da` row.
+    /// `appearance.2da` row (the body), `heads.2da` row, 0 male / 1 female, portrait texture name.
     pub appearance: i32,
+    pub head: i32,
+    pub gender: i32,
+    pub portrait: String,
 }
 
 /// A door's animation state; the number is seconds into the clip.
@@ -201,6 +204,9 @@ impl Object {
             max_force: 0,
             challenge_rating: 1.0,
             appearance: 0,
+            head: 0,
+            gender: 0,
+            portrait: String::new(),
         }
     }
 }
@@ -326,6 +332,7 @@ fn creature_defaults(o: &mut Object, utc: &Struct) {
     o.force = utc.int("CurrentForce").unwrap_or(0) as i32;
     o.max_force = utc.int("ForcePoints").unwrap_or(0) as i32;
     o.appearance = utc.int("Appearance_Type").unwrap_or(0) as i32;
+    o.gender = utc.int("Gender").unwrap_or(0) as i32;
     o.challenge_rating = utc.float("ChallengeRating").unwrap_or(1.0) as f32;
     o.skills = utc
         .list("SkillList")

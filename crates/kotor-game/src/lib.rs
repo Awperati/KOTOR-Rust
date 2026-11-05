@@ -1,6 +1,7 @@
 //! The game world without graphics: objects, a clock, per-object action queues, delayed commands,
 //! the routines scripts call, and the dialogue runner. It reads the installed game and never writes it.
 
+mod chargen;
 mod combat;
 mod dialogue;
 mod follow;
@@ -12,6 +13,10 @@ mod rules;
 mod save;
 mod world;
 
+pub use chargen::{
+    attribute_cost, BodySize, CharacterSpec, ABILITY_NAMES, ATTRIBUTE_BASE, ATTRIBUTE_MAX,
+    POINT_POOL,
+};
 pub use combat::{
     ability_mod, damage, resolve_attack, AttackLog, CombatState, Outcome, Weapon,
     HEARTBEAT_SECONDS, MELEE_REACH, RANGED_REACH, ROUND_SECONDS,

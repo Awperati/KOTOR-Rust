@@ -10,6 +10,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kotor-audio"
+version = "0.1.0"
+dependencies = [
+ "kotor-archive",
+ "kotor-core",
+]
+
+[[package]]
 name = "kotor-core"
 version = "0.1.0"
 

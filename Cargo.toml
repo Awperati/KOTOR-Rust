@@ -14,6 +14,7 @@ members = [
     "crates/kotor-game",
     "crates/kotor-render",
     "crates/kotor-ui",
+    "crates/kotor-audio",
     "crates/kotor-tool",
 ]
 
@@ -28,4 +29,5 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
 

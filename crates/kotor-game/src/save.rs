@@ -250,6 +250,16 @@ impl World {
             ("Race", Value::Int(o.race)),
             ("Subrace", Value::Int(o.subrace)),
             ("Down", Value::Byte(o.down as u8)),
+            ("Class", Value::Int(o.class)),
+            ("MaxHP", Value::Int(o.max_hp)),
+            (
+                "Abilities",
+                list_of(o.abilities.iter(), |a| st(vec![("Value", Value::Int(*a))])),
+            ),
+            ("Appearance", Value::Int(o.appearance)),
+            ("Head", Value::Int(o.head)),
+            ("Gender", Value::Int(o.gender)),
+            ("Portrait", s(&o.portrait)),
             ("Force", Value::Int(o.force)),
             ("MaxForce", Value::Int(o.max_force)),
             ("SkillPoints", Value::Int(o.skill_points)),
@@ -498,6 +508,21 @@ impl World {
                     .collect()
             };
             o.down = flag("Down");
+            o.class = e.int("Class").unwrap_or(0) as i32;
+            o.max_hp = e.int("MaxHP").unwrap_or(o.hp as i64) as i32;
+            let scores: Vec<i32> = e
+                .list("Abilities")
+                .unwrap_or_default()
+                .iter()
+                .map(|x| x.int("Value").unwrap_or(10) as i32)
+                .collect();
+            if scores.len() == 6 {
+                o.abilities.copy_from_slice(&scores);
+            }
+            o.appearance = e.int("Appearance").unwrap_or(0) as i32;
+            o.head = e.int("Head").unwrap_or(0) as i32;
+            o.gender = e.int("Gender").unwrap_or(0) as i32;
+            o.portrait = e.str("Portrait").unwrap_or("").to_string();
             o.force = e.int("Force").unwrap_or(0) as i32;
             o.max_force = e.int("MaxForce").unwrap_or(0) as i32;
             o.skill_points = e.int("SkillPoints").unwrap_or(0) as i32;
