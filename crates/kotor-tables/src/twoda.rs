@@ -118,7 +118,9 @@ impl TwoDa {
     }
 
     pub fn column_index(&self, name: &str) -> Option<usize> {
-        self.columns.iter().position(|c| c.eq_ignore_ascii_case(name))
+        self.columns
+            .iter()
+            .position(|c| c.eq_ignore_ascii_case(name))
     }
 
     /// Cell text; `None` if the row or column is missing or the cell is `****`.

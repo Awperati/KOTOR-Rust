@@ -72,7 +72,9 @@ pub fn write(g: &Gff) -> Result<Vec<u8>> {
 }
 
 fn latin1_bytes(s: &str) -> Vec<u8> {
-    s.chars().map(|c| if (c as u32) < 256 { c as u8 } else { b'?' }).collect()
+    s.chars()
+        .map(|c| if (c as u32) < 256 { c as u8 } else { b'?' })
+        .collect()
 }
 
 impl Builder {
@@ -175,7 +177,8 @@ impl Builder {
                     ids.push(self.add_struct(it)?);
                 }
                 let off = u32_of(self.lists.len(), "lists")?;
-                self.lists.extend_from_slice(&u32_of(ids.len(), "list")?.to_le_bytes());
+                self.lists
+                    .extend_from_slice(&u32_of(ids.len(), "list")?.to_le_bytes());
                 for i in ids {
                     self.lists.extend_from_slice(&i.to_le_bytes());
                 }

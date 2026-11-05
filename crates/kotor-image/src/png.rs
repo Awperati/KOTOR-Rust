@@ -5,7 +5,11 @@ fn crc32(chunks: &[&[u8]]) -> u32 {
     for (i, t) in table.iter_mut().enumerate() {
         let mut c = i as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            c = if c & 1 != 0 {
+                0xEDB8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
         }
         *t = c;
     }

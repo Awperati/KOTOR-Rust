@@ -31,7 +31,9 @@ impl Tlk {
         let tag = r.tag()?;
         let ver = r.tag()?;
         if &tag != b"TLK " || &ver != b"V3.0" {
-            return Err(Error::format(format!("not a TLK V3.0 file: {tag:?} {ver:?}")));
+            return Err(Error::format(format!(
+                "not a TLK V3.0 file: {tag:?} {ver:?}"
+            )));
         }
         let language = r.u32()?;
         let count = r.u32()? as usize;

@@ -27,7 +27,9 @@ fn round_trip(name: &str, data: &[u8]) -> Gff {
 
 #[test]
 fn every_gff_in_base_data_round_trips() {
-    let Some(dir) = kotor_core::install_dir() else { return };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
     let mut inst = Install::open(dir).unwrap();
     let mut count = 0;
     for (ty, magic) in GFF_TYPES {
@@ -44,7 +46,9 @@ fn every_gff_in_base_data_round_trips() {
 
 #[test]
 fn module_areas_and_info() {
-    let Some(dir) = kotor_core::install_dir() else { return };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
     let rim = Erf::open(Source::file(dir.join("modules").join("end_m01aa.rim"))).unwrap();
     let ifo = round_trip("end_m01aa ifo", &rim.get("module", ResType::IFO).unwrap());
     assert_eq!(ifo.file_type, "IFO ");
@@ -57,7 +61,9 @@ fn module_areas_and_info() {
 
 #[test]
 fn creature_template_fields() {
-    let Some(dir) = kotor_core::install_dir() else { return };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
     let mut inst = Install::open(dir).unwrap();
     let g = Gff::parse(&inst.read("c_bantha", ResType(2027)).unwrap()).unwrap();
     assert_eq!(g.root.str("Tag"), Some("Bantha"));

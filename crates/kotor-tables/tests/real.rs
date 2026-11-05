@@ -4,12 +4,15 @@ use kotor_tables::{Tlk, TwoDa};
 
 #[test]
 fn every_base_2da_parses() {
-    let Some(dir) = kotor_core::install_dir() else { return };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
     let mut inst = Install::open(dir).unwrap();
     let names = inst.list(ResType::TWODA);
     assert!(names.len() > 100);
     for n in &names {
-        let t = TwoDa::parse(&inst.read(n, ResType::TWODA).unwrap()).unwrap_or_else(|e| panic!("{n}: {e}"));
+        let t = TwoDa::parse(&inst.read(n, ResType::TWODA).unwrap())
+            .unwrap_or_else(|e| panic!("{n}: {e}"));
         assert!(!t.columns.is_empty(), "{n} has no columns");
         for (i, r) in t.rows.iter().enumerate() {
             assert_eq!(r.len(), t.columns.len(), "{n} row {i}");
@@ -19,7 +22,9 @@ fn every_base_2da_parses() {
 
 #[test]
 fn known_2da_values() {
-    let Some(dir) = kotor_core::install_dir() else { return };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
     let mut inst = Install::open(dir).unwrap();
     let t = TwoDa::parse(&inst.read("appearance", ResType::TWODA).unwrap()).unwrap();
     println!("appearance cols: {:?}, rows {}", t.columns, t.row_count());
@@ -37,7 +42,9 @@ fn known_2da_values() {
 
 #[test]
 fn dialog_tlk() {
-    let Some(dir) = kotor_core::install_dir() else { return };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
     let tlk = Tlk::parse(&std::fs::read(dir.join("dialog.tlk")).unwrap()).unwrap();
     assert!(tlk.len() > 40_000, "{} strings", tlk.len());
     let texts = (0..tlk.len() as u32).filter_map(|i| tlk.get(i)).count();
@@ -45,7 +52,13 @@ fn dialog_tlk() {
     // Every string decodes; no stray control bytes besides whitespace.
     for i in 0..tlk.len() as u32 {
         if let Some(s) = tlk.get(i) {
-            assert!(!s.chars().any(|c| c.is_control() && !c.is_whitespace() && c as u32 != 0x81 && !(0x8D..=0x9F).contains(&(c as u32))), "strref {i}");
+            assert!(
+                !s.chars().any(|c| c.is_control()
+                    && !c.is_whitespace()
+                    && c as u32 != 0x81
+                    && !(0x8D..=0x9F).contains(&(c as u32))),
+                "strref {i}"
+            );
         }
     }
 }

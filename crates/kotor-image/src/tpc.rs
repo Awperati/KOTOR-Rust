@@ -88,7 +88,11 @@ pub fn parse_tpc(data: &[u8]) -> Result<Tpc> {
     if faces > 1 {
         r.skip(first * (faces - 1));
     }
-    let tail = if r.pos() <= data.len() { &data[r.pos()..] } else { &[][..] };
+    let tail = if r.pos() <= data.len() {
+        &data[r.pos()..]
+    } else {
+        &[][..]
+    };
     let txi = latin1(tail.split(|&c| c == 0).next().unwrap_or(&[]));
     Ok(Tpc {
         width: width as u32,
