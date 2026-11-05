@@ -1,8 +1,9 @@
 # Module authoring sketch (new lore for the original game and for kotor-rs)
 
-Status: design only. The writers it relies on are in `kotor-archive` (archives), `kotor-gff`, `kotor-tables`.
-The ERF/MOD/RIM, TLK and 2DA writers are type-checked and clippy-clean but their tests have not run yet
-(no linker on this PC at the time of writing; see the git log for the day they went green).
+Status: the writers (`kotor-archive` archives, `kotor-gff`, `kotor-tables` TLK/2DA) are tested on real files.
+First authoring command exists: `kotor-tool author clone <module> "<display name>" <out.mod>` copies a base module into a
+new `.mod` with `Mod_Name` changed (refuses to write inside the game folder). It has been checked by reading the result back;
+it has **not** been loaded in the real game.
 
 ## What a new area needs
 

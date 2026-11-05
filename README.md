@@ -34,7 +34,7 @@ cargo run -p kotor-tool -- 2da appearance 5
 ## Checks
 
 ```
-pwsh scripts/check.ps1     # fmt, clippy -D warnings, all tests
+powershell -File scripts/check.ps1     # fmt, clippy -D warnings, all tests
 ```
 
 Tests that read the game skip themselves when it is missing. The full run takes about 40 seconds.
