@@ -283,35 +283,7 @@ impl GpuRenderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
-        let color = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("color"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let depth = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("depth"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Depth32Float,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            })
-            .create_view(&Default::default());
+        let (color, depth) = make_targets(&device, width, height);
         let white = upload_image(
             &device,
             &queue,
@@ -351,6 +323,15 @@ impl GpuRenderer {
     ) -> Result<Image, String> {
         self.draw(scene, textures, cam);
         self.read_back()
+    }
+
+    /// Draw at a new size from now on. A zero size is ignored (a minimised window).
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 || (width, height) == (self.width, self.height) {
+            return;
+        }
+        (self.color, self.depth) = make_targets(&self.device, width, height);
+        (self.width, self.height) = (width, height);
     }
 
     /// By default a sky is drawn first, around the camera, with no depth, so it is never in front of anything and
@@ -715,6 +696,43 @@ fn sky_centre(m: &kotor_render::SceneMesh) -> Option<[f32; 3]> {
     }
     (hi[0] - lo[0] > SKY_WIDTH || hi[1] - lo[1] > SKY_WIDTH)
         .then(|| [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0))
+}
+
+fn make_targets(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let color = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("color"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+    let depth = device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })
+        .create_view(&Default::default());
+    (color, depth)
 }
 
 fn upload_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &Image) -> Tex {

@@ -9,6 +9,7 @@ fn save(img: kotor_image::Image, scale: u32, path: &std::path::Path) {
     let big = Canvas {
         width: img.width,
         height: img.height,
+        scale: 1.0,
         rgba: img.rgba,
     }
     .scaled(scale)

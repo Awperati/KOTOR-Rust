@@ -6,6 +6,8 @@ use kotor_image::Image;
 pub struct Canvas {
     pub width: u32,
     pub height: u32,
+    /// Physical pixels per layout unit. `draw_image` and `fill_rect` take layout units; `blend` takes pixels.
+    pub scale: f32,
     /// RGBA, first row at the top.
     pub rgba: Vec<u8>,
 }
@@ -19,13 +21,58 @@ pub struct Orient {
     pub flip_y: bool,
 }
 
+/// A smooth sample of `region` at fractions `u`, `v` of it, staying inside it so that a font's cells do not bleed.
+fn bilinear(img: &Image, region: [i32; 4], u: f32, v: f32) -> [f32; 4] {
+    let (fx, fy) = (
+        (u * region[2] as f32 - 0.5).clamp(0.0, (region[2] - 1) as f32),
+        (v * region[3] as f32 - 0.5).clamp(0.0, (region[3] - 1) as f32),
+    );
+    let (x0, y0) = (fx as i32, fy as i32);
+    let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+    let at = |x: i32, y: i32| -> [f32; 4] {
+        let (x, y) = (
+            (region[0] + x.min(region[2] - 1)).clamp(0, img.width as i32 - 1),
+            (region[1] + y.min(region[3] - 1)).clamp(0, img.height as i32 - 1),
+        );
+        let i = ((y as u32 * img.width + x as u32) * 4) as usize;
+        let p = &img.rgba[i..i + 4];
+        [p[0] as f32, p[1] as f32, p[2] as f32, p[3] as f32]
+    };
+    let (a, b, c, d) = (
+        at(x0, y0),
+        at(x0 + 1, y0),
+        at(x0, y0 + 1),
+        at(x0 + 1, y0 + 1),
+    );
+    let mut out = [0.0; 4];
+    for k in 0..4 {
+        let top = a[k] + (b[k] - a[k]) * tx;
+        let bottom = c[k] + (d[k] - c[k]) * tx;
+        out[k] = top + (bottom - top) * ty;
+    }
+    out
+}
+
 impl Canvas {
     pub fn new(width: u32, height: u32) -> Canvas {
         Canvas {
             width,
             height,
+            scale: 1.0,
             rgba: vec![0; (width * height * 4) as usize],
         }
+    }
+
+    /// A canvas of exactly `pixels`, with `scale` pixels to a layout unit.
+    pub fn scaled_layout(pixels: (u32, u32), scale: f32) -> Canvas {
+        let mut c = Canvas::new(pixels.0, pixels.1);
+        c.scale = scale;
+        c
+    }
+
+    fn to_pixels(&self, x: i32, y: i32, w: i32, h: i32) -> [i32; 4] {
+        let at = |v: i32| (v as f32 * self.scale).round() as i32;
+        [at(x), at(y), at(x + w) - at(x), at(y + h) - at(y)]
     }
 
     pub fn clear(&mut self, c: [u8; 4]) {
@@ -67,6 +114,7 @@ impl Canvas {
     }
 
     pub fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: [u8; 4]) {
+        let [x, y, w, h] = self.to_pixels(x, y, w, h);
         for yy in y..y + h {
             for xx in x..x + w {
                 self.blend(xx, yy, c);
@@ -74,8 +122,8 @@ impl Canvas {
         }
     }
 
-    /// Draw `region` (x, y, w, h in source pixels) of `img` into the rectangle `(x, y, w, h)`, scaling with
-    /// nearest sampling. RGB is multiplied by `tint` (0..=1 per channel) and alpha by `alpha`.
+    /// Draw `region` (x, y, w, h in source pixels) of `img` into the rectangle `(x, y, w, h)` of layout units, scaling
+    /// with nearest sampling at scale 1 and smoothly at any other. RGB is multiplied by `tint` (0..=1 per channel) and alpha by `alpha`.
     pub fn draw_image(
         &mut self,
         img: &Image,
@@ -85,12 +133,59 @@ impl Canvas {
         alpha: f32,
         orient: Orient,
     ) {
-        let [dx, dy, dw, dh] = dst;
+        let [dx, dy, dw, dh] = self.to_pixels(dst[0], dst[1], dst[2], dst[3]);
         if dw <= 0 || dh <= 0 || region[2] <= 0 || region[3] <= 0 {
             return;
         }
+        let smooth = self.scale != 1.0;
+        // Shrinking a large picture: average a few samples per pixel.
+        let samples = if dw * 4 < region[2] * 3 || dh * 4 < region[3] * 3 {
+            2
+        } else {
+            1
+        };
         for oy in 0..dh {
             for ox in 0..dw {
+                if smooth {
+                    let mut acc = [0.0f32; 4];
+                    for sy in 0..samples {
+                        for sx in 0..samples {
+                            let (mut u, mut v) = (
+                                (ox as f32 + (sx as f32 + 0.5) / samples as f32) / dw as f32,
+                                (oy as f32 + (sy as f32 + 0.5) / samples as f32) / dh as f32,
+                            );
+                            if orient.flip_x {
+                                u = 1.0 - u;
+                            }
+                            if orient.flip_y {
+                                v = 1.0 - v;
+                            }
+                            for _ in 0..orient.turns % 4 {
+                                (u, v) = (v, 1.0 - u);
+                            }
+                            let p = bilinear(img, region, u, v);
+                            let a = p[3] / 255.0;
+                            acc[0] += p[0] * a;
+                            acc[1] += p[1] * a;
+                            acc[2] += p[2] * a;
+                            acc[3] += a;
+                        }
+                    }
+                    if acc[3] > 0.0 {
+                        let n = (samples * samples) as f32;
+                        self.blend(
+                            dx + ox,
+                            dy + oy,
+                            [
+                                (acc[0] / acc[3] * tint[0]).min(255.0) as u8,
+                                (acc[1] / acc[3] * tint[1]).min(255.0) as u8,
+                                (acc[2] / acc[3] * tint[2]).min(255.0) as u8,
+                                (acc[3] / n * 255.0 * alpha).min(255.0) as u8,
+                            ],
+                        );
+                    }
+                    continue;
+                }
                 // Position inside the destination rectangle as a fraction, then undo the orientation.
                 let (mut u, mut v) = ((ox as f32 + 0.5) / dw as f32, (oy as f32 + 0.5) / dh as f32);
                 if orient.flip_x {

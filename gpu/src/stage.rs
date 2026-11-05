@@ -110,6 +110,15 @@ fn fixed_cameras(inst: &mut Install, area: &str) -> HashMap<i32, Camera> {
     out
 }
 
+/// Where upscaled pictures live: outside the repository and the install, since they are made from game files.
+pub fn default_hd_dir() -> Option<PathBuf> {
+    Some(
+        PathBuf::from(std::env::var_os("LOCALAPPDATA")?)
+            .join("kotor-rs")
+            .join("hd"),
+    )
+}
+
 /// The stock icon for a target's action, read from the texture names in `swpc_tex_gui.erf`.
 fn action_icon(action: &str) -> &'static str {
     match action {
@@ -246,7 +255,10 @@ impl Stage {
         s.enter_module()?;
         s.yaw = s.game.world.pc_mover.heading;
         s.game.world.enter_area();
-        s.set_view((16, 9));
+        // Upscaled interface pictures, when `scripts/upscale_ui.ps1` has made them.
+        let hd = default_hd_dir().filter(|d| d.is_dir());
+        s.ui.set_hd_dir(hd);
+        s.set_view((1280, 720));
         Ok(s)
     }
 
@@ -1131,11 +1143,18 @@ impl Stage {
         )
     }
 
-    /// The window's shape: the interface is laid out 480 units high and as wide as that makes it.
+    /// Stop using upscaled pictures.
+    pub fn no_hd(&mut self) {
+        self.ui.set_hd_dir(None);
+        self.overlay_key.clear();
+        self.refresh_overlay();
+    }
+
+    /// The window's size: the interface is laid out 480 units high, as wide as that makes it, and drawn pixel for pixel.
     pub fn set_view(&mut self, size: (u32, u32)) {
-        if let Some(width) = (480 * size.0).checked_div(size.1) {
+        if let Some(width) = (480 * size.0 + size.1 / 2).checked_div(size.1) {
             self.ui_width = width.max(640);
-            self.ui.set_width(width);
+            self.ui.set_view(size);
             self.overlay_key.clear();
             self.refresh_overlay();
         }

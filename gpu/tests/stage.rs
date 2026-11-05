@@ -478,13 +478,71 @@ fn the_hud_shows_the_target_and_its_action() {
     assert!(!s.state_line().ends_with("target=-"), "{}", s.state_line());
     // The action slot at (40, 384) to (104, 448) of the layout has something in it.
     let w = with.width as usize;
-    let inked = (390..440)
-        .flat_map(|y| (50..100).map(move |x| (x, y)))
+    let k = with.height as f32 / 480.0;
+    let (x0, y0, side) = (
+        (50.0 * k) as usize,
+        (390.0 * k) as usize,
+        (50.0 * k) as usize,
+    );
+    let inked = (y0..y0 + side)
+        .flat_map(|y| (x0..x0 + side).map(move |x| (x, y)))
         .filter(|(x, y)| with.rgba[(y * w + x) * 4 + 3] > 100)
         .count();
     assert!(inked > 500, "{inked} inked pixels in the slot");
     // A click on the slot uses the target: the locker opens.
-    s.click((70.0, 410.0), (with.width, with.height));
+    s.click((70.0 * k, 410.0 * k), (with.width, with.height));
     s.update(DT);
     assert!(s.game.world.opened.is_some(), "{}", s.state_line());
+}
+
+#[test]
+fn every_resolution_gets_the_interface_pixel_for_pixel() {
+    let Some(mut s) = stage() else { return };
+    past_the_talk(&mut s);
+    assert!(s.stand_near("end_locker01"));
+    s.game.world.events.clear();
+    let id = s.game.world.by_tag("end_locker01")[0];
+    s.game.world.click(id);
+    assert!(s.game.world.opened.is_some());
+    for size in [(1280, 720), (1920, 1080), (2560, 1440), (3840, 2160)] {
+        s.set_view(size);
+        s.update(DT);
+        let o = s.overlay().unwrap();
+        assert_eq!(
+            (o.width, o.height),
+            size,
+            "one overlay pixel per screen pixel"
+        );
+        // The box runs edge to edge at the bottom, and the upper middle is clear.
+        let alpha = |x: u32, y: u32| o.rgba[((y * o.width + x) * 4 + 3) as usize];
+        assert!(
+            alpha(0, size.1 - 2) > 0 && alpha(size.0 - 1, size.1 - 2) > 0,
+            "{size:?}"
+        );
+        assert_eq!(alpha(size.0 / 2, size.1 / 3), 0, "{size:?}");
+        // The first row is at the same place on screen at every size: layout (120, 385) of 853 by 480.
+        let k = size.1 as f32 / 480.0;
+        let before = s.game.world.container_items().len();
+        s.click((120.0 * k, 385.0 * k), size);
+        assert_eq!(s.game.world.container_items().len(), before - 1, "{size:?}");
+    }
+}
+
+#[test]
+fn the_gpu_draws_at_any_size_after_a_resize() {
+    let Some(mut s) = stage() else { return };
+    let Ok(mut gpu) = GpuRenderer::new(320, 180) else {
+        return;
+    };
+    s.update(DT);
+    let scene = s.static_scene().clone();
+    gpu.set_static_scene(&scene, &mut |n| s.texture(n));
+    let moving = s.dynamic_scene();
+    let cam = s.camera();
+    for (w, h) in [(1280, 720), (3840, 2160), (640, 360)] {
+        gpu.resize(w, h);
+        let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+        assert_eq!((img.width, img.height), (w, h));
+        assert_eq!(img.rgba.len(), (w * h * 4) as usize);
+    }
 }

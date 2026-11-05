@@ -2,6 +2,9 @@
 //! click the window to give it the keyboard.
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example viewer -- [options]
+//!     --size WxH      window and picture size (default 1280x720; anything up to 3840x2160 and past it)
+//!     --fullscreen    a borderless window over the whole monitor, which does not take the focus
+//!     --no-hd         do not use upscaled interface pictures
 //!     --module M      module to load (default end_m01aa)
 //!     --installed-mod use a .mod file that a mod left beside the module (default: the original .rim pair)
 //!     --orbit D       turn the camera round the player by D degrees a second while idle
@@ -28,8 +31,6 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 720;
 const TURN_SPEED: f32 = 90.0;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -102,6 +103,8 @@ struct App {
     stage: Stage,
     sound: Sound,
     monitor: String,
+    size: (u32, u32),
+    fullscreen: bool,
     hidden: bool,
     max_frames: Option<u32>,
     state_log: bool,
@@ -129,7 +132,7 @@ impl App {
         let monitors: Vec<_> = el.available_monitors().collect();
         let mut attrs = Window::default_attributes()
             .with_title("kotor-rs")
-            .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
+            .with_inner_size(PhysicalSize::new(self.size.0, self.size.1))
             .with_active(false)
             .with_visible(!self.hidden);
         if !self.hidden {
@@ -144,6 +147,13 @@ impl App {
                 })?;
             let p = m.position();
             attrs = attrs.with_position(PhysicalPosition::new(p.x + 60, p.y + 60));
+            if self.fullscreen {
+                // A borderless window the size of the monitor. Fullscreen proper would take the focus.
+                attrs = attrs
+                    .with_decorations(false)
+                    .with_position(p)
+                    .with_inner_size(m.size());
+            }
         }
         let window = Arc::new(el.create_window(attrs).map_err(|e| e.to_string())?);
         let instance = wgpu::Instance::default();
@@ -158,8 +168,14 @@ impl App {
         .ok_or("no adapter for the window")?;
         let formats = surface.get_capabilities(&adapter).formats;
         let size = window.inner_size();
-        let gpu = GpuRenderer::with_instance(&instance, Some(&surface), WIDTH, HEIGHT)?;
+        let gpu = GpuRenderer::with_instance(
+            &instance,
+            Some(&surface),
+            size.width.max(1),
+            size.height.max(1),
+        )?;
         let presenter = Presenter::new(&gpu, surface, &formats, (size.width, size.height));
+        self.stage.set_view((size.width, size.height));
         Ok(State {
             window,
             gpu,
@@ -270,7 +286,8 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => {
-                if let Some(st) = &self.state {
+                if let Some(st) = &mut self.state {
+                    st.gpu.resize(s.width, s.height);
                     st.presenter.resize(&st.gpu, (s.width, s.height));
                 }
                 self.stage.set_view((s.width, s.height));
@@ -353,8 +370,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let volume = opt("--volume")
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(0.8);
+    let size = opt("--size")
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
+        })
+        .unwrap_or((1280, 720));
     let mut stage = Stage::open(&module, !flag("--installed-mod"))?;
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    if flag("--no-hd") {
+        stage.no_hd();
+    }
     if let Some(tag) = opt("--near") {
         if !stage.stand_near(&tag) {
             return Err(format!("no floor beside {tag}").into());
@@ -381,6 +407,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             newest: [0; 2],
         },
         monitor,
+        size,
+        fullscreen: flag("--fullscreen"),
         hidden: flag("--hidden"),
         max_frames: opt("--frames").and_then(|n| n.parse().ok()),
         state_log: flag("--state-log"),

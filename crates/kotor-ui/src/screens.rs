@@ -14,12 +14,19 @@ use std::collections::HashMap;
 
 /// The layout space of every GUI file.
 pub const SCREEN: (u32, u32) = (640, 480);
+/// From this many pixels a unit the stock pictures would be enlarged at least twice, and upscaled ones are worth using.
+const HD_FROM_SCALE: f32 = 2.0;
 
 /// Caches for textures, fonts and GUIs while drawing.
 pub struct Ui<'a> {
     inst: &'a mut Install,
     /// Width of the layout space: 640, or more on a wider screen (the height stays 480).
     width: u32,
+    /// Pixels per layout unit, and the size of the picture in pixels.
+    scale: f32,
+    pixels: (u32, u32),
+    /// A folder of upscaled pictures (see `docs/PLAY.md`), used once the interface is drawn at twice the file's size.
+    hd_dir: Option<std::path::PathBuf>,
     /// What the left mouse button would do to the target, shown under its name.
     action: String,
     /// The icon in the first action slot while there is a target.
@@ -64,6 +71,9 @@ impl<'a> Ui<'a> {
         Ui {
             inst,
             width: SCREEN.0,
+            scale: 1.0,
+            pixels: SCREEN,
+            hd_dir: None,
             action: String::new(),
             action_icon: String::new(),
             textures: HashMap::new(),
@@ -74,6 +84,79 @@ impl<'a> Ui<'a> {
     /// Lay out for a screen `width` units wide and 480 high. Corners stay at the corners (see `anchored`).
     pub fn set_width(&mut self, width: u32) {
         self.width = width.max(SCREEN.0);
+        self.pixels = (self.width, SCREEN.1);
+    }
+
+    /// Draw for a window of `pixels`: 480 layout units high and as wide as that makes it, pixel for pixel.
+    pub fn set_view(&mut self, pixels: (u32, u32)) {
+        let was = self.scale >= HD_FROM_SCALE;
+        self.scale = pixels.1.max(1) as f32 / SCREEN.1 as f32;
+        self.width = ((pixels.0 as f32 / self.scale).round() as u32).max(SCREEN.0);
+        self.pixels = pixels;
+        if was != (self.scale >= HD_FROM_SCALE) && self.hd_dir.is_some() {
+            self.textures.clear();
+            self.fonts.clear();
+        }
+    }
+
+    /// Use upscaled pictures from this folder when the scale calls for them.
+    pub fn set_hd_dir(&mut self, dir: Option<std::path::PathBuf>) {
+        self.hd_dir = dir;
+        self.textures.clear();
+        self.fonts.clear();
+    }
+
+    /// An upscaled picture: `<name>.png`, with its alpha from `<name>__a.png` when there is one.
+    fn hd_picture(&self, key: &str) -> Option<Image> {
+        if self.scale < HD_FROM_SCALE {
+            return None;
+        }
+        let dir = self.hd_dir.as_ref()?;
+        let read = |n: String| kotor_image::parse_png(&std::fs::read(dir.join(n)).ok()?);
+        let mut img = read(format!("{key}.png"))?;
+        if let Some(a) = read(format!("{key}__a.png")) {
+            if (a.width, a.height) != (img.width, img.height) {
+                return None;
+            }
+            for (p, m) in img.rgba.chunks_mut(4).zip(a.rgba.chunks(4)) {
+                p[3] = m[0];
+            }
+        }
+        Some(img)
+    }
+
+    /// Every picture the interface draws, by name: for making upscaled copies.
+    pub fn picture_names(&mut self) -> Vec<String> {
+        let mut names: Vec<String> = ["i_attack", "i_dialog", "i_opendoor", "i_openplace"]
+            .iter()
+            .chain(["fnt_console", "fnt_dialog16x16", "fnt_d16x16"].iter())
+            .map(|s| s.to_string())
+            .collect();
+        for g in ["maininterface", "dialog"] {
+            if let Some(g) = self.gui(g) {
+                gather_pictures(&g.panel, &mut names);
+            }
+        }
+        if let Some(t) = self
+            .inst
+            .read("portraits", kotor_core::ResType::TWODA)
+            .ok()
+            .and_then(|b| kotor_tables::TwoDa::parse(&b).ok())
+        {
+            names.extend(
+                (0..t.row_count()).filter_map(|r| t.get(r, "baseresref").map(str::to_string)),
+            );
+        }
+        names.retain(|n| !n.is_empty());
+        names.iter_mut().for_each(|n| *n = n.to_ascii_lowercase());
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// A picture as the game has it, first row on top, whatever the upscaled folder holds.
+    pub fn stock_picture(&mut self, name: &str) -> Option<Image> {
+        load_texture(self.inst, &name.to_ascii_lowercase())
     }
 
     pub fn gui(&mut self, name: &str) -> Option<Gui> {
@@ -86,7 +169,9 @@ impl<'a> Ui<'a> {
         }
         let key = name.to_ascii_lowercase();
         if !self.textures.contains_key(&key) {
-            let img = load_texture(self.inst, &key);
+            let img = self
+                .hd_picture(&key)
+                .or_else(|| load_texture(self.inst, &key));
             self.textures.insert(key.clone(), img);
         }
         self.textures[&key].as_ref()
@@ -99,6 +184,22 @@ impl<'a> Ui<'a> {
             // same family, `fnt_dialog16x16`.
             let f =
                 Font::load(self.inst, &key).or_else(|| Font::load(self.inst, "fnt_dialog16x16"));
+            let f = f.map(|f| {
+                let name = f.name.to_ascii_lowercase();
+                // A font's letters are white and only their alpha counts. The colours hidden under the clear parts,
+                // once upscaled, would fringe the letters.
+                match self.hd_picture(&name) {
+                    Some(mut big) => {
+                        for p in big.rgba.chunks_mut(4) {
+                            p[0] = 255;
+                            p[1] = 255;
+                            p[2] = 255;
+                        }
+                        f.with_larger_image(big)
+                    }
+                    None => f,
+                }
+            });
             self.fonts.insert(key.clone(), f);
         }
         self.fonts[&key].as_ref()
@@ -273,7 +374,7 @@ impl<'a> Ui<'a> {
         clear: [u8; 4],
     ) -> Option<Image> {
         let gui = self.gui("dialog")?;
-        let mut cv = Canvas::new(self.width, SCREEN.1);
+        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         let extra = (self.width - SCREEN.0) as i32;
         cv.clear(clear);
         if let Some(s) = scene {
@@ -294,8 +395,8 @@ impl<'a> Ui<'a> {
         cv.fill_rect(
             0,
             py - 4,
-            self.width as i32,
-            SCREEN.1 as i32 - py + 4,
+            self.width as i32 + 1,
+            SCREEN.1 as i32 - py + 5,
             [0, 0, 0, 160],
         );
         self.draw_border(&mut cv, &p.border, [px, py, width, p.extent.height], None);
@@ -399,7 +500,7 @@ impl<'a> Ui<'a> {
 
     /// Nothing at all, the size of the other overlays.
     pub fn blank_overlay(&mut self) -> Option<Image> {
-        Some(Canvas::new(self.width, SCREEN.1).into_image())
+        Some(Canvas::scaled_layout(self.pixels, self.scale).into_image())
     }
 
     /// Write one line of text at the top left of `img`, on a dark strip.
@@ -408,6 +509,7 @@ impl<'a> Ui<'a> {
         let mut cv = Canvas {
             width: img.width,
             height: img.height,
+            scale: self.scale,
             rgba: img.rgba,
         };
         cv.fill_rect(
@@ -448,7 +550,7 @@ impl<'a> Ui<'a> {
     ) -> Option<Image> {
         let mut gui = self.gui("maininterface")?;
         anchored(&mut gui.panel, self.width);
-        let mut cv = Canvas::new(self.width, SCREEN.1);
+        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         cv.clear(clear);
         let mut patches: HashMap<String, Patch> = HashMap::new();
         for tag in all_tags(&gui.panel) {
@@ -619,6 +721,26 @@ fn anchored(panel: &mut Control, width: u32) {
         } else if c.extent.left >= SCREEN.0 as i32 / 2 {
             c.extent.left += extra;
         }
+    }
+}
+
+fn gather_pictures(c: &Control, out: &mut Vec<String>) {
+    out.extend([
+        c.border.fill.clone(),
+        c.border.edge.clone(),
+        c.border.corner.clone(),
+    ]);
+    if let Some(p) = &c.progress_fill {
+        out.push(p.fill.clone());
+    }
+    if let Some(t) = &c.text {
+        out.push(t.font.clone());
+    }
+    if let Some(p) = &c.proto_item {
+        gather_pictures(p, out);
+    }
+    for k in &c.children {
+        gather_pictures(k, out);
     }
 }
 

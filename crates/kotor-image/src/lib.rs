@@ -6,7 +6,7 @@ mod png;
 mod tga;
 mod tpc;
 
-pub use png::to_png;
+pub use png::{parse_png, to_png};
 pub use tga::parse_tga;
 pub use tpc::{parse_tpc, Tpc, TpcFormat};
 

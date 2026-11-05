@@ -26,6 +26,11 @@ Options: `--module M`, `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `
 
 `gpu/examples/shots.rs` writes frames to `docs/shots/play` from the offscreen renderer: no window and no screen capture.
 
+## Resolutions
+Any size works, and 1280x720, 1920x1080, 2560x1440 and 3840x2160 are tested. The 3D picture is drawn at the window's size. The interface is laid out 480 units high and drawn pixel for pixel, so it keeps its proportions, and its corners stay at the corners on any shape. Use `--size WxH` or `--fullscreen`, or drag the window.
+
+From 960 pixels high the stock interface pictures would be enlarged at least twice. `scripts/upscale_ui.ps1` exports them, upscales them with Topaz Gigapixel, and leaves them in `%LOCALAPPDATA%\kotor-rs\hd`, outside the repository and the install because they are made from game files. The interface uses them from then on, and `--no-hd` turns them off. A picture's alpha is upscaled separately as a grey picture (`name__a.png`), because the colour upscale cannot be relied on to keep it.
+
 ## Original files and an installed `.mod`
 A `.mod` beside a module's `.rim` pair is an installed mod. The original game prefers it. The viewer loads the `.rim` pair by default, and `--installed-mod` uses the `.mod`; the label at the top left of the window says which. The owner's `end_m01aa.mod` has a `k_pend_start` that removes Trask when the opening ends and leaves a corpse; the `.rim` pair has no such script.
 
