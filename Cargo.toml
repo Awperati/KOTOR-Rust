@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kotor-core",
+    "crates/kotor-archive",
+    "crates/kotor-gff",
+    "crates/kotor-tables",
+    "crates/kotor-image",
+    "crates/kotor-model",
+    "crates/kotor-walkmesh",
+    "crates/kotor-script",
+    "crates/kotor-tool",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
