@@ -2,7 +2,7 @@
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
 **202 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
-Only `gpu/` (window, MP3, audio output) needs crates.io, and it has **never been compiled**: it waits for the owner's `cargo fetch`.
+Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
 - **Formats**: KEY/BIF, ERF/MOD/SAV/RIM (read and write), GFF, 2DA, TLK, TGA/TPC (DXT1/5), MDL/MDX (meshes, skins, animations), BWM/LYT/VIS, NCS bytecode.
@@ -29,7 +29,7 @@ See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`.
 - `docs/OWNER_TEST_SHEET.md` (replace `end_m01aa.mod`, console warp) is prepared and **not run**.
 - Only the Endar Spire has been exercised end to end; other modules load and their scripts parse, but their scenes have not been played.
 - Saves are this engine's own layout; the original's saves are not read and ours do not open in the original.
-- MP3 (all voice-over, most music) is recognised and measured but not decoded until `gpu/` is fetched (symphonia). Nothing plays sound or draws a window yet.
+- MP3 (all voice-over, most music): all 558 files decode through `gpu/audio` (symphonia); lengths agree with the header estimate within 4.4%. No sound has been played yet (`play_blocking` untested). A window opens on DISPLAY2 (`gpu/examples/viewer.rs`, orbiting camera, no input).
 - Not built: window and input, menus, inventory/equip/map screens, minigames (Pazaak, swoop, turrets), area-of-effect objects, damage types and resistances,
   grenades, dual wielding, speed/haste, stealth, lock picking and traps, vendors, the galaxy map, and cutscenes that use models not in the opening.
 
@@ -44,4 +44,4 @@ See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`.
 8. **Level-up**: XP at which level 2 arrives (1,000 from `exptable.2da`) and what the level-up screen offers (we give feats/skill points per `featgain.2da`).
 
 ## Next, in order
-Owner's `cargo fetch` -> build and fix `gpu/` -> window viewer on DISPLAY2 -> MP3 and audio output -> input and the walk-around loop on screen -> owner test sheet.
+Audio playback test (the owner listens) -> input and the walk-around loop on screen (World driving the GPU renderer) -> owner test sheet.

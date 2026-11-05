@@ -1,8 +1,7 @@
 //! GPU renderer for kotor-render scenes (wgpu), rendering offscreen so no window is needed.
 //!
-//! STATUS: written against wgpu 24 but **never compiled**: the crates it needs have not been downloaded
-//! yet. Expect small API fixes on the first build. Compare its output with the software renderer's PNG for
-//! the same camera (`kotor-tool view`) to judge correctness.
+//! Checked against the software renderer by `examples/compare.rs` (same camera, same scene). `Presenter` shows
+//! the picture on a window surface for `examples/viewer.rs`.
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -93,15 +92,29 @@ pub struct GpuRenderer {
 impl GpuRenderer {
     /// Create a renderer drawing into an offscreen `width` x `height` image. Fails if no adapter exists.
     pub fn new(width: u32, height: u32) -> Result<GpuRenderer, String> {
-        pollster::block_on(Self::new_async(width, height))
+        Self::with_instance(&wgpu::Instance::default(), None, width, height)
     }
 
-    async fn new_async(width: u32, height: u32) -> Result<GpuRenderer, String> {
-        let instance = wgpu::Instance::default();
+    /// Like `new`, but on a caller's instance and an adapter that can present to `surface` (see `Presenter`).
+    pub fn with_instance(
+        instance: &wgpu::Instance,
+        surface: Option<&wgpu::Surface<'_>>,
+        width: u32,
+        height: u32,
+    ) -> Result<GpuRenderer, String> {
+        pollster::block_on(Self::new_async(instance, surface, width, height))
+    }
+
+    async fn new_async(
+        instance: &wgpu::Instance,
+        surface: Option<&wgpu::Surface<'_>>,
+        width: u32,
+        height: u32,
+    ) -> Result<GpuRenderer, String> {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
+                compatible_surface: surface,
                 force_fallback_adapter: false,
             })
             .await
@@ -205,7 +218,11 @@ impl GpuRenderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
         let color = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("color"),
             size,
@@ -213,7 +230,9 @@ impl GpuRenderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let depth = device
@@ -228,11 +247,26 @@ impl GpuRenderer {
                 view_formats: &[],
             })
             .create_view(&Default::default());
-        Ok(GpuRenderer { device, queue, pipeline, globals_layout, mesh_layout, sampler, width, height, color, depth })
+        Ok(GpuRenderer {
+            device,
+            queue,
+            pipeline,
+            globals_layout,
+            mesh_layout,
+            sampler,
+            width,
+            height,
+            color,
+            depth,
+        })
     }
 
     fn upload(&self, img: &Image) -> Tex {
-        let size = wgpu::Extent3d { width: img.width, height: img.height, depth_or_array_layers: 1 };
+        let size = wgpu::Extent3d {
+            width: img.width,
+            height: img.height,
+            depth_or_array_layers: 1,
+        };
         let t = self.device.create_texture_with_data(
             &self.queue,
             &wgpu::TextureDescriptor {
@@ -248,7 +282,9 @@ impl GpuRenderer {
             wgpu::util::TextureDataOrder::LayerMajor,
             &img.rgba,
         );
-        Tex { view: t.create_view(&Default::default()) }
+        Tex {
+            view: t.create_view(&Default::default()),
+        }
     }
 
     /// Render `scene` from `cam`. `textures` maps a texture name to a decoded image.
@@ -258,25 +294,49 @@ impl GpuRenderer {
         textures: &mut dyn FnMut(&str) -> Option<Image>,
         cam: &Camera,
     ) -> Result<Image, String> {
+        self.draw(scene, textures, cam);
+        self.read_back()
+    }
+
+    fn draw(
+        &mut self,
+        scene: &Scene,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+        cam: &Camera,
+    ) {
         let eye = Vec3::from(cam.eye);
         let view = Mat4::look_at_rh(eye, Vec3::from(cam.target), Vec3::Z);
-        let proj = Mat4::perspective_rh(cam.fov.to_radians(), self.width as f32 / self.height as f32, 0.05, 2000.0);
+        let proj = Mat4::perspective_rh(
+            cam.fov.to_radians(),
+            self.width as f32 / self.height as f32,
+            0.05,
+            2000.0,
+        );
         let globals = Globals {
             view_proj: (proj * view).to_cols_array_2d(),
             light: [0.3, -0.5, 0.8, 0.0],
         };
-        let globals_buf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("globals"),
-            contents: bytemuck::bytes_of(&globals),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
+        let globals_buf = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("globals"),
+                contents: bytemuck::bytes_of(&globals),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
         let globals_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("globals"),
             layout: &self.globals_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: globals_buf.as_entire_binding() }],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: globals_buf.as_entire_binding(),
+            }],
         });
 
-        let white = self.upload(&Image { width: 1, height: 1, rgba: vec![255, 255, 255, 255] });
+        let white = self.upload(&Image {
+            width: 1,
+            height: 1,
+            rgba: vec![255, 255, 255, 255],
+        });
         let mut cache: HashMap<String, Option<Tex>> = HashMap::new();
         struct Draw {
             vertices: wgpu::Buffer,
@@ -310,37 +370,58 @@ impl GpuRenderer {
             let (has_d, has_l) = (get(&m.texture), get(&m.lightmap));
             let pick = |name: &Option<String>, ok: bool| -> wgpu::TextureView {
                 match (ok, name) {
-                    (true, Some(n)) => cache[&n.to_ascii_lowercase()].as_ref().map(|t| t.view.clone()).unwrap_or_else(|| white.view.clone()),
+                    (true, Some(n)) => cache[&n.to_ascii_lowercase()]
+                        .as_ref()
+                        .map(|t| t.view.clone())
+                        .unwrap_or_else(|| white.view.clone()),
                     _ => white.view.clone(),
                 }
             };
             let params = [if has_l { 1.0f32 } else { 0.0 }, 0.0, 0.0, 0.0];
-            let params_buf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::bytes_of(&params),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+            let params_buf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::bytes_of(&params),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
             let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &self.mesh_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&pick(&m.texture, has_d)) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&pick(&m.lightmap, has_l)) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                    wgpu::BindGroupEntry { binding: 3, resource: params_buf.as_entire_binding() },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&pick(&m.texture, has_d)),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&pick(&m.lightmap, has_l)),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: params_buf.as_entire_binding(),
+                    },
                 ],
             });
             draws.push(Draw {
-                vertices: self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(&verts),
-                    usage: wgpu::BufferUsages::VERTEX,
-                }),
-                indices: self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(&indices),
-                    usage: wgpu::BufferUsages::INDEX,
-                }),
+                vertices: self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(&verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                indices: self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: None,
+                        contents: bytemuck::cast_slice(&indices),
+                        usage: wgpu::BufferUsages::INDEX,
+                    }),
                 count: indices.len() as u32,
                 bind,
             });
@@ -355,13 +436,21 @@ impl GpuRenderer {
                     view: &color_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 18.0 / 255.0, g: 20.0 / 255.0, b: 28.0 / 255.0, a: 1.0 }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 18.0 / 255.0,
+                            g: 20.0 / 255.0,
+                            b: 28.0 / 255.0,
+                            a: 1.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth,
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: None,
@@ -376,6 +465,11 @@ impl GpuRenderer {
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
         }
+        self.queue.submit([enc.finish()]);
+    }
+
+    fn read_back(&mut self) -> Result<Image, String> {
+        let mut enc = self.device.create_command_encoder(&Default::default());
         // Copy the picture to a buffer; rows are padded to 256 bytes.
         let padded = (self.width * 4).div_ceil(256) * 256;
         let out = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -399,7 +493,11 @@ impl GpuRenderer {
                     rows_per_image: Some(self.height),
                 },
             },
-            wgpu::Extent3d { width: self.width, height: self.height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
         );
         self.queue.submit([enc.finish()]);
         let slice = out.slice(..);
@@ -408,7 +506,9 @@ impl GpuRenderer {
             let _ = tx.send(r);
         });
         self.device.poll(wgpu::Maintain::Wait);
-        rx.recv().map_err(|e| e.to_string())?.map_err(|e| format!("map: {e}"))?;
+        rx.recv()
+            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("map: {e}"))?;
         let data = slice.get_mapped_range();
         let mut rgba = Vec::with_capacity((self.width * self.height * 4) as usize);
         for row in data.chunks(padded as usize).take(self.height as usize) {
@@ -416,6 +516,199 @@ impl GpuRenderer {
         }
         drop(data);
         out.unmap();
-        Ok(Image { width: self.width, height: self.height, rgba })
+        Ok(Image {
+            width: self.width,
+            height: self.height,
+            rgba,
+        })
+    }
+
+    /// Render `scene` and show it on `presenter`'s window without reading it back.
+    pub fn render_to(
+        &mut self,
+        presenter: &Presenter,
+        scene: &Scene,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+        cam: &Camera,
+    ) -> Result<(), String> {
+        self.draw(scene, textures, cam);
+        presenter.show(self)
+    }
+}
+
+const BLIT: &str = r#"
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+struct Out { @builtin(position) p: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex
+fn vs(@builtin(vertex_index) i: u32) -> Out {
+    var o: Out;
+    let xy = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
+    o.p = vec4<f32>(xy * 2.0 - 1.0, 0.0, 1.0);
+    o.uv = vec2<f32>(xy.x, 1.0 - xy.y);
+    return o;
+}
+@fragment
+fn fs(i: Out) -> @location(0) vec4<f32> { return textureSample(src, samp, i.uv); }
+"#;
+
+/// Puts the renderer's picture on a window surface (a fullscreen blit, stretched to the window).
+pub struct Presenter {
+    surface: wgpu::Surface<'static>,
+    config: std::cell::RefCell<wgpu::SurfaceConfiguration>,
+    pipeline: wgpu::RenderPipeline,
+    layout: wgpu::BindGroupLayout,
+}
+
+impl Presenter {
+    pub fn new(
+        gpu: &GpuRenderer,
+        surface: wgpu::Surface<'static>,
+        adapter_formats: &[wgpu::TextureFormat],
+        size: (u32, u32),
+    ) -> Presenter {
+        // A non-sRGB format: the renderer's output is already display-encoded.
+        let format = adapter_formats
+            .iter()
+            .copied()
+            .find(|f| !f.is_srgb())
+            .unwrap_or(adapter_formats[0]);
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: size.0.max(1),
+            height: size.1.max(1),
+            present_mode: wgpu::PresentMode::Fifo,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: vec![],
+        };
+        surface.configure(&gpu.device, &config);
+        let module = gpu
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("blit"),
+                source: wgpu::ShaderSource::Wgsl(BLIT.into()),
+            });
+        let layout = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("blit"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let pl = gpu
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("blit"),
+                bind_group_layouts: &[&layout],
+                push_constant_ranges: &[],
+            });
+        let pipeline = gpu
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("blit"),
+                layout: Some(&pl),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some("fs"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(format.into())],
+                }),
+                primitive: Default::default(),
+                depth_stencil: None,
+                multisample: Default::default(),
+                multiview: None,
+                cache: None,
+            });
+        Presenter {
+            surface,
+            config: std::cell::RefCell::new(config),
+            pipeline,
+            layout,
+        }
+    }
+
+    /// The window changed size.
+    pub fn resize(&self, gpu: &GpuRenderer, size: (u32, u32)) {
+        if size.0 == 0 || size.1 == 0 {
+            return;
+        }
+        let mut c = self.config.borrow_mut();
+        c.width = size.0;
+        c.height = size.1;
+        self.surface.configure(&gpu.device, &c);
+    }
+
+    fn show(&self, gpu: &GpuRenderer) -> Result<(), String> {
+        let frame = match self.surface.get_current_texture() {
+            Ok(f) => f,
+            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+                self.surface.configure(&gpu.device, &self.config.borrow());
+                return Ok(());
+            }
+            Err(e) => return Err(format!("surface: {e}")),
+        };
+        let view = frame.texture.create_view(&Default::default());
+        let src = gpu.color.create_view(&Default::default());
+        let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&src),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&gpu.sampler),
+                },
+            ],
+        });
+        let mut enc = gpu.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("present"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &bind, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        gpu.queue.submit([enc.finish()]);
+        frame.present();
+        Ok(())
     }
 }

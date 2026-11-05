@@ -14,5 +14,8 @@ symphonia = { version = "=0.5.4", default-features = false, features = ["mp3"] }
 # Output only: no decoders (our own PCM decoding and symphonia feed it samples).
 rodio = { version = "=0.20.1", default-features = false }
 
+[dev-dependencies]
+kotor-core = { path = "../../crates/kotor-core" }
+
 [lints.rust]
 unsafe_code = "forbid"

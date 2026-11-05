@@ -37,7 +37,7 @@ path dependencies for them, exact versions fixed by `gpu/Cargo.lock`:
 | Crate | Requested | Use |
 |---|---|---|
 | wgpu | 24 | GPU rendering |
-| winit | 0.30 | window and input (not used by code yet) |
+| winit | 0.30 | the viewer window (`gpu/examples/viewer.rs`); no input handled yet |
 | pollster | 0.4 | block on wgpu setup |
 | glam | 0.29 | matrices |
 | bytemuck | 1 (derive) | upload vertex data |
@@ -46,9 +46,11 @@ path dependencies for them, exact versions fixed by `gpu/Cargo.lock`:
 | symphonia | =0.5.4, only the `mp3` feature | decode the MP3 inside voice-over and music (`gpu/audio`); pinned exactly |
 | rodio | =0.20.1, no default features | play decoded samples on the default output device (`gpu/audio`); pinned exactly |
 
-The exact versions that Cargo resolves, with their transitive dependencies, are to be listed here after the first
-`cargo fetch --manifest-path gpu/Cargo.toml` (not yet run: the lockfile does not exist). `gpu/` is a workspace of two packages
-(`kotor-gpu` and `gpu/audio` = `kotor-audio-out`), so that one command downloads everything.
+Resolved by the owner's `cargo fetch` (6 Nov 2026): `gpu/Cargo.lock` has 324 packages, 313 from crates.io, none from git, the rest are this
+repo's path crates. Direct dependencies as locked: wgpu 24.0.5, winit 0.30.13, pollster 0.4.0, glam 0.29.3, bytemuck 1.25.2, log 0.4.35,
+env_logger 0.11.11, symphonia 0.5.4 (its `symphonia-core`, `-metadata` and `-bundle-mp3` are 0.5.5), rodio 0.20.1 (brings cpal 0.15.3).
+`cargo tree --manifest-path gpu/Cargo.toml --workspace` lists the rest. `gpu/` is a workspace of two packages
+(`kotor-gpu` and `gpu/audio` = `kotor-audio-out`), so one fetch covers everything; builds run with `--offline`.
 
 **Why rodio and not kira:** the std-only `kotor-audio` crate already decodes everything except MP3 to PCM in memory, so what is missing is a
 sink that plays a buffer of samples: rodio's `SamplesBuffer` and `Sink` do exactly that on top of cpal with a few lines, and it is the older, smaller
@@ -56,5 +58,5 @@ API. kira is a fuller game audio engine (mixer tracks, tweens, clocks) that this
 `play_blocking` without touching the decoders. rodio is used with `default-features = false`, so it brings no decoders of its own and symphonia
 (MP3 only) is the single decoder crate.
 
-**Written before it could be compiled:** `gpu/audio/src/lib.rs` (and `gpu/src/lib.rs`) were written against the crates' documented APIs and have never
-been built; expect to fix compile errors after the fetch.
+**Built and checked:** `gpu/src/lib.rs` and `gpu/audio/src/lib.rs` compiled on the first try after the fetch (no source changes were needed).
+Clippy `-D warnings` and fmt pass on the whole `gpu/` workspace.

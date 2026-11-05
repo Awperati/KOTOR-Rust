@@ -1,6 +1,6 @@
-﻿//! MP3 decoding (symphonia) and playback (rodio) for the audio the std-only `kotor-audio` crate cannot decode.
+//! MP3 decoding (symphonia) and playback (rodio) for the audio the std-only `kotor-audio` crate cannot decode.
 //!
-//! **Not yet compiled**: written before the crates were downloaded, against symphonia 0.5.4 and rodio 0.20.1.
+//! `tests/mp3.rs` decodes all 558 MP3 files of the install. Playback (`play_blocking`) has not been run: it would make sound.
 
 use kotor_audio::{Audio, AudioError, Codec};
 use symphonia::core::audio::SampleBuffer;
@@ -18,7 +18,12 @@ pub fn decode_mp3(payload: &[u8]) -> Result<Audio, String> {
     let mut hint = Hint::new();
     hint.with_extension("mp3");
     let probed = symphonia::default::get_probe()
-        .format(&hint, stream, &FormatOptions::default(), &MetadataOptions::default())
+        .format(
+            &hint,
+            stream,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
         .map_err(|e| e.to_string())?;
     let mut format = probed.format;
     let track = format.default_track().ok_or("no audio track")?;
