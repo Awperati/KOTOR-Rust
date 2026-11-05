@@ -5,6 +5,7 @@ use kotor_gpu::stage::Stage;
 use kotor_gpu::{composite, GpuRenderer};
 
 const SIZES: [(u32, u32); 2] = [(1280, 720), (3840, 2160)];
+const DT: f32 = 1.0 / 30.0;
 
 fn shot(gpu: &mut GpuRenderer, s: &mut Stage, name: &str, out: &std::path::Path) {
     let scene = s.static_scene().clone();
@@ -33,6 +34,17 @@ fn hover(s: &mut Stage, tag: &str) {
     }
 }
 
+fn click(s: &mut Stage, tag: &str, row: Option<usize>) {
+    let size = (1280, 720);
+    s.set_view(size);
+    let p = s
+        .menu_pixel(tag, row, size)
+        .unwrap_or_else(|| panic!("no {tag} on {}", s.menu_name()));
+    s.hover(p, size);
+    s.click(p, size);
+    s.update(0.0);
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let out = std::path::PathBuf::from(args.get(1).map_or("docs/shots/menus", String::as_str));
@@ -41,13 +53,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = Stage::menu("end_m01aa", true)?;
     hover(&mut s, "BTN_NEWGAME");
     shot(&mut gpu, &mut s, "main_menu", &out);
-    let size = SIZES[0];
-    s.set_view(size);
-    let p = s.menu_pixel("BTN_NEWGAME", None, size).unwrap();
-    s.click(p, size);
-    s.update(0.03);
+
+    // Saves in a folder of their own: frames must not touch the real ones.
+    let saves = std::env::temp_dir().join("kotor_rs_menu_shots");
+    let _ = std::fs::remove_dir_all(&saves);
+    s.set_saves_dir(saves.clone());
+    click(&mut s, "BTN_NEWGAME", None);
+    // Past the opening, to a place worth saving.
+    for _ in 0..12000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.number_key(1);
+            s.continue_line();
+        } else if s.game.world.transcript.len() > 3 && s.game.world.delayed.is_empty() {
+            break;
+        }
+    }
     s.escape();
-    hover(&mut s, "BTN_LOADGAME");
+    hover(&mut s, "BTN_SAVEGAME");
     shot(&mut gpu, &mut s, "pause", &out);
+    click(&mut s, "BTN_SAVEGAME", None);
+    click(&mut s, "BTN_SAVELOAD", None);
+    s.type_text(" one");
+    shot(&mut gpu, &mut s, "save_name", &out);
+    s.continue_line();
+    click(&mut s, "BTN_SAVELOAD", None);
+    s.type_text(" two");
+    s.continue_line();
+    click(&mut s, "LB_GAMES", Some(2));
+    hover(&mut s, "BTN_BACK");
+    shot(&mut gpu, &mut s, "save_list", &out);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_LOADGAME", None);
+    click(&mut s, "LB_GAMES", Some(0));
+    shot(&mut gpu, &mut s, "load_list", &out);
+    let _ = std::fs::remove_dir_all(&saves);
     Ok(())
 }

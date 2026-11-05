@@ -34,5 +34,5 @@ pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,
 };
 pub use rules::{save_passes, skill_passes, Check, LevelUp, Save};
-pub use save::SAVE_VERSION;
+pub use save::{read_save_info, SaveInfo, SAVE_VERSION};
 pub use world::{Action, Delayed, DoorState, EffectRec, Kind, ObjId, Object, World};

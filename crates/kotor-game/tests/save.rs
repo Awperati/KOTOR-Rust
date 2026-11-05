@@ -173,3 +173,130 @@ fn a_foreign_or_newer_save_is_rejected() {
     let bad = kotor_archive::write_archive(kotor_archive::ErfKind::Sav, &res).unwrap();
     assert!(w.load_save(&bad).is_err());
 }
+
+/// A bare world: only the player exists and no module is loaded, as on the main menu.
+fn bare() -> World {
+    let dir = kotor_core::install_dir().unwrap();
+    World::new(Install::open(dir).unwrap()).unwrap()
+}
+
+#[test]
+fn a_save_loads_from_another_module_and_from_no_module() {
+    let Some(mut a) = world() else { return };
+    play(&mut a);
+    let trask = a.by_tag("end_trask")[0];
+    a.transition("end_m01ab", "").unwrap();
+    assert_eq!(a.module, "end_m01ab");
+    assert_eq!(a.by_tag("end_trask"), vec![trask], "the party came along");
+    let there = a.save_bytes("Second module").unwrap();
+
+    // Into a world in the first module, and into one with nothing loaded.
+    for mut b in [fresh(), bare()] {
+        b.load_save(&there).unwrap();
+        assert_eq!(a.state_digest(), b.state_digest());
+        assert_eq!(b.module, "end_m01ab");
+        let area = b.object(b.area).unwrap();
+        assert_eq!(area.kind, Kind::Area);
+        assert!(area.tag.to_ascii_lowercase().starts_with("m01ab") || !area.tag.is_empty());
+        assert!(b.nav.is_some(), "the walkmesh is of the saved module");
+        let t = b.by_tag("end_trask")[0];
+        assert_eq!(b.party, vec![t]);
+        // An object whose template is in another module keeps what the template gave it.
+        let (ours, theirs) = (b.object(t).unwrap(), a.object(trask).unwrap());
+        assert_eq!(ours.scripts, theirs.scripts);
+        assert_eq!(ours.conversation, theirs.conversation);
+        assert_eq!(ours.natural_ac, theirs.natural_ac);
+        assert_eq!(ours.appearance, theirs.appearance);
+        // It plays on from there.
+        for _ in 0..20 {
+            b.step(0.05);
+        }
+        assert!(b.errors.is_empty(), "{:?}", b.errors);
+    }
+
+    // And back: a save of the first module, loaded while in the second.
+    let mut c = fresh();
+    play(&mut c);
+    let here = c.save_bytes("First module").unwrap();
+    let mut d = fresh();
+    d.transition("end_m01ab", "").unwrap();
+    d.load_save(&here).unwrap();
+    assert_eq!(c.state_digest(), d.state_digest());
+    assert_eq!(d.module, "end_m01aa");
+}
+
+#[test]
+fn loading_leaves_nothing_of_the_game_before_it() {
+    let Some(mut a) = world() else { return };
+    a.interactive_dialogue = true;
+    let bytes = a.save_bytes("Clean").unwrap();
+
+    let mut b = fresh();
+    b.interactive_dialogue = true;
+    let trask = b.by_tag("end_trask")[0];
+    let pc = b.pc;
+    b.attack(pc, trask);
+    b.opened = Some(trask);
+    b.game_over = true;
+    b.converse(trask, pc, "", &mut kotor_game::FirstReply).ok();
+    b.load_save(&bytes).unwrap();
+    assert!(b.combat.target.is_empty());
+    assert_eq!(b.opened, None);
+    assert!(!b.game_over);
+    assert!(!b.in_dialogue());
+    assert_eq!(a.state_digest(), b.state_digest());
+}
+
+#[test]
+fn a_file_that_will_not_load_leaves_the_world_alone() {
+    let Some(mut w) = world() else { return };
+    let before = w.state_digest();
+    assert!(w.load_save(b"not an archive").is_err());
+    assert_eq!(w.state_digest(), before);
+
+    // A save of a module the install does not have.
+    let erf = Erf::open(Source::memory(w.save_bytes("x").unwrap())).unwrap();
+    let mut nfo = Gff::parse(&erf.get("savenfo", ResType(0)).unwrap()).unwrap();
+    nfo.root.set(
+        "LASTMODULE",
+        kotor_gff::Value::String("no_such_module".to_string()),
+    );
+    let mut res = Vec::new();
+    for e in &erf.entries {
+        let data = if e.resref.as_str() == "savenfo" {
+            nfo.to_bytes().unwrap()
+        } else {
+            erf.read(e).unwrap()
+        };
+        res.push(kotor_archive::NewResource::new(
+            e.resref.as_str(),
+            e.restype,
+            data,
+        ));
+    }
+    let bad = kotor_archive::write_archive(kotor_archive::ErfKind::Sav, &res).unwrap();
+    assert!(w.load_save(&bad).is_err());
+    assert_eq!(w.state_digest(), before);
+}
+
+#[test]
+fn a_save_keeps_its_header_and_a_replaced_file_is_whole() {
+    let Some(w) = world() else { return };
+    let dir = std::env::temp_dir().join("kotor_rs_save_header");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("one.sav");
+    w.save_to(&path, "Header").unwrap();
+    w.save_to(&path, "Header again").unwrap();
+    let info = kotor_game::read_save_info(&path).unwrap();
+    assert_eq!(info.name, "Header again");
+    assert_eq!(info.module, "end_m01aa");
+    assert_eq!(info.portraits.len(), 1);
+    assert_eq!(
+        std::fs::read_dir(&dir).unwrap().count(),
+        1,
+        "no part file is left behind"
+    );
+    std::fs::write(&path, b"junk").unwrap();
+    assert!(kotor_game::read_save_info(&path).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -62,6 +62,11 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 ## Pause
 Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game goes back to the main menu with the game gone, and Close or Esc goes back to the game. Gameplay, Feedback, Auto-Pause, Graphics and Sound are greyed and do nothing.
 
+## Saving
+Saves are files in `%LOCALAPPDATA%\kotor-rs\saves` and nowhere else, and writing inside the install is refused. Save Game lists them newest first with a New save row: choose a row, press Save, type a name, press OK or Enter. Choosing an old save overwrites it; a file is written beside the old one and then moved over it, so a crash does not cost the old save. Load Game works from the pause menu and the main menu, from any module to any module. Delete asks once, then takes the file away. A file this engine cannot read is not listed.
+
+Saving is refused during a conversation or a fight, because neither is saved. Also not saved: scripts' pending `DelayCommand` blocks and queued actions. There is no thumbnail of the scene, so `LBL_SCREENSHOT` is left dark. Area names like `Endar Spire - Command Module` are split into the planet and area lines (an assumption about the names).
+
 ## Menus
 Stock GUI files drawn by `crates/kotor-ui/src/menus.rs`, with the screens' logic in `gpu/src/menus.rs`. **Assumed, not compared with the game:** a 640x480 screen stays centred on a wide window with black at the sides, except the main menu's background, which stretches; controls are drawn in file order, later ones on top (the HUD draws the other way round); a button under the cursor has yellow text. Text alignment is read as bits: horizontal 1 left, 2 centre, 4 right, vertical 8 top, 16 middle, 32 bottom.
 

@@ -5,8 +5,8 @@
 //! where I know them (`savenfo`, `globalvars`, `partytable` are the original's resource names), but the contents were
 //! not checked against a real save, so a save made here is not meant to be opened by the original game, and the
 //! original's saves are not read. **Not saved (assumption):** `DelayCommand` blocks still pending, objects' action
-//! queues, conversations in progress, and `Effect` or location handles held by scripts. A load starts the module
-//! fresh, applies the saved state over it and does not run the area's enter scripts again.
+//! queues, conversations in progress, who is fighting whom, and `Effect` or location handles held by scripts. A load
+//! starts the module fresh, applies the saved state over it and does not run the area's enter scripts again.
 
 use crate::world::{DoorState, Kind, ObjId, World};
 use kotor_archive::{write_archive, Erf, ErfKind, NewResource, Source};
@@ -79,6 +79,43 @@ fn gff(file_type: &str, fields: Vec<(&str, Value)>) -> Result<Vec<u8>> {
 /// Identity of an object that survives a reload: kind, tag, template and which of that sort it is in id order.
 type Key = (u8, String, String, usize);
 
+/// What a save screen shows about a save, without loading it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SaveInfo {
+    pub name: String,
+    pub module: String,
+    pub area: String,
+    pub pc_name: String,
+    /// Seconds played.
+    pub seconds: f32,
+    /// The party's portrait textures, the player first.
+    pub portraits: Vec<String>,
+}
+
+/// Read the header of a save file. Fails on anything this engine did not write.
+pub fn read_save_info(path: &Path) -> Result<SaveInfo> {
+    let erf = Erf::open(Source::file(path))?;
+    let g = Gff::parse(&erf.get("savenfo", rt())?)?;
+    let r = &g.root;
+    if r.int("SaveVersion") != Some(SAVE_VERSION as i64) {
+        return Err(Error::format("unsupported save version"));
+    }
+    let text = |l: &str| r.str(l).unwrap_or_default().to_string();
+    Ok(SaveInfo {
+        name: text("SAVEGAMENAME"),
+        module: text("LASTMODULE"),
+        area: text("AREANAME"),
+        pc_name: text("PCNAME"),
+        seconds: r.float("TIMEPLAYED").unwrap_or(0.0) as f32,
+        portraits: r
+            .list("PORTRAITS")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|p| p.str("Portrait").map(str::to_string))
+            .collect(),
+    })
+}
+
 impl World {
     fn keys(&self) -> HashMap<ObjId, Key> {
         let mut seen: HashMap<(u8, String, String), usize> = HashMap::new();
@@ -106,9 +143,19 @@ impl World {
             .object(self.area)
             .map(|o| o.name.clone())
             .unwrap_or_default();
+        let portraits: Vec<String> = std::iter::once(self.pc)
+            .chain(self.party.iter().copied().filter(|id| *id != self.pc))
+            .filter_map(|id| self.object(id))
+            .take(3)
+            .map(|o| o.portrait.clone())
+            .collect();
         let nfo = gff(
             "NFO ",
             vec![
+                (
+                    "PORTRAITS",
+                    list_of(portraits.iter(), |p| st(vec![("Portrait", s(p))])),
+                ),
                 ("SaveVersion", Value::Int(SAVE_VERSION)),
                 ("Engine", s("kotor-rs")),
                 ("LASTMODULE", s(&self.module)),
@@ -252,6 +299,17 @@ impl World {
             ("DoorState", Value::Byte(door_code)),
             ("DoorTime", Value::Float(door_t)),
             ("BaseItem", Value::Int(o.base_item)),
+            ("Filled", Value::Byte(self.filled.contains(&o.id) as u8)),
+            ("Conversation", s(&o.conversation)),
+            (
+                "Scripts",
+                list_of(o.scripts.iter(), |(field, script)| {
+                    st(vec![("Field", s(field)), ("Script", s(script))])
+                }),
+            ),
+            ("NaturalAC", Value::Int(o.natural_ac)),
+            ("Perception", Value::Float(o.perception)),
+            ("Challenge", Value::Float(o.challenge_rating)),
             ("XP", Value::Int(o.xp)),
             ("Faction", Value::Int(o.faction)),
             ("Race", Value::Int(o.race)),
@@ -313,6 +371,14 @@ impl World {
                 list_of(o.effects.iter(), |h| {
                     let e = self.effects.get(h.wrapping_sub(1) as usize);
                     st(vec![
+                        (
+                            "Expires",
+                            Value::Float(self.effect_expiry.get(h).copied().unwrap_or(-1.0)),
+                        ),
+                        (
+                            "Spell",
+                            Value::Int(self.effect_spell.get(h).copied().unwrap_or(-1)),
+                        ),
                         ("Name", s(e.map_or("", |e| &e.name))),
                         (
                             "Args",
@@ -351,7 +417,10 @@ impl World {
                 "refusing to write inside the game's install folder",
             ));
         }
-        std::fs::write(path, self.save_bytes(save_name)?)?;
+        // A crash while writing must not cost the save that is being replaced.
+        let part = path.with_extension("part");
+        std::fs::write(&part, self.save_bytes(save_name)?)?;
+        std::fs::rename(&part, path)?;
         Ok(())
     }
 
@@ -361,7 +430,8 @@ impl World {
     }
 
     /// Replace the world's state with a save made by [`World::save_bytes`]: the module is loaded fresh, then the
-    /// saved state is applied over it. Errors leave the world partly changed.
+    /// saved state is applied over it, whatever module the world was in. A file that cannot be read, or that names a
+    /// module the install does not have, leaves the world as it was.
     pub fn load_save(&mut self, bytes: &[u8]) -> Result<()> {
         let erf = Erf::open(Source::memory(bytes.to_vec()))?;
         let read = |name: &str| -> Result<Gff> { Gff::parse(&erf.get(name, rt())?) };
@@ -374,6 +444,13 @@ impl World {
         let globals = read("globalvars")?;
         let party = read("partytable")?;
         let objects = read("objects")?;
+        let modules = self.inst.dir().join("modules");
+        if !["mod", "rim"]
+            .iter()
+            .any(|x| modules.join(format!("{module}.{x}")).is_file())
+        {
+            return Err(Error::NotFound(format!("module {module}")));
+        }
 
         // A fresh start: only the player object survives, then the module is built again.
         let pc = self.pc;
@@ -392,6 +469,17 @@ impl World {
         self.pending = None;
         self.transition_request = None;
         self.in_conversation = false;
+        self.conv = None;
+        self.conversation = None;
+        self.opened = None;
+        self.filled.clear();
+        self.steer = None;
+        self.combat = crate::combat::CombatState::new();
+        self.game_over = false;
+        self.last_power.clear();
+        self.effect_expiry.clear();
+        self.effect_spell.clear();
+        self.effect_cursor.clear();
         self.party.clear();
         self.npc_slots.clear();
         self.inv_cursor.clear();
@@ -481,7 +569,18 @@ impl World {
                     .map(|a| a.float("Value").unwrap_or(0.0) as f32)
                     .collect();
                 self.effects.push(rec);
-                effects.push(self.effects.len() as u32);
+                let handle = self.effects.len() as u32;
+                effects.push(handle);
+                let expires = f.float("Expires").unwrap_or(-1.0) as f32;
+                if expires >= 0.0 {
+                    self.effect_expiry.insert(handle, expires);
+                }
+                if let Some(spell) = f.int("Spell").filter(|v| *v >= 0) {
+                    self.effect_spell.insert(handle, spell as i32);
+                }
+            }
+            if e.int("Filled").is_some_and(|f| f != 0) {
+                self.filled.insert(id);
             }
             let Some(o) = self.objects.get_mut(&id) else {
                 continue;
@@ -507,6 +606,18 @@ impl World {
                 _ => DoorState::Closed,
             };
             o.base_item = e.int("BaseItem").unwrap_or(0) as i32;
+            // An object from another module has no template to read here, so these come from the save too.
+            o.template = e.str("Template").unwrap_or("").to_string();
+            o.conversation = e.str("Conversation").unwrap_or("").to_string();
+            o.scripts = e
+                .list("Scripts")
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|x| Some((x.str("Field")?.to_string(), x.str("Script")?.to_string())))
+                .collect();
+            o.natural_ac = e.int("NaturalAC").unwrap_or(0) as i32;
+            o.perception = e.float("Perception").unwrap_or(20.0) as f32;
+            o.challenge_rating = e.float("Challenge").unwrap_or(1.0) as f32;
             o.xp = e.int("XP").unwrap_or(0) as i32;
             o.faction = e.int("Faction").unwrap_or(0) as i32;
             o.race = e.int("Race").unwrap_or(0) as i32;
@@ -693,8 +804,9 @@ impl World {
                 .map(|e| format!("{}{:?}", e.name, e.args))
                 .collect();
             rows.push(format!(
-                "{} name={:?} pos=({:.3},{:.3},{:.3}) face={:.2} hp={} dead={} party={} locked={} lvl={} open={} door={:?} base={} xp={} fac={}/{}/{} spells={:?} feats={:?} inv={inv:?} eq={eq:?} ln={ln:?} lb={lb:?} fx={fx:?}",
+                "{} filled={} name={:?} pos=({:.3},{:.3},{:.3}) face={:.2} hp={} dead={} party={} locked={} lvl={} open={} door={:?} base={} xp={} fac={}/{}/{} spells={:?} feats={:?} inv={inv:?} eq={eq:?} ln={ln:?} lb={lb:?} fx={fx:?}",
                 name(&o.id),
+                self.filled.contains(&o.id),
                 o.name,
                 o.position[0],
                 o.position[1],
