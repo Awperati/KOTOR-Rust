@@ -72,6 +72,60 @@ impl Tlk {
         })
     }
 
+    /// An empty table, for building a custom `dialog.tlk` or a mod string table.
+    pub fn new(language: u32) -> Tlk {
+        Tlk {
+            language,
+            entries: Vec::new(),
+            text: Vec::new(),
+        }
+    }
+
+    /// Append a string (and optional voice-over resref) and return its strref.
+    pub fn push(&mut self, text: Option<&str>, sound_resref: &str) -> u32 {
+        let bytes = text.map(kotor_core::cp1252_encode).unwrap_or_default();
+        let mut flags = 0;
+        if text.is_some() {
+            flags |= 1;
+        }
+        if !sound_resref.is_empty() {
+            flags |= 2;
+        }
+        self.entries.push(TlkEntry {
+            flags,
+            sound_resref: sound_resref.to_string(),
+            sound_length: 0.0,
+            offset: self.text.len() as u32,
+            size: bytes.len() as u32,
+        });
+        self.text.extend_from_slice(&bytes);
+        (self.entries.len() - 1) as u32
+    }
+
+    /// Serialise as TLK V3.0. Volume and pitch variance are written as 0.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let n = u32::try_from(self.entries.len()).map_err(|_| Error::format("too many strings"))?;
+        let mut out = b"TLK V3.0".to_vec();
+        for v in [self.language, n, 20 + 40 * n] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        for e in &self.entries {
+            if e.sound_resref.len() > 16 || !e.sound_resref.is_ascii() {
+                return Err(Error::format("tlk sound resref longer than 16 chars"));
+            }
+            let mut name = [0u8; 16];
+            name[..e.sound_resref.len()].copy_from_slice(e.sound_resref.as_bytes());
+            out.extend_from_slice(&e.flags.to_le_bytes());
+            out.extend_from_slice(&name);
+            out.extend_from_slice(&[0u8; 8]);
+            out.extend_from_slice(&e.offset.to_le_bytes());
+            out.extend_from_slice(&e.size.to_le_bytes());
+            out.extend_from_slice(&e.sound_length.to_le_bytes());
+        }
+        out.extend_from_slice(&self.text);
+        Ok(out)
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -118,6 +172,41 @@ mod tests {
         assert_eq!(t.get(0).as_deref(), Some("hi"));
         assert_eq!(t.get(1), None);
         assert_eq!(t.get(99), None);
+    }
+
+    #[test]
+    fn built_table_round_trips() {
+        let mut t = Tlk::new(0);
+        let a = t.push(Some("Hello \u{2019}there\u{2019}"), "");
+        let b = t.push(None, "vo_line_01");
+        let c = t.push(Some(""), "");
+        let back = Tlk::parse(&t.to_bytes().unwrap()).unwrap();
+        assert_eq!(back.len(), 3);
+        assert_eq!(back.get(a).as_deref(), Some("Hello \u{2019}there\u{2019}"));
+        assert_eq!(back.get(b), None);
+        assert!(back.entries[b as usize].has_sound());
+        assert_eq!(back.entries[b as usize].sound_resref, "vo_line_01");
+        assert_eq!(back.get(c).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn real_dialog_tlk_survives_rewrite() {
+        let Some(dir) = kotor_core::install_dir() else {
+            return;
+        };
+        let t = Tlk::parse(&std::fs::read(dir.join("dialog.tlk")).unwrap()).unwrap();
+        let back = Tlk::parse(&t.to_bytes().unwrap()).unwrap();
+        assert_eq!(back.len(), t.len());
+        assert_eq!(back.language, t.language);
+        for i in 0..t.len() as u32 {
+            assert_eq!(back.get(i), t.get(i), "strref {i}");
+            let (a, b) = (&back.entries[i as usize], &t.entries[i as usize]);
+            assert_eq!(
+                (a.flags, &a.sound_resref),
+                (b.flags, &b.sound_resref),
+                "strref {i}"
+            );
+        }
     }
 
     #[test]

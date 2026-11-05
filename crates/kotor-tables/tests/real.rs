@@ -62,3 +62,16 @@ fn dialog_tlk() {
         }
     }
 }
+
+#[test]
+fn every_base_2da_survives_rewrite() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    for n in inst.list(ResType::TWODA) {
+        let t = TwoDa::parse(&inst.read(&n, ResType::TWODA).unwrap()).unwrap();
+        let back = TwoDa::parse(&t.to_bytes().unwrap_or_else(|e| panic!("{n}: {e}"))).unwrap();
+        assert_eq!(back, t, "{n} changed on rewrite");
+    }
+}

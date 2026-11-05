@@ -113,6 +113,63 @@ impl TwoDa {
         })
     }
 
+    /// Append a row; missing cells become `****`. The label is the new row number.
+    pub fn push_row(&mut self, cells: &[&str]) -> usize {
+        let mut row: Vec<String> = cells.iter().map(|c| c.to_string()).collect();
+        row.resize(self.columns.len(), "****".to_string());
+        row.truncate(self.columns.len());
+        self.labels.push(self.rows.len().to_string());
+        self.rows.push(row);
+        self.rows.len() - 1
+    }
+
+    /// Serialise as binary `V2.b`. Identical cell strings are stored once.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut out = b"2DA V2.b\n".to_vec();
+        for c in &self.columns {
+            out.extend_from_slice(c.as_bytes());
+            out.push(b'\t');
+        }
+        out.push(0);
+        out.extend_from_slice(&(self.rows.len() as u32).to_le_bytes());
+        for l in &self.labels {
+            out.extend_from_slice(l.as_bytes());
+            out.push(b'\t');
+        }
+        let mut data: Vec<u8> = Vec::new();
+        let mut seen: std::collections::HashMap<&str, u16> = std::collections::HashMap::new();
+        for row in &self.rows {
+            if row.len() != self.columns.len() {
+                return Err(Error::format("2da row length differs from column count"));
+            }
+            for cell in row {
+                let off = match seen.get(cell.as_str()) {
+                    Some(&o) => o,
+                    None => {
+                        let o = u16::try_from(data.len())
+                            .map_err(|_| Error::format("2da cell data over 64 KB"))?;
+                        data.extend(cell.chars().map(|c| {
+                            if (c as u32) < 256 {
+                                c as u8
+                            } else {
+                                b'?'
+                            }
+                        }));
+                        data.push(0);
+                        seen.insert(cell.as_str(), o);
+                        o
+                    }
+                };
+                out.extend_from_slice(&off.to_le_bytes());
+            }
+        }
+        let size =
+            u16::try_from(data.len()).map_err(|_| Error::format("2da cell data over 64 KB"))?;
+        out.extend_from_slice(&size.to_le_bytes());
+        out.extend_from_slice(&data);
+        Ok(out)
+    }
+
     pub fn row_count(&self) -> usize {
         self.rows.len()
     }
@@ -186,6 +243,21 @@ mod tests {
         assert_eq!(t.get(0, "val"), Some("a b"));
         assert_eq!(t.get(1, "name"), None);
         assert_eq!(t.int(1, "val"), Some(16));
+    }
+
+    #[test]
+    fn built_table_round_trips() {
+        let mut t = TwoDa {
+            columns: vec!["label".into(), "cost".into()],
+            ..TwoDa::default()
+        };
+        t.push_row(&["sword", "100"]);
+        t.push_row(&["shield"]);
+        t.push_row(&["axe", "100"]);
+        let back = TwoDa::parse(&t.to_bytes().unwrap()).unwrap();
+        assert_eq!(back, t);
+        assert_eq!(back.get(1, "cost"), None);
+        assert_eq!(back.int(2, "cost"), Some(100));
     }
 
     #[test]

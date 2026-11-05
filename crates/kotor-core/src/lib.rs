@@ -1,10 +1,12 @@
 //! Shared primitives for the KotOR engine crates: errors, a bounds-checked
 //! little-endian reader, resource references and resource type ids.
 
+mod codepage;
 mod error;
 mod reader;
 mod restype;
 
+pub use codepage::cp1252_encode;
 pub use error::{Error, Result};
 pub use reader::{cp1252, latin1, Reader};
 pub use restype::{ResRef, ResType};
