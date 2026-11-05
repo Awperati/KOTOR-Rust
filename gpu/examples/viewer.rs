@@ -67,6 +67,13 @@ impl Sound {
         match c {
             Cue::Voice(p) => self.request(Channel::Voice, p),
             Cue::Music(p) => self.request(Channel::Music, p),
+            Cue::Effect(bytes) => {
+                if let (Some(o), Ok(a)) = (&mut self.out, decode_any(&bytes)) {
+                    if let Err(e) = o.play_effect(&a) {
+                        eprintln!("sound: {e}");
+                    }
+                }
+            }
             Cue::StopVoice => {
                 self.newest[Channel::Voice as usize] += 1;
                 if let Some(o) = &mut self.out {
@@ -217,6 +224,7 @@ impl App {
         }
         let scene = stage.dynamic_scene();
         let cam = stage.camera();
+        st.gpu.set_particles(stage.particles());
         if let Err(e) = st
             .gpu
             .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)

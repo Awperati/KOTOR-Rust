@@ -3,6 +3,7 @@
 //! Checked against the software renderer by `examples/compare.rs` (same camera, same scene). `Presenter` shows
 //! the picture on a window surface for `examples/viewer.rs`.
 
+pub mod effects;
 pub mod stage;
 
 use bytemuck::{Pod, Zeroable};
@@ -59,6 +60,38 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
         lit = textureSample(lightmap_tex, samp, i.uv2).rgb;
     }
     return vec4<f32>(base * lit, mix(1.0, tex.a, params.z));
+}
+"#;
+
+const PARTICLE_SHADER: &str = r#"
+struct Globals {
+    view_proj: mat4x4<f32>,
+    light: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> g: Globals;
+@group(1) @binding(0) var tex: texture_2d<f32>;
+@group(1) @binding(1) var samp: sampler;
+struct VsIn {
+    @location(0) pos: vec3<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) color: vec4<f32>,
+};
+struct VsOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) color: vec4<f32>,
+};
+@vertex
+fn vs(v: VsIn) -> VsOut {
+    var o: VsOut;
+    o.clip = g.view_proj * vec4<f32>(v.pos, 1.0);
+    o.uv = v.uv;
+    o.color = v.color;
+    return o;
+}
+@fragment
+fn fs(i: VsOut) -> @location(0) vec4<f32> {
+    return textureSample(tex, samp, i.uv) * i.color;
 }
 "#;
 
@@ -119,6 +152,10 @@ pub struct GpuRenderer {
     pipeline: wgpu::RenderPipeline,
     sky_pipeline: wgpu::RenderPipeline,
     sky_at_infinity: bool,
+    particle_layout: wgpu::BindGroupLayout,
+    additive_pipeline: wgpu::RenderPipeline,
+    smoke_pipeline: wgpu::RenderPipeline,
+    particles: Vec<effects::ParticleBatch>,
     blend_pipeline: wgpu::RenderPipeline,
     transparency: bool,
     globals_layout: wgpu::BindGroupLayout,
@@ -284,6 +321,78 @@ impl GpuRenderer {
             ..Default::default()
         });
         let (color, depth) = make_targets(&device, width, height);
+        let particle_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("particle"),
+            entries: &[
+                texture(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let particle_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("particle"),
+            source: wgpu::ShaderSource::Wgsl(PARTICLE_SHADER.into()),
+        });
+        let particle_pipes = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("particle"),
+            bind_group_layouts: &[&globals_layout, &particle_layout],
+            push_constant_ranges: &[],
+        });
+        let particle_attrs =
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x4];
+        let particle_pipeline = |blend: wgpu::BlendState| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("particle"),
+                layout: Some(&particle_pipes),
+                vertex: wgpu::VertexState {
+                    module: &particle_module,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<effects::ParticleVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &particle_attrs,
+                    }],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &particle_module,
+                    entry_point: Some("fs"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::COLOR,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                multiview: None,
+                cache: None,
+            })
+        };
+        let additive_pipeline = particle_pipeline(wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent::OVER,
+        });
+        let smoke_pipeline = particle_pipeline(wgpu::BlendState::ALPHA_BLENDING);
         let white = upload_image(
             &device,
             &queue,
@@ -294,6 +403,10 @@ impl GpuRenderer {
             },
         );
         Ok(GpuRenderer {
+            particle_layout,
+            additive_pipeline,
+            smoke_pipeline,
+            particles: Vec::new(),
             sky_pipeline,
             sky_at_infinity: true,
             blend_pipeline,
@@ -323,6 +436,11 @@ impl GpuRenderer {
     ) -> Result<Image, String> {
         self.draw(scene, textures, cam);
         self.read_back()
+    }
+
+    /// The particles of the next frame.
+    pub fn set_particles(&mut self, batches: Vec<effects::ParticleBatch>) {
+        self.particles = batches;
     }
 
     /// Draw at a new size from now on. A zero size is ignored (a minimised window).
@@ -499,6 +617,36 @@ impl GpuRenderer {
             }],
         });
         let draws = self.build_draws(scene, textures);
+        let batches = std::mem::take(&mut self.particles);
+        let particle_draws: Vec<(bool, u32, wgpu::Buffer, wgpu::BindGroup)> = batches
+            .iter()
+            .filter(|b| !b.vertices.is_empty())
+            .filter_map(|b| {
+                let view = self.texture_view(&Some(b.texture.clone()), textures)?;
+                let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("particle"),
+                    layout: &self.particle_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                    ],
+                });
+                let buffer = self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("particle"),
+                        contents: bytemuck::cast_slice(&b.vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                Some((b.additive, b.vertices.len() as u32, buffer, bind))
+            })
+            .collect();
         let sky_binds: Vec<(wgpu::BindGroup, &Draw)> = self
             .static_draws
             .iter()
@@ -594,6 +742,16 @@ impl GpuRenderer {
                 pass.set_vertex_buffer(0, d.vertices.slice(..));
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
+            }
+            for (additive, count, buffer, bind) in &particle_draws {
+                pass.set_pipeline(if *additive {
+                    &self.additive_pipeline
+                } else {
+                    &self.smoke_pipeline
+                });
+                pass.set_bind_group(1, bind, &[]);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..*count, 0..1);
             }
         }
         self.queue.submit([enc.finish()]);

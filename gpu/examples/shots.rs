@@ -11,6 +11,7 @@ const DT: f32 = 1.0 / 30.0;
 fn shot(gpu: &mut GpuRenderer, s: &mut Stage, path: &std::path::Path) {
     let scene = s.dynamic_scene();
     let cam = s.camera();
+    gpu.set_particles(s.particles());
     let mut img = gpu.render(&scene, &mut |n| s.texture(n), &cam).unwrap();
     if let Some(o) = s.overlay() {
         composite(&mut img, o);
@@ -102,6 +103,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             o.equipped.insert(1, armour);
         }
         shot(&mut gpu, &mut s, &out.join("armour.png"));
+    }
+    // A bolt across the bunk room, seen from the side, then the sparks where it lands.
+    s.game.world.teleport(pc, [15.4, 20.1, -1.275]);
+    s.update(DT);
+    let from = [16.0, 20.1, -0.1];
+    let to = [22.8, 20.6, -0.1];
+    let side = kotor_render::Camera {
+        eye: [18.0, 16.6, 0.2],
+        target: [18.4, 20.3, -0.2],
+        fov: 60.0,
+    };
+    let moving = s.dynamic_scene();
+    s.effects.fire(from, to, "fx_laser_01", [1.0, 0.25, 0.2]);
+    s.effects.update(0.05, side.eye);
+    gpu.set_particles(s.effects.batches(&side));
+    let img = gpu.render(&moving, &mut |n| s.texture(n), &side)?;
+    std::fs::write(out.join("bolt.png"), kotor_image::to_png(&img))?;
+    s.effects.update(0.12, side.eye);
+    gpu.set_particles(s.effects.batches(&side));
+    let img = gpu.render(&moving, &mut |n| s.texture(n), &side)?;
+    std::fs::write(out.join("sparks.png"), kotor_image::to_png(&img))?;
+    // A room's own broken sparking panel, a few seconds after it starts.
+    if let Some((at, name)) = s
+        .effects
+        .source_places()
+        .into_iter()
+        .find(|p| p.1 == "fx_spark")
+    {
+        let view = kotor_render::Camera {
+            eye: [at[0] - 3.0, at[1] - 3.0, at[2] - 0.5],
+            target: at,
+            fov: 60.0,
+        };
+        for _ in 0..120 {
+            s.effects.update(DT, view.eye);
+        }
+        gpu.set_particles(s.effects.batches(&view));
+        let img = gpu.render(&moving, &mut |n| s.texture(n), &view)?;
+        std::fs::write(out.join("room_sparks.png"), kotor_image::to_png(&img))?;
+        println!("{name} at {at:?}");
     }
     println!(
         "player walking: {}; {} lines shown; {} world errors",

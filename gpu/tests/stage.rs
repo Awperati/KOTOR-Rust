@@ -546,3 +546,97 @@ fn the_gpu_draws_at_any_size_after_a_resize() {
         assert_eq!(img.rgba.len(), (w * h * 4) as usize);
     }
 }
+
+#[test]
+fn the_area_smokes_and_fights_make_sounds_and_bolts() {
+    let Some(mut s) = stage() else { return };
+    assert!(
+        s.effects.source_count() >= 10,
+        "{}",
+        s.effects.source_count()
+    );
+    // Stand near a smoking room: particles appear, each with a texture that exists.
+    let mut cues = Vec::new();
+    let foe = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003")
+        .map(|o| o.id)
+        .expect("a Sith soldier");
+    let at = s.game.world.object(foe).unwrap().position;
+    let pc = s.game.world.pc;
+    s.game.world.teleport(pc, [at[0] - 5.0, at[1], at[2]]);
+    s.game.world.attack(foe, pc);
+    let mut saw_bolt = false;
+    for _ in 0..900 {
+        cues.extend(s.update(DT));
+        s.continue_line();
+        s.number_key(1);
+        saw_bolt |= s.effects.bolt_count() > 0;
+    }
+    assert!(saw_bolt, "the soldier's rifle fires bolts");
+    let sounds: Vec<&Vec<u8>> = cues
+        .iter()
+        .filter_map(|c| match c {
+            Cue::Effect(b) => Some(b),
+            _ => None,
+        })
+        .collect();
+    assert!(!sounds.is_empty(), "shots make sounds");
+    for b in sounds {
+        kotor_audio_out::decode_any(b).expect("every effect decodes");
+    }
+    // Walking makes steps; a door makes its sound.
+    let mut s = stage().unwrap();
+    past_the_opening(&mut s);
+    let doors: Vec<_> = s
+        .game
+        .world
+        .objects
+        .values()
+        .filter(|o| o.kind == Kind::Door && !o.locked && !o.open)
+        .map(|o| o.id)
+        .collect();
+    s.update(DT);
+    s.update(DT);
+    for door in doors {
+        s.game.world.open_door(door);
+    }
+    let got = s.update(DT);
+    assert!(
+        got.iter().any(|c| matches!(c, Cue::Effect(_))),
+        "the door sounds"
+    );
+}
+
+#[test]
+fn particles_draw_on_the_gpu() {
+    let Some(mut s) = stage() else { return };
+    let Ok(mut gpu) = GpuRenderer::new(320, 180) else {
+        return;
+    };
+    let cam = kotor_render::Camera {
+        eye: [0.0, -3.0, 0.0],
+        target: [0.0, 0.0, 0.0],
+        fov: 55.0,
+    };
+    let plain = gpu
+        .render(&Default::default(), &mut |n| s.texture(n), &cam)
+        .unwrap();
+    let mut fx = kotor_gpu::effects::Effects::default();
+    fx.fire(
+        [-2.0, 0.0, 0.0],
+        [2.0, 0.0, 0.0],
+        "fx_laser_01",
+        [1.0, 0.2, 0.2],
+    );
+    gpu.set_particles(fx.batches(&cam));
+    let lit = gpu
+        .render(&Default::default(), &mut |n| s.texture(n), &cam)
+        .unwrap();
+    assert_ne!(plain.rgba, lit.rgba, "the flash and bolt add light");
+    let opaque = lit.rgba.chunks(4).all(|p| p[3] == 255);
+    assert!(opaque, "the picture stays opaque");
+}

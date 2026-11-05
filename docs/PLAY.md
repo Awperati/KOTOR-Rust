@@ -31,6 +31,21 @@ Any size works, and 1280x720, 1920x1080, 2560x1440 and 3840x2160 are tested. The
 
 From 960 pixels high the stock interface pictures would be enlarged at least twice. `scripts/upscale_ui.ps1` exports them, upscales them with Topaz Gigapixel, and leaves them in `%LOCALAPPDATA%\kotor-rs\hd`, outside the repository and the install because they are made from game files. The interface uses them from then on, and `--no-hd` turns them off. A picture's alpha is upscaled separately as a grey picture (`name__a.png`), because the colour upscale cannot be relied on to keep it.
 
+Upscaled 3D textures work the same way: `scripts/upscale_area.ps1` makes them for one area, 2x by default, in `%LOCALAPPDATA%\kotor-rs\hd3d`, leaving out lightmaps and pictures over 1024 pixels. They are used whenever they are there, and `--no-hd` turns them off.
+
+### Frame times
+Measured on this PC (AMD Radeon AI PRO R9700) in a hidden window, `--mute`, Endar Spire opening, 600 frames, with particles:
+
+| Size | Upscaled textures | Frames per second | Frame time |
+|---|---|---|---|
+| 1920x1080 | on | 126 | 7.9 ms |
+| 1920x1080 | off | 150 | 6.7 ms |
+| 3840x2160 | on | 120 | 8.3 ms |
+| 3840x2160 | off | 145 | 6.9 ms |
+
+## Effects and sound
+Rooms run their own `Fountain` emitters within 40 m of the camera. Ranged attacks fire a bolt with a muzzle flash and sparks where it lands. Sounds come from the stock tables: shots and impacts, melee swings and blows, doors, and the player's steps. **Assumed:** see `gpu/src/effects.rs` and `Stage::play_world_sounds`. Melee weapons pick their sound row by label, and the floor always sounds like metal.
+
 ## Original files and an installed `.mod`
 A `.mod` beside a module's `.rim` pair is an installed mod. The original game prefers it. The viewer loads the `.rim` pair by default, and `--installed-mod` uses the `.mod`; the label at the top left of the window says which. The owner's `end_m01aa.mod` has a `k_pend_start` that removes Trask when the opening ends and leaves a corpse; the `.rim` pair has no such script.
 
@@ -62,4 +77,4 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 
 ## Not done
 - More than one action slot on the HUD (the first shows the target's action), the map picture, and notices.
-- Particle effects, and placeable open animations.
+- `Explosion`, `Lightning` and `Single` emitters, Force power visuals, and placeable open animations.

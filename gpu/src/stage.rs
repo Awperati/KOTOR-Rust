@@ -40,6 +40,8 @@ pub enum Cue {
     Voice(PathBuf),
     StopVoice,
     Music(PathBuf),
+    /// A short sound, as the bytes of its file.
+    Effect(Vec<u8>),
     StopMusic,
 }
 
@@ -119,6 +121,22 @@ pub fn default_hd_dir() -> Option<PathBuf> {
     )
 }
 
+/// An upscaled 3D texture: `<name>.png`, with its alpha from `<name>__a.png` when there is one.
+fn upscaled(dir: &std::path::Path, name: &str) -> Option<Image> {
+    let key = name.to_ascii_lowercase();
+    let read = |n: String| kotor_image::parse_png(&std::fs::read(dir.join(n)).ok()?);
+    let mut img = read(format!("{key}.png"))?;
+    if let Some(a) = read(format!("{key}__a.png")) {
+        if (a.width, a.height) != (img.width, img.height) {
+            return None;
+        }
+        for (p, m) in img.rgba.chunks_mut(4).zip(a.rgba.chunks(4)) {
+            p[3] = m[0];
+        }
+    }
+    Some(img)
+}
+
 /// The stock icon for a target's action, read from the texture names in `swpc_tex_gui.erf`.
 fn action_icon(action: &str) -> &'static str {
     match action {
@@ -149,6 +167,14 @@ pub struct Stage {
     /// Goes up whenever `static_scene` is replaced.
     pub static_version: u64,
     rigs: HashMap<(i32, u32, Option<char>), Option<Rc<Rig>>>,
+    pub effects: crate::effects::Effects,
+    log_seen: usize,
+    door_seen: HashMap<ObjId, bool>,
+    /// Seconds to the player's next footstep, and which of the three sounds.
+    step_due: f32,
+    step_turn: usize,
+    /// Upscaled 3D textures, when `scripts/upscale_area.ps1` has made them.
+    hd3d: Option<PathBuf>,
     baseitems: Option<TwoDa>,
     /// An item's model, by item.
     held: HashMap<ObjId, Option<Rc<Model>>>,
@@ -225,6 +251,14 @@ impl Stage {
             static_version: 0,
             rigs: HashMap::new(),
             baseitems: None,
+            effects: Default::default(),
+            log_seen: 0,
+            door_seen: HashMap::new(),
+            step_due: 0.0,
+            step_turn: 0,
+            hd3d: default_hd_dir()
+                .and_then(|d| d.parent().map(|p| p.join("hd3d")))
+                .filter(|d| d.is_dir()),
             held: HashMap::new(),
             doors: HashMap::new(),
             textures: HashMap::new(),
@@ -281,6 +315,9 @@ impl Stage {
         self.doors.clear();
         self.events_seen = 0;
         self.fixed_cameras = fixed_cameras(&mut self.inst, &area);
+        self.effects.load_area(&mut self.inst, &area);
+        self.log_seen = 0;
+        self.door_seen.clear();
         let music = (|| {
             let git = Gff::parse(&self.inst.read(&area, ResType::GIT).ok()?).ok()?;
             let props = git.root.strukt("AreaProperties")?;
@@ -325,6 +362,9 @@ impl Stage {
             }
         }
         self.scan_music_events();
+        self.play_world_sounds(dt);
+        let eye = self.camera().eye;
+        self.effects.update(dt, eye);
         self.update_line(dt);
         self.update_camera(dt);
         self.refresh_overlay();
@@ -748,10 +788,189 @@ impl Stage {
     /// A named texture, decoded once.
     pub fn texture(&mut self, name: &str) -> Option<Image> {
         let inst = &mut self.inst;
+        let hd = self.hd3d.clone();
         self.textures
             .entry(name.to_string())
-            .or_insert_with(|| kotor_render::load_texture(inst, name))
+            .or_insert_with(|| {
+                hd.and_then(|d| upscaled(&d, name))
+                    .or_else(|| kotor_render::load_texture(inst, name))
+            })
             .clone()
+    }
+
+    /// The particles to draw this frame.
+    pub fn particles(&self) -> Vec<crate::effects::ParticleBatch> {
+        self.effects.batches(&self.camera())
+    }
+
+    fn effect(&mut self, name: &str) {
+        if let Ok(bytes) = self.inst.read(name, ResType::WAV) {
+            self.cues.push(Cue::Effect(bytes));
+        }
+    }
+
+    /// Sounds and bolts of what happened since the last frame: attacks, doors and the player's steps. Sound names come
+    /// from `ammunitiontypes.2da`, `weaponsounds.2da`, `placeableobjsnds.2da` and `footstepsounds.2da`.
+    ///
+    /// **Assumed:** which `weaponsounds.2da` row a melee weapon uses (by its `baseitems.2da` label and wield), that the
+    /// floor sounds like metal, and the pace of steps.
+    fn play_world_sounds(&mut self, dt: f32) {
+        let n = self.game.world.combat.log.len();
+        let new: Vec<_> = self.game.world.combat.log[self.log_seen.min(n)..].to_vec();
+        self.log_seen = n;
+        for l in new {
+            self.attack_effects(l.attacker, l.target, l.outcome != kotor_game::Outcome::Miss);
+        }
+        let doors: Vec<(ObjId, bool, String)> = self
+            .game
+            .world
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Door)
+            .map(|o| (o.id, o.open, o.template.clone()))
+            .collect();
+        for (id, open, template) in doors {
+            let was = self.door_seen.insert(id, open);
+            if was.is_some_and(|w| w != open) {
+                let column = if open { "opened" } else { "closed" };
+                if let Some(sound) = self.door_sound(&template, column) {
+                    self.effect(&sound);
+                }
+            }
+        }
+        let pc = self.game.world.pc;
+        let pace = match self.game.clip(pc).map(|c| c.name) {
+            Some("run") => Some(0.33),
+            Some("walk") => Some(0.5),
+            _ => None,
+        };
+        self.step_due -= dt;
+        if let Some(pace) = pace {
+            if self.step_due <= 0.0 {
+                self.step_due = pace;
+                self.step_turn = (self.step_turn + 1) % 3;
+                let column = format!("metal{}", self.step_turn);
+                let sound = TwoDa::parse(
+                    &self
+                        .inst
+                        .read("footstepsounds", ResType::TWODA)
+                        .unwrap_or_default(),
+                )
+                .ok()
+                .and_then(|t| t.get(1, &column).map(str::to_string));
+                if let Some(sound) = sound {
+                    self.effect(&sound);
+                }
+            }
+        }
+    }
+
+    fn door_sound(&mut self, template: &str, column: &str) -> Option<String> {
+        let utd = Gff::parse(&self.inst.read(template, ResType(2042)).ok()?).ok()?;
+        let doors = TwoDa::parse(&self.inst.read("genericdoors", ResType::TWODA).ok()?).ok()?;
+        let row = doors
+            .int(utd.root.int("GenericType")? as usize, "soundapptype")?
+            .max(0) as usize;
+        let sounds =
+            TwoDa::parse(&self.inst.read("placeableobjsnds", ResType::TWODA).ok()?).ok()?;
+        sounds
+            .get(row, column)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    }
+
+    fn attack_effects(&mut self, attacker: ObjId, target: ObjId, hit: bool) {
+        let w = &self.game.world;
+        let (Some(a), Some(t)) = (w.object(attacker), w.object(target)) else {
+            return;
+        };
+        let (from, to) = (a.position, t.position);
+        let armoured = t.equipped.contains_key(&ARMOUR_SLOT);
+        let base = a
+            .equipped
+            .get(&RIGHT_HAND_SLOT)
+            .and_then(|i| w.object(*i))
+            .map(|i| i.base_item as usize);
+        let ammo = base
+            .and_then(|b| self.baseitem(b, "ammunitiontype"))
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|a| *a > 0);
+        if let Some(row) = ammo {
+            let Some(table) = self
+                .inst
+                .read("ammunitiontypes", ResType::TWODA)
+                .ok()
+                .and_then(|b| TwoDa::parse(&b).ok())
+            else {
+                return;
+            };
+            let get = |c: &str| {
+                table
+                    .get(row, c)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+            };
+            let (shot, impact, model) = (get("shotsound0"), get("impactsound0"), get("model"));
+            let (bolt, color) = model
+                .and_then(|m| self.model(&m))
+                .and_then(|m| crate::effects::bolt_look(&m))
+                .unwrap_or_else(|| ("fx_laser_01".to_string(), [1.0, 0.25, 0.2]));
+            let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+            let len = dx.hypot(dy).max(0.01);
+            let muzzle = [
+                from[0] + dx / len * 0.6,
+                from[1] + dy / len * 0.6,
+                from[2] + 1.15,
+            ];
+            self.effects
+                .fire(muzzle, [to[0], to[1], to[2] + 1.15], &bolt, color);
+            if let Some(s) = shot {
+                self.effect(&s);
+            }
+            if hit {
+                if let Some(s) = impact {
+                    self.effect(&s);
+                }
+            }
+            return;
+        }
+        let label = base
+            .and_then(|b| self.baseitem(b, "label"))
+            .unwrap_or_default();
+        let wield = base.and_then(|b| self.baseitem(b, "weaponwield"));
+        let row = if base.is_none() {
+            0
+        } else if label.contains("Lightsaber") {
+            1
+        } else if wield.as_deref() == Some("3") {
+            3
+        } else {
+            2
+        };
+        let Some(table) = self
+            .inst
+            .read("weaponsounds", ResType::TWODA)
+            .ok()
+            .and_then(|b| TwoDa::parse(&b).ok())
+        else {
+            return;
+        };
+        let get = |c: &str| {
+            table
+                .get(row, c)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        };
+        let swing = get("swingshort0");
+        let blow = get(if armoured { "armor0" } else { "leather0" });
+        if let Some(s) = swing {
+            self.effect(&s);
+        }
+        if hit {
+            if let Some(s) = blow {
+                self.effect(&s);
+            }
+        }
     }
 
     fn rig_of(&mut self, id: ObjId) -> Option<Rc<Rig>> {
@@ -1146,6 +1365,8 @@ impl Stage {
     /// Stop using upscaled pictures.
     pub fn no_hd(&mut self) {
         self.ui.set_hd_dir(None);
+        self.hd3d = None;
+        self.textures.clear();
         self.overlay_key.clear();
         self.refresh_overlay();
     }

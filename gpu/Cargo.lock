@@ -1086,6 +1086,7 @@ dependencies = [
  "kotor-render",
  "kotor-tables",
  "kotor-ui",
+ "kotor-walkmesh",
  "log",
  "pollster",
  "wgpu",

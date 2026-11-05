@@ -132,6 +132,18 @@ impl AudioOut {
         Ok(())
     }
 
+    /// Play a short sound over everything else; it runs to its end by itself.
+    pub fn play_effect(&mut self, a: &Audio) -> Result<(), String> {
+        let s = self.sink()?;
+        s.append(rodio::buffer::SamplesBuffer::new(
+            a.channels,
+            a.sample_rate,
+            a.samples.clone(),
+        ));
+        s.detach();
+        Ok(())
+    }
+
     pub fn stop_voice(&mut self) {
         self.voice = None;
     }
