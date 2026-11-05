@@ -3,6 +3,9 @@ use kotor_core::{Error, ResType, Result};
 use kotor_image::Image;
 use kotor_model::{parse_model, Model, Pose};
 use kotor_walkmesh::parse_lyt;
+use std::collections::HashMap;
+
+pub(crate) type Mat = [[f32; 4]; 4];
 
 pub(crate) const IDENTITY: [[f32; 4]; 4] = [
     [1., 0., 0., 0.],
@@ -19,6 +22,60 @@ pub(crate) fn mat_mul(a: &[[f32; 4]; 4], b: &[[f32; 4]; 4]) -> [[f32; 4]; 4] {
         }
     }
     o
+}
+
+/// Inverse of a rotation + translation matrix (no scale or shear).
+pub(crate) fn rigid_inverse(m: &Mat) -> Mat {
+    let mut o = [[0.0; 4]; 4];
+    for i in 0..3 {
+        for j in 0..3 {
+            o[i][j] = m[j][i];
+        }
+        o[i][3] = -(0..3).map(|j| o[i][j] * m[j][3]).sum::<f32>();
+    }
+    o[3][3] = 1.0;
+    o
+}
+
+pub(crate) fn apply(m: &Mat, p: [f32; 3]) -> [f32; 3] {
+    [
+        m[0][0] * p[0] + m[0][1] * p[1] + m[0][2] * p[2] + m[0][3],
+        m[1][0] * p[0] + m[1][1] * p[1] + m[1][2] * p[2] + m[1][3],
+        m[2][0] * p[0] + m[2][1] * p[1] + m[2][2] * p[2] + m[2][3],
+    ]
+}
+
+/// A skeleton in two poses, for blending skinned meshes. Bones are matched by lower-case node name,
+/// so a head model can be deformed by the body's skeleton.
+pub struct SkinCtx {
+    rest: HashMap<String, Mat>,
+    posed: HashMap<String, Mat>,
+    /// Maps the skinned model's rest space into the skeleton's rest space.
+    pub xf_rest: Mat,
+}
+
+impl SkinCtx {
+    pub fn new(rest: &[(String, Mat)], posed: &[(String, Mat)], xf_rest: Mat) -> SkinCtx {
+        let map = |v: &[(String, Mat)]| {
+            v.iter()
+                .map(|(n, m)| (n.to_ascii_lowercase(), *m))
+                .collect()
+        };
+        SkinCtx {
+            rest: map(rest),
+            posed: map(posed),
+            xf_rest,
+        }
+    }
+
+    /// How far the bone has moved from rest: `posed * inverse(rest)`.
+    fn bone_motion(&self, name: &str) -> Option<Mat> {
+        let key = name.to_ascii_lowercase();
+        Some(mat_mul(
+            self.posed.get(&key)?,
+            &rigid_inverse(self.rest.get(&key)?),
+        ))
+    }
 }
 
 /// One drawable mesh with its vertices already in world space.
@@ -59,12 +116,32 @@ impl Scene {
         for (k, o) in offset.iter().enumerate() {
             xf[k][3] = *o;
         }
-        self.add_model_with(model, None, &xf, &[], None);
+        self.add_model_with(model, None, &xf, &[], None, None);
+    }
+
+    /// Copy `other` into this scene, transformed by `xf` (rotation + translation).
+    pub fn append_transformed(&mut self, other: &Scene, xf: &[[f32; 4]; 4]) {
+        for m in &other.meshes {
+            let mut c = m.clone();
+            for p in &mut c.positions {
+                *p = apply(xf, *p);
+            }
+            for n in &mut c.normals {
+                let o = apply(xf, *n);
+                let t = apply(xf, [0.0; 3]);
+                *n = [o[0] - t[0], o[1] - t[1], o[2] - t[2]];
+            }
+            for &p in &c.positions {
+                self.grow(p);
+            }
+            self.meshes.push(c);
+        }
     }
 
     /// Add the meshes of `model` as posed by `pose`, placed by `xf` (applied after the model's own
     /// node transforms). Nodes named in `skip` are left out. Meshes with no texture name use
-    /// `default_texture`.
+    /// `default_texture`. With `skin`, skinned meshes are blended by the skeleton's bone motion
+    /// instead of being placed rigidly (their result is in the skeleton's posed space; `xf` is not applied).
     pub fn add_model_with(
         &mut self,
         model: &Model,
@@ -72,7 +149,23 @@ impl Scene {
         xf: &[[f32; 4]; 4],
         skip: &[&str],
         default_texture: Option<&str>,
+        skin: Option<&SkinCtx>,
     ) {
+        let rest_by_name: HashMap<String, Mat> = skin
+            .map(|_| {
+                model
+                    .world_matrices(None)
+                    .into_iter()
+                    .map(|(n, m)| (n.to_ascii_lowercase(), m))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut names_by_index: HashMap<i32, String> = HashMap::new();
+        if skin.is_some() {
+            model.root.walk(&mut |n| {
+                names_by_index.insert(n.index as i32, n.name.clone());
+            });
+        }
         for (node, nm) in model.mesh_nodes(pose) {
             if skip.iter().any(|s| node.name.eq_ignore_ascii_case(s)) {
                 continue;
@@ -89,6 +182,67 @@ impl Scene {
             {
                 continue;
             }
+            // Skinned mesh with a skeleton available: blend vertex by vertex.
+            let skinned = match (skin, &mesh.skin) {
+                (Some(ctx), Some(sk)) => {
+                    let rest_world = rest_by_name
+                        .get(&node.name.to_ascii_lowercase())
+                        .copied()
+                        .unwrap_or(IDENTITY);
+                    let base = mat_mul(&ctx.xf_rest, &rest_world);
+                    // `bone_map` is indexed by the node's name-table index and holds that node's bone
+                    // number (-1 if it is not a bone of this mesh); vertices refer to bone numbers.
+                    // Checked on the head: its weights land on head_g, f_jaw_g, f_um_g and the lip bones.
+                    let mut motions: Vec<Option<Mat>> = Vec::new();
+                    for (name_idx, &raw) in sk.bone_map.iter().enumerate() {
+                        let bone = f32::from_bits(raw);
+                        if !(0.0..4096.0).contains(&bone) {
+                            continue;
+                        }
+                        let bone = bone as usize;
+                        if motions.len() <= bone {
+                            motions.resize(bone + 1, None);
+                        }
+                        if let Some(name) = names_by_index.get(&(name_idx as i32)) {
+                            motions[bone] = ctx.bone_motion(name);
+                        }
+                    }
+                    let blend = |v: usize| -> [f32; 3] {
+                        let p0 = apply(&base, mesh.positions[v]);
+                        let (mut acc, mut total) = ([0.0f32; 3], 0.0f32);
+                        for k in 0..4 {
+                            let w = sk.weights.get(v).map_or(0.0, |w| w[k]);
+                            if w <= 0.0 {
+                                continue;
+                            }
+                            let slot = sk.bones.get(v).map_or(-1.0, |b| b[k]);
+                            let moved = if slot >= 0.0 {
+                                motions
+                                    .get(slot as usize)
+                                    .copied()
+                                    .flatten()
+                                    .map_or(p0, |s| apply(&s, p0))
+                            } else {
+                                p0
+                            };
+                            for (a, q) in acc.iter_mut().zip(moved) {
+                                *a += w * q;
+                            }
+                            total += w;
+                        }
+                        if total > 1e-6 {
+                            acc.map(|a| a / total)
+                        } else {
+                            p0
+                        }
+                    };
+                    Some((
+                        (0..mesh.positions.len()).map(blend).collect::<Vec<_>>(),
+                        base,
+                    ))
+                }
+                _ => None,
+            };
             let at = |p: [f32; 3]| -> [f32; 3] {
                 [
                     m[0][0] * p[0] + m[0][1] * p[1] + m[0][2] * p[2] + m[0][3],
@@ -106,8 +260,14 @@ impl Scene {
             };
             let mut out = SceneMesh {
                 name: node.name.clone(),
-                positions: mesh.positions.iter().map(|&p| at(p)).collect(),
-                normals: mesh.normals.iter().map(|&n| dir(n)).collect(),
+                positions: match &skinned {
+                    Some((p, _)) => p.clone(),
+                    None => mesh.positions.iter().map(|&p| at(p)).collect(),
+                },
+                normals: match &skinned {
+                    Some((_, base)) => mesh.normals.iter().map(|&n| apply_dir(base, n)).collect(),
+                    None => mesh.normals.iter().map(|&n| dir(n)).collect(),
+                },
                 uvs: mesh.uvs.clone(),
                 uvs2: mesh.uvs2.clone(),
                 triangles: mesh
@@ -136,6 +296,12 @@ impl Scene {
             self.meshes.push(out);
         }
     }
+}
+
+fn apply_dir(m: &Mat, n: [f32; 3]) -> [f32; 3] {
+    let o = apply(m, n);
+    let t = apply(m, [0.0; 3]);
+    [o[0] - t[0], o[1] - t[1], o[2] - t[2]]
 }
 
 /// Build the scene for an area: every room model of its layout, placed where the layout says.

@@ -126,6 +126,8 @@ mod tests {
         };
         let node = Node {
             name: "tri".into(),
+            index: 0,
+            number: 0,
             flags: crate::NODE_HEADER | crate::NODE_MESH,
             position: [10., 0., 0.],
             orientation: [1., 0., 0., 0.],

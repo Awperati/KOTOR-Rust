@@ -1,4 +1,4 @@
-use crate::scene::{mat_mul, Scene};
+use crate::scene::{mat_mul, rigid_inverse, Scene, SkinCtx};
 use kotor_archive::Install;
 use kotor_core::{Error, ResType, Result};
 use kotor_model::{parse_model, Model};
@@ -10,19 +10,6 @@ fn load(inst: &mut Install, name: &str) -> Result<Model> {
     let mdl = inst.read(name, ResType::MDL)?;
     let mdx = inst.read(name, ResType::MDX).unwrap_or_default();
     parse_model(&mdl, &mdx)
-}
-
-/// Inverse of a rotation + translation matrix (no scale or shear).
-fn rigid_inverse(m: &Mat) -> Mat {
-    let mut o = [[0.0; 4]; 4];
-    for i in 0..3 {
-        for j in 0..3 {
-            o[i][j] = m[j][i];
-        }
-        o[i][3] = -(0..3).map(|j| o[i][j] * m[j][3]).sum::<f32>();
-    }
-    o[3][3] = 1.0;
-    o
 }
 
 fn find(mats: &[(String, Mat)], name: &str) -> Option<Mat> {
@@ -90,23 +77,41 @@ pub fn load_character_with(
         &[]
     };
     let body_tex = body_texture.or_else(|| main_texture(&body_m));
+    let rest_mats = body_m.world_matrices(None);
+    let posed_mats = body_m.world_matrices(pose.as_ref());
+    let body_skin = SkinCtx::new(&rest_mats, &posed_mats, identity);
     scene.add_model_with(
         &body_m,
         pose.as_ref(),
         &identity,
         hide_on_body,
         body_tex.as_deref(),
+        Some(&body_skin),
     );
     if let Some(h) = head {
         let head_m = load(inst, h)?;
-        let body_mats = body_m.world_matrices(pose.as_ref());
         let head_mats = head_m.world_matrices(None);
         // A body or head model without a `head_g` node cannot be attached: draw the body alone.
-        let (Some(mb), Some(mh)) = (find(&body_mats, "head_g"), find(&head_mats, "head_g")) else {
+        let (Some(mb), Some(mbr), Some(mh)) = (
+            find(&posed_mats, "head_g"),
+            find(&rest_mats, "head_g"),
+            find(&head_mats, "head_g"),
+        ) else {
             return finish(scene);
         };
+        // Rigid head parts ride the posed head_g; the skinned head is blended by the body's bones,
+        // starting from the rest attachment.
         let xf = mat_mul(&mb, &rigid_inverse(&mh));
-        scene.add_model_with(&head_m, None, &xf, &[], main_texture(&head_m).as_deref());
+        let xf_rest = mat_mul(&mbr, &rigid_inverse(&mh));
+        let head_skin = SkinCtx::new(&rest_mats, &posed_mats, xf_rest);
+        scene.add_model_with(
+            &head_m,
+            None,
+            &xf,
+            &[],
+            main_texture(&head_m).as_deref(),
+            Some(&head_skin),
+        );
     }
     finish(scene)
 }

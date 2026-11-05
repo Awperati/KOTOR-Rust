@@ -163,3 +163,115 @@ fn creature_texture_follows_appearance_row_and_variation() {
     let v2 = load_creature(&mut inst, 6, 2, None).unwrap();
     assert!(!v2.meshes.is_empty());
 }
+
+#[test]
+fn creatures_from_the_git_stand_in_the_area() {
+    use kotor_render::add_area_creatures;
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_module("end_m01aa").unwrap();
+    inst.load_texture_packs().unwrap();
+    let mut scene = load_area(&mut inst, "m01aa").unwrap();
+    let before = scene.meshes.len();
+    let stats = add_area_creatures(&mut scene, &mut inst, "m01aa", Some(("pause1", 0.0))).unwrap();
+    assert_eq!(stats.listed, 26);
+    assert_eq!(stats.drawn, 26, "{stats:?}");
+    assert!(stats.distinct >= 8 && stats.distinct <= 26, "{stats:?}");
+    assert!(scene.meshes.len() > before + 100);
+    // Carth is the first entry of the creature list, at (35.16, 161.43, 0): some added mesh stands there.
+    let near_carth = scene.meshes[before..].iter().any(|m| {
+        m.positions.iter().any(|p| {
+            (p[0] - 35.16).abs() < 0.6 && (p[1] - 161.43).abs() < 0.6 && p[2] > 1.3 && p[2] < 2.0
+        })
+    });
+    assert!(
+        near_carth,
+        "no creature geometry head-high above Carth's position"
+    );
+}
+
+#[test]
+fn skinning_at_rest_equals_rigid_placement_and_a_pose_moves_the_head() {
+    use kotor_model::parse_model;
+    use kotor_render::{Scene, SkinCtx};
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let load = |inst: &mut Install, n: &str| {
+        parse_model(
+            &inst.read(n, kotor_core::ResType::MDL).unwrap(),
+            &inst.read(n, kotor_core::ResType::MDX).unwrap_or_default(),
+        )
+        .unwrap()
+    };
+    let body = load(&mut inst, "p_bastilabb");
+    let head = load(&mut inst, "p_bastilah");
+    let sup = load(&mut inst, body.supermodel.as_deref().unwrap());
+    let rest = body.world_matrices(None);
+    let pose = sup.animation("pause1").unwrap().sample(&sup, 0.0);
+    let posed = body.world_matrices(Some(&pose));
+    let find = |v: &[(String, [[f32; 4]; 4])]| {
+        v.iter()
+            .find(|x| x.0.eq_ignore_ascii_case("head_g"))
+            .unwrap()
+            .1
+    };
+    let hrest = head.world_matrices(None);
+    let hm = find(&hrest);
+    // Translation that puts the head model's head_g where the body's is (rotation-free at rest).
+    let br = find(&rest);
+    let mut xf = [
+        [1., 0., 0., 0.],
+        [0., 1., 0., 0.],
+        [0., 0., 1., 0.],
+        [0., 0., 0., 1.],
+    ];
+    for (k, row) in xf.iter_mut().take(3).enumerate() {
+        row[3] = br[k][3] - hm[k][3];
+    }
+    let fresh = || Scene {
+        min: [f32::MAX; 3],
+        max: [f32::MIN; 3],
+        ..Scene::default()
+    };
+    let tex = Some("p_bastilah04");
+    let mut rigid = fresh();
+    rigid.add_model_with(&head, None, &xf, &[], tex, None);
+    let mut at_rest = fresh();
+    at_rest.add_model_with(
+        &head,
+        None,
+        &xf,
+        &[],
+        tex,
+        Some(&SkinCtx::new(&rest, &rest, xf)),
+    );
+    let mut moved = fresh();
+    moved.add_model_with(
+        &head,
+        None,
+        &xf,
+        &[],
+        tex,
+        Some(&SkinCtx::new(&rest, &posed, xf)),
+    );
+    assert_eq!(rigid.meshes.len(), at_rest.meshes.len());
+    let (mut worst, mut shift) = (0.0f32, 0.0f32);
+    for ((a, b), c) in rigid.meshes.iter().zip(&at_rest.meshes).zip(&moved.meshes) {
+        for ((p, q), r) in a.positions.iter().zip(&b.positions).zip(&c.positions) {
+            worst = worst.max((0..3).map(|k| (p[k] - q[k]).abs()).fold(0.0, f32::max));
+            shift = shift.max((0..3).map(|k| (p[k] - r[k]).abs()).fold(0.0, f32::max));
+        }
+    }
+    assert!(
+        worst < 1e-3,
+        "skin with no motion differs from rigid by {worst}"
+    );
+    assert!(
+        shift > 0.02,
+        "idle pose left the skinned head where it was ({shift})"
+    );
+}

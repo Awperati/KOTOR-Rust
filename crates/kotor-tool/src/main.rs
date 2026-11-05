@@ -182,6 +182,16 @@ fn run(args: &[String]) -> Result<()> {
             let mut scene = kotor_render::load_area(&mut inst, area)?;
             let stats = kotor_render::add_area_objects(&mut scene, &mut inst, area)?;
             println!("{stats:?}");
+            if !args.iter().any(|a| a == "--no-creatures") {
+                let cs = kotor_render::add_area_creatures(
+                    &mut scene,
+                    &mut inst,
+                    area,
+                    Some(("pause1", 0.0)),
+                )?;
+                println!("{cs:?}");
+            }
+
             let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
             let eye = flag("--eye", 3).map_or([mid[0], scene.min[1] - 2.0, mid[2] + 6.0], |v| {
                 [v[0], v[1], v[2]]

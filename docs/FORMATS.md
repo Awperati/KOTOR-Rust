@@ -73,6 +73,13 @@ from the data (e.g. 2031) are left out.
   single packed word per key: x = (bits & 0x7FF)/1023 - 1, y = ((bits >> 11) & 0x7FF)/1023 - 1, z = (bits >> 22)/511 - 1,
   w = sqrt(1 - x^2 - y^2 - z^2). **Checked on 580,545 packed keys: x^2+y^2+z^2 never exceeds 1.0059** (a wrong bit layout
   would break the unit-length bound constantly), so the layout is right; the 0.0059 is quantisation.
+- **Skin bone map**: `bone_map` is indexed by a node's *name-table index* and holds that node's bone number (a float-encoded
+  integer, -1 if the node is not a bone of this mesh); the per-vertex bone values in the MDX are bone numbers. Found by
+  testing four readings against the head mesh of `P_BastilaH`: only this one puts the weights on `head_g`, `f_jaw_g`, `f_um_g`
+  and the lip bones. The skin matrix used is `posed(bone) * inverse(rest(bone))` in the body's skeleton, bones matched by name
+  (a head model is deformed by the body's skeleton). Weights are renormalised per vertex. Tangent/bone-reference arrays
+  (`qbone`, `tbone`) are not read; the rest-pose world matrices stand in for them. At rest the blended head equals the rigid head to
+  1 mm (test).
 - Animation sampling (`Animation::sample`, `Model::world_matrices`): position keys are linearly interpolated, orientation keys
   slerped, both clamped to the first/last key. **Position keys are offsets added to the node's rest position**, not absolute
   (the pelvis root rests at z = 1.063 and its idle keys are about 0.02). Found by pose-checking, see below. Animations live in the

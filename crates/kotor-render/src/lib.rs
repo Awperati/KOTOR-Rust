@@ -8,6 +8,6 @@ mod scene;
 mod soft;
 
 pub use character::{load_character, load_character_with, load_creature};
-pub use objects::{add_area_objects, ObjectStats};
-pub use scene::{load_area, load_texture, Scene, SceneMesh};
+pub use objects::{add_area_creatures, add_area_objects, CreatureStats, ObjectStats};
+pub use scene::{load_area, load_texture, Scene, SceneMesh, SkinCtx};
 pub use soft::{render, Camera};

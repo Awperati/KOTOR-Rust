@@ -117,7 +117,7 @@ impl Ctx<'_> {
         }
         let mut r = Reader::at(self.d, off);
         let flags = r.u16()?;
-        let _supernode = r.u16()?;
+        let number = r.u16()?;
         let name_idx = r.u16()? as usize;
         r.skip(2 + 4 + 4); // pad, root offset, parent offset
         let position = r.vec3()?;
@@ -161,6 +161,8 @@ impl Ctx<'_> {
         }
         Ok(Node {
             name,
+            index: name_idx as u16,
+            number,
             flags,
             position,
             orientation,

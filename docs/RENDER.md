@@ -16,6 +16,8 @@ reference image to compare the GPU output against.
 | Software renderer | `kotor-render::render` | perspective camera (Z up), near-plane clipping, z-buffer, perspective-correct UVs, bilinear textures, diffuse x lightmap |
 | Doors and placeables | `kotor-render::add_area_objects` | GIT `Door List` / `Placeable List`; UTD `GenericType` -> `genericdoors.2da`, UTP `Appearance` -> `placeables.2da`; placed by X, Y, Z and Bearing |
 | Creature by appearance | `kotor-render::load_creature` | `appearance.2da` row + texture variation: body = `race`, body texture = `texX` + 2-digit variation, head from `heads.2da` |
+| Creatures in an area | `kotor-render::add_area_creatures` | GIT `Creature List`; each template's appearance built once per (row, variation), idle pose, placed by position and orientation |
+| Skinning | `SkinCtx`, `Scene::add_model_with` | per-vertex blend of up to four bones from the body skeleton's motion (rest to posed) |
 | Character assembly | `kotor-render::load_character` | body model posed by a supermodel animation, head model attached at `head_g` |
 | Texture lookup | `kotor-render::load_texture` | TPC from the texture packs, else TGA from the BIFs |
 | CLI | `kotor-tool view`, `kotor-tool character` | write a PNG |
@@ -37,15 +39,15 @@ target\debug\kotor-tool.exe character p_bastilabb out\bastila.png --head p_basti
 
 ## Not done / wrong on purpose (be honest about these)
 
-- **Creatures in an area** are not placed (GIT `Creature List`); doors and placeables are, in the rest pose (closed doors).
-- **Skinned meshes** (heads, some bodies) are drawn rigidly at their node transform; no vertex blending.
+- **Creatures** are drawn in their default outfit and the `pause1` idle only (no equipment, no per-creature animation, no
+  hostility or AI); a creature whose supermodel has no `pause1` stays in the rest pose. Doors and placeables are in the rest
+  pose (closed doors).
+- **Skinning** is linear blending without the original `qbone`/`tbone` data; the face still looks slightly open-mouthed in some poses.
 - **Character textures** now follow the appearance row (Carth is orange trousers and a dark jacket, as expected), but only for model
   type `B` bodies in their default outfit. Armour and equipped items are not handled, and non-`B` models fall back to a
   "most used texture" heuristic. Bastila's torso texture still looks odd and I could not tell whether it is wrong or just her outfit.
-- **Neck**: the body's `neck_g`, `necklwr_g` and `head_g` meshes are `render = false` placeholders and the head mesh ends at the
-  chin, so no neck geometry is drawn. Carth's head sits cleanly on his collar; Bastila's looks detached in the idle pose. Whether the
-  original blends the skinned head down onto the neck is unknown.
-- The idle pose for Bastila leans her head away from the torso by about 0.1 m; I did not verify it against the game.
+- **Neck gap: fixed.** The cause was drawing skinned meshes (the head, and arms and torso of some bodies) rigidly at rest while the
+  rigid parts followed the pose. With vertex blending the head sits on its neck and the arms drop to the idle pose.
 - No alpha, transparency, envmaps, bump maps, fog, particle emitters, light flares, dynamic lights, or shadows.
 - Triangles are drawn double sided; face winding is unverified.
 - No window, no input, no free-camera interaction; the "free camera" is the `--eye/--target` options.

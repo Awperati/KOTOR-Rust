@@ -135,6 +135,10 @@ pub struct Emitter {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub name: String,
+    /// Position of the node's name in the model's name table; skin bone maps refer to nodes by this number.
+    pub index: u16,
+    /// The node number stored in the node header (second u16).
+    pub number: u16,
     /// Node type bit flags (`NODE_*`).
     pub flags: u16,
     pub position: [f32; 3],

@@ -89,7 +89,7 @@ pub fn add_area_objects(scene: &mut Scene, inst: &mut Install, area: &str) -> Re
         let xf = placement(f(o, "X"), f(o, "Y"), f(o, "Z"), f(o, "Bearing"));
         let before = scene.meshes.len();
         let model = loader.model(&name)?;
-        scene.add_model_with(model, None, &xf, &[], None);
+        scene.add_model_with(model, None, &xf, &[], None, None);
         Some(scene.meshes.len() > before)
     };
 
@@ -115,6 +115,67 @@ pub fn add_area_objects(scene: &mut Scene, inst: &mut Install, area: &str) -> Re
             Some(false) => {}
             None => stats.unresolved += 1,
         }
+    }
+    Ok(stats)
+}
+
+/// What `add_area_creatures` did.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CreatureStats {
+    pub listed: usize,
+    pub drawn: usize,
+    /// Creatures whose template, appearance or models could not be loaded.
+    pub unresolved: usize,
+    /// Different (appearance row, texture variation) pairs that had to be built.
+    pub distinct: usize,
+}
+
+/// Add the GIT `Creature List` to the scene: each template's appearance (see `load_creature`) in the given
+/// idle animation, standing where the GIT says and facing along its `XOrientation`/`YOrientation`.
+/// Everything is drawn in its default outfit; equipment, hostility and AI are not looked at.
+pub fn add_area_creatures(
+    scene: &mut Scene,
+    inst: &mut Install,
+    area: &str,
+    animation: Option<(&str, f32)>,
+) -> Result<CreatureStats> {
+    let mut stats = CreatureStats::default();
+    let Ok(git_bytes) = inst.read(area, ResType::GIT) else {
+        return Ok(stats);
+    };
+    let git = Gff::parse(&git_bytes)?;
+    let mut built: HashMap<(usize, u32), Option<Scene>> = HashMap::new();
+    for c in git.root.list("Creature List").unwrap_or_default() {
+        stats.listed += 1;
+        let key = (|| {
+            let utc = Gff::parse(&inst.read(c.str("TemplateResRef")?, ResType(2027)).ok()?).ok()?;
+            Some((
+                utc.root.int("Appearance_Type")? as usize,
+                utc.root.int("TextureVar").unwrap_or(1) as u32,
+            ))
+        })();
+        let Some(key) = key else {
+            stats.unresolved += 1;
+            continue;
+        };
+        built.entry(key).or_insert_with(|| {
+            stats.distinct += 1;
+            crate::load_creature(inst, key.0, key.1, animation).ok()
+        });
+        let Some(Some(model)) = built.get(&key) else {
+            stats.unresolved += 1;
+            continue;
+        };
+        // Models face +y at rest; turn so +y points along the orientation vector.
+        let facing = f(c, "YOrientation").atan2(f(c, "XOrientation")) - std::f32::consts::FRAC_PI_2;
+        let xf = placement(
+            f(c, "XPosition"),
+            f(c, "YPosition"),
+            f(c, "ZPosition"),
+            facing,
+        );
+        scene.append_transformed(model, &xf);
+        stats.drawn += 1;
     }
     Ok(stats)
 }
