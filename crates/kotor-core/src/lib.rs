@@ -6,7 +6,7 @@ mod reader;
 mod restype;
 
 pub use error::{Error, Result};
-pub use reader::{latin1, Reader};
+pub use reader::{cp1252, latin1, Reader};
 pub use restype::{ResRef, ResType};
 
 use std::path::PathBuf;
