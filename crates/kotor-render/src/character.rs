@@ -101,6 +101,11 @@ impl Rig {
                 .iter()
                 .find_map(|m| m.animation(name).map(|a| a.sample(m, t)))
         });
+        self.posed(pose.as_ref())
+    }
+
+    /// The character in a pose sampled elsewhere, such as a cutscene's stunt model.
+    pub fn posed(&self, pose: Option<&kotor_model::Pose>) -> Result<Scene> {
         let mut scene = Scene {
             min: [f32::MAX; 3],
             max: [f32::MIN; 3],
@@ -113,11 +118,11 @@ impl Rig {
             &[]
         };
         let rest_mats = self.body.world_matrices(None);
-        let posed_mats = self.body.world_matrices(pose.as_ref());
+        let posed_mats = self.body.world_matrices(pose);
         let body_skin = SkinCtx::new(&rest_mats, &posed_mats, identity);
         scene.add_model_with(
             &self.body,
-            pose.as_ref(),
+            pose,
             &identity,
             hide_on_body,
             self.body_tex.as_deref(),
@@ -125,29 +130,46 @@ impl Rig {
         );
         if let Some(head_m) = &self.head {
             let head_mats = head_m.world_matrices(None);
-            // A creature's body has its own `head_g` to line the head's up with; a player's body has a `headhook` node
-            // where the head model's origin goes. A body with neither is drawn alone.
-            let attach = match (
+            // A creature's body has its own `head_g` to line the head's up with, and its bones bend the head too.
+            // A player's body has only a `headhook`: the head model has its own skeleton with its origin at the neck
+            // (measured: head vertices 0 to 0.26 m above it), and rides the hook rigidly. A body with neither is drawn
+            // alone.
+            match (
                 find(&posed_mats, "head_g"),
                 find(&rest_mats, "head_g"),
                 find(&head_mats, "head_g"),
             ) {
-                (Some(mb), Some(mbr), Some(mh)) => Some((
-                    mat_mul(&mb, &rigid_inverse(&mh)),
-                    mat_mul(&mbr, &rigid_inverse(&mh)),
-                )),
-                _ => find(&posed_mats, "headhook").zip(find(&rest_mats, "headhook")),
-            };
-            if let Some((xf, xf_rest)) = attach {
-                let head_skin = SkinCtx::new(&rest_mats, &posed_mats, xf_rest);
-                scene.add_model_with(
-                    head_m,
-                    None,
-                    &xf,
-                    &[],
-                    self.head_tex.as_deref(),
-                    Some(&head_skin),
-                );
+                (Some(mb), Some(mbr), Some(mh)) => {
+                    let xf = mat_mul(&mb, &rigid_inverse(&mh));
+                    let xf_rest = mat_mul(&mbr, &rigid_inverse(&mh));
+                    let head_skin = SkinCtx::new(&rest_mats, &posed_mats, xf_rest);
+                    scene.add_model_with(
+                        head_m,
+                        None,
+                        &xf,
+                        &[],
+                        self.head_tex.as_deref(),
+                        Some(&head_skin),
+                    );
+                }
+                _ => {
+                    if let (Some(posed), Some(mut turn)) =
+                        (find(&posed_mats, "headhook"), find(&rest_mats, "headhook"))
+                    {
+                        for row in turn.iter_mut().take(3) {
+                            row[3] = 0.0;
+                        }
+                        let xf = mat_mul(&posed, &rigid_inverse(&turn));
+                        scene.add_model_with(
+                            head_m,
+                            None,
+                            &xf,
+                            &[],
+                            self.head_tex.as_deref(),
+                            None,
+                        );
+                    }
+                }
             }
         }
         if scene.meshes.is_empty() {

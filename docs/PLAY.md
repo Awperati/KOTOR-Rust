@@ -35,11 +35,16 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 - The player is the recommended Soldier until there is a character creation screen.
 - The player's body is column b of `appearance.2da`. Equipped armour does not change it yet.
 - A body whose supermodels have no `dead` clip is laid flat.
-- A line with no replies lasts as long as its voice-over, or its reading time at 15 characters a second, plus 0.3 s.
+- A node with no replies lasts its cutscene beat (`docs/CUTSCENE.md`), then moves on.
+- Combat clips: `weaponwield` in `baseitems.2da` picks the digit in the clip name (1, 2, 3 as they are; pistol 5, rifle 7, heavy 9; no weapon 8), read from the clip names. `b<n>a1` fires, `c<n>a1` swings a one-handed or double weapon, `g<n>a1` swings anything else, `g<n>g1` is a flinch, `g<n>d1` a dodge and `g<n>r1` the ready stance. Only the first of each is used. All of it is unchecked against the game.
+- A fixed area camera's `Orientation` is (w, x, y, z), and with no turn it looks along +y.
+- Cutscene `Angle` codes are not modelled: those beats use the follow camera turned to the speaker.
+
+## Measured
+- A camera model's `camerahook` and a stunt's animation are in world space, and the hook looks along its local -z: in the opening's 18 shots the stunt's head lies at -0.91 to -1.00 along that axis.
+- A player's head model has its origin at the neck and rides the body's `headhook`.
 
 ## Not done
-- Attack and hit animations: fighters stand in their idle clip while the rounds resolve.
-- The cutscene camera: `kotor_game::Timeline` is not played yet. In a conversation the camera turns to the speaker.
 - Weapons and armour are not drawn on bodies.
 - Target display and action slots on the HUD, the map picture, and notices.
 - Transparent textures and effects. Everything is drawn opaque.

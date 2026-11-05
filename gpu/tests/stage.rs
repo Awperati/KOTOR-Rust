@@ -62,6 +62,13 @@ fn the_loop_plays_a_conversation_walks_opens_a_door_and_draws() {
         }
     }
     assert!(waited, "the opening conversation should hold");
+    // Its first beat looks through the camera model: the file's narrow lens, a wide shot of the bunks.
+    let cut = s.camera();
+    assert_eq!(cut.fov, 34.5, "{cut:?}");
+    let here = s.game.world.object(s.game.world.pc).unwrap().position;
+    let away = ((cut.eye[0] - here[0]).powi(2) + (cut.eye[1] - here[1]).powi(2)).sqrt();
+    assert!(away < 15.0, "the camera model is in world space: {cut:?}");
+    assert!(s.label().contains("from the cutscene"), "{}", s.label());
     let v0 = s.overlay_version;
     let first = s.game.world.dialogue_view().unwrap();
     assert!(!first.1.is_empty(), "{first:?}");
@@ -177,4 +184,46 @@ fn the_loop_plays_a_conversation_walks_opens_a_door_and_draws() {
         "{:?}",
         &s.game.world.errors[..s.game.world.errors.len().min(5)]
     );
+}
+
+#[test]
+fn a_fight_plays_clips_the_bodies_have() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    let foe = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003")
+        .map(|o| o.id)
+        .expect("a Sith soldier");
+    let at = s.game.world.object(foe).unwrap().position;
+    s.game.world.teleport(pc, [at[0] - 1.5, at[1], at[2]]);
+    s.game.world.attack(pc, foe);
+    let mut seen = Vec::new();
+    for _ in 0..600 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.continue_line();
+            s.number_key(1);
+        }
+        if let Some(c) = s.game.clip(pc) {
+            if !seen.contains(&c.name) {
+                seen.push(c.name);
+            }
+        }
+    }
+    assert!(!s.game.world.combat.log.is_empty(), "blows were struck");
+    assert!(
+        seen.iter().any(|n| n.len() == 4 && n.ends_with("a1")),
+        "the attacker swung: {seen:?}"
+    );
+    let appearance = s.game.world.object(pc).unwrap().appearance as usize;
+    let dir = kotor_core::install_dir().unwrap();
+    let mut inst = kotor_archive::Install::open(dir).unwrap();
+    let rig = kotor_render::rig_for_appearance(&mut inst, appearance, 1).unwrap();
+    for name in &seen {
+        assert!(rig.animation_length(name).is_some(), "no clip {name}");
+    }
 }

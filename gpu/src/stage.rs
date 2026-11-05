@@ -4,8 +4,8 @@
 
 use kotor_archive::Install;
 use kotor_core::ResType;
-use kotor_game::{pixel_ray, Clip, Game, Kind, ObjId, World};
-use kotor_gff::Gff;
+use kotor_game::{pixel_ray, Beat, CameraShot, Clip, Game, Kind, ObjId, World};
+use kotor_gff::{Gff, Value};
 use kotor_image::Image;
 use kotor_model::{parse_model, Model};
 use kotor_render::{Camera, Floor, Rig, Scene};
@@ -19,9 +19,10 @@ type Mat = [[f32; 4]; 4];
 
 /// Creatures farther than this from the player are not drawn (metres).
 const DRAW_RANGE: f32 = 45.0;
-/// Reading speed for a line with no voice-over, characters per second, as in `kotor_game::cutscene`.
-const READING_SPEED: f32 = 15.0;
+/// Animation ids from here index a stunt model's animations (see `kotor_game::cutscene`).
+const FIRST_STUNT_ANIMATION: u32 = 1200;
 /// The follow camera: metres behind the player and above its feet, and the height it looks at. As `render_walk`.
+const CAMERA_FOV: f32 = 55.0;
 const CAMERA_BEHIND: f32 = 3.3;
 const CAMERA_ABOVE: f32 = 1.7;
 const CAMERA_LOOKS_AT: f32 = 1.2;
@@ -62,6 +63,46 @@ fn placement_flat(p: [f32; 3], angle: f32) -> Mat {
     ]
 }
 
+/// The `CameraList` of an area. A camera stands `Height` above its `Position`, turned about z by `Orientation`, and
+/// tilted up from straight down by `Pitch` degrees.
+///
+/// **Assumption, fits the opening's cameras but not checked against the game:** `Orientation` is (w, x, y, z), and
+/// with no turn a camera looks along +y.
+fn fixed_cameras(inst: &mut Install, area: &str) -> HashMap<i32, Camera> {
+    let mut out = HashMap::new();
+    let Some(git) = inst
+        .read(area, ResType::GIT)
+        .ok()
+        .and_then(|b| Gff::parse(&b).ok())
+    else {
+        return out;
+    };
+    for c in git.root.list("CameraList").unwrap_or_default() {
+        let field = |label: &str| c.fields.iter().find(|(l, _)| l == label).map(|(_, v)| v);
+        let (Some(Value::Vector(p)), Some(Value::Orientation(q)), Some(id)) =
+            (field("Position"), field("Orientation"), c.int("CameraID"))
+        else {
+            continue;
+        };
+        let turn = 2.0 * q[3].atan2(q[0]);
+        let pitch = (c.float("Pitch").unwrap_or(90.0) as f32).to_radians();
+        let eye = [p[0], p[1], p[2] + c.float("Height").unwrap_or(0.0) as f32];
+        out.insert(
+            id as i32,
+            Camera {
+                eye,
+                target: [
+                    eye[0] - turn.sin() * pitch.sin(),
+                    eye[1] + turn.cos() * pitch.sin(),
+                    eye[2] - pitch.cos(),
+                ],
+                fov: c.float("FieldOfView").unwrap_or(CAMERA_FOV as f64) as f32,
+            },
+        );
+    }
+    out
+}
+
 fn load_model(inst: &mut Install, name: &str) -> Option<Model> {
     let mdl = inst.read(name, ResType::MDL).ok()?;
     let mdx = inst.read(name, ResType::MDX).unwrap_or_default();
@@ -96,6 +137,14 @@ pub struct Stage {
     cues: Vec<Cue>,
     events_seen: usize,
     line_key: Option<usize>,
+    /// The cutscene beat on now, its age in seconds, and the stunt and camera model names it reads.
+    beat: Option<Beat>,
+    beat_time: f32,
+    camera_model: String,
+    stunts: Vec<(String, String)>,
+    models: HashMap<String, Option<Rc<Model>>>,
+    /// The area's fixed cameras by `CameraID`.
+    fixed_cameras: HashMap<i32, Camera>,
     /// Seconds until a line with no replies moves on by itself.
     line_left: Option<f32>,
     /// Lines of conversation shown so far.
@@ -150,6 +199,12 @@ impl Stage {
             cues: Vec::new(),
             events_seen: 0,
             line_key: None,
+            beat: None,
+            beat_time: 0.0,
+            camera_model: String::new(),
+            stunts: Vec::new(),
+            models: HashMap::new(),
+            fixed_cameras: HashMap::new(),
             line_left: None,
             lines_shown: 0,
             last_status: String::new(),
@@ -179,6 +234,7 @@ impl Stage {
         self.floor = Floor::load(&mut self.inst, &area).ok();
         self.doors.clear();
         self.events_seen = 0;
+        self.fixed_cameras = fixed_cameras(&mut self.inst, &area);
         let music = (|| {
             let git = Gff::parse(&self.inst.read(&area, ResType::GIT).ok()?).ok()?;
             let props = git.root.strukt("AreaProperties")?;
@@ -245,35 +301,40 @@ impl Stage {
         }
     }
 
-    /// A new spoken line starts its voice and its timer; a line with no replies moves on when the timer ends.
+    /// A new node starts its voice, its beat and its timer; a node with no replies moves on when the timer ends.
     fn update_line(&mut self, dt: f32) {
-        let Some((_, text, vo, replies)) = self.game.world.dialogue_view() else {
+        let Some((_, _, vo, replies)) = self.game.world.dialogue_view() else {
             if self.line_key.take().is_some() {
                 self.cues.push(Cue::StopVoice);
             }
             self.line_left = None;
+            self.beat = None;
             return;
         };
-        let key = self.game.world.transcript.len();
-        if self.line_key != Some(key) {
-            self.line_key = Some(key);
+        let key = self.game.world.dialogue_serial();
+        if self.line_key != key {
+            self.line_key = key;
             self.lines_shown += 1;
-            let voice = self.sound_file(&vo);
-            let seconds = voice
-                .as_ref()
-                .and_then(|p| std::fs::read(p).ok())
-                .and_then(|d| kotor_audio::probe(&d).ok())
-                .map(|i| i.duration_secs as f32);
-            self.cues.push(match voice {
+            self.cues.push(match self.sound_file(&vo) {
                 Some(p) => Cue::Voice(p),
                 None => Cue::StopVoice,
             });
-            self.line_left = replies.is_empty().then(|| {
-                seconds
-                    .unwrap_or(text.chars().count() as f32 / READING_SPEED)
-                    .max(1.5)
-                    + 0.3
-            });
+            self.beat = self.game.world.dialogue_beat();
+            self.beat_time = 0.0;
+            if let Some(c) = self.game.world.dialogue_conversation() {
+                self.camera_model = c.camera_model;
+                self.stunts = c.stunts;
+            }
+            let names: Vec<String> = std::iter::once(self.camera_model.clone())
+                .chain(self.stunts.iter().map(|(_, m)| m.clone()))
+                .collect();
+            for n in names {
+                self.model(&n);
+            }
+            let seconds = self.beat.as_ref().map_or(1.5, |b| b.length + b.hold);
+            self.line_left = replies.is_empty().then_some(seconds);
+        } else {
+            self.beat_time += dt;
         }
         if let Some(left) = self.line_left.as_mut() {
             *left -= dt;
@@ -282,6 +343,73 @@ impl Stage {
                 self.game.world.dialogue_choose(0);
             }
         }
+    }
+
+    /// A model by name, parsed once.
+    fn model(&mut self, name: &str) -> Option<Rc<Model>> {
+        let key = name.to_ascii_lowercase();
+        if !self.models.contains_key(&key) {
+            let m = load_model(&mut self.inst, &key).map(Rc::new);
+            self.models.insert(key.clone(), m);
+        }
+        self.models[&key].clone()
+    }
+
+    fn loaded(&self, name: &str) -> Option<&Rc<Model>> {
+        self.models.get(&name.to_ascii_lowercase())?.as_ref()
+    }
+
+    /// What the beat's camera sees, if the node names one. The camera model's `camerahook` is in world space and
+    /// looks along its local -z with y up. Measured: in the opening's 18 shots the stunt's head lies at -0.91 to -1.00
+    /// along that axis.
+    fn beat_camera(&self) -> Option<Camera> {
+        match self.beat.as_ref()?.camera.as_ref()? {
+            CameraShot::Animated { animation, fov, .. } => {
+                let model = self.loaded(&self.camera_model)?;
+                let a = model
+                    .animations
+                    .get(animation.checked_sub(FIRST_STUNT_ANIMATION)? as usize)?;
+                let pose = a.sample(model, self.beat_time.min(a.length));
+                let mats = model.world_matrices(Some(&pose));
+                let m = mats
+                    .iter()
+                    .find(|(n, _)| n.eq_ignore_ascii_case("camerahook"))?
+                    .1;
+                let eye = [m[0][3], m[1][3], m[2][3]];
+                Some(Camera {
+                    eye,
+                    target: [eye[0] - m[0][2], eye[1] - m[1][2], eye[2] - m[2][2]],
+                    fov: fov.unwrap_or(CAMERA_FOV),
+                })
+            }
+            CameraShot::Static { id, fov } => {
+                let mut c = *self.fixed_cameras.get(id)?;
+                if let Some(f) = fov {
+                    c.fov = *f;
+                }
+                Some(c)
+            }
+            CameraShot::Angle { .. } => None,
+        }
+    }
+
+    /// The pose a creature's cutscene stunt puts it in this beat.
+    fn stunt_pose(&self, id: ObjId) -> Option<kotor_model::Pose> {
+        let w = &self.game.world;
+        let beat = self.beat.as_ref()?;
+        let tag = w.object(id)?.tag.clone();
+        let (who, anim) = beat.step.animations.iter().find(|(p, _)| {
+            (id == w.pc && p.eq_ignore_ascii_case("PLAYER")) || p.eq_ignore_ascii_case(&tag)
+        })?;
+        let (_, name) = self
+            .stunts
+            .iter()
+            .find(|(p, _)| p.eq_ignore_ascii_case(who))?;
+        let stunt = self.loaded(name)?;
+        let a = stunt
+            .animations
+            .get(anim.checked_sub(FIRST_STUNT_ANIMATION)? as usize)?;
+        Some(a.sample(stunt, self.beat_time.min(a.length)))
     }
 
     fn update_camera(&mut self, dt: f32) {
@@ -312,6 +440,9 @@ impl Stage {
 
     /// The camera behind the player, drawn in where the floor ends so that it stays on this side of the walls.
     pub fn camera(&self) -> Camera {
+        if let Some(c) = self.beat_camera() {
+            return c;
+        }
         let p = self.pc_position();
         let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
@@ -333,7 +464,7 @@ impl Stage {
                 p[2] + CAMERA_LOOKS_AT + (CAMERA_ABOVE - CAMERA_LOOKS_AT) * d / CAMERA_BEHIND,
             ],
             target,
-            fov: 55.0,
+            fov: CAMERA_FOV,
         }
     }
 
@@ -488,6 +619,13 @@ impl Stage {
                     let Some(rig) = self.rig_of(pose.id) else {
                         continue;
                     };
+                    if let Some(p) = self.stunt_pose(pose.id) {
+                        // A stunt is in world space, like the camera beside it.
+                        if let Ok(body) = rig.posed(Some(&p)) {
+                            scene.append_transformed(&body, &placement([0.0; 3], 0.0));
+                        }
+                        continue;
+                    }
                     self.add_creature(&mut scene, &rig, &pose.clip, pose.position, pose.heading);
                 }
                 Kind::Door => {
@@ -519,8 +657,8 @@ impl Stage {
         let angle = heading - std::f32::consts::FRAC_PI_2;
         let name = clip.as_ref().map_or("pause1", |c| c.name);
         let len = rig.animation_length(name);
-        // **Assumption:** a body whose supermodel has no `dead` clip is laid flat instead.
-        let flat = name == "dead" && len.is_none();
+        // **Assumption:** a body whose supermodels have no `die` clip is laid flat instead.
+        let flat = name == "die" && len.is_none();
         let (name, len) = if len.is_some() {
             (name, len)
         } else {
@@ -529,7 +667,7 @@ impl Stage {
         let t = clip.as_ref().map_or(0.0, |c| c.time);
         let t = len
             .filter(|l| *l > 0.0)
-            .map_or(0.0, |l| if name == "dead" { t.min(l) } else { t % l });
+            .map_or(0.0, |l| if name == "die" { t.min(l) } else { t % l });
         let Ok(body) = rig.pose(len.map(|_| (name, t))) else {
             return;
         };
@@ -550,7 +688,7 @@ impl Stage {
         let view = self.game.world.dialogue_view();
         let party = self.party_view();
         let key = match &view {
-            Some(v) => format!("{}d{v:?}", self.module),
+            Some(v) => format!("{}d{v:?}{}", self.module, self.beat_camera().is_some()),
             None => format!(
                 "{}h{:?}",
                 self.module,
@@ -565,6 +703,10 @@ impl Stage {
         }
         self.overlay_key = key;
         self.overlay = match view {
+            // A wordless beat: the scene alone.
+            Some((_, subtitle, _, replies)) if subtitle.trim().is_empty() && replies.is_empty() => {
+                self.ui.blank_overlay()
+            }
             Some((speaker, subtitle, _, replies)) => self.ui.dialogue_overlay(&DialogueView {
                 speaker,
                 subtitle,
@@ -607,14 +749,19 @@ impl Stage {
                 .join(format!("{}.mod", self.module))
                 .is_file();
         format!(
-            "kotor-rs | {} | {} | area {} | camera on the player",
+            "kotor-rs | {} | {} | area {} | camera {}",
             self.module,
             if installed {
                 "installed .mod"
             } else {
                 "original files"
             },
-            self.area_name()
+            self.area_name(),
+            if self.beat_camera().is_some() {
+                "from the cutscene"
+            } else {
+                "on the player"
+            }
         )
     }
 

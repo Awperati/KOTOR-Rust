@@ -133,6 +133,22 @@ impl World {
         ))
     }
 
+    /// The held node as a one-step conversation, for the cutscene sequencer.
+    pub fn dialogue_conversation(&self) -> Option<crate::cutscene::Conversation> {
+        let run = self.conv.as_ref()?;
+        Some(crate::cutscene::Conversation {
+            name: run.name.clone(),
+            camera_model: run.camera_model.clone(),
+            stunts: run.stunts.clone(),
+            steps: vec![run.held.as_ref()?.step.clone()],
+        })
+    }
+
+    /// Goes up with every node of a held conversation.
+    pub fn dialogue_serial(&self) -> Option<usize> {
+        self.conv.as_ref().map(|c| c.visited)
+    }
+
     /// Who a held conversation belongs to.
     pub fn dialogue_owner(&self) -> Option<ObjId> {
         self.conv.as_ref().map(|c| c.owner)
@@ -187,9 +203,37 @@ impl World {
                 break;
             }
         }
+        let stunts = d
+            .extra
+            .iter()
+            .find_map(|(l, v)| match (l.as_str(), v) {
+                ("StuntList", Value::List(items)) => Some(
+                    items
+                        .iter()
+                        .filter_map(|s| {
+                            Some((
+                                s.str("Participant")?.to_string(),
+                                s.str("StuntModel")?.to_string(),
+                            ))
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let camera_model = d
+            .extra
+            .iter()
+            .find_map(|(l, v)| match (l.as_str(), v) {
+                ("CameraModel", Value::ResRef(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
         Ok(ConvRun {
             name,
             owner,
+            camera_model,
+            stunts,
             dialog: d,
             next,
             visited: 0,
@@ -235,6 +279,7 @@ impl World {
                         text.clone(),
                         &self.events[ev0..],
                     );
+                    let shown_step = step.clone();
                     let vo = if step.vo.is_empty() {
                         step.sound.clone()
                     } else {
@@ -276,12 +321,15 @@ impl World {
                             };
                             (options, shown, k)
                         }
-                        None if text.is_empty() && shown.is_empty() => (options, shown, 0),
+                        None if text.is_empty() && shown.is_empty() && !presents(&shown_step) => {
+                            (options, shown, 0)
+                        }
                         None => {
                             run.held = Some(Held {
                                 speaker,
                                 text,
                                 vo,
+                                step: shown_step,
                                 options,
                                 shown,
                             });
@@ -345,45 +393,29 @@ impl World {
             run.visited
         ));
         self.in_conversation = false;
-        let stunts = d
-            .extra
-            .iter()
-            .find_map(|(l, v)| match (l.as_str(), v) {
-                ("StuntList", Value::List(items)) => Some(
-                    items
-                        .iter()
-                        .filter_map(|s| {
-                            Some((
-                                s.str("Participant")?.to_string(),
-                                s.str("StuntModel")?.to_string(),
-                            ))
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-                _ => None,
-            })
-            .unwrap_or_default();
-        let camera_model = d
-            .extra
-            .iter()
-            .find_map(|(l, v)| match (l.as_str(), v) {
-                ("CameraModel", Value::ResRef(s)) => Some(s.clone()),
-                _ => None,
-            })
-            .unwrap_or_default();
         self.conversation = Some(crate::cutscene::Conversation {
             name,
-            camera_model,
-            stunts,
+            camera_model: run.camera_model,
+            stunts: run.stunts,
             steps: run.steps,
         });
     }
+}
+
+/// A wordless node still has to be seen when it moves the camera or a body, or asks for time.
+fn presents(s: &crate::cutscene::Step) -> bool {
+    s.camera_animation.is_some()
+        || s.camera_id.is_some()
+        || s.delay.is_some()
+        || !s.animations.is_empty()
 }
 
 /// A conversation in progress.
 pub struct ConvRun {
     name: String,
     owner: ObjId,
+    camera_model: String,
+    stunts: Vec<(String, String)>,
     dialog: Dialog,
     next: Option<usize>,
     visited: usize,
@@ -397,6 +429,7 @@ struct Held {
     speaker: String,
     text: String,
     vo: String,
+    step: crate::cutscene::Step,
     options: Vec<(usize, String)>,
     shown: Vec<String>,
 }

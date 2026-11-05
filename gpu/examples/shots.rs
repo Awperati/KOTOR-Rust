@@ -29,6 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     gpu.set_static_scene(&scene, &mut |n| s.texture(n));
     // The opening conversation, then Trask's talk with its replies.
     let (mut talked, mut replied, mut asked) = (false, false, false);
+    // Through the opening's own camera, a second into its first beat, and in its third.
+    for _ in 0..60 {
+        s.update(DT);
+    }
+    shot(&mut gpu, &mut s, &out.join("cutscene_1.png"));
+    for _ in 0..300 {
+        s.update(DT);
+    }
+    shot(&mut gpu, &mut s, &out.join("cutscene_2.png"));
     for _ in 0..6000 {
         s.update(DT);
         match s.game.world.dialogue_view() {

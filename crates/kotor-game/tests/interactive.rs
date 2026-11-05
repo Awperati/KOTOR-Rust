@@ -31,8 +31,6 @@ fn a_held_conversation_says_what_the_first_reply_chooser_says() {
     assert_eq!(held.dialogue_owner(), Some(trask));
     let mut waits = 0;
     while held.in_dialogue() {
-        let (_, text, _, replies) = held.dialogue_view().unwrap();
-        assert!(!text.is_empty() || !replies.is_empty());
         held.dialogue_choose(0);
         waits += 1;
         assert!(waits < 400, "the conversation should end");

@@ -368,6 +368,11 @@ impl<'a> Ui<'a> {
         Some(cv.into_image())
     }
 
+    /// Nothing at all, the size of the other overlays.
+    pub fn blank_overlay(&mut self) -> Option<Image> {
+        Some(Canvas::new(self.width, SCREEN.1).into_image())
+    }
+
     /// Write one line of text at the top left of `img`, on a dark strip.
     pub fn caption(&mut self, img: Image, text: &str) -> Option<Image> {
         let font = self.font("fnt_console")?.clone();

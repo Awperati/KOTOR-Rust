@@ -422,6 +422,17 @@ impl Lookup for WorldLookup<'_> {
 }
 
 impl World {
+    /// The beat of the node a held conversation is waiting on.
+    pub fn dialogue_beat(&mut self) -> Option<Beat> {
+        let conv = self.dialogue_conversation()?;
+        let mut lookup = WorldLookup {
+            world: self,
+            conv: &conv,
+            models: HashMap::new(),
+        };
+        Timeline::build(&conv, &mut lookup).beats.pop()
+    }
+
     /// The timeline of the conversation played last.
     pub fn cutscene_timeline(&mut self) -> Option<Timeline> {
         let conv = self.conversation.clone()?;
