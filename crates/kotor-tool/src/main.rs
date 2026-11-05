@@ -23,7 +23,9 @@ kotor-tool <command> [args]
   png <name> <out.png>         decode a TGA/TPC texture to PNG
   obj <model> <out.obj>        export a model's rest pose as OBJ
   render <model> <out.png> [px]  software-render a model (front view)
-  author clone <module> <new name> <out.mod>  copy a module to a new .mod with a new display name
+  author clone <module> <display name> <out.mod> [new_area]
+                               copy a module to a new .mod; with new_area it can sit beside the original
+  author dlg <text> <out.dlg>  build a DLG from the dialogue text format (see kotor-gff dlg docs)
 ";
 
 fn main() {
@@ -169,11 +171,33 @@ fn run(args: &[String]) -> Result<()> {
         }
         "author" => match need(args, 1)? {
             "clone" => {
+                // author clone <module> <display name> <out.mod> [new_area]
                 let mut inst = open()?;
                 let out = std::path::Path::new(need(args, 4)?);
                 author::check_output_path(&inst, out)?;
-                let bytes = author::clone_module(&mut inst, need(args, 2)?, need(args, 3)?)?;
-                std::fs::write(out, bytes)?;
+                let c = author::clone_module(
+                    &mut inst,
+                    need(args, 2)?,
+                    need(args, 3)?,
+                    args.get(5).map(String::as_str),
+                )?;
+                std::fs::write(out, &c.bytes)?;
+                for r in &c.renamed {
+                    println!("renamed {r}");
+                }
+                println!(
+                    "{} string fields rewritten, {} bytes written",
+                    c.string_edits,
+                    c.bytes.len()
+                );
+            }
+            "dlg" => {
+                // author dlg <text file> <out.dlg>
+                let inst = open()?;
+                let out = std::path::Path::new(need(args, 3)?);
+                author::check_output_path(&inst, out)?;
+                let text = std::fs::read_to_string(need(args, 2)?)?;
+                std::fs::write(out, author::dialog_from_text(&text)?)?;
             }
             _ => return Err(Error::format(USAGE)),
         },

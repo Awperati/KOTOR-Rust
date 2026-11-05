@@ -4,6 +4,10 @@ Status: the writers (`kotor-archive` archives, `kotor-gff`, `kotor-tables` TLK/2
 First authoring command exists: `kotor-tool author clone <module> "<display name>" <out.mod>` copies a base module into a
 new `.mod` with `Mod_Name` changed (refuses to write inside the game folder). It has been checked by reading the result back;
 it has **not** been loaded in the real game.
+With a fourth argument (`... out.mod zz_spire`) the entry area is renamed so the copy sits beside the original
+(resources, LYT/VIS and IFO/ARE/GIT strings; compiled scripts are not rewritten).
+`kotor-tool author dlg <text> <out.dlg>` builds a conversation from the text format documented in `crates/kotor-gff/src/dlg.rs`.
+The test plan for the owner is `docs/OWNER_TEST_SHEET.md` (prepared, not run).
 
 ## What a new area needs
 

@@ -1,6 +1,7 @@
 //! GFF V3.2: the generic container behind areas, creatures, items, dialogue,
 //! module info and save data. Reader and writer.
 
+pub mod dlg;
 mod read;
 mod write;
 

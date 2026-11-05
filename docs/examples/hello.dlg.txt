@@ -1,0 +1,13 @@
+# Sample conversation in the kotor-rs text format (original text, not from the game).
+start E0
+
+entry E0 speaker=Narrator: A hooded stranger studies you from the shadows.
+  link R0
+  link R1
+
+reply R0: Who are you?
+  link E1
+reply R1: I have no time for this.
+
+entry E1 speaker=Narrator: Someone who remembers what the Archives forgot.
+  link R1

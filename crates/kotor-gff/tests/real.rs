@@ -70,3 +70,86 @@ fn creature_template_fields() {
     assert!(matches!(g.root.get("FirstName"), Some(Value::LocString(_))));
     assert!(g.root.int("Str").is_some());
 }
+
+fn normalise(s: &mut kotor_gff::Struct) {
+    s.fields.sort_by(|a, b| a.0.cmp(&b.0));
+    for (_, v) in &mut s.fields {
+        match v {
+            Value::Struct(c) => normalise(c),
+            Value::List(l) => l.iter_mut().for_each(normalise),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn every_real_dialog_converts_without_loss() {
+    use kotor_gff::dlg::Dialog;
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(&dir).unwrap();
+    let mut blobs: Vec<(String, Vec<u8>)> = Vec::new();
+    for n in inst.list(ResType::DLG) {
+        blobs.push((n.clone(), inst.read(&n, ResType::DLG).unwrap()));
+    }
+    for file in ["end_m01aa_s", "tar_m02aa_s", "tar_m02ab_s", "kas_m22aa_s"] {
+        let rim = Erf::open(Source::file(
+            dir.join("modules").join(format!("{file}.rim")),
+        ))
+        .unwrap();
+        for e in rim.entries.iter().filter(|e| e.restype == ResType::DLG) {
+            blobs.push((format!("{file}/{}", e.resref), rim.read(e).unwrap()));
+        }
+    }
+    assert!(blobs.len() > 40, "{} dialogues", blobs.len());
+    let (mut nodes, mut starts) = (0, 0);
+    for (name, data) in &blobs {
+        let g = Gff::parse(data).unwrap();
+        let d = Dialog::from_gff(&g).unwrap_or_else(|e| panic!("{name}: {e}"));
+        d.check().unwrap_or_else(|e| panic!("{name}: {e}"));
+        let (mut a, mut b) = (g.clone(), d.to_gff());
+        normalise(&mut a.root);
+        normalise(&mut b.root);
+        assert_eq!(a, b, "{name}: dialog model lost data");
+        // Text form keeps the core of the conversation.
+        let t = Dialog::from_text(&d.to_text()).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(
+            (t.entries.len(), t.replies.len(), t.starts.len()),
+            (d.entries.len(), d.replies.len(), d.starts.len()),
+            "{name}"
+        );
+        for (x, y) in t
+            .entries
+            .iter()
+            .zip(&d.entries)
+            .chain(t.replies.iter().zip(&d.replies))
+        {
+            assert_eq!(x.links.len(), y.links.len(), "{name}");
+            assert_eq!(
+                x.links
+                    .iter()
+                    .map(|l| (l.index, &l.active))
+                    .collect::<Vec<_>>(),
+                y.links
+                    .iter()
+                    .map(|l| (l.index, &l.active))
+                    .collect::<Vec<_>>(),
+                "{name}"
+            );
+            assert_eq!(
+                x.text.as_ref().map(|t| t.strref),
+                y.text.as_ref().map(|t| t.strref),
+                "{name}"
+            );
+            assert_eq!(
+                x.text.as_ref().and_then(|t| t.strings.first()),
+                y.text.as_ref().and_then(|t| t.strings.first()),
+                "{name}"
+            );
+        }
+        nodes += d.entries.len() + d.replies.len();
+        starts += d.starts.len();
+    }
+    println!("{} dialogues, {nodes} nodes, {starts} starts", blobs.len());
+}
