@@ -14,6 +14,17 @@ name = "kotor-core"
 version = "0.1.0"
 
 [[package]]
+name = "kotor-game"
+version = "0.1.0"
+dependencies = [
+ "kotor-archive",
+ "kotor-core",
+ "kotor-gff",
+ "kotor-script",
+ "kotor-tables",
+]
+
+[[package]]
 name = "kotor-gff"
 version = "0.1.0"
 dependencies = [

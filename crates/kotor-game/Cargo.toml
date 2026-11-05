@@ -1,0 +1,16 @@
+[package]
+name = "kotor-game"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kotor-core = { path = "../kotor-core" }
+kotor-archive = { path = "../kotor-archive" }
+kotor-gff = { path = "../kotor-gff" }
+kotor-tables = { path = "../kotor-tables" }
+kotor-script = { path = "../kotor-script" }

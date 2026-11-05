@@ -15,6 +15,16 @@ pub const OBJECT_INVALID: u32 = 0x7F00_0000;
 /// `OBJECT_SELF`: the object running the script.
 pub const OBJECT_SELF: u32 = 0;
 
+/// A snapshot taken by `STORESTATE` so a block of script can run later (`DelayCommand`, `AssignCommand`,
+/// `ActionDoCommand`): the global variables and the saved locals, laid out as the code expects them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SavedState {
+    stack: Vec<Value>,
+    bp: usize,
+    /// Index of the first instruction of the deferred block (the one after the `JMP` that skips it).
+    resume: usize,
+}
+
 /// A script value as seen by the host.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -24,8 +34,8 @@ pub enum Value {
     Object(u32),
     /// `effect`, `event`, `location` or `talent` (kind 0..=3) with a host-defined handle.
     Engine(u8, u32),
-    /// A deferred action: the id of the state saved by the last `STORESTATE`.
-    Action(u32),
+    /// A deferred action: the state saved by the last `STORESTATE`, replayable with [`Vm::run_state`].
+    Action(Box<SavedState>),
     Vector([f32; 3]),
 }
 
@@ -100,6 +110,8 @@ pub struct Vm<'a> {
     bp: usize,
     calls: Vec<usize>,
     saved_states: u32,
+    /// Snapshots not yet handed to a routine; an `action` argument takes the latest.
+    pending: Vec<SavedState>,
     /// Safety net against runaway scripts.
     pub step_limit: u64,
 }
@@ -130,6 +142,7 @@ impl<'a> Vm<'a> {
             bp: 0,
             calls: Vec::new(),
             saved_states: 0,
+            pending: Vec::new(),
             step_limit: 2_000_000,
         }
     }
@@ -176,9 +189,30 @@ impl<'a> Vm<'a> {
         Ok(idx as usize)
     }
 
+    /// Replay a deferred block saved by `STORESTATE`, as if called from `caller`.
+    pub fn run_state(
+        mut self,
+        state: &SavedState,
+        caller: u32,
+        host: &mut dyn Host,
+    ) -> Result<Outcome, VmError> {
+        self.stack = state.stack.clone();
+        self.bp = state.bp;
+        self.run_from(state.resume, caller, host)
+    }
+
     /// Run the program from its first instruction until the outermost `RETN`.
-    pub fn run(mut self, caller: u32, host: &mut dyn Host) -> Result<Outcome, VmError> {
-        let mut pc = 0usize;
+    pub fn run(self, caller: u32, host: &mut dyn Host) -> Result<Outcome, VmError> {
+        self.run_from(0, caller, host)
+    }
+
+    fn run_from(
+        mut self,
+        start: usize,
+        caller: u32,
+        host: &mut dyn Host,
+    ) -> Result<Outcome, VmError> {
+        let mut pc = start;
         let mut steps = 0u64;
         loop {
             steps += 1;
@@ -332,7 +366,23 @@ impl<'a> Vm<'a> {
                 let old = self.pop_int(at)?;
                 self.bp = old.max(0) as usize;
             }
-            Op::StoreState { .. } | Op::StoreStateAll => self.saved_states += 1,
+            Op::StoreState { bp_size, sp_size } => {
+                let (g, l) = (*bp_size as usize / 4, *sp_size as usize / 4);
+                let len = self.stack.len();
+                if g > self.bp || l > len {
+                    return Err(VmError::StackUnderflow(at as usize));
+                }
+                let mut stack: Vec<Value> = self.stack[self.bp - g..self.bp].to_vec();
+                stack.extend_from_slice(&self.stack[len - l..]);
+                // The block starts after the JMP that follows this instruction.
+                self.pending.push(SavedState {
+                    stack,
+                    bp: g,
+                    resume: *next + 1,
+                });
+                self.saved_states += 1;
+            }
+            Op::StoreStateAll => self.saved_states += 1,
             Op::Nop => {}
             Op::Jmp(t) => *next = self.jump(*t)?,
             Op::Jsr(t) => {
@@ -549,7 +599,12 @@ impl<'a> Vm<'a> {
         for p in routine.params.iter().take(argc) {
             let v = match p.ty {
                 // A deferred action is not on the stack: it is the state saved by the last STORESTATE.
-                Ty::Action => Value::Action(self.saved_states.saturating_sub(1)),
+                Ty::Action => Value::Action(Box::new(self.pending.pop().ok_or_else(|| {
+                    VmError::Type(format!(
+                        "{} needs an action but no STORESTATE came before it",
+                        routine.name
+                    ))
+                })?)),
                 Ty::Vector => Value::Vector(self.pop_vec(at)?),
                 Ty::Void => continue,
                 _ => self.pop(at)?,

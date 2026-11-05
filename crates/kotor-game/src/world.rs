@@ -1,0 +1,570 @@
+use crate::dialogue::Line;
+use crate::host::Adapter;
+use kotor_archive::Install;
+use kotor_core::{Error, ResType, Result};
+use kotor_gff::{Gff, LocString, Struct, Value as GffValue};
+use kotor_script::{
+    disassemble, Outcome, Program, Routines, SavedState, Vm, VmError, OBJECT_INVALID,
+};
+use kotor_tables::Tlk;
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::rc::Rc;
+
+pub type ObjId = u32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Module,
+    Area,
+    Creature,
+    Door,
+    Placeable,
+    Waypoint,
+    Trigger,
+    Item,
+}
+
+/// One queued action on an object.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Action {
+    /// Do nothing for this many seconds.
+    Wait(f32),
+    /// Run a deferred script block (`ActionDoCommand`).
+    DoCommand {
+        script: String,
+        state: Box<SavedState>,
+    },
+    /// Talk with `target`, using `dialogue` (the owner's own conversation when empty).
+    StartConversation { target: ObjId, dialogue: String },
+    /// Accepted and recorded, no effect on the headless world (animations, movement, ...).
+    Recorded(String),
+}
+
+/// A command scheduled by `DelayCommand`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Delayed {
+    pub due: f32,
+    pub caller: ObjId,
+    pub script: String,
+    pub state: Box<SavedState>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Object {
+    pub id: ObjId,
+    pub kind: Kind,
+    pub tag: String,
+    pub name: String,
+    pub template: String,
+    /// Dialogue resref used when someone talks to this object.
+    pub conversation: String,
+    pub position: [f32; 3],
+    pub hp: i32,
+    pub dead: bool,
+    pub party_member: bool,
+    pub locked: bool,
+    pub level: i32,
+    /// Event scripts by field name (`ScriptDialogue`, `OnEnter`, `OnUsed`, ...).
+    pub scripts: BTreeMap<String, String>,
+    pub local_numbers: HashMap<i32, i32>,
+    pub local_booleans: HashMap<i32, bool>,
+    pub actions: VecDeque<Action>,
+}
+
+impl Object {
+    fn new(id: ObjId, kind: Kind, tag: &str) -> Object {
+        Object {
+            id,
+            kind,
+            tag: tag.to_string(),
+            name: String::new(),
+            template: String::new(),
+            conversation: String::new(),
+            position: [0.0; 3],
+            hp: 10,
+            dead: false,
+            party_member: false,
+            locked: false,
+            level: 1,
+            scripts: BTreeMap::new(),
+            local_numbers: HashMap::new(),
+            local_booleans: HashMap::new(),
+            actions: VecDeque::new(),
+        }
+    }
+}
+
+/// The running game state.
+pub struct World {
+    pub(crate) inst: Install,
+    pub(crate) routines: Rc<Routines>,
+    programs: HashMap<String, Option<Rc<Program>>>,
+    tlk: Option<Tlk>,
+    pub objects: BTreeMap<ObjId, Object>,
+    next_id: ObjId,
+    pub pc: ObjId,
+    pub area: ObjId,
+    /// The object that entered the area (`GetEnteringObject`).
+    pub entering: ObjId,
+    pub global_numbers: HashMap<String, i32>,
+    pub global_booleans: HashMap<String, bool>,
+    /// Seconds since the world started.
+    pub time: f32,
+    pub delayed: Vec<Delayed>,
+    /// Everything said in conversations, in order.
+    pub transcript: Vec<Line>,
+    /// Lines from `PrintString` and friends.
+    pub log: Vec<String>,
+    /// Notable things scripts did that the headless world only records (fades, movies, journal, ...).
+    pub events: Vec<String>,
+    /// Script failures that did not stop the run.
+    pub errors: Vec<String>,
+    /// Routines scripts called that are not implemented, with call counts. Calls return a default value.
+    pub stubbed: BTreeMap<String, usize>,
+    /// Number of the last user-defined event signalled (`GetUserDefinedEventNumber`).
+    pub user_event: i32,
+    /// Who last spoke to the object a script is running on (`GetLastSpeaker`).
+    pub last_speaker: ObjId,
+    /// Script-variable passed by `ExecuteScript`, innermost last (`GetRunScriptVar`).
+    pub(crate) script_vars: Vec<i32>,
+    /// A conversation is being played.
+    pub in_conversation: bool,
+    pub(crate) rng: u64,
+}
+
+fn creature_defaults(o: &mut Object, utc: &Struct) {
+    o.level = utc.int("ClassList").unwrap_or(1) as i32;
+    if let Some(hp) = utc.int("CurrentHitPoints") {
+        o.hp = hp as i32;
+    }
+}
+
+impl World {
+    /// Open the game data and prepare an empty world containing the player character.
+    pub fn new(mut inst: Install) -> Result<World> {
+        let nss = inst.read("nwscript", ResType::NSS)?;
+        let routines = Rc::new(Routines::parse(&kotor_core::latin1(&nss))?);
+        let tlk = std::fs::read(inst.dir().join("dialog.tlk"))
+            .ok()
+            .and_then(|b| Tlk::parse(&b).ok());
+        let mut w = World {
+            inst,
+            routines,
+            programs: HashMap::new(),
+            tlk,
+            objects: BTreeMap::new(),
+            next_id: 0x100,
+            pc: 1,
+            area: OBJECT_INVALID,
+            entering: OBJECT_INVALID,
+            global_numbers: HashMap::new(),
+            global_booleans: HashMap::new(),
+            time: 0.0,
+            delayed: Vec::new(),
+            transcript: Vec::new(),
+            log: Vec::new(),
+            events: Vec::new(),
+            errors: Vec::new(),
+            stubbed: BTreeMap::new(),
+            user_event: 0,
+            last_speaker: OBJECT_INVALID,
+            script_vars: Vec::new(),
+            in_conversation: false,
+            rng: 0x2545_F491_4F6C_DD1D,
+        };
+        let mut pc = Object::new(1, Kind::Creature, "player");
+        pc.name = "Player".into();
+        pc.hp = 30;
+        w.objects.insert(1, pc);
+        Ok(w)
+    }
+
+    pub fn object(&self, id: ObjId) -> Option<&Object> {
+        self.objects.get(&id)
+    }
+
+    pub fn object_mut(&mut self, id: ObjId) -> Option<&mut Object> {
+        self.objects.get_mut(&id)
+    }
+
+    /// Objects with this tag, lowest id first.
+    pub fn by_tag(&self, tag: &str) -> Vec<ObjId> {
+        self.objects
+            .values()
+            .filter(|o| o.tag.eq_ignore_ascii_case(tag))
+            .map(|o| o.id)
+            .collect()
+    }
+
+    /// Create an object from a template (`CreateObject`), at `position`. `ty` is the template's resource type.
+    pub(crate) fn spawn(
+        &mut self,
+        kind: Kind,
+        template: &str,
+        ty: ResType,
+        position: [f32; 3],
+    ) -> ObjId {
+        let id = self.add(kind, template);
+        self.fill_from_template(id, template, ty, &Struct::default());
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.position = position;
+        }
+        id
+    }
+
+    pub(crate) fn add(&mut self, kind: Kind, tag: &str) -> ObjId {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.objects.insert(id, Object::new(id, kind, tag));
+        id
+    }
+
+    /// Text of a localised string: the talk table entry if it has a reference, else the first inline string.
+    pub fn text(&self, l: &LocString) -> String {
+        if l.strref >= 0 {
+            if let Some(t) = self.tlk.as_ref().and_then(|t| t.get(l.strref as u32)) {
+                return t;
+            }
+        }
+        l.strings
+            .first()
+            .map(|(_, s)| s.clone())
+            .unwrap_or_default()
+    }
+
+    /// Fill an object from a GFF template and its placement in the GIT.
+    fn fill_from_template(&mut self, id: ObjId, template: &str, ty: ResType, placement: &Struct) {
+        let utx = self
+            .inst
+            .read(template, ty)
+            .ok()
+            .and_then(|b| Gff::parse(&b).ok());
+        let mut name = String::new();
+        let mut scripts = BTreeMap::new();
+        let mut conversation = String::new();
+        let mut tag = None;
+        if let Some(g) = &utx {
+            let r = &g.root;
+            if let Some(l) = r
+                .loc("FirstName")
+                .or_else(|| r.loc("LocName"))
+                .or_else(|| r.loc("LocalizedName"))
+            {
+                name = self.text(l);
+            }
+            if let Some(l) = r.loc("LastName") {
+                let last = self.text(l);
+                if !last.is_empty() {
+                    name = format!("{name} {last}");
+                }
+            }
+            conversation = r.str("Conversation").unwrap_or_default().to_string();
+            tag = r.str("Tag").map(str::to_string);
+            for (label, v) in &r.fields {
+                if let GffValue::ResRef(s) = v {
+                    if !s.is_empty() && (label.starts_with("Script") || label.starts_with("On")) {
+                        scripts.insert(label.clone(), s.clone());
+                    }
+                }
+            }
+        }
+        let f = |l: &str| placement.float(l).unwrap_or(0.0) as f32;
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.template = template.to_string();
+            o.name = name;
+            o.conversation = conversation;
+            o.scripts = scripts;
+            o.position = [
+                f("XPosition") + f("X"),
+                f("YPosition") + f("Y"),
+                f("ZPosition") + f("Z"),
+            ];
+            if let Some(t) = tag.filter(|t| !t.is_empty()) {
+                o.tag = t;
+            }
+            if let Some(g) = &utx {
+                creature_defaults(o, &g.root);
+                o.hp = g.root.int("CurrentHitPoints").map_or(o.hp, |h| h as i32);
+            }
+        }
+    }
+
+    /// Load a module's area: the area and module objects, and every creature, door, placeable, waypoint and
+    /// trigger of its GIT, with their event scripts, conversations and names.
+    pub fn load_module(&mut self, module: &str) -> Result<()> {
+        self.inst.load_module(module)?;
+        let ifo = Gff::parse(&self.inst.read("module", ResType::IFO)?)?;
+        let area_name = ifo
+            .root
+            .str("Mod_Entry_Area")
+            .ok_or_else(|| Error::format("module.ifo has no Mod_Entry_Area"))?
+            .to_string();
+        let mid = self.add(Kind::Module, module);
+        if let Some(m) = self.objects.get_mut(&mid) {
+            for (label, v) in &ifo.root.fields {
+                if let GffValue::ResRef(s) = v {
+                    if !s.is_empty() && label.starts_with("Mod_On") {
+                        m.scripts.insert(label.clone(), s.clone());
+                    }
+                }
+            }
+        }
+        let are = Gff::parse(&self.inst.read(&area_name, ResType::ARE)?)?;
+        let area = self.add(Kind::Area, &area_name);
+        self.area = area;
+        let area_label = are
+            .root
+            .loc("Name")
+            .map(|l| self.text(l))
+            .unwrap_or_default();
+        if let Some(a) = self.objects.get_mut(&area) {
+            a.name = area_label;
+            for (label, v) in &are.root.fields {
+                if let GffValue::ResRef(s) = v {
+                    if !s.is_empty() && label.starts_with("On") {
+                        a.scripts.insert(label.clone(), s.clone());
+                    }
+                }
+            }
+        }
+        // The player starts at the module's entry point.
+        let f = |l: &str| ifo.root.float(l).unwrap_or(0.0) as f32;
+        let pc = self.pc;
+        if let Some(p) = self.objects.get_mut(&pc) {
+            p.position = [f("Mod_Entry_X"), f("Mod_Entry_Y"), f("Mod_Entry_Z")];
+        }
+        let git = Gff::parse(&self.inst.read(&area_name, ResType::GIT)?)?;
+        let lists: [(&str, Kind, ResType); 5] = [
+            ("Creature List", Kind::Creature, ResType(2027)),
+            ("Door List", Kind::Door, ResType(2042)),
+            ("Placeable List", Kind::Placeable, ResType(2044)),
+            ("WaypointList", Kind::Waypoint, ResType(2058)),
+            ("TriggerList", Kind::Trigger, ResType(2032)),
+        ];
+        for (label, kind, ty) in lists {
+            for s in git.root.list(label).unwrap_or_default() {
+                let tpl = s.str("TemplateResRef").unwrap_or_default().to_string();
+                let tag = s.str("Tag").unwrap_or(&tpl).to_string();
+                let id = self.add(kind, &tag);
+                self.fill_from_template(id, &tpl, ty, s);
+            }
+        }
+        Ok(())
+    }
+
+    fn program(&mut self, name: &str) -> Option<Rc<Program>> {
+        let key = name.to_ascii_lowercase();
+        if let Some(p) = self.programs.get(&key) {
+            return p.clone();
+        }
+        let p = self
+            .inst
+            .read(&key, ResType::NCS)
+            .ok()
+            .and_then(|b| disassemble(&b).ok())
+            .map(Rc::new);
+        self.programs.insert(key, p.clone());
+        p
+    }
+
+    /// Run a script by name with `caller` as OBJECT_SELF. Failures are recorded in `errors` and returned.
+    pub fn run_script(
+        &mut self,
+        name: &str,
+        caller: ObjId,
+    ) -> std::result::Result<Outcome, String> {
+        let Some(prog) = self.program(name) else {
+            let e = format!("script {name} not found");
+            self.errors.push(e.clone());
+            return Err(e);
+        };
+        let routines = self.routines.clone();
+        let vm = Vm::new(&prog, &routines);
+        let mut ad = Adapter {
+            world: self,
+            script: name.to_ascii_lowercase(),
+        };
+        vm.run(caller, &mut ad).map_err(|e| self.note(name, e))
+    }
+
+    /// Replay a deferred block that `script` saved with `STORESTATE`.
+    pub fn run_saved(
+        &mut self,
+        script: &str,
+        state: &SavedState,
+        caller: ObjId,
+    ) -> std::result::Result<Outcome, String> {
+        let Some(prog) = self.program(script) else {
+            let e = format!("script {script} not found");
+            self.errors.push(e.clone());
+            return Err(e);
+        };
+        let routines = self.routines.clone();
+        let vm = Vm::new(&prog, &routines);
+        let mut ad = Adapter {
+            world: self,
+            script: script.to_ascii_lowercase(),
+        };
+        vm.run_state(state, caller, &mut ad)
+            .map_err(|e| self.note(script, e))
+    }
+
+    fn note(&mut self, script: &str, e: VmError) -> String {
+        let m = format!("{script}: {e}");
+        self.errors.push(m.clone());
+        m
+    }
+
+    /// Run a condition script: its integer result, or true when the script is empty or cannot be loaded
+    /// (a missing condition does not block the dialogue).
+    pub fn check(&mut self, script: &str, caller: ObjId) -> bool {
+        if script.is_empty() {
+            return true;
+        }
+        match self.run_script(script, caller) {
+            Ok(out) => out.int_result().is_none_or(|v| v != 0),
+            Err(_) => true,
+        }
+    }
+
+    /// Queue an action on an object.
+    pub fn queue(&mut self, id: ObjId, a: Action) {
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.actions.push_back(a);
+        }
+    }
+
+    /// Advance the clock by `dt`: run due delayed commands and step each object's action queue.
+    pub fn tick(&mut self, dt: f32) {
+        self.time += dt;
+        let now = self.time;
+        let (due, later): (Vec<Delayed>, Vec<Delayed>) = std::mem::take(&mut self.delayed)
+            .into_iter()
+            .partition(|d| d.due <= now);
+        self.delayed = later;
+        for d in due {
+            let _ = self.run_saved(&d.script, &d.state, d.caller);
+        }
+        let ids: Vec<ObjId> = self.objects.keys().copied().collect();
+        for id in ids {
+            let mut budget = dt;
+            while let Some(head) = self
+                .objects
+                .get_mut(&id)
+                .and_then(|o| o.actions.front_mut())
+            {
+                match head {
+                    Action::Wait(left) => {
+                        if *left > budget {
+                            *left -= budget;
+                            break;
+                        }
+                        budget -= *left;
+                        if let Some(o) = self.objects.get_mut(&id) {
+                            o.actions.pop_front();
+                        }
+                    }
+                    _ => {
+                        let a = self
+                            .objects
+                            .get_mut(&id)
+                            .and_then(|o| o.actions.pop_front());
+                        if let Some(a) = a {
+                            self.perform(id, a);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn perform(&mut self, id: ObjId, a: Action) {
+        match a {
+            Action::Wait(_) => {}
+            Action::Recorded(what) => self.events.push(format!("{}: {what}", self.describe(id))),
+            Action::DoCommand { script, state } => {
+                let _ = self.run_saved(&script, &state, id);
+            }
+            Action::StartConversation { target, dialogue } => {
+                let _ = self.converse(id, target, &dialogue, &mut crate::FirstReply);
+            }
+        }
+    }
+
+    pub(crate) fn describe(&self, id: ObjId) -> String {
+        match self.objects.get(&id) {
+            Some(o) if !o.name.is_empty() => format!("{} ({})", o.name, o.tag),
+            Some(o) => o.tag.clone(),
+            None => format!("#{id}"),
+        }
+    }
+
+    /// Tick until nothing is scheduled and no object has queued work, or `limit` seconds have passed.
+    /// Returns the seconds simulated.
+    pub fn run_until_idle(&mut self, limit: f32) -> f32 {
+        let start = self.time;
+        while self.time - start < limit {
+            let busy =
+                !self.delayed.is_empty() || self.objects.values().any(|o| !o.actions.is_empty());
+            if !busy {
+                break;
+            }
+            self.tick(0.1);
+        }
+        self.time - start
+    }
+
+    /// The player talks to `target`: its dialogue event script runs (`ScriptDialogue`, usually the stock
+    /// `k_hen_dialogue01` that hands over to the AI master script). If that script does not start a
+    /// conversation by itself, the target's own conversation starts directly. Returns lines added.
+    pub fn talk_to(&mut self, target: ObjId) -> usize {
+        let before = self.transcript.len();
+        let started = self.events.len();
+        self.last_speaker = self.pc;
+        let script = self
+            .objects
+            .get(&target)
+            .and_then(|o| o.scripts.get("ScriptDialogue").cloned());
+        if let Some(s) = script {
+            let _ = self.run_script(&s, target);
+            // Queued conversation actions run on the next ticks.
+            for _ in 0..20 {
+                self.tick(0.1);
+            }
+        }
+        let began = self.events[started..]
+            .iter()
+            .any(|e| e.starts_with("conversation "));
+        if !began {
+            let _ = self.converse(target, self.pc, "", &mut crate::FirstReply);
+        }
+        self.transcript.len() - before
+    }
+
+    /// Tick (0.1 s steps) until an event starting with `prefix` has been recorded, or `limit` seconds pass.
+    /// Returns whether it happened. Stops right after the tick that recorded it, so effects scheduled a
+    /// moment later (for example `DelayCommand(0.2, ...)`) have not run yet.
+    pub fn run_until_event(&mut self, prefix: &str, limit: f32) -> bool {
+        let start = self.time;
+        while self.time - start < limit {
+            if self.events.iter().any(|e| e.starts_with(prefix)) {
+                return true;
+            }
+            self.tick(0.1);
+        }
+        self.events.iter().any(|e| e.starts_with(prefix))
+    }
+
+    /// Run the area's `OnEnter` script with the player as the entering object, as when a module is entered.
+    pub fn enter_area(&mut self) {
+        self.entering = self.pc;
+        let area = self.area;
+        let script = self
+            .objects
+            .get(&area)
+            .and_then(|a| a.scripts.get("OnEnter").cloned());
+        if let Some(s) = script {
+            let _ = self.run_script(&s, area);
+        }
+    }
+}

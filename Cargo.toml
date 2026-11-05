@@ -9,6 +9,7 @@ members = [
     "crates/kotor-model",
     "crates/kotor-walkmesh",
     "crates/kotor-script",
+    "crates/kotor-game",
     "crates/kotor-render",
     "crates/kotor-tool",
 ]

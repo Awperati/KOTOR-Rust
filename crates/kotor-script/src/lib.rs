@@ -9,4 +9,4 @@ mod vm;
 pub use disasm::{disassemble, Instruction, Op, Program};
 pub use host::HeadlessHost;
 pub use routines::{Param, Routine, Routines, Ty};
-pub use vm::{Host, Outcome, Value, Vm, VmError, OBJECT_INVALID, OBJECT_SELF};
+pub use vm::{Host, Outcome, SavedState, Value, Vm, VmError, OBJECT_INVALID, OBJECT_SELF};
