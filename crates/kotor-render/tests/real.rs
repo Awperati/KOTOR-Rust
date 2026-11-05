@@ -275,3 +275,74 @@ fn skinning_at_rest_equals_rigid_placement_and_a_pose_moves_the_head() {
         "idle pose left the skinned head where it was ({shift})"
     );
 }
+
+#[test]
+fn a_character_walks_the_first_corridor_on_the_floor() {
+    use kotor_render::{
+        add_area_objects_with, contact_sheet, render_walk, rig_for_appearance, walk_path, Floor,
+        WalkOptions,
+    };
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_module("end_m01aa").unwrap();
+    inst.load_texture_packs().unwrap();
+    let floor = Floor::load(&mut inst, "m01aa").unwrap();
+    // Spawn point to the far end of the first corridor: every 5 cm step has floor under it.
+    let path = [[15.4248f32, 20.1215], [30.4, 20.6], [38.4, 20.6]];
+    let steps = walk_path(&floor, &path, -1.275, 0.05).unwrap();
+    assert!(steps.len() > 400, "{} steps", steps.len());
+    assert!((steps.last().unwrap().distance - 23.0).abs() < 0.2);
+    assert!(
+        steps.iter().all(|s| (s.pos[2] + 1.275).abs() < 0.3),
+        "floor height wandered"
+    );
+    assert!(steps.windows(2).all(|w| w[1].distance >= w[0].distance));
+    // A line through solid wall has no floor, and the error says where.
+    let err = walk_path(&floor, &[[15.4, 20.1], [15.4, 60.0]], -1.275, 0.05).unwrap_err();
+    assert!(err.to_string().contains("no floor at"), "{err}");
+
+    let mut scene = load_area(&mut inst, "m01aa").unwrap();
+    add_area_objects_with(&mut scene, &mut inst, "m01aa", false).unwrap();
+    let rig = rig_for_appearance(&mut inst, 4, 1).unwrap();
+    let len = rig.animation_length("walk").unwrap();
+    assert!(len > 0.3 && len < 5.0, "walk cycle {len}s");
+    // The walking character keeps its feet at the floor in every phase of the cycle.
+    for i in 0..8 {
+        let who = rig.pose(Some(("walk", len * i as f32 / 8.0))).unwrap();
+        assert!(
+            who.min[2] > -0.15 && who.min[2] < 0.3,
+            "phase {i}: lowest point {}",
+            who.min[2]
+        );
+    }
+    let opts = WalkOptions {
+        frames: 6,
+        width: 96,
+        height: 54,
+        animation: "walk",
+        metres_per_cycle: 1.6,
+    };
+    let mut cache = std::collections::HashMap::new();
+    let frames = render_walk(
+        &scene,
+        &rig,
+        &steps,
+        &mut |n| {
+            cache
+                .entry(n.to_string())
+                .or_insert_with(|| load_texture(&mut inst, n))
+                .clone()
+        },
+        &opts,
+    )
+    .unwrap();
+    assert_eq!(frames.len(), 6);
+    assert!(
+        frames.windows(2).all(|w| w[0] != w[1]),
+        "consecutive frames are identical"
+    );
+    let sheet = contact_sheet(&frames, 3).unwrap();
+    assert_eq!((sheet.width, sheet.height), (96 * 3, 54 * 2));
+}

@@ -283,10 +283,17 @@ pub fn dialog_from_text(src: &str) -> Result<Vec<u8>> {
 /// Refuse to write inside the game folder.
 pub fn check_output_path(inst: &Install, out: &Path) -> Result<()> {
     let install = std::fs::canonicalize(inst.dir())?;
-    let parent = out
+    // The folder may not exist yet: judge the nearest ancestor that does.
+    let mut parent = out
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
+    while !parent.exists() {
+        parent = parent
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+    }
     let parent = std::fs::canonicalize(parent)?;
     if parent.starts_with(&install) {
         return Err(Error::format(

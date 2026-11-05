@@ -24,6 +24,8 @@ kotor-tool <command> [args]
   obj <model> <out.obj>        export a model's rest pose as OBJ
   view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
                                software-render an area's rooms with textures and lightmaps
+  walk <area> <out_dir> [--module M] [--frames N] [--size WxH] [--appearance row] [--path x,y x,y ...]
+                               a character walks the walkmesh with a follow camera; frames + contact.png
   creature <template> <out.png> [--module M] [--anim name] [--time s]
                                draw a creature template via appearance.2da (body + head, texture variation)
   character <body> <out.png> [--head H] [--anim name] [--time s] [--size WxH]
@@ -223,6 +225,101 @@ fn run(args: &[String]) -> Result<()> {
                 t0.elapsed().as_secs_f32()
             );
             std::fs::write(out, kotor_image::to_png(&img))?;
+        }
+        "walk" => {
+            // walk <area> <out_dir> [--module M] [--frames N] [--size WxH] [--appearance row] [--path x,y x,y ...]
+            let area = need(args, 1)?;
+            let out_dir = std::path::Path::new(need(args, 2)?);
+            let opt = |name: &str| -> Option<&str> {
+                let i = args.iter().position(|a| a == name)?;
+                args.get(i + 1).map(String::as_str)
+            };
+            let mut inst = open()?;
+            author::check_output_path(&inst, &out_dir.join("x.png"))?;
+            if let Some(m) = opt("--module") {
+                inst.load_module(m)?;
+            }
+            inst.load_texture_packs()?;
+            let row: usize = opt("--appearance")
+                .and_then(|r| r.parse().ok())
+                .unwrap_or(4);
+            let frames: usize = opt("--frames").and_then(|r| r.parse().ok()).unwrap_or(24);
+            let (w, h) = opt("--size")
+                .and_then(|s| s.split_once('x'))
+                .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+                .unwrap_or((480u32, 270u32));
+            // Waypoints: after --path, every argument of the form x,y (default: along the first Endar Spire corridor).
+            let mut waypoints: Vec<[f32; 2]> = match args.iter().position(|a| a == "--path") {
+                Some(i) => args[i + 1..]
+                    .iter()
+                    .take_while(|a| !a.starts_with("--"))
+                    .filter_map(|p| {
+                        let (x, y) = p.split_once(',')?;
+                        Some([x.parse().ok()?, y.parse().ok()?])
+                    })
+                    .collect(),
+                None => Vec::new(),
+            };
+            let ifo = Gff::parse(&inst.read("module", ResType::IFO)?)?;
+            let entry = |l: &str| ifo.root.float(l).unwrap_or(0.0) as f32;
+            if waypoints.is_empty() {
+                let (ex, ey) = (entry("Mod_Entry_X"), entry("Mod_Entry_Y"));
+                waypoints = vec![[ex, ey], [ex + 15.0, ey + 0.5], [ex + 23.0, ey + 0.5]];
+            }
+            let floor = kotor_render::Floor::load(&mut inst, area)?;
+            let steps = kotor_render::walk_path(&floor, &waypoints, entry("Mod_Entry_Z"), 0.05)?;
+            let mut scene = kotor_render::load_area(&mut inst, area)?;
+            // Doors are left out: the walk goes through them as if they were open.
+            let stats = kotor_render::add_area_objects_with(&mut scene, &mut inst, area, false)?;
+            println!("{stats:?}");
+            let rig = kotor_render::rig_for_appearance(&mut inst, row, 1)?;
+            let app = kotor_tables::TwoDa::parse(&inst.read("appearance", ResType::TWODA)?)?;
+            let per_cycle = app.float(row, "walkdist").unwrap_or(1.6) as f32;
+            let opts = kotor_render::WalkOptions {
+                frames,
+                width: w,
+                height: h,
+                animation: "walk",
+                metres_per_cycle: per_cycle,
+            };
+            let mut cache: std::collections::HashMap<String, Option<kotor_image::Image>> =
+                Default::default();
+            let t0 = std::time::Instant::now();
+            let images = kotor_render::render_walk(
+                &scene,
+                &rig,
+                &steps,
+                &mut |n| {
+                    cache
+                        .entry(n.to_string())
+                        .or_insert_with(|| kotor_render::load_texture(&mut inst, n))
+                        .clone()
+                },
+                &opts,
+            )?;
+            std::fs::create_dir_all(out_dir)?;
+            for (i, img) in images.iter().enumerate() {
+                std::fs::write(
+                    out_dir.join(format!("frame_{i:03}.png")),
+                    kotor_image::to_png(img),
+                )?;
+            }
+            // Contact sheet: 8 frames spread over the walk, 4 per row.
+            let n = images.len();
+            let picks: Vec<kotor_image::Image> = if n <= 8 {
+                images.clone()
+            } else {
+                (0..8).map(|k| images[k * (n - 1) / 7].clone()).collect()
+            };
+            if let Some(sheet) = kotor_render::contact_sheet(&picks, 4) {
+                std::fs::write(out_dir.join("contact.png"), kotor_image::to_png(&sheet))?;
+            }
+            let total = steps.last().map_or(0.0, |s| s.distance);
+            println!(
+                "{} frames, {total:.1} m walked, {w}x{h}, {:.1}s",
+                images.len(),
+                t0.elapsed().as_secs_f32()
+            );
         }
         "creature" => {
             // creature <template> <out.png> [--module M] [--anim name] [--time s] [--size WxH]

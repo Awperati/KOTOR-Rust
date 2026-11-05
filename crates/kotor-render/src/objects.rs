@@ -63,6 +63,16 @@ fn f(s: &Struct, label: &str) -> f32 {
 /// Doors use `GenericType` (K1) as a row of `genericdoors.2da`; placeables use `Appearance` as a row of
 /// `placeables.2da`. Objects are drawn in their model's rest pose (doors closed is assumed, not checked).
 pub fn add_area_objects(scene: &mut Scene, inst: &mut Install, area: &str) -> Result<ObjectStats> {
+    add_area_objects_with(scene, inst, area, true)
+}
+
+/// [`add_area_objects`], optionally leaving the doors out (as if they were open).
+pub fn add_area_objects_with(
+    scene: &mut Scene,
+    inst: &mut Install,
+    area: &str,
+    include_doors: bool,
+) -> Result<ObjectStats> {
     let mut stats = ObjectStats::default();
     let Ok(git_bytes) = inst.read(area, ResType::GIT) else {
         return Ok(stats);
@@ -95,6 +105,9 @@ pub fn add_area_objects(scene: &mut Scene, inst: &mut Install, area: &str) -> Re
 
     for d in git.root.list("Door List").unwrap_or_default() {
         stats.doors_listed += 1;
+        if !include_doors {
+            continue;
+        }
         match place(
             scene,
             &mut loader,

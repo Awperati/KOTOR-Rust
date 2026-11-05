@@ -18,12 +18,14 @@ reference image to compare the GPU output against.
 | Creature by appearance | `kotor-render::load_creature` | `appearance.2da` row + texture variation: body = `race`, body texture = `texX` + 2-digit variation, head from `heads.2da` |
 | Creatures in an area | `kotor-render::add_area_creatures` | GIT `Creature List`; each template's appearance built once per (row, variation), idle pose, placed by position and orientation |
 | Skinning | `SkinCtx`, `Scene::add_model_with` | per-vertex blend of up to four bones from the body skeleton's motion (rest to posed) |
+| Walking | `Floor`, `walk_path`, `render_walk`, `contact_sheet`, `Rig` | a character follows a straight-segment path on the walkmesh (floor height per 5 cm step), the `walk` clip is played by distance walked, follow camera 3.3 m behind and 1.7 m above, frames evenly spaced by distance |
 | Character assembly | `kotor-render::load_character` | body model posed by a supermodel animation, head model attached at `head_g` |
 | Texture lookup | `kotor-render::load_texture` | TPC from the texture packs, else TGA from the BIFs |
 | CLI | `kotor-tool view`, `kotor-tool character` | write a PNG |
 
 ```powershell
 target\debug\kotor-tool.exe view m01aa out\spire.png --module end_m01aa --eye 15.4 20.1 0.6 --target 25 20.5 0.2 --size 960x540
+target\release\kotor-tool.exe walk m01aa out\walk --module end_m01aa --frames 24 --size 480x270   # frames + contact.png
 target\debug\kotor-tool.exe creature 6 out\carth.png --anim pause1      # appearance.2da row 6, or a creature template name
 target\debug\kotor-tool.exe character p_bastilabb out\bastila.png --head p_bastilah --anim pause1 --time 0
 ```
@@ -48,6 +50,13 @@ target\debug\kotor-tool.exe character p_bastilabb out\bastila.png --head p_basti
   "most used texture" heuristic. Bastila's torso texture still looks odd and I could not tell whether it is wrong or just her outfit.
 - **Neck gap: fixed.** The cause was drawing skinned meshes (the head, and arms and torso of some bodies) rigidly at rest while the
   rigid parts followed the pose. With vertex blending the head sits on its neck and the arms drop to the idle pose.
+- **Walk-around**: the path is straight segments between waypoints that I chose (the first corridor, 23 m), not pathfinding; the
+  character is Bastila's appearance, the doors are left out (treated as open), and the camera does not collide with walls.
+  The `walk` clip is played at `walkdist` metres per cycle (appearance.2da), which is my reading of that column. Checked: the
+  lowest foot stays within 9 mm of one height over the whole cycle (so the clip is sampled correctly), every step has floor under
+  it, and the feet stay on the floor in each phase. Not checked: foot sliding against the ground, the real engine's turn rate and
+  acceleration, and what the original does at doors. From behind the back of the character shows bare skin where a robe
+  should be (texture assignment is still partly guessed). Run clip not used.
 - No alpha, transparency, envmaps, bump maps, fog, particle emitters, light flares, dynamic lights, or shadows.
 - Triangles are drawn double sided; face winding is unverified.
 - No window, no input, no free-camera interaction; the "free camera" is the `--eye/--target` options.

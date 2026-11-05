@@ -6,8 +6,12 @@ mod character;
 mod objects;
 mod scene;
 mod soft;
+mod walk;
 
-pub use character::{load_character, load_character_with, load_creature};
-pub use objects::{add_area_creatures, add_area_objects, CreatureStats, ObjectStats};
+pub use character::{load_character, load_character_with, load_creature, rig_for_appearance, Rig};
+pub use objects::{
+    add_area_creatures, add_area_objects, add_area_objects_with, CreatureStats, ObjectStats,
+};
 pub use scene::{load_area, load_texture, Scene, SceneMesh, SkinCtx};
 pub use soft::{render, Camera};
+pub use walk::{contact_sheet, render_walk, walk_path, Floor, Step, WalkOptions};

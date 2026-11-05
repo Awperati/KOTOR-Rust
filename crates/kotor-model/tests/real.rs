@@ -316,3 +316,51 @@ fn idle_pose_from_supermodel_keeps_a_body_in_shape() {
         "idle pose moves skeletons too far"
     );
 }
+
+#[test]
+fn walk_and_run_cycles_keep_the_lowest_foot_on_the_floor() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let load = |inst: &mut Install, n: &str| {
+        parse_model(
+            &inst.read(n, ResType::MDL).unwrap(),
+            &inst.read(n, ResType::MDX).unwrap_or_default(),
+        )
+        .unwrap()
+    };
+    let body = load(&mut inst, "p_bastilabb");
+    let sup = load(&mut inst, body.supermodel.as_deref().unwrap());
+    for name in ["walk", "run"] {
+        let anim = sup
+            .animation(name)
+            .unwrap_or_else(|| panic!("no {name} animation"));
+        let zs: Vec<f32> = (0..32)
+            .map(|f| {
+                let pose = anim.sample(&sup, anim.length * f as f32 / 32.0);
+                let mats = body.world_matrices(Some(&pose));
+                let z =
+                    |n: &str| mats.iter().find(|m| m.0.eq_ignore_ascii_case(n)).unwrap().1[2][3];
+                z("rfoot_g").min(z("lfoot_g"))
+            })
+            .collect();
+        let mean = zs.iter().sum::<f32>() / zs.len() as f32;
+        let sd = (zs.iter().map(|z| (z - mean).powi(2)).sum::<f32>() / zs.len() as f32).sqrt();
+        println!(
+            "{name}: lowest foot mean {mean:.3} m, sd {:.1} mm",
+            sd * 1000.0
+        );
+        // A wrong key decoding makes the supporting foot bob or sink; a correct one keeps it level.
+        if name == "walk" {
+            assert!(sd < 0.03, "{name}: lowest foot varies by {sd} m");
+            assert!(
+                (0.0..0.3).contains(&mean),
+                "{name}: lowest foot at {mean} m"
+            );
+        } else {
+            // A run has a flight phase with both feet in the air, so only the mean is meaningful.
+            assert!(mean < 0.5, "{name}: lowest foot at {mean} m");
+        }
+    }
+}
