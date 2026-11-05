@@ -46,7 +46,7 @@ Measured on this PC (AMD Radeon AI PRO R9700) in a hidden window, `--mute`, Enda
 | 3840x2160 | off | 145 | 6.9 ms |
 
 ## Effects and sound
-Rooms run their own `Fountain` emitters within 40 m of the camera. Ranged attacks fire a bolt with a muzzle flash and sparks where it lands. Sounds come from the stock tables: shots and impacts, melee swings and blows, doors, and the player's steps. **Assumed:** see `gpu/src/effects.rs` and `Stage::play_world_sounds`. Melee weapons pick their sound row by label, and the floor always sounds like metal.
+Rooms run their own `Fountain`, `Single` and `Lightning` emitters within 40 m of the camera. Scripts' `EffectVisualEffect` and `EffectBeam`, and powers' `casthandvisual`, play the stock models from `visualeffects.2da` and `spells.2da`. Ranged attacks fire a bolt with a muzzle flash and sparks where it lands. Sounds come from the stock tables: shots and impacts, melee swings and blows, doors, and the player's steps. **Assumed:** see `gpu/src/effects.rs` and `Stage::play_world_sounds`. Melee weapons pick their sound row by label, and the floor always sounds like metal.
 
 ## Original files and an installed `.mod`
 A `.mod` beside a module's `.rim` pair is an installed mod. The original game prefers it. The viewer loads the `.rim` pair by default, and `--installed-mod` uses the `.mod`; the label at the top left of the window says which. The owner's `end_m01aa.mod` has a `k_pend_start` that removes Trask when the opening ends and leaves a corpse; the `.rim` pair has no such script.
@@ -72,6 +72,10 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 - In a conversation the camera shows the owner close up, 1.3 m in front of them. It stands in for the game's dialogue camera angles, which are not modelled.
 - Creatures walk where scripts send them, and open doors that are not locked on the way, with no collision. Their speed and the rule that a queued action waits for arrival are assumed.
 
+- Sight: enemies notice only along a line that stays over open floor, so walls and closed doors hide them. The walkmesh stands in for sight.
+- The camera stops at walkmesh walls and closed doors, not at furniture.
+- Chests with a `close2open` animation are drawn each frame. Lids stay open once opened.
+
 ## Measured
 - TPC rows are stored bottom-up. `load_texture` flips them, so every picture has its first row on top. Before this fix all model textures were upside down, which scrambled faces and clothes.
 - A camera model's `camerahook` and a stunt's animation are in world space, and the hook looks along its local -z: in the opening's 18 shots the stunt's head lies at -0.91 to -1.00 along that axis.
@@ -79,4 +83,4 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 
 ## Not done
 - More than one action slot on the HUD (the first shows the target's action), the map picture, and notices.
-- `Explosion`, `Lightning` and `Single` emitters, Force power visuals, and placeable open animations.
+- Force powers' projectiles, and `Explosion` bursts timed to a model's own detonate key.

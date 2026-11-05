@@ -103,6 +103,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             o.equipped.insert(1, armour);
         }
         shot(&mut gpu, &mut s, &out.join("armour.png"));
+        // The footlocker's lid, after it opens.
+        let locker = s.game.world.by_tag("end_locker01")[0];
+        s.game.world.click(locker);
+        for _ in 0..40 {
+            s.update(DT);
+        }
+        shot(&mut gpu, &mut s, &out.join("locker_open.png"));
+        s.continue_line();
+        // A stock healing effect on the player, and a Force lightning arc past it.
+        s.game.world.opened = None;
+        let handle = {
+            let w = &mut s.game.world;
+            let mut r = kotor_game::EffectRec::new("EffectVisualEffect");
+            r.nums = vec![1001.0];
+            w.effects.push(r);
+            w.effects.len() as u32
+        };
+        s.game.world.events.push(format!(
+            "ApplyEffectToObject(0, Engine(0, {handle}), #{pc}, 0)"
+        ));
+        for _ in 0..24 {
+            s.update(DT);
+        }
+        shot(&mut gpu, &mut s, &out.join("heal.png"));
+        let at = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
+        let cam = s.camera();
+        let dir = [cam.target[0] - cam.eye[0], cam.target[1] - cam.eye[1]];
+        s.effects.beam(
+            [at[0] + dir[1] * 0.8, at[1] - dir[0] * 0.8, at[2] + 1.2],
+            [at[0] - dir[1] * 0.8, at[1] + dir[0] * 0.8, at[2] + 1.2],
+            "fx_lightning",
+            1.0,
+        );
+        s.effects.update(DT, cam.eye);
+        shot(&mut gpu, &mut s, &out.join("lightning.png"));
     }
     // A bolt across the bunk room, seen from the side, then the sparks where it lands.
     s.game.world.teleport(pc, [15.4, 20.1, -1.275]);

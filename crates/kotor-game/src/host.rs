@@ -1399,6 +1399,15 @@ impl Host for Adapter<'_> {
                     .converse(caller, target, &dlg, &mut crate::FirstReply)
                     .is_ok())
             }
+            "GetTotalDamageDealt" => Some(Value::Int(
+                self.world
+                    .combat
+                    .log
+                    .iter()
+                    .filter(|l| l.attacker == caller)
+                    .map(|l| l.damage)
+                    .sum(),
+            )),
             "GetIsConversationActive" | "GetIsInConversation" => b(self.world.in_conversation),
             "ResetDialogState" => None,
             "GetPCSpeaker" => Some(Value::Object(self.world.pc)),

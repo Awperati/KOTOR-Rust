@@ -73,6 +73,17 @@ pub fn add_area_objects_with(
     area: &str,
     include_doors: bool,
 ) -> Result<ObjectStats> {
+    add_area_objects_except(scene, inst, area, include_doors, &[])
+}
+
+/// [`add_area_objects_with`], leaving out placeables with these templates (lower case), which someone else draws.
+pub fn add_area_objects_except(
+    scene: &mut Scene,
+    inst: &mut Install,
+    area: &str,
+    include_doors: bool,
+    except: &[String],
+) -> Result<ObjectStats> {
     let mut stats = ObjectStats::default();
     let Ok(git_bytes) = inst.read(area, ResType::GIT) else {
         return Ok(stats);
@@ -123,6 +134,11 @@ pub fn add_area_objects_with(
     }
     for p in git.root.list("Placeable List").unwrap_or_default() {
         stats.placeables_listed += 1;
+        if p.str("TemplateResRef")
+            .is_some_and(|t| except.contains(&t.to_ascii_lowercase()))
+        {
+            continue;
+        }
         match place(scene, &mut loader, p, ResType(2044), "Appearance", &plc2da) {
             Some(true) => stats.placeables_drawn += 1,
             Some(false) => {}

@@ -12,7 +12,8 @@ pub use character::{
     load_character, load_character_with, load_creature, rig_for_appearance, rig_for_outfit, Rig,
 };
 pub use objects::{
-    add_area_creatures, add_area_objects, add_area_objects_with, CreatureStats, ObjectStats,
+    add_area_creatures, add_area_objects, add_area_objects_except, add_area_objects_with,
+    CreatureStats, ObjectStats,
 };
 pub use scene::{load_area, load_texture, Scene, SceneMesh, SkinCtx};
 pub use soft::{render, Camera};

@@ -23,6 +23,8 @@ const DRAW_RANGE: f32 = 45.0;
 const FIRST_STUNT_ANIMATION: u32 = 1200;
 /// The follow camera: metres behind the player and above its feet, and the height it looks at. As `render_walk`.
 const CAMERA_FOV: f32 = 55.0;
+/// How near the camera's line may pass a closed door (metres): about half a door.
+const DOOR_CAMERA_MARGIN: f32 = 1.2;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
 /// combat reads.
 const ARMOUR_SLOT: i32 = 1;
@@ -112,6 +114,54 @@ fn fixed_cameras(inst: &mut Install, area: &str) -> HashMap<i32, Camera> {
     out
 }
 
+/// Templates (lower case) of an area's placeables that hold things and have a `close2open` animation.
+fn chest_templates(inst: &mut Install, area: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(git) = inst
+        .read(area, ResType::GIT)
+        .ok()
+        .and_then(|b| Gff::parse(&b).ok())
+    else {
+        return out;
+    };
+    let Some(table) = inst
+        .read("placeables", ResType::TWODA)
+        .ok()
+        .and_then(|b| TwoDa::parse(&b).ok())
+    else {
+        return out;
+    };
+    for p in git.root.list("Placeable List").unwrap_or_default() {
+        let Some(t) = p.str("TemplateResRef").map(str::to_ascii_lowercase) else {
+            continue;
+        };
+        if out.contains(&t) {
+            continue;
+        }
+        let Some(u) = inst
+            .read(&t, ResType(2044))
+            .ok()
+            .and_then(|b| Gff::parse(&b).ok())
+        else {
+            continue;
+        };
+        if u.root.int("HasInventory").unwrap_or(0) == 0 {
+            continue;
+        }
+        let name = u
+            .root
+            .int("Appearance")
+            .and_then(|r| table.get(r as usize, "modelname").map(str::to_string));
+        let opens = name
+            .and_then(|n| load_model(inst, &n))
+            .is_some_and(|m| m.animation("close2open").is_some());
+        if opens {
+            out.push(t);
+        }
+    }
+    out
+}
+
 /// Where upscaled pictures live: outside the repository and the install, since they are made from game files.
 pub fn default_hd_dir() -> Option<PathBuf> {
     Some(
@@ -168,6 +218,11 @@ pub struct Stage {
     pub static_version: u64,
     rigs: HashMap<(i32, u32, Option<char>), Option<Rc<Rig>>>,
     pub effects: crate::effects::Effects,
+    /// Templates of the placeables that hold things, drawn each frame so that their lids can move.
+    chests: Vec<String>,
+    chest_bodies: HashMap<ObjId, Option<Rc<DoorBody>>>,
+    /// Seconds since each chest was opened.
+    lids: HashMap<ObjId, f32>,
     log_seen: usize,
     door_seen: HashMap<ObjId, bool>,
     /// Seconds to the player's next footstep, and which of the three sounds.
@@ -252,6 +307,9 @@ impl Stage {
             rigs: HashMap::new(),
             baseitems: None,
             effects: Default::default(),
+            chests: Vec::new(),
+            chest_bodies: HashMap::new(),
+            lids: HashMap::new(),
             log_seen: 0,
             door_seen: HashMap::new(),
             step_due: 0.0,
@@ -308,7 +366,12 @@ impl Stage {
         self.inst.load_module(&self.module).map_err(e)?;
         let area = self.area_name();
         let mut scene = kotor_render::load_area(&mut self.inst, &area).map_err(e)?;
-        kotor_render::add_area_objects_with(&mut scene, &mut self.inst, &area, false).map_err(e)?;
+        let chests = chest_templates(&mut self.inst, &area);
+        kotor_render::add_area_objects_except(&mut scene, &mut self.inst, &area, false, &chests)
+            .map_err(e)?;
+        self.chests = chests;
+        self.chest_bodies.clear();
+        self.lids.clear();
         self.static_scene = scene;
         self.static_version += 1;
         self.floor = Floor::load(&mut self.inst, &area).ok();
@@ -363,6 +426,12 @@ impl Stage {
         }
         self.scan_music_events();
         self.play_world_sounds(dt);
+        if let Some(id) = self.game.world.opened {
+            self.lids.entry(id).or_insert(0.0);
+        }
+        for t in self.lids.values_mut() {
+            *t += dt;
+        }
         let eye = self.camera().eye;
         self.effects.update(dt, eye);
         self.update_line(dt);
@@ -377,6 +446,7 @@ impl Stage {
         let new: Vec<String> = self.game.world.events[self.events_seen.min(n)..].to_vec();
         self.events_seen = n;
         for ev in new {
+            self.visual_event(&ev);
             if ev.starts_with("MusicBackgroundStop(") {
                 self.cues.push(Cue::StopMusic);
             } else if let Some(args) = ev.strip_prefix("MusicBackgroundChangeDay(") {
@@ -389,6 +459,156 @@ impl Stage {
                     self.cues.push(Cue::Music(p));
                 }
             }
+        }
+    }
+
+    /// A visual effect or a Force power shows itself. Scripts record `ApplyEffectToObject(duration, Engine(0, handle),
+    /// #target, seconds)`; a power records `... casts power N on ...`.
+    fn visual_event(&mut self, ev: &str) {
+        if let Some(i) = ev.find(" casts power ") {
+            let spell = ev[i + 13..]
+                .split(' ')
+                .next()
+                .and_then(|n| n.parse::<i32>().ok());
+            if let Some(spell) = spell {
+                self.power_visual(spell);
+            }
+            return;
+        }
+        let Some(args) = ev.strip_prefix("ApplyEffectToObject(") else {
+            return;
+        };
+        let handle = args
+            .split("Engine(0, ")
+            .nth(1)
+            .and_then(|r| r.split(')').next())
+            .and_then(|n| n.parse::<u32>().ok());
+        let target = args
+            .split('#')
+            .nth(1)
+            .and_then(|r| r.split(',').next())
+            .and_then(|n| n.trim_end_matches(')').parse::<ObjId>().ok());
+        if let (Some(h), Some(t)) = (handle, target) {
+            self.effect_visual(h, t, 0);
+        }
+    }
+
+    /// The visuals in an effect record and whatever it is linked with. A handle is an index plus one.
+    fn effect_visual(&mut self, handle: u32, target: ObjId, depth: u32) {
+        let Some(rec) = handle
+            .checked_sub(1)
+            .and_then(|i| self.game.world.effects.get(i as usize))
+            .cloned()
+        else {
+            return;
+        };
+        if depth > 8 {
+            return;
+        }
+        match rec.name.as_str() {
+            "EffectVisualEffect" => {
+                if let Some(row) = rec.nums.first() {
+                    self.play_visual(*row as i32, target);
+                }
+            }
+            "EffectBeam" => {
+                let from = rec.args.iter().find_map(|a| {
+                    a.strip_prefix("Object(")?
+                        .trim_end_matches(')')
+                        .parse::<ObjId>()
+                        .ok()
+                });
+                let row = rec.nums.first().map_or(0, |r| *r as i32);
+                let label = self.visual_row(row).map_or(String::new(), |r| r.0);
+                let texture = if label.contains("LIGHTNING") {
+                    "fx_lightning"
+                } else if label.contains("DRAIN") {
+                    "fx_drain"
+                } else {
+                    "fx_beam01"
+                };
+                let w = &self.game.world;
+                let chest = |id: ObjId| {
+                    w.object(id)
+                        .map(|o| [o.position[0], o.position[1], o.position[2] + 1.1])
+                };
+                if let (Some(a), Some(b)) = (from.and_then(chest), chest(target)) {
+                    self.effects.beam(a, b, texture, 0.8);
+                }
+            }
+            _ => {}
+        }
+        for l in rec.links {
+            self.effect_visual(l, target, depth + 1);
+        }
+    }
+
+    /// A row of `visualeffects.2da` by its label number: its name and (impact model, height on the body).
+    fn visual_row(&mut self, row: i32) -> Option<(String, Option<(String, f32)>)> {
+        let t = TwoDa::parse(&self.inst.read("visualeffects", ResType::TWODA).ok()?).ok()?;
+        let i = t.labels.iter().position(|l| l == &row.to_string())?;
+        let name = t.get(i, "label").unwrap_or("").to_string();
+        // **Assumption:** the node columns' heights on a person: head, chest, feet.
+        let model = [
+            ("imp_headcon_node", 1.6),
+            ("imp_impact_node", 1.0),
+            ("imp_root_m_node", 0.0),
+            ("imp_root_s_node", 0.0),
+            ("imp_root_l_node", 0.0),
+            ("imp_root_h_node", 0.0),
+        ]
+        .iter()
+        .find_map(|(c, up)| {
+            t.get(i, c)
+                .filter(|v| !v.is_empty())
+                .map(|v| (v.to_string(), *up))
+        });
+        Some((name, model))
+    }
+
+    fn play_visual(&mut self, row: i32, target: ObjId) {
+        let Some((_, Some((model, up)))) = self.visual_row(row) else {
+            return;
+        };
+        let Some(at) = self.game.world.object(target).map(|o| o.position) else {
+            return;
+        };
+        if let Some(m) = self.model(&model) {
+            self.effects.play_model(&m, [at[0], at[1], at[2] + up]);
+        }
+    }
+
+    /// A caster's hand visual and sound, from `spells.2da`.
+    fn power_visual(&mut self, spell: i32) {
+        let caster = self
+            .game
+            .world
+            .last_power
+            .iter()
+            .find(|(_, p)| p.0 == spell)
+            .map(|(id, _)| *id);
+        let Some(t) = self
+            .inst
+            .read("spells", ResType::TWODA)
+            .ok()
+            .and_then(|b| TwoDa::parse(&b).ok())
+        else {
+            return;
+        };
+        let get = |c: &str| {
+            t.get(spell.max(0) as usize, c)
+                .filter(|v| !v.is_empty() && *v != "****")
+                .map(str::to_string)
+        };
+        let (hand, sound) = (get("casthandvisual"), get("castsound"));
+        if let (Some(id), Some(name)) = (caster, hand) {
+            let at = self.game.world.object(id).map(|o| o.position);
+            if let (Some(at), Some(m)) = (at, self.model(&name)) {
+                self.effects.play_model(&m, [at[0], at[1], at[2] + 1.1]);
+            }
+        }
+        if let Some(s) = sound {
+            self.effect(&s);
         }
     }
 
@@ -581,21 +801,36 @@ impl Stage {
         let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
         let (flat, up) = (self.pitch.cos(), self.pitch.sin());
-        let mut d = 0.8;
+        let back = [-dx * flat, -dy * flat, up];
+        let mut d = self.distance;
         if let Some(f) = &self.floor {
-            while d < self.distance
-                && f.height(
-                    p[0] - dx * flat * (d + 0.3),
-                    p[1] - dy * flat * (d + 0.3),
-                    p[2] + 1.0,
-                )
-                .is_some()
-            {
-                d += 0.1;
+            // Walls in the walkmesh, and where the floor ends.
+            if let Some(hit) = f.ray_distance(target, back, self.distance) {
+                d = d.min(hit - 0.25);
             }
-        } else {
-            d = self.distance;
+            let mut t = 0.8;
+            while t < d {
+                let q = [p[0] + back[0] * (t + 0.3), p[1] + back[1] * (t + 0.3)];
+                if f.height(q[0], q[1], p[2] + 1.0).is_none() {
+                    d = t;
+                    break;
+                }
+                t += 0.1;
+            }
         }
+        // Closed doors are not in the walkmesh.
+        for o in self.game.world.objects.values() {
+            if o.kind != Kind::Door || o.open {
+                continue;
+            }
+            let (ox, oy) = (o.position[0] - p[0], o.position[1] - p[1]);
+            let along = ox * back[0] + oy * back[1];
+            let across = (ox - back[0] * along).hypot(oy - back[1] * along);
+            if along > 0.0 && along < d && across < DOOR_CAMERA_MARGIN {
+                d = (along - 0.4).max(0.8);
+            }
+        }
+        let d = d.max(0.8);
         Camera {
             eye: [
                 p[0] - dx * flat * d,
@@ -1069,6 +1304,44 @@ impl Stage {
             .collect()
     }
 
+    /// The body of a placeable that holds things; `None` for any other placeable, which is in the fixed scene.
+    fn chest_body(&mut self, id: ObjId) -> Option<Rc<DoorBody>> {
+        if let Some(b) = self.chest_bodies.get(&id) {
+            return b.clone();
+        }
+        let body = self.load_chest(id).map(Rc::new);
+        self.chest_bodies.insert(id, body.clone());
+        body
+    }
+
+    fn load_chest(&mut self, id: ObjId) -> Option<DoorBody> {
+        let (pos, template) = {
+            let o = self.game.world.object(id)?;
+            (o.position, o.template.to_ascii_lowercase())
+        };
+        if !self.chests.contains(&template) {
+            return None;
+        }
+        let area = self.area_name();
+        let git = Gff::parse(&self.inst.read(&area, ResType::GIT).ok()?).ok()?;
+        let at = |s: &kotor_gff::Struct, l: &str| s.float(l).unwrap_or(0.0) as f32;
+        let bearing = git
+            .root
+            .list("Placeable List")?
+            .iter()
+            .find(|d| (at(d, "X") - pos[0]).abs() + (at(d, "Y") - pos[1]).abs() < 0.01)
+            .map_or(0.0, |d| at(d, "Bearing"));
+        let utp = Gff::parse(&self.inst.read(&template, ResType(2044)).ok()?).ok()?;
+        let table = TwoDa::parse(&self.inst.read("placeables", ResType::TWODA).ok()?).ok()?;
+        let name = table
+            .get(utp.root.int("Appearance")? as usize, "modelname")?
+            .to_string();
+        Some(DoorBody {
+            model: load_model(&mut self.inst, &name)?,
+            xf: placement(pos, bearing),
+        })
+    }
+
     fn door_body(&mut self, id: ObjId) -> Option<Rc<DoorBody>> {
         if let Some(b) = self.doors.get(&id) {
             return b.clone();
@@ -1137,6 +1410,28 @@ impl Stage {
                         pose.position,
                         pose.heading,
                     );
+                }
+                Kind::Placeable => {
+                    let Some(body) = self.chest_body(pose.id) else {
+                        continue;
+                    };
+                    // Shut until opened; then `close2open` plays once and it stays `open`.
+                    let sampled = match self.lids.get(&pose.id) {
+                        Some(t) => body.model.animation("close2open").and_then(|a| {
+                            if *t < a.length {
+                                Some(a.sample(&body.model, *t))
+                            } else {
+                                body.model
+                                    .animation("open")
+                                    .map(|o| o.sample(&body.model, 0.0))
+                            }
+                        }),
+                        None => body
+                            .model
+                            .animation("close")
+                            .map(|a| a.sample(&body.model, 0.0)),
+                    };
+                    scene.add_model_with(&body.model, sampled.as_ref(), &body.xf, &[], None, None);
                 }
                 Kind::Door => {
                     let Some(body) = self.door_body(pose.id) else {

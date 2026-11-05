@@ -16,7 +16,7 @@
 //! - melee reach is 2.0 m and a ranged weapon fires from 12 m;
 //! - a creature dies at 0 hit points;
 //! - a heartbeat is every 6 s; a creature notices an enemy (`repute.2da` value 10 or less) that comes within its
-//!   perception range, with no line-of-sight test.
+//!   perception range, along a line the floor runs under the whole way, so walls and closed doors hide things.
 
 use crate::follow::{dist2d, slide_around};
 use crate::world::{Kind, ObjId, World};
@@ -387,6 +387,24 @@ impl World {
         }
     }
 
+    /// Whether a line between two places stays over walkable, unblocked floor.
+    ///
+    /// **Assumption:** the walkmesh stands in for sight, since walls and closed doors end it. Pits and railings block
+    /// this line though the game may see across them.
+    pub(crate) fn clear_line(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        let Some(nav) = self.nav.as_ref() else {
+            return true;
+        };
+        let len = dist2d(a, b);
+        let steps = (len / 0.75).ceil().max(1.0) as usize;
+        let top = a[2].max(b[2]) + 1.5;
+        (1..steps).all(|i| {
+            let t = i as f32 / steps as f32;
+            nav.walkable_at(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, top)
+                .is_some()
+        })
+    }
+
     fn update_perception(&mut self) {
         let who: Vec<(ObjId, [f32; 3], f32)> = self
             .objects
@@ -399,9 +417,11 @@ impl World {
                 if a == b {
                     continue;
                 }
-                let near = dist2d(apos, bpos) <= range;
                 let known = self.combat.perceived.contains(&(a, b));
-                if near && !known && self.reputation(a, b) <= 10 {
+                let enemy = self.reputation(a, b) <= 10;
+                let near =
+                    dist2d(apos, bpos) <= range && (known || enemy) && self.clear_line(apos, bpos);
+                if near && !known && enemy {
                     self.combat.perceived.insert((a, b));
                     self.combat.last_perceived = b;
                     self.run_event(a, "ScriptOnNotice");

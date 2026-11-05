@@ -32,6 +32,14 @@ impl Floor {
         kotor_walkmesh::NavMesh::from_meshes(&self.meshes)
     }
 
+    /// How far a ray goes before it meets any walkmesh face, walls included.
+    pub fn ray_distance(&self, origin: [f32; 3], dir: [f32; 3], max: f32) -> Option<f32> {
+        self.meshes
+            .iter()
+            .filter_map(|m| m.raycast(origin, dir, max, false).map(|h| h.t))
+            .reduce(f32::min)
+    }
+
     /// Highest walkable floor under `(x, y)` that is at or below `max_z`.
     pub fn height(&self, x: f32, y: f32, max_z: f32) -> Option<f32> {
         self.meshes

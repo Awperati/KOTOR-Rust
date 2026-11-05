@@ -640,3 +640,101 @@ fn particles_draw_on_the_gpu() {
     let opaque = lit.rgba.chunks(4).all(|p| p[3] == 255);
     assert!(opaque, "the picture stays opaque");
 }
+
+#[test]
+fn a_chest_lid_moves_when_it_opens() {
+    let Some(mut s) = stage() else { return };
+    past_the_talk(&mut s);
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    let id = s.game.world.by_tag("end_locker01")[0];
+    let at = s.game.world.object(id).unwrap().position;
+    let near = |scene: &kotor_render::Scene| -> Vec<[f32; 3]> {
+        scene
+            .meshes
+            .iter()
+            .flat_map(|m| m.positions.iter().copied())
+            .filter(|p| (p[0] - at[0]).hypot(p[1] - at[1]) < 0.9)
+            .collect()
+    };
+    let shut = near(&s.dynamic_scene());
+    assert!(!shut.is_empty(), "the locker is drawn each frame");
+    s.game.world.click(id);
+    for _ in 0..40 {
+        s.update(DT);
+    }
+    assert_ne!(near(&s.dynamic_scene()), shut, "the lid moved");
+}
+
+#[test]
+fn walls_hide_enemies_and_stop_the_camera() {
+    let Some(mut s) = stage() else { return };
+    // The player starts in a closed bunk room: nobody on the far side of its walls notices.
+    for _ in 0..90 {
+        s.update(DT);
+        s.continue_line();
+        s.number_key(1);
+    }
+    let w = &s.game.world;
+    let pc = w.pc;
+    let noticed: Vec<_> = w
+        .combat
+        .perceived
+        .iter()
+        .filter(|(_, b)| *b == pc)
+        .map(|(a, _)| w.object(*a).map(|o| (o.tag.clone(), o.position)))
+        .collect();
+    let here = w.object(pc).unwrap().position;
+    for (tag, at) in noticed.into_iter().flatten() {
+        let d = (at[0] - here[0]).hypot(at[1] - here[1]);
+        assert!(
+            d < 25.0,
+            "{tag} noticed the player through walls from {d} m"
+        );
+    }
+    // Backed against something, the camera stays on this side of it.
+    let eye_clear = |s: &Stage| {
+        let c = s.camera();
+        let p = s.game.world.object(s.game.world.pc).unwrap().position;
+        let t = [p[0], p[1], p[2] + 1.2];
+        let d = [c.eye[0] - t[0], c.eye[1] - t[1], c.eye[2] - t[2]];
+        let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        (len, t, d)
+    };
+    for k in 0..24 {
+        s.yaw = k as f32 * std::f32::consts::TAU / 24.0;
+        let (len, _, _) = eye_clear(&s);
+        assert!(
+            (0.7..=3.5).contains(&len),
+            "camera {len} m away at turn {k}"
+        );
+    }
+}
+
+#[test]
+fn stock_visual_effects_play_and_fade() {
+    let Some(mut s) = stage() else { return };
+    let eye = s.camera().eye;
+    let pc = s.game.world.pc;
+    // VFX_IMP_HEALING_SMALL names v_heal_imp, a model of fountains.
+    let rec = {
+        let w = &mut s.game.world;
+        let mut r = kotor_game::EffectRec::new("EffectVisualEffect");
+        r.nums = vec![1001.0];
+        w.effects.push(r);
+        w.effects.len() as u32
+    };
+    s.game.world.events.push(format!(
+        "ApplyEffectToObject(0, Engine(0, {rec}), #{pc}, 0)"
+    ));
+    s.update(DT);
+    assert!(s.effects.playing() > 0, "the effect started");
+    for _ in 0..30 {
+        s.effects.update(DT, eye);
+    }
+    assert!(!s.particles().is_empty(), "its particles show");
+    for _ in 0..600 {
+        s.effects.update(DT, eye);
+    }
+    assert_eq!(s.effects.playing(), 0, "and it ends");
+}

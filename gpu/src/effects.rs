@@ -3,8 +3,9 @@
 //!
 //! **Read from the models:** an emitter node's texture, grid, blend and update type, and its controllers (kind numbers
 //! below). **Assumed:** a particle leaves along the node's +z inside a cone of `spread` radians; `Motion_Blur` stretches
-//! a quad along its velocity; only `Fountain` emitters run by themselves. The game's other types (`Explosion`,
-//! `Lightning`, `Single`) are not simulated.
+//! a quad along its velocity. In a room, `Fountain` runs always, `Single` keeps one particle alive, `Lightning` arcs to
+//! the node's first child, and `Explosion` waits for an animation event the rooms never send, so it stays quiet. In a
+//! played effect `Explosion` bursts once at the start, not at the model's own detonate key.
 
 use bytemuck::{Pod, Zeroable};
 use kotor_archive::Install;
@@ -42,6 +43,8 @@ const MAX_PER_SOURCE: usize = 300;
 const BOLT_SPEED: f32 = 45.0;
 const BOLT_LENGTH: f32 = 1.4;
 const BOLT_WIDTH: f32 = 0.14;
+const BEAM_SEGMENTS: usize = 8;
+const BEAM_WIDTH: f32 = 0.35;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug, PartialEq)]
@@ -89,6 +92,20 @@ struct Source {
     middle: f32,
     due: f32,
     particles: Vec<Particle>,
+    /// Seconds a played effect goes on emitting; `None` for a room's emitter, which never stops.
+    left: Option<f32>,
+    single: bool,
+}
+
+/// A jagged arc that flickers while it lasts.
+struct Beam {
+    from: [f32; 3],
+    to: [f32; 3],
+    texture: String,
+    left: f32,
+    points: Vec<[f32; 3]>,
+    /// Goes round again when it runs out: a room's arc.
+    every: Option<f32>,
 }
 
 /// A bolt in flight.
@@ -114,6 +131,7 @@ pub struct Effects {
     bolts: Vec<Bolt>,
     flashes: Vec<Flash>,
     sparks: Vec<Source>,
+    beams: Vec<Beam>,
     seed: u32,
 }
 
@@ -163,6 +181,7 @@ impl Effects {
         self.bolts.clear();
         self.flashes.clear();
         self.sparks.clear();
+        self.beams.clear();
         let Some(lyt) = inst
             .read(area, ResType::LYT)
             .ok()
@@ -178,12 +197,9 @@ impl Effects {
                 continue;
             };
             let mats = model.world_matrices(None);
-            let sources = &mut self.sources;
+            let (sources, beams) = (&mut self.sources, &mut self.beams);
             model.root.walk(&mut |n| {
                 let Some(e) = &n.emitter else { return };
-                if !e.update.eq_ignore_ascii_case("fountain") || e.texture.is_empty() {
-                    return;
-                }
                 let Some((_, m)) = mats.iter().find(|(name, _)| *name == n.name) else {
                     return;
                 };
@@ -191,46 +207,87 @@ impl Effects {
                 for (row, v) in at.iter_mut().zip(room.position) {
                     row[3] += v;
                 }
-                sources.push(Source {
-                    at,
-                    texture: e.texture.to_ascii_lowercase(),
-                    additive: e.blend.eq_ignore_ascii_case("lighten"),
-                    stretched: e.render.eq_ignore_ascii_case("motion_blur"),
-                    grid: (e.grid[0].max(1), e.grid[1].max(1)),
-                    rate: one(n, BIRTH_RATE, 0.0),
-                    random_rate: one(n, RANDOM_BIRTH_RATE, 0.0),
-                    speed: one(n, VELOCITY, 0.0),
-                    random_speed: one(n, RANDOM_VELOCITY, 0.0),
-                    spread: one(n, SPREAD, 0.0),
-                    life: one(n, LIFE, 1.0).max(0.05),
-                    gravity: if one(n, MASS, 0.0) > 0.2 {
-                        one(n, GRAVITY, 0.0).max(4.0)
-                    } else {
-                        one(n, GRAVITY, 0.0)
-                    },
-                    fps: one(n, FPS, 0.0),
-                    frames: (one(n, FRAME_START, 0.0), one(n, FRAME_END, 0.0)),
-                    colors: [
-                        three(n, COLOR_START, [1.0; 3]),
-                        three(n, COLOR_MID, [1.0; 3]),
-                        three(n, COLOR_END, [1.0; 3]),
-                    ],
-                    alphas: [
-                        one(n, ALPHA_START, 1.0),
-                        one(n, ALPHA_MID, 1.0),
-                        one(n, ALPHA_END, 0.0),
-                    ],
-                    sizes: [
-                        one(n, SIZE_START, 0.2),
-                        one(n, SIZE_MID, 0.2),
-                        one(n, SIZE_END, 0.2),
-                    ],
-                    middle: one(n, PERCENT_MID, 0.5).clamp(0.01, 0.99),
-                    due: 0.0,
-                    particles: Vec::new(),
-                });
+                if e.update.eq_ignore_ascii_case("lightning") {
+                    let Some(end) = n
+                        .children
+                        .first()
+                        .and_then(|c| mats.iter().find(|(name, _)| *name == c.name))
+                    else {
+                        return;
+                    };
+                    let to = [0, 1, 2].map(|k| end.1[k][3] + room.position[k]);
+                    beams.push(Beam {
+                        from: [at[0][3], at[1][3], at[2][3]],
+                        to,
+                        texture: e.texture.to_ascii_lowercase(),
+                        left: 0.2,
+                        points: Vec::new(),
+                        every: Some(1.5),
+                    });
+                    return;
+                }
+                let single = e.update.eq_ignore_ascii_case("single");
+                if !(single || e.update.eq_ignore_ascii_case("fountain")) || e.texture.is_empty() {
+                    return;
+                }
+                sources.push(source_of(n, e, at, None));
             });
         }
+    }
+
+    /// Play a stock effect model at a place: its emitters run for the model's first animation or a second and a half.
+    pub fn play_model(&mut self, model: &kotor_model::Model, at: [f32; 3]) {
+        let seconds = model
+            .animations
+            .first()
+            .map_or(1.5, |a| a.length.clamp(0.3, 4.0));
+        let mats = model.world_matrices(None);
+        let mut found: Vec<(Source, bool)> = Vec::new();
+        model.root.walk(&mut |n| {
+            let Some(e) = &n.emitter else { return };
+            if e.texture.is_empty() || e.update.eq_ignore_ascii_case("lightning") {
+                return;
+            }
+            let Some((_, m)) = mats.iter().find(|(name, _)| *name == n.name) else {
+                return;
+            };
+            let mut place = *m;
+            for (row, v) in place.iter_mut().zip(at) {
+                row[3] += v;
+            }
+            let burst = e.update.eq_ignore_ascii_case("explosion");
+            found.push((source_of(n, e, place, Some(seconds)), burst));
+        });
+        for (mut s, burst) in found {
+            if burst {
+                let count = (s.rate.round() as usize).clamp(1, 60);
+                s.rate = 0.0;
+                s.random_rate = 0.0;
+                s.left = Some(0.0);
+                for _ in 0..count {
+                    let p = self.spawn(&s);
+                    s.particles.push(p);
+                }
+            }
+            self.sparks.push(s);
+        }
+    }
+
+    /// A flickering arc between two places, for this many seconds.
+    pub fn beam(&mut self, from: [f32; 3], to: [f32; 3], texture: &str, seconds: f32) {
+        self.beams.push(Beam {
+            from,
+            to,
+            texture: texture.to_ascii_lowercase(),
+            left: seconds,
+            points: Vec::new(),
+            every: None,
+        });
+    }
+
+    /// How many played effects, sparks and beams are alive.
+    pub fn playing(&self) -> usize {
+        self.sparks.len() + self.beams.iter().filter(|b| b.every.is_none()).count()
     }
 
     /// How many emitters the area has.
@@ -302,6 +359,8 @@ impl Effects {
             middle: 0.5,
             due: 0.0,
             particles: Vec::new(),
+            left: Some(0.0),
+            single: false,
         };
         for _ in 0..10 {
             let p = self.spawn(&burst);
@@ -334,21 +393,50 @@ impl Effects {
                 s.particles.clear();
                 continue;
             }
-            s.due += (s.rate + self.random() * s.random_rate) * dt;
-            while s.due >= 1.0 {
-                s.due -= 1.0;
-                if s.particles.len() < MAX_PER_SOURCE {
-                    let p = self.spawn(s);
-                    s.particles.push(p);
-                }
-            }
+            self.emit(s, dt);
             advance(s, dt);
         }
         self.sources = sources;
-        for s in &mut self.sparks {
+        let mut sparks = std::mem::take(&mut self.sparks);
+        for s in &mut sparks {
+            if let Some(left) = s.left.as_mut() {
+                *left -= dt;
+            }
+            if s.left.is_some_and(|l| l > 0.0) {
+                self.emit(s, dt);
+            }
             advance(s, dt);
         }
-        self.sparks.retain(|s| !s.particles.is_empty());
+        sparks.retain(|s| !s.particles.is_empty() || s.left.is_some_and(|l| l > 0.0));
+        self.sparks = sparks;
+        let mut beams = std::mem::take(&mut self.beams);
+        for b in &mut beams {
+            b.left -= dt;
+            if b.left <= 0.0 {
+                if let Some(every) = b.every {
+                    b.left = every;
+                }
+            }
+            let shown = b.every.map_or(b.left > 0.0, |e| b.left > e - 0.2);
+            b.points.clear();
+            if shown {
+                for i in 0..=BEAM_SEGMENTS {
+                    let t = i as f32 / BEAM_SEGMENTS as f32;
+                    let wander = if i == 0 || i == BEAM_SEGMENTS {
+                        0.0
+                    } else {
+                        0.25
+                    };
+                    let mut p = [0, 1, 2].map(|k| mix(b.from[k], b.to[k], t));
+                    for v in &mut p {
+                        *v += (self.random() - 0.5) * wander;
+                    }
+                    b.points.push(p);
+                }
+            }
+        }
+        beams.retain(|b| b.every.is_some() || b.left > 0.0);
+        self.beams = beams;
         for f in &mut self.flashes {
             f.age += dt;
         }
@@ -369,6 +457,27 @@ impl Effects {
         });
         for h in hits {
             self.impact(h);
+        }
+    }
+
+    /// New particles for `dt` seconds.
+    fn emit(&mut self, s: &mut Source, dt: f32) {
+        if s.single {
+            if s.particles.is_empty() {
+                let mut p = self.spawn(s);
+                p.vel = [0.0; 3];
+                p.life = s.life.max(1.0);
+                s.particles.push(p);
+            }
+            return;
+        }
+        s.due += (s.rate + self.random() * s.random_rate) * dt;
+        while s.due >= 1.0 {
+            s.due -= 1.0;
+            if s.particles.len() < MAX_PER_SOURCE {
+                let p = self.spawn(s);
+                s.particles.push(p);
+            }
         }
     }
 
@@ -422,6 +531,16 @@ impl Effects {
                 whole,
             );
         }
+        for b in &self.beams {
+            for pair in b.points.windows(2) {
+                let d = [0, 1, 2].map(|k| pair[1][k] - pair[0][k]);
+                let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                let mid = [0, 1, 2].map(|k| (pair[0][k] + pair[1][k]) / 2.0);
+                let (a, c) = axial_quad(mid, d, len * 1.1, BEAM_WIDTH, cam);
+                let whole = [0.0, 0.0, 1.0, 1.0];
+                push_quad(&mut out, &b.texture, true, mid, a, c, [1.0; 4], whole);
+            }
+        }
         for b in &self.bolts {
             let d = [b.to[0] - b.at[0], b.to[1] - b.at[1], b.to[2] - b.at[2]];
             let (a, c) = axial_quad(b.at, d, BOLT_LENGTH, BOLT_WIDTH, cam);
@@ -432,9 +551,55 @@ impl Effects {
     }
 }
 
+/// An emitter's numbers, read from its node.
+fn source_of(n: &Node, e: &kotor_model::Emitter, at: Mat, left: Option<f32>) -> Source {
+    Source {
+        at,
+        texture: e.texture.to_ascii_lowercase(),
+        additive: e.blend.eq_ignore_ascii_case("lighten"),
+        stretched: e.render.eq_ignore_ascii_case("motion_blur"),
+        grid: (e.grid[0].max(1), e.grid[1].max(1)),
+        rate: one(n, BIRTH_RATE, 0.0),
+        random_rate: one(n, RANDOM_BIRTH_RATE, 0.0),
+        speed: one(n, VELOCITY, 0.0),
+        random_speed: one(n, RANDOM_VELOCITY, 0.0),
+        spread: one(n, SPREAD, 0.0),
+        life: one(n, LIFE, 1.0).max(0.05),
+        gravity: if one(n, MASS, 0.0) > 0.2 {
+            one(n, GRAVITY, 0.0).max(4.0)
+        } else {
+            one(n, GRAVITY, 0.0)
+        },
+        fps: one(n, FPS, 0.0),
+        frames: (one(n, FRAME_START, 0.0), one(n, FRAME_END, 0.0)),
+        colors: [
+            three(n, COLOR_START, [1.0; 3]),
+            three(n, COLOR_MID, [1.0; 3]),
+            three(n, COLOR_END, [1.0; 3]),
+        ],
+        alphas: [
+            one(n, ALPHA_START, 1.0),
+            one(n, ALPHA_MID, 1.0),
+            one(n, ALPHA_END, 0.0),
+        ],
+        sizes: [
+            one(n, SIZE_START, 0.2),
+            one(n, SIZE_MID, 0.2),
+            one(n, SIZE_END, 0.2),
+        ],
+        middle: one(n, PERCENT_MID, 0.5).clamp(0.01, 0.99),
+        due: 0.0,
+        particles: Vec::new(),
+        left,
+        single: e.update.eq_ignore_ascii_case("single"),
+    }
+}
+
 fn advance(s: &mut Source, dt: f32) {
     for p in &mut s.particles {
-        p.age += dt;
+        if !s.single {
+            p.age += dt;
+        }
         p.vel[2] -= s.gravity * dt;
         for k in 0..3 {
             p.pos[k] += p.vel[k] * dt;
@@ -562,6 +727,20 @@ mod tests {
             e.update(0.1, [0.0; 3]);
         }
         assert!(e.batches(&camera()).is_empty(), "everything fades out");
+    }
+
+    #[test]
+    fn a_beam_flickers_then_ends() {
+        let mut e = Effects::default();
+        e.beam([0.0; 3], [4.0, 0.0, 0.0], "fx_lightning", 0.3);
+        assert_eq!(e.playing(), 1);
+        e.update(0.1, [0.0; 3]);
+        let b = e.batches(&camera());
+        assert_eq!(b[0].texture, "fx_lightning");
+        assert_eq!(b[0].vertices.len(), BEAM_SEGMENTS * 6);
+        e.update(0.3, [0.0; 3]);
+        assert_eq!(e.playing(), 0);
+        assert!(e.batches(&camera()).is_empty());
     }
 
     #[test]
