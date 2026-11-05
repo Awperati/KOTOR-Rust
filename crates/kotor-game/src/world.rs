@@ -293,6 +293,8 @@ pub struct World {
     pub(crate) effect_expiry: HashMap<u32, f32>,
     /// Every player-side creature is knocked out.
     pub game_over: bool,
+    /// The conversation played last, with each node's presentation data (for the cutscene sequencer).
+    pub conversation: Option<crate::cutscene::Conversation>,
     /// When set, every routine a script calls is appended here (a debugging aid).
     pub trace: Option<Vec<String>>,
     /// Which spell cast each effect (`GetHasSpellEffect`).
@@ -412,6 +414,7 @@ impl World {
             spell: crate::force::SpellContext::default(),
             effect_expiry: HashMap::new(),
             game_over: false,
+            conversation: None,
             trace: None,
             effect_spell: HashMap::new(),
             shape_hits: Vec::new(),

@@ -1,0 +1,18 @@
+﻿# Audio output and MP3 decoding, the pieces that need crates.io. Member of the gpu/ workspace, so the same
+# `cargo fetch --manifest-path gpu\Cargo.toml` downloads them. Versions are pinned exactly.
+[package]
+name = "kotor-audio-out"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+kotor-audio = { path = "../../crates/kotor-audio" }
+# MP3 only: the voice-over and music are MP3 (see docs/AUDIO.md).
+symphonia = { version = "=0.5.4", default-features = false, features = ["mp3"] }
+# Output only: no decoders (our own PCM decoding and symphonia feed it samples).
+rodio = { version = "=0.20.1", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"

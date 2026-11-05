@@ -12,8 +12,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
 
-# An empty table makes this package its own workspace root.
+# This package is its own workspace root; `audio/` is the second member, so one `cargo fetch` on this manifest
+# downloads everything (graphics, windowing, MP3 decoding and audio output).
 [workspace]
+members = ["audio"]
 
 [dependencies]
 kotor-core = { path = "../crates/kotor-core" }

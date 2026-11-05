@@ -118,6 +118,7 @@ impl World {
         let d = Dialog::from_gff(&gff).map_err(|e| format!("dialogue {name}: {e}"))?;
         d.check().map_err(|e| format!("dialogue {name}: {e}"))?;
         let before = self.transcript.len();
+        let mut steps: Vec<crate::cutscene::Step> = Vec::new();
         self.in_conversation = true;
         self.events.push(format!(
             "conversation {name} begins with {}",
@@ -141,8 +142,17 @@ impl World {
                 break;
             }
             let entry = &d.entries[ei];
+            let ev0 = self.events.len();
             self.run_node_script(entry, owner);
             let text = self.node_text(entry);
+            steps.push(crate::cutscene::step_of(
+                entry,
+                LineKind::Npc,
+                ei,
+                self.speaker_name(entry, owner),
+                text.clone(),
+                &self.events[ev0..],
+            ));
             if !text.is_empty() {
                 let speaker = self.speaker_name(entry, owner);
                 self.transcript.push(Line {
@@ -185,13 +195,22 @@ impl World {
                 let who = self.describe_short(self.pc);
                 self.transcript.push(Line {
                     speaker: who,
-                    text: rtext,
+                    text: rtext.clone(),
                     kind: LineKind::Player,
                     node: ri,
                     dialogue: name.clone(),
                 });
             }
+            let ev1 = self.events.len();
             self.run_node_script(reply, owner);
+            steps.push(crate::cutscene::step_of(
+                reply,
+                LineKind::Player,
+                ri,
+                self.describe_short(self.pc),
+                rtext.clone(),
+                &self.events[ev1..],
+            ));
             for l in &reply.links {
                 if self.check(&l.active, owner) {
                     next = Some(l.index as usize);
@@ -212,6 +231,38 @@ impl World {
             self.transcript.len() - before
         ));
         self.in_conversation = false;
+        let stunts = d
+            .extra
+            .iter()
+            .find_map(|(l, v)| match (l.as_str(), v) {
+                ("StuntList", Value::List(items)) => Some(
+                    items
+                        .iter()
+                        .filter_map(|s| {
+                            Some((
+                                s.str("Participant")?.to_string(),
+                                s.str("StuntModel")?.to_string(),
+                            ))
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let camera_model = d
+            .extra
+            .iter()
+            .find_map(|(l, v)| match (l.as_str(), v) {
+                ("CameraModel", Value::ResRef(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        self.conversation = Some(crate::cutscene::Conversation {
+            name: name.clone(),
+            camera_model,
+            stunts,
+            steps,
+        });
         Ok(self.transcript.len() - before)
     }
 }

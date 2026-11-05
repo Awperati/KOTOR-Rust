@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "kotor-game"
 version.workspace = true
 edition.workspace = true
@@ -15,3 +15,6 @@ kotor-gff = { path = "../kotor-gff" }
 kotor-tables = { path = "../kotor-tables" }
 kotor-script = { path = "../kotor-script" }
 kotor-walkmesh = { path = "../kotor-walkmesh" }
+kotor-model = { path = "../kotor-model" }
+kotor-audio = { path = "../kotor-audio" }
+

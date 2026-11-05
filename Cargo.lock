@@ -26,8 +26,10 @@ name = "kotor-game"
 version = "0.1.0"
 dependencies = [
  "kotor-archive",
+ "kotor-audio",
  "kotor-core",
  "kotor-gff",
+ "kotor-model",
  "kotor-script",
  "kotor-tables",
  "kotor-walkmesh",

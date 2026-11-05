@@ -1281,6 +1281,7 @@ impl Host for Adapter<'_> {
                 None
             }
             "ActionWait" => {
+                self.record(name, args);
                 self.world.queue(caller, Action::Wait(float(args, 0)));
                 None
             }

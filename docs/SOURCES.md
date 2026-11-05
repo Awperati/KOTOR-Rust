@@ -43,6 +43,18 @@ path dependencies for them, exact versions fixed by `gpu/Cargo.lock`:
 | bytemuck | 1 (derive) | upload vertex data |
 | log | 0.4 | logging |
 | env_logger | 0.11 | log output |
+| symphonia | =0.5.4, only the `mp3` feature | decode the MP3 inside voice-over and music (`gpu/audio`); pinned exactly |
+| rodio | =0.20.1, no default features | play decoded samples on the default output device (`gpu/audio`); pinned exactly |
 
 The exact versions that Cargo resolves, with their transitive dependencies, are to be listed here after the first
-`cargo fetch --manifest-path gpu/Cargo.toml` (not yet run: the lockfile does not exist).
+`cargo fetch --manifest-path gpu/Cargo.toml` (not yet run: the lockfile does not exist). `gpu/` is a workspace of two packages
+(`kotor-gpu` and `gpu/audio` = `kotor-audio-out`), so that one command downloads everything.
+
+**Why rodio and not kira:** the std-only `kotor-audio` crate already decodes everything except MP3 to PCM in memory, so what is missing is a
+sink that plays a buffer of samples: rodio's `SamplesBuffer` and `Sink` do exactly that on top of cpal with a few lines, and it is the older, smaller
+API. kira is a fuller game audio engine (mixer tracks, tweens, clocks) that this project does not need yet; it can replace rodio later behind
+`play_blocking` without touching the decoders. rodio is used with `default-features = false`, so it brings no decoders of its own and symphonia
+(MP3 only) is the single decoder crate.
+
+**Written before it could be compiled:** `gpu/audio/src/lib.rs` (and `gpu/src/lib.rs`) were written against the crates' documented APIs and have never
+been built; expect to fix compile errors after the fetch.
