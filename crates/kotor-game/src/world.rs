@@ -375,6 +375,11 @@ impl World {
         id
     }
 
+    /// Create an item from a UTI template, not yet carried by anyone.
+    pub fn spawn_item(&mut self, template: &str) -> ObjId {
+        self.spawn(Kind::Item, template, ResType(2025), [0.0; 3])
+    }
+
     pub(crate) fn add(&mut self, kind: Kind, tag: &str) -> ObjId {
         let id = self.next_id;
         self.next_id += 1;
