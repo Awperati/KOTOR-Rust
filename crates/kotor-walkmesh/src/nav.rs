@@ -182,6 +182,13 @@ impl NavMesh {
         best
     }
 
+    /// Like `height_at`, but only where a character may stand: `None` on a blocked face.
+    pub fn walkable_at(&self, x: f32, y: f32, max_z: f32) -> Option<f32> {
+        self.locate(x, y, max_z)
+            .filter(|(i, _)| self.blocked[*i] == 0)
+            .map(|(_, z)| z)
+    }
+
     /// Height of the floor under `(x, y)` at or below `max_z`.
     pub fn height_at(&self, x: f32, y: f32, max_z: f32) -> Option<f32> {
         self.locate(x, y, max_z).map(|(_, z)| z)

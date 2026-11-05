@@ -23,6 +23,8 @@ const DRAW_RANGE: f32 = 45.0;
 const FIRST_STUNT_ANIMATION: u32 = 1200;
 /// The follow camera: metres behind the player and above its feet, and the height it looks at. As `render_walk`.
 const CAMERA_FOV: f32 = 55.0;
+/// Metres within which the E key finds something to use.
+const USE_REACH: f32 = 2.5;
 const CAMERA_BEHIND: f32 = 3.3;
 const CAMERA_ABOVE: f32 = 1.7;
 const CAMERA_LOOKS_AT: f32 = 1.2;
@@ -128,8 +130,15 @@ pub struct Stage {
     /// Camera direction in radians (0 = looking along +x) and distance behind the player.
     pub yaw: f32,
     pub distance: f32,
-    /// Degrees of `Q`/`E` turning asked for this frame, per second.
+    /// Degrees of camera turning asked for this frame, per second.
     pub turn: f32,
+    /// Camera height angle in radians, above the level of the chest.
+    pub pitch: f32,
+    /// WASD this frame: forward and rightward, each -1, 0 or 1, and whether to walk instead of run.
+    pub steer: (f32, f32, bool),
+    hover_reply: usize,
+    hover_target: Option<ObjId>,
+    ui_width: u32,
     overlay: Option<Image>,
     overlay_key: String,
     /// Goes up whenever the overlay changes.
@@ -193,6 +202,11 @@ impl Stage {
             yaw: 0.0,
             distance: CAMERA_BEHIND,
             turn: 0.0,
+            pitch: ((CAMERA_ABOVE - CAMERA_LOOKS_AT) / CAMERA_BEHIND).atan(),
+            steer: (0.0, 0.0, false),
+            hover_reply: 0,
+            hover_target: None,
+            ui_width: 853,
             overlay: None,
             overlay_key: String::new(),
             overlay_version: 0,
@@ -267,6 +281,11 @@ impl Stage {
 
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
+        let (ahead, right, walk) = self.steer;
+        let (cos, sin) = (self.yaw.cos(), self.yaw.sin());
+        let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
+        let len = dir[0].hypot(dir[1]);
+        self.game.world.steer = (len > 0.01).then(|| ([dir[0] / len, dir[1] / len], !walk));
         self.game.advance(dt);
         if self.game.world.module != self.module {
             if let Err(e) = self.enter_module() {
@@ -320,6 +339,7 @@ impl Stage {
                 None => Cue::StopVoice,
             });
             self.beat = self.game.world.dialogue_beat();
+            self.face_speaker();
             self.beat_time = 0.0;
             if let Some(c) = self.game.world.dialogue_conversation() {
                 self.camera_model = c.camera_model;
@@ -393,6 +413,48 @@ impl Stage {
         }
     }
 
+    /// A close shot of whoever owns the conversation, from the player's side.
+    ///
+    /// **Assumption:** this stands in for the game's dialogue camera angles, whose codes are not modelled. A script may
+    /// start a talk from metres away (Trask's first talk is from 7.5 m), and this keeps the speaker in shot.
+    fn speaker_camera(&self) -> Option<Camera> {
+        let w = &self.game.world;
+        let o = w.object(w.dialogue_owner()?)?;
+        if o.kind != Kind::Creature || o.id == w.pc {
+            return None;
+        }
+        let (at, here) = (o.position, self.pc_position());
+        let (dx, dy) = (here[0] - at[0], here[1] - at[1]);
+        let len = dx.hypot(dy).max(0.01);
+        let (dx, dy) = (dx / len, dy / len);
+        Some(Camera {
+            eye: [
+                at[0] + dx * 1.3 - dy * 0.35,
+                at[1] + dy * 1.3 + dx * 0.35,
+                at[2] + 1.6,
+            ],
+            target: [at[0], at[1], at[2] + 1.5],
+            fov: 40.0,
+        })
+    }
+
+    /// Speaker and player turn to each other.
+    fn face_speaker(&mut self) {
+        let w = &self.game.world;
+        let pc = w.pc;
+        let Some(owner) = w.dialogue_owner().filter(|o| *o != pc) else {
+            return;
+        };
+        let is_creature = w.object(owner).is_some_and(|o| o.kind == Kind::Creature);
+        let at = w.object(owner).map_or([0.0; 3], |o| o.position);
+        let here = self.pc_position();
+        let to_speaker = (at[1] - here[1]).atan2(at[0] - here[0]);
+        self.game.face(pc, to_speaker);
+        if is_creature {
+            self.game.face(owner, to_speaker + std::f32::consts::PI);
+        }
+    }
+
     /// The pose a creature's cutscene stunt puts it in this beat.
     fn stunt_pose(&self, id: ObjId) -> Option<kotor_model::Pose> {
         let w = &self.game.world;
@@ -440,17 +502,22 @@ impl Stage {
 
     /// The camera behind the player, drawn in where the floor ends so that it stays on this side of the walls.
     pub fn camera(&self) -> Camera {
-        if let Some(c) = self.beat_camera() {
+        if let Some(c) = self.beat_camera().or_else(|| self.speaker_camera()) {
             return c;
         }
         let p = self.pc_position();
         let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
+        let (flat, up) = (self.pitch.cos(), self.pitch.sin());
         let mut d = 0.8;
         if let Some(f) = &self.floor {
             while d < self.distance
-                && f.height(p[0] - dx * (d + 0.3), p[1] - dy * (d + 0.3), p[2] + 1.0)
-                    .is_some()
+                && f.height(
+                    p[0] - dx * flat * (d + 0.3),
+                    p[1] - dy * flat * (d + 0.3),
+                    p[2] + 1.0,
+                )
+                .is_some()
             {
                 d += 0.1;
             }
@@ -459,37 +526,116 @@ impl Stage {
         }
         Camera {
             eye: [
-                p[0] - dx * d,
-                p[1] - dy * d,
-                p[2] + CAMERA_LOOKS_AT + (CAMERA_ABOVE - CAMERA_LOOKS_AT) * d / CAMERA_BEHIND,
+                p[0] - dx * flat * d,
+                p[1] - dy * flat * d,
+                p[2] + CAMERA_LOOKS_AT + up * d,
             ],
             target,
             fov: CAMERA_FOV,
         }
     }
 
-    /// A left click at `pixel` of a window of `size`: acknowledge a line, or use what is under the cursor, or walk.
-    pub fn click(&mut self, pixel: (f32, f32), size: (u32, u32)) {
-        if self.game.world.in_dialogue() {
-            self.continue_line();
+    /// Drag with the right button: turn the camera round the player and tilt it.
+    pub fn look(&mut self, dx: f32, dy: f32) {
+        self.yaw -= dx * 0.005;
+        self.pitch = (self.pitch + dy * 0.004).clamp(-0.2, 1.2);
+    }
+
+    /// What the replies on screen are, in the conversation or the open container.
+    fn choice_view(&self) -> Option<DialogueView> {
+        let w = &self.game.world;
+        if let Some((speaker, subtitle, _, replies)) = w.dialogue_view() {
+            return Some(DialogueView {
+                speaker,
+                subtitle,
+                replies,
+                selected: self.hover_reply,
+            });
+        }
+        let id = w.opened?;
+        let mut replies: Vec<String> = w.container_items().into_iter().map(|i| i.1).collect();
+        if !replies.is_empty() {
+            replies.push("Take everything".to_string());
+        }
+        replies.push("Close".to_string());
+        Some(DialogueView {
+            speaker: w.object(id).map(|o| o.name.clone()).unwrap_or_default(),
+            subtitle: String::new(),
+            replies,
+            selected: self.hover_reply,
+        })
+    }
+
+    /// The row of the choice list under a pixel.
+    fn reply_at(&mut self, pixel: (f32, f32), size: (u32, u32)) -> Option<usize> {
+        let view = self.choice_view()?;
+        if view.replies.is_empty() || size.0 == 0 || size.1 == 0 {
+            return None;
+        }
+        let rows = self.ui.reply_rows(&view)?;
+        let x = pixel.0 * self.ui_width as f32 / size.0 as f32;
+        let y = pixel.1 * 480.0 / size.1 as f32;
+        rows.iter().position(|r| {
+            x >= r[0] as f32
+                && x < (r[0] + r[2]) as f32
+                && y >= r[1] as f32
+                && y < (r[1] + r[3]) as f32
+        })
+    }
+
+    /// The cursor moved: light the reply under it, or name what is under it.
+    pub fn hover(&mut self, pixel: (f32, f32), size: (u32, u32)) {
+        if self.choice_view().is_some() {
+            if let Some(i) = self.reply_at(pixel, size) {
+                self.hover_reply = i;
+            }
             return;
         }
         let cam = self.camera();
         let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
+        self.hover_target = self.game.world.pick(o, d);
+    }
+
+    /// Use a thing: an enemy is attacked, anything else is walked to and talked to, opened or used.
+    fn use_thing(&mut self, id: ObjId) {
         let pc = self.game.world.pc;
-        if let Some(id) = self.game.world.pick(o, d) {
-            let w = &mut self.game.world;
-            let enemy = w.object(id).is_some_and(|t| t.kind == Kind::Creature)
-                && w.reputation(pc, id) <= 10;
-            if enemy {
-                w.attack(pc, id);
-                let at = w.object(id).map(|t| t.position);
-                if let Some(at) = at {
-                    w.walk_to(at);
-                }
-            } else {
-                w.click(id);
+        let w = &mut self.game.world;
+        let enemy =
+            w.object(id).is_some_and(|t| t.kind == Kind::Creature) && w.reputation(pc, id) <= 10;
+        if enemy {
+            w.attack(pc, id);
+            let at = w.object(id).map(|t| t.position);
+            if let Some(at) = at {
+                w.walk_to(at);
             }
+        } else {
+            w.click(id);
+        }
+    }
+
+    /// The E key: use the nearest thing in reach.
+    pub fn interact(&mut self) {
+        if self.choice_view().is_some() {
+            return;
+        }
+        if let Some(id) = self.game.world.nearest_usable(USE_REACH) {
+            self.use_thing(id);
+        }
+    }
+
+    /// A left click at `pixel` of a window of `size`: acknowledge a line, or use what is under the cursor, or walk.
+    pub fn click(&mut self, pixel: (f32, f32), size: (u32, u32)) {
+        if self.choice_view().is_some() {
+            match self.reply_at(pixel, size) {
+                Some(i) => self.number_key(i + 1),
+                None => self.continue_line(),
+            }
+            return;
+        }
+        let cam = self.camera();
+        let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
+        if let Some(id) = self.game.world.pick(o, d) {
+            self.use_thing(id);
             return;
         }
         if let Some(p) = self.floor_under_ray(o, d) {
@@ -510,6 +656,20 @@ impl Stage {
 
     /// Key `n` (1-9): take that reply.
     pub fn number_key(&mut self, n: usize) {
+        self.hover_reply = 0;
+        if !self.game.world.in_dialogue() && self.game.world.opened.is_some() {
+            let items = self.game.world.container_items();
+            if n >= 1 && n <= items.len() {
+                self.game.world.take_item(items[n - 1].0);
+            } else if n == items.len() + 1 && !items.is_empty() {
+                for (i, _) in items {
+                    self.game.world.take_item(i);
+                }
+            } else if n >= 1 && n <= items.len() + 2 {
+                self.game.world.opened = None;
+            }
+            return;
+        }
         let count = self
             .game
             .world
@@ -523,6 +683,10 @@ impl Stage {
 
     /// Space or a click: finish a line that has no replies.
     pub fn continue_line(&mut self) {
+        if !self.game.world.in_dialogue() {
+            self.game.world.opened = None;
+            return;
+        }
         let waiting = self
             .game
             .world
@@ -685,12 +849,17 @@ impl Stage {
     }
 
     fn refresh_overlay(&mut self) {
-        let view = self.game.world.dialogue_view();
+        let view = self.choice_view();
         let party = self.party_view();
+        let target = self.target_view();
+        let cut = self.beat_camera().is_some();
         let key = match &view {
-            Some(v) => format!("{}d{v:?}{}", self.module, self.beat_camera().is_some()),
+            Some(v) => format!(
+                "{}d{:?}{:?}{}{}{cut}",
+                self.module, v.speaker, v.replies, v.subtitle, v.selected
+            ),
             None => format!(
-                "{}h{:?}",
+                "{}h{:?}{target:?}{cut}",
                 self.module,
                 party
                     .iter()
@@ -704,20 +873,43 @@ impl Stage {
         self.overlay_key = key;
         self.overlay = match view {
             // A wordless beat: the scene alone.
-            Some((_, subtitle, _, replies)) if subtitle.trim().is_empty() && replies.is_empty() => {
+            Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
                 self.ui.blank_overlay()
             }
-            Some((speaker, subtitle, _, replies)) => self.ui.dialogue_overlay(&DialogueView {
-                speaker,
-                subtitle,
-                replies,
-                selected: usize::MAX,
-            }),
-            None => self.ui.hud_overlay(&party, None),
+            Some(v) => self.ui.dialogue_overlay(&v),
+            None => {
+                let t = target.as_ref();
+                self.ui.hud_overlay(
+                    &party,
+                    t.map(|t| (t.0.as_str(), t.1, t.2)),
+                    t.map_or("", |t| t.3),
+                )
+            }
         };
         let label = self.label();
         self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &label));
         self.overlay_version += 1;
+    }
+
+    /// The thing under the cursor, else the nearest in reach: name, hit points, and what using it does.
+    fn target_view(&self) -> Option<(String, i32, i32, &'static str)> {
+        let w = &self.game.world;
+        let id = self
+            .hover_target
+            .filter(|id| w.object(*id).is_some_and(|o| !o.dead))
+            .or_else(|| w.nearest_usable(USE_REACH))?;
+        let o = w.object(id)?;
+        let name = if o.name.is_empty() {
+            o.tag.clone()
+        } else {
+            o.name.clone()
+        };
+        Some(match o.kind {
+            Kind::Creature if w.reputation(w.pc, id) <= 10 => (name, o.hp, o.max_hp, "Attack"),
+            Kind::Creature => (name, o.hp, o.max_hp, "Talk"),
+            Kind::Door => (name, 1, 1, if o.open { "Close" } else { "Open" }),
+            _ => (name, 1, 1, "Use"),
+        })
     }
 
     fn party_view(&self) -> Vec<HudMember> {
@@ -768,6 +960,7 @@ impl Stage {
     /// The window's shape: the interface is laid out 480 units high and as wide as that makes it.
     pub fn set_view(&mut self, size: (u32, u32)) {
         if let Some(width) = (480 * size.0).checked_div(size.1) {
+            self.ui_width = width.max(640);
             self.ui.set_width(width);
             self.overlay_key.clear();
             self.refresh_overlay();

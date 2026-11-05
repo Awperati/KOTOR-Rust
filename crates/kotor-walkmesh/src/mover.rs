@@ -42,7 +42,7 @@ pub enum MoveStatus {
 }
 
 /// Position, heading and route of one character on a [`NavMesh`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Mover {
     pub pos: [f32; 3],
     /// Radians, 0 = +x, counter-clockwise.

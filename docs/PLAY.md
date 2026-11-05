@@ -10,11 +10,13 @@ The window opens only on DISPLAY2, and never takes focus by itself: click it to 
 
 | Input | What it does |
 |---|---|
+| W A S D | run in that direction, relative to the camera; Shift walks |
+| Right button drag, or the arrow keys | turn the camera round the player |
 | Left click on the floor | walk there |
 | Left click on a creature, door or placeable | walk up and talk, open or use; an enemy is attacked |
-| 1-9 | take that reply |
-| Space, Enter or a click | end a line that has no replies (it also ends by itself) |
-| Q/E or the arrow keys | turn the camera |
+| E | use the nearest thing within 2.5 m |
+| Left click on a reply, or 1-9 | take that reply, or take an item from a container |
+| Space or Enter | end a line, or close a container |
 | Wheel | zoom |
 | Esc | quit |
 
@@ -39,6 +41,11 @@ GUI files lay out 640x480. The interface is drawn 480 units high and as wide as 
 - Combat clips: `weaponwield` in `baseitems.2da` picks the digit in the clip name (1, 2, 3 as they are; pistol 5, rifle 7, heavy 9; no weapon 8), read from the clip names. `b<n>a1` fires, `c<n>a1` swings a one-handed or double weapon, `g<n>a1` swings anything else, `g<n>g1` is a flinch, `g<n>d1` a dodge and `g<n>r1` the ready stance. Only the first of each is used. All of it is unchecked against the game.
 - A fixed area camera's `Orientation` is (w, x, y, z), and with no turn it looks along +y.
 - Cutscene `Angle` codes are not modelled: those beats use the follow camera turned to the speaker.
+
+- A speaker runs up to the listener before a conversation starts, unless the script says to talk from where it stands. Trask's first talk is one that does (`k_pend_cut09`, from 7.5 m).
+- In a conversation the camera shows the owner close up, 1.3 m in front of them. It stands in for the game's dialogue camera angles, which are not modelled.
+- Creatures walk where scripts send them, and open doors that are not locked on the way, with no collision. Their speed and the rule that a queued action waits for arrival are assumed.
+- The `hairalpha` mesh of player heads is not drawn: its texture has no alpha, and solid it lays spikes over the face.
 
 ## Measured
 - A camera model's `camerahook` and a stunt's animation are in world space, and the hook looks along its local -z: in the opening's 18 shots the stunt's head lies at -0.91 to -1.00 along that axis.

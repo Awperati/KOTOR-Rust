@@ -20,6 +20,8 @@ pub struct Ui<'a> {
     inst: &'a mut Install,
     /// Width of the layout space: 640, or more on a wider screen (the height stays 480).
     width: u32,
+    /// What the left mouse button would do to the target, shown under its name.
+    action: String,
     textures: HashMap<String, Option<Image>>,
     fonts: HashMap<String, Option<Font>>,
 }
@@ -60,6 +62,7 @@ impl<'a> Ui<'a> {
         Ui {
             inst,
             width: SCREEN.0,
+            action: String::new(),
             textures: HashMap::new(),
             fonts: HashMap::new(),
         }
@@ -368,6 +371,29 @@ impl<'a> Ui<'a> {
         Some(cv.into_image())
     }
 
+    /// Where each reply of `view` is drawn, in layout units: x, y, width, height. Same rows as `dialogue_box`.
+    pub fn reply_rows(&mut self, view: &DialogueView) -> Option<Vec<[i32; 4]>> {
+        let gui = self.gui("dialog")?;
+        let p = &gui.panel;
+        let list = gui.find("LB_REPLIES")?;
+        let proto = list.proto_item.as_ref()?;
+        let t = proto.text.as_ref()?;
+        let width = proto.extent.width + (self.width - SCREEN.0) as i32;
+        let f = self.font(&t.font)?.clone();
+        let (lx, mut y) = (
+            p.extent.left + list.extent.left,
+            p.extent.top + list.extent.top,
+        );
+        let mut out = Vec::new();
+        for (i, s) in view.replies.iter().enumerate() {
+            let lines = f.wrap(&format!("{}. {s}", i + 1), width).len() as i32;
+            let h = lines * f.line_height;
+            out.push([lx + proto.extent.left, y, width, h + list.padding]);
+            y += h + list.padding;
+        }
+        Some(out)
+    }
+
     /// Nothing at all, the size of the other overlays.
     pub fn blank_overlay(&mut self) -> Option<Image> {
         Some(Canvas::new(self.width, SCREEN.1).into_image())
@@ -403,7 +429,9 @@ impl<'a> Ui<'a> {
         &mut self,
         party: &[HudMember],
         target: Option<(&str, i32, i32)>,
+        action: &str,
     ) -> Option<Image> {
+        self.action = action.to_string();
         self.hud_on(party, target, [0, 0, 0, 0])
     }
 
@@ -493,6 +521,7 @@ impl<'a> Ui<'a> {
         }
         if clear[3] == 0 {
             // Over a live scene, only what is in use: no target yet, so no action slots; no notices to show.
+            let shown_with_target = ["LBL_ACTIONDESC", "LBL_INDICATE"];
             let idle = [
                 "LBL_JOURNAL",
                 "LBL_CASH",
@@ -512,6 +541,7 @@ impl<'a> Ui<'a> {
             let mut hide: Vec<String> = all_tags(&gui.panel)
                 .into_iter()
                 .filter(|t| idle.iter().any(|p| t.starts_with(p)))
+                .filter(|t| target.is_none() || !shown_with_target.iter().any(|p| t.starts_with(p)))
                 .collect();
             for n in party.len() + 1..=3 {
                 hide.push(format!("LBL_BACK{n}"));
@@ -524,6 +554,15 @@ impl<'a> Ui<'a> {
                     tag,
                     Patch {
                         hidden: true,
+                        ..Patch::default()
+                    },
+                );
+            }
+            if target.is_some() {
+                patches.insert(
+                    "LBL_ACTIONDESC".to_string(),
+                    Patch {
+                        text: Some(self.action.clone()),
                         ..Patch::default()
                     },
                 );

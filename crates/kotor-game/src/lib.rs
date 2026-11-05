@@ -29,7 +29,7 @@ pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEM
 pub use game::{Clip, Game, Pose};
 pub use host::RoutineStatus;
 pub use play::{
-    pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, TALK_RANGE, USE_RANGE,
+    pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,
 };
 pub use rules::{save_passes, skill_passes, Check, LevelUp, Save};
 pub use save::SAVE_VERSION;

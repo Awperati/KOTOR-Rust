@@ -9,8 +9,9 @@
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
 //!
-//! Left click: walk, or use what is under the cursor; a click or Space ends a line. 1-9: take a reply.
-//! Q/E or the arrow keys: turn the camera. Wheel: zoom. Esc: quit.
+//! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
+//! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
+//! Space: end a line, or close a container. Wheel: zoom. Esc: quit.
 use kotor_audio::Audio;
 use kotor_audio_out::{decode_any, AudioOut};
 use kotor_gpu::stage::{Cue, Stage};
@@ -106,6 +107,8 @@ struct App {
     last: std::time::Instant,
     cursor: (f32, f32),
     turning: f32,
+    keys: [bool; 5],
+    looking: bool,
     state: Option<State>,
     failed: Option<String>,
 }
@@ -169,6 +172,12 @@ impl App {
         let dt = (now - self.last).as_secs_f32();
         self.last = now;
         self.stage.turn = self.turning;
+        let axis = |a: bool, b: bool| a as i32 as f32 - b as i32 as f32;
+        self.stage.steer = (
+            axis(self.keys[0], self.keys[1]),
+            axis(self.keys[3], self.keys[2]),
+            self.keys[4],
+        );
         for c in self.stage.update(dt) {
             self.sound.cue(c);
         }
@@ -217,10 +226,16 @@ impl App {
             _ => 0,
         };
         match code {
-            KeyCode::KeyQ | KeyCode::ArrowLeft => {
+            KeyCode::KeyW => self.keys[0] = pressed,
+            KeyCode::KeyS => self.keys[1] = pressed,
+            KeyCode::KeyA => self.keys[2] = pressed,
+            KeyCode::KeyD => self.keys[3] = pressed,
+            KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys[4] = pressed,
+            KeyCode::KeyE if pressed => self.stage.interact(),
+            KeyCode::ArrowLeft => {
                 self.turning = if pressed { TURN_SPEED } else { 0.0 };
             }
-            KeyCode::KeyE | KeyCode::ArrowRight => {
+            KeyCode::ArrowRight => {
                 self.turning = if pressed { -TURN_SPEED } else { 0.0 };
             }
             KeyCode::Escape if pressed => el.exit(),
@@ -255,7 +270,25 @@ impl ApplicationHandler for App {
                 self.stage.set_view((s.width, s.height));
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.cursor = (position.x as f32, position.y as f32);
+                let now = (position.x as f32, position.y as f32);
+                if self.looking {
+                    self.stage
+                        .look(now.0 - self.cursor.0, now.1 - self.cursor.1);
+                } else if let Some(st) = &self.state {
+                    let z = st.window.inner_size();
+                    self.stage.hover(now, (z.width, z.height));
+                }
+                self.cursor = now;
+            }
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Right,
+                ..
+            } => self.looking = state == ElementState::Pressed,
+            WindowEvent::Focused(false) => {
+                self.keys = [false; 5];
+                self.looking = false;
+                self.turning = 0.0;
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -263,8 +296,8 @@ impl ApplicationHandler for App {
                 ..
             } => {
                 if let Some(st) = &self.state {
-                    let s = st.window.inner_size();
-                    self.stage.click(self.cursor, (s.width, s.height));
+                    let z = st.window.inner_size();
+                    self.stage.click(self.cursor, (z.width, z.height));
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -344,6 +377,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last: std::time::Instant::now(),
         cursor: (0.0, 0.0),
         turning: 0.0,
+        keys: [false; 5],
+        looking: false,
         state: None,
         failed: None,
     };

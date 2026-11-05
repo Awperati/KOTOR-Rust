@@ -1658,6 +1658,40 @@ impl Host for Adapter<'_> {
                     Action::StartConversation {
                         target,
                         dialogue: string(args, 1),
+                        // bIgnoreStartRange, the fifth argument.
+                        anywhere: matches!(args.get(4), Some(Value::Int(i)) if *i != 0),
+                    },
+                );
+                None
+            }
+            "ActionMoveToObject"
+            | "ActionForceMoveToObject"
+            | "ActionMoveToLocation"
+            | "ActionForceMoveToLocation"
+                if self.world.interactive_dialogue =>
+            {
+                self.record(name, args);
+                let run = args
+                    .get(1)
+                    .is_some_and(|v| matches!(v, Value::Int(i) if *i != 0));
+                let (target, to, range) = if name.ends_with("Object") {
+                    let range = match args.get(2) {
+                        Some(Value::Float(f)) => *f,
+                        _ => 1.0,
+                    };
+                    (Some(self.obj(caller, args, 0)), [0.0; 3], range)
+                } else {
+                    let at = self.location(args.first()).map_or([0.0; 3], |l| l.0);
+                    (None, at, 0.2)
+                };
+                self.world.queue(
+                    caller,
+                    Action::MoveTo {
+                        target,
+                        to,
+                        range,
+                        run,
+                        walker: None,
                     },
                 );
                 None

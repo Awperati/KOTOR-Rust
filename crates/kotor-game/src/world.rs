@@ -39,6 +39,8 @@ pub enum Action {
     StartConversation {
         target: ObjId,
         dialogue: String,
+        /// Talk from where the speaker stands, instead of walking up first.
+        anywhere: bool,
     },
     /// Accepted and recorded, no effect on the headless world (animations, movement, ...).
     Recorded(String),
@@ -46,6 +48,15 @@ pub enum Action {
     CloseDoor(ObjId),
     /// Move to a position at once (`ActionJumpToLocation`).
     Jump([f32; 3]),
+    /// Walk there, and finish only on arrival, so the actions behind it wait (`ActionMoveToObject` and friends, in a
+    /// live world).
+    MoveTo {
+        target: Option<ObjId>,
+        to: [f32; 3],
+        range: f32,
+        run: bool,
+        walker: Option<Mover>,
+    },
     /// Start attacking an object (`ActionAttack`).
     Attack(ObjId),
     /// Cast a Force power at an object.
@@ -302,6 +313,11 @@ pub struct World {
     pub game_over: bool,
     /// Conversations wait for the player instead of running to the end (see `World::dialogue_view`).
     pub interactive_dialogue: bool,
+    /// The direction the player is being steered this step, and whether at a run.
+    pub steer: Option<([f32; 2], bool)>,
+    /// The container the player has open.
+    pub opened: Option<ObjId>,
+    pub(crate) filled: std::collections::HashSet<ObjId>,
     pub(crate) conv: Option<crate::dialogue::ConvRun>,
     /// Party credits (`GetGold`).
     pub gold: i32,
@@ -437,6 +453,9 @@ impl World {
             effect_expiry: HashMap::new(),
             game_over: false,
             interactive_dialogue: false,
+            steer: None,
+            opened: None,
+            filled: std::collections::HashSet::new(),
             conv: None,
             gold: 0,
             tokens: HashMap::new(),
@@ -876,6 +895,15 @@ impl World {
                             o.actions.pop_front();
                         }
                     }
+                    Action::MoveTo { .. } => {
+                        if !self.step_move(id, budget) {
+                            break;
+                        }
+                        budget = 0.0;
+                        if let Some(o) = self.objects.get_mut(&id) {
+                            o.actions.pop_front();
+                        }
+                    }
                     _ => {
                         let a = self
                             .objects
@@ -892,7 +920,7 @@ impl World {
 
     fn perform(&mut self, id: ObjId, a: Action) {
         match a {
-            Action::Wait(_) => {}
+            Action::Wait(_) | Action::MoveTo { .. } => {}
             Action::OpenDoor(d) => {
                 self.open_door(d);
             }
@@ -913,7 +941,37 @@ impl World {
             Action::DoCommand { script, state } => {
                 let _ = self.run_saved(&script, &state, id);
             }
-            Action::StartConversation { target, dialogue } => {
+            Action::StartConversation {
+                target,
+                dialogue,
+                anywhere,
+            } => {
+                let far = match (self.objects.get(&id), self.objects.get(&target)) {
+                    (Some(a), Some(b)) => {
+                        a.kind == Kind::Creature
+                            && crate::follow::dist2d(a.position, b.position)
+                                > crate::play::TALK_RANGE
+                    }
+                    _ => false,
+                };
+                if self.interactive_dialogue && !anywhere && far {
+                    // **Assumption:** a speaker runs up to the listener first, so the talk behind this waits for it.
+                    if let Some(o) = self.objects.get_mut(&id) {
+                        o.actions.push_front(Action::StartConversation {
+                            target,
+                            dialogue,
+                            anywhere: true,
+                        });
+                        o.actions.push_front(Action::MoveTo {
+                            target: Some(target),
+                            to: [0.0; 3],
+                            range: crate::play::TALK_RANGE,
+                            run: true,
+                            walker: None,
+                        });
+                    }
+                    return;
+                }
                 let _ = self.converse(id, target, &dialogue, &mut crate::FirstReply);
             }
         }

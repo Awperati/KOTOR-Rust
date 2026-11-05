@@ -105,11 +105,14 @@ impl Game {
                 (o.position, o.dead || o.down)
             };
             let mut moved = false;
+            let mut ran = false;
             if let Some(l) = self.last_pos.insert(id, pos) {
                 let (dx, dy) = (pos[0] - l[0], pos[1] - l[1]);
                 let d = (dx * dx + dy * dy).sqrt();
                 if d > 0.002 && d < 1.0 {
                     moved = true;
+                    // A walk covers about 0.03 m in a step of a sixtieth of a second, a run about 0.07 m.
+                    ran = d / self.dt > 2.5;
                     self.headings.insert(id, dy.atan2(dx));
                 }
             }
@@ -130,6 +133,8 @@ impl Game {
                 "die"
             } else if let Some(o) = once {
                 o
+            } else if ran {
+                "run"
             } else if moved || (id == pc && (walking || self.world.pc_walking())) {
                 "walk"
             } else {
@@ -219,6 +224,14 @@ impl Game {
             _ => 8,
         };
         (stance as i32, ranged)
+    }
+
+    /// Turn a creature to face an angle in radians; it keeps it until it moves.
+    pub fn face(&mut self, id: ObjId, angle: f32) {
+        self.headings.insert(id, angle);
+        if id == self.world.pc {
+            self.world.pc_mover.heading = angle;
+        }
     }
 
     /// The clip an object is playing right now.

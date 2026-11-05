@@ -1,11 +1,11 @@
-﻿//! Interaction and movement on top of the world: picking, click-to-walk, doors, triggers, module
+//! Interaction and movement on top of the world: picking, click-to-walk, doors, triggers, module
 //! transitions and the per-step update.
 
 use crate::follow::{dist2d, trim_route};
 use crate::world::{DoorState, Kind, ObjId, Object, World};
 use kotor_core::{Error, ResType, Result};
 use kotor_script::OBJECT_INVALID;
-use kotor_walkmesh::{parse_bwm, parse_lyt, Bwm, MoveStatus, NavMesh};
+use kotor_walkmesh::{parse_bwm, parse_lyt, Bwm, MoveParams, MoveStatus, Mover, NavMesh};
 use std::collections::HashSet;
 
 /// Radius of the navigation block a closed door puts around itself (metres). A doorway is about two metres wide.
@@ -16,6 +16,11 @@ pub const DOOR_RANGE: f32 = 1.6;
 pub const DOOR_ANIM_SECONDS: f32 = 1.0;
 pub const TALK_RANGE: f32 = 1.8;
 pub const USE_RANGE: f32 = 1.6;
+/// Running speed: `rundist` of a human body in `appearance.2da`, per second (an assumption, as for walking).
+pub const RUN_SPEED: f32 = 3.96;
+/// When steered, the player keeps this far from the edge of the walkmesh, so that it does not stand in a wall.
+const STEER_CLEARANCE: f32 = 0.3;
+const STEER_TURN_RATE: f32 = 12.0;
 
 /// Ray from a camera through a pixel: `(origin, unit direction)`. The camera looks from `eye` to `target`
 /// with Z up and a vertical field of view of `fov_deg`; `(px, py)` is measured from the top-left.
@@ -224,6 +229,9 @@ impl World {
                 if let Some(s) = script {
                     let _ = self.run_script(&s, target);
                 }
+                if self.interactive_dialogue && self.fill_container(target) {
+                    self.opened = Some(target);
+                }
                 if !conv.is_empty() {
                     let pc = self.pc;
                     let _ = self.converse(target, pc, "", &mut crate::FirstReply);
@@ -409,8 +417,18 @@ impl World {
         self.tick(dt);
         self.update_doors(dt);
         let before = self.pc_mover.pos;
-        let status = match self.nav.as_ref() {
-            Some(nav) if self.pc_mover.has_route() => {
+        let status = match (
+            self.nav.as_ref(),
+            self.steer.filter(|_| self.conv.is_none()),
+        ) {
+            (Some(_), Some((dir, run))) => {
+                self.pc_mover.stop();
+                self.pending = None;
+                self.opened = None;
+                self.steer_pc(dir, run, dt);
+                MoveStatus::Idle
+            }
+            (Some(nav), None) if self.pc_mover.has_route() => {
                 self.pc_mover.step(nav, &self.move_params, dt)
             }
             _ => MoveStatus::Idle,
@@ -434,6 +452,233 @@ impl World {
             if let Err(e) = self.transition(&module, &wp) {
                 self.errors.push(format!("transition to {module}: {e}"));
             }
+        }
+    }
+
+    /// Move the player along `dir` (a unit vector), sliding along walls and closed doors, and turn to face it.
+    fn steer_pc(&mut self, dir: [f32; 2], run: bool, dt: f32) {
+        let Some(nav) = self.nav.as_ref() else {
+            return;
+        };
+        let p = self.pc_mover.pos;
+        let go = if run {
+            RUN_SPEED
+        } else {
+            self.move_params.speed
+        } * dt;
+        let open = |d: [f32; 2]| -> Option<[f32; 3]> {
+            let (x, y) = (p[0] + d[0] * go, p[1] + d[1] * go);
+            let len = d[0].hypot(d[1]).max(1e-6);
+            nav.walkable_at(
+                x + d[0] / len * STEER_CLEARANCE,
+                y + d[1] / len * STEER_CLEARANCE,
+                p[2] + 0.6,
+            )?;
+            Some([x, y, nav.walkable_at(x, y, p[2] + 0.6)?])
+        };
+        if let Some(q) = open(dir)
+            .or_else(|| open([dir[0], 0.0]))
+            .or_else(|| open([0.0, dir[1]]))
+        {
+            self.pc_mover.pos = q;
+        }
+        let tau = std::f32::consts::TAU;
+        let h = self.pc_mover.heading;
+        let err = (dir[1].atan2(dir[0]) - h + tau * 1.5).rem_euclid(tau) - tau / 2.0;
+        let most = STEER_TURN_RATE * dt;
+        self.pc_mover.heading = h + err.clamp(-most, most);
+    }
+
+    /// One step of the `MoveTo` at the head of an object's queue. Returns whether it is finished.
+    pub(crate) fn step_move(&mut self, id: ObjId, dt: f32) -> bool {
+        let Some(o) = self.objects.get(&id) else {
+            return true;
+        };
+        let pos = o.position;
+        let facing = o.facing.to_radians();
+        let Some(crate::world::Action::MoveTo {
+            target,
+            to,
+            range,
+            run,
+            walker,
+        }) = o.actions.front().cloned()
+        else {
+            return true;
+        };
+        let mut mover = match walker {
+            Some(m) => m,
+            None => {
+                let goal = target
+                    .and_then(|t| self.objects.get(&t))
+                    .map_or(to, |t| t.position);
+                if dist2d(pos, goal) <= range {
+                    return true;
+                }
+                let Some(route) = self.route_through_doors(pos, goal) else {
+                    self.events
+                        .push(format!("{} has no way there", self.describe(id)));
+                    return true;
+                };
+                let route = trim_route(route, range);
+                if route.len() < 2 {
+                    return true;
+                }
+                let mut m = Mover::new(pos, facing);
+                m.follow(route);
+                m
+            }
+        };
+        self.open_doors_near(pos);
+        let params = MoveParams {
+            speed: if run {
+                RUN_SPEED
+            } else {
+                self.move_params.speed
+            },
+            ..self.move_params
+        };
+        let Some(nav) = self.nav.as_ref() else {
+            return true;
+        };
+        let status = mover.step(nav, &params, dt);
+        let now = mover.pos;
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.position = now;
+            o.facing = mover.heading.to_degrees();
+        }
+        if id == self.pc {
+            self.pc_mover.pos = now;
+            self.pc_mover.heading = mover.heading;
+        }
+        if matches!(status, MoveStatus::Arrived | MoveStatus::Idle) {
+            return true;
+        }
+        if let Some(crate::world::Action::MoveTo { walker, .. }) = self
+            .objects
+            .get_mut(&id)
+            .and_then(|o| o.actions.front_mut())
+        {
+            *walker = Some(mover);
+        }
+        false
+    }
+
+    /// A route that may pass closed doors that are not locked; `open_doors_near` opens them on the way.
+    fn route_through_doors(&mut self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<[f32; 3]>> {
+        let doors: Vec<[f32; 3]> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Door && !o.open && !o.locked)
+            .map(|o| o.position)
+            .collect();
+        let nav = self.nav.as_mut()?;
+        for d in &doors {
+            nav.unblock_disc(*d, DOOR_BLOCK_RADIUS);
+        }
+        let route = nav.find_path(from, to);
+        for d in &doors {
+            nav.block_disc(*d, DOOR_BLOCK_RADIUS);
+        }
+        route
+    }
+
+    fn open_doors_near(&mut self, at: [f32; 3]) {
+        let near: Vec<ObjId> = self
+            .objects
+            .values()
+            .filter(|o| {
+                o.kind == Kind::Door
+                    && !o.open
+                    && !o.locked
+                    && o.link_module.is_empty()
+                    && dist2d(o.position, at) < DOOR_RANGE
+            })
+            .map(|o| o.id)
+            .collect();
+        for d in near {
+            self.open_door(d);
+        }
+    }
+
+    /// The nearest thing the player can use: creature, door or placeable within `reach` metres.
+    pub fn nearest_usable(&self, reach: f32) -> Option<ObjId> {
+        let here = self.objects.get(&self.pc)?.position;
+        self.objects
+            .values()
+            .filter(|o| {
+                matches!(o.kind, Kind::Creature | Kind::Door | Kind::Placeable)
+                    && o.id != self.pc
+                    && !o.dead
+                    && !o.party_member
+            })
+            .map(|o| (dist2d(o.position, here), o.id))
+            .filter(|(d, _)| *d <= reach)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, id)| id)
+    }
+
+    /// Fill a placeable from its template the first time it is opened, and say whether it holds things at all.
+    fn fill_container(&mut self, id: ObjId) -> bool {
+        let Some(template) = self.objects.get(&id).map(|o| o.template.clone()) else {
+            return false;
+        };
+        let utp = self
+            .inst
+            .read(&template, ResType(2044))
+            .ok()
+            .and_then(|b| kotor_gff::Gff::parse(&b).ok());
+        let has = utp
+            .as_ref()
+            .is_some_and(|g| g.root.int("HasInventory").is_some_and(|h| h != 0));
+        if self.filled.insert(id) {
+            let names: Vec<String> = utp
+                .as_ref()
+                .and_then(|g| g.root.list("ItemList"))
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|i| i.str("InventoryRes").map(str::to_string))
+                .collect();
+            for n in names {
+                let item = self.spawn_item(&n);
+                if let Some(o) = self.objects.get_mut(&id) {
+                    o.inventory.push(item);
+                }
+            }
+        }
+        has || self
+            .objects
+            .get(&id)
+            .is_some_and(|o| !o.inventory.is_empty())
+    }
+
+    /// The items in the open container: id and name.
+    pub fn container_items(&self) -> Vec<(ObjId, String)> {
+        let Some(c) = self.opened.and_then(|id| self.objects.get(&id)) else {
+            return Vec::new();
+        };
+        c.inventory
+            .iter()
+            .filter_map(|i| self.objects.get(i))
+            .map(|o| {
+                let name = if o.name.is_empty() {
+                    o.template.clone()
+                } else {
+                    o.name.clone()
+                };
+                (o.id, name)
+            })
+            .collect()
+    }
+
+    /// Move an item from the open container to the player.
+    pub fn take_item(&mut self, item: ObjId) {
+        let pc = self.pc;
+        if let Some(c) = self.opened.and_then(|id| self.objects.get_mut(&id)) {
+            c.inventory.retain(|i| *i != item);
+        }
+        if let Some(p) = self.objects.get_mut(&pc) {
+            p.inventory.push(item);
         }
     }
 

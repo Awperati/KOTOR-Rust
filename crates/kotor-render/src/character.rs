@@ -139,20 +139,15 @@ impl Rig {
                 find(&rest_mats, "head_g"),
                 find(&head_mats, "head_g"),
             ) {
-                (Some(mb), Some(mbr), Some(mh)) => {
+                (Some(mb), Some(_), Some(mh)) => {
+                    // Rigid: bending the head by the body's bones melts the face, because the facial bones are only in
+                    // the head's own skeleton.
                     let xf = mat_mul(&mb, &rigid_inverse(&mh));
-                    let xf_rest = mat_mul(&mbr, &rigid_inverse(&mh));
-                    let head_skin = SkinCtx::new(&rest_mats, &posed_mats, xf_rest);
-                    scene.add_model_with(
-                        head_m,
-                        None,
-                        &xf,
-                        &[],
-                        self.head_tex.as_deref(),
-                        Some(&head_skin),
-                    );
+                    scene.add_model_with(head_m, None, &xf, &[], self.head_tex.as_deref(), None);
                 }
                 _ => {
+                    // **Assumption:** `hairalpha` needs a transparency this renderer does not have: its texture has
+                    // no alpha, and drawn solid it lays spikes over the face.
                     if let (Some(posed), Some(mut turn)) =
                         (find(&posed_mats, "headhook"), find(&rest_mats, "headhook"))
                     {
@@ -164,7 +159,7 @@ impl Rig {
                             head_m,
                             None,
                             &xf,
-                            &[],
+                            &["hairalpha"],
                             self.head_tex.as_deref(),
                             None,
                         );
