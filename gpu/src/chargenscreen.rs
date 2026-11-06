@@ -41,6 +41,9 @@ const FIGURE_HOLES: [[f32; 4]; 6] = [
     [416.0, 131.0, 69.0, 187.0],
     [503.0, 131.0, 69.0, 187.0],
 ];
+/// How much more each side the chosen one has, as the file has the first slot and the video the one the mouse is on.
+const CHOSEN_GROWS: f32 = 10.0;
+const BUTTON_OVER_HOLE: f32 = 3.0;
 const SHEET_HOLE: [f32; 4] = [155.0, 89.0, 162.0, 186.0];
 /// The tag each attribute starts with, its place in the scores, and the talk table's words about it.
 const ATTRIBUTES: [(&str, usize, u32); 6] = [
@@ -179,6 +182,24 @@ impl Stage {
     pub(super) fn chargen_class_view(&mut self) -> MenuView {
         let mut v = MenuView::new("classsel");
         v.holes = FIGURES.iter().map(|f| f.1.to_string()).collect();
+        if let Some(Hit::Button(tag)) = &self.menus.hover {
+            if let Some(n) = FIGURES.iter().position(|f| f.0 == tag) {
+                self.menus.chargen_big = n;
+            }
+        }
+        for (n, (button, hole, _, _)) in FIGURES.iter().enumerate() {
+            let [x, y, w, h] = self.class_figure_hole(n);
+            let at = |grow: f32| {
+                [
+                    (x - grow) as i32,
+                    (y - grow) as i32,
+                    (w + 2.0 * grow) as i32,
+                    (h + 2.0 * grow) as i32,
+                ]
+            };
+            v.patches.entry(hole.to_string()).or_default().place = Some(at(0.0));
+            v.patches.entry(button.to_string()).or_default().place = Some(at(BUTTON_OVER_HOLE));
+        }
         let under = match &self.menus.hover {
             Some(Hit::Button(tag)) => FIGURES.iter().find(|f| f.0 == tag),
             _ => None,
@@ -205,6 +226,30 @@ impl Stage {
             }
         }
         v
+    }
+
+    /// A figure's hole: the file's first is big and the rest small, and the big one goes where the mouse has been.
+    fn class_figure_hole(&self, slot: usize) -> [f32; 4] {
+        let [x, _, w, _] = FIGURE_HOLES[slot];
+        let [_, small_y, small_w, small_h] = FIGURE_HOLES[1];
+        let (cx, grow) = (
+            x + w / 2.0,
+            if slot == self.menus.chargen_big {
+                CHOSEN_GROWS
+            } else {
+                0.0
+            },
+        );
+        [
+            cx - small_w / 2.0 - grow,
+            small_y - grow,
+            small_w + 2.0 * grow,
+            small_h + 2.0 * grow,
+        ]
+    }
+
+    fn figure_holes(&self) -> [[f32; 4]; 6] {
+        [0, 1, 2, 3, 4, 5].map(|n| self.class_figure_hole(n))
     }
 
     fn choose_figure(&mut self, slot: usize) {
@@ -747,7 +792,10 @@ impl Stage {
     /// The mist's model and where it goes, for the screen that is up.
     fn mist_places(&mut self) -> Option<(&'static str, Vec<[f32; 3]>)> {
         match self.top()? {
-            Screen::ChargenClass => Some((BODY_MIST, self.places_in_holes(&FIGURE_HOLES).0)),
+            Screen::ChargenClass => {
+                let holes = self.figure_holes();
+                Some((BODY_MIST, self.places_in_holes(&holes).0))
+            }
             Screen::ChargenMain => Some((BODY_MIST, self.places_in_holes(&[SHEET_HOLE]).0)),
             Screen::ChargenPortrait => {
                 let (_, camera) = self.chargen_scene()?;
@@ -833,7 +881,7 @@ impl Stage {
                     let portrait = self.figure_portrait(*gender, slot)?;
                     let body = BodySize::of_class(*class);
                     let look = self.game.world.portrait_appearance(portrait, body)?;
-                    figures.push((look, FIGURE_HOLES[slot]));
+                    figures.push((look, self.class_figure_hole(slot)));
                 }
                 Some(self.figures_in_holes(&figures))
             }

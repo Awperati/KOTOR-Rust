@@ -525,6 +525,10 @@ pub(super) struct Menus {
     pazaak: pazaakscreen::Pazaak,
     /// The galaxy map, once it has been up.
     galaxy: Option<galaxyscreen::Galaxy>,
+    /// Which figure is the big one on the first screen of making a character.
+    chargen_big: usize,
+    /// When a fight was last saved before, on the game's clock.
+    last_fight_save: Option<f32>,
     /// The words of the option the cursor last rested on.
     option_words: Option<u32>,
     /// Why that option is greyed.

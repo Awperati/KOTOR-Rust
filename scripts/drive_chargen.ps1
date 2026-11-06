@@ -28,6 +28,12 @@ Step "New Game asks the class" 285 222 210 22 "chargen_class"
 Hover 553 336          # BTN_SEL3: the words about the class
 [void](State)
 Shot "cg_class"
+Hover 80 230           # BTN_SEL1: the big figure goes where the mouse is
+[void](State)
+Shot "cg_class_big_first"
+Hover 700 230          # the last
+[void](State)
+Shot "cg_class_big_last"
 Press 239 128 75 193
 $s = WaitFor "menu" "chargen"
 Report "A figure is chosen" ($s.menu -eq "chargen") "menu=$($s.menu)"
@@ -108,6 +114,16 @@ for ($i = 0; $i -lt 400 -and $quiet -lt 6; $i++) {
   if ($s.dlg -eq "false" -and [int]$s.said -gt 3) { $quiet++ } else { $quiet = 0 }
 }
 Report "Through the opening" ($quiet -ge 6) "dlg=$($s.dlg) said=$($s.said)"
+Key 0x4D 0x32
+$s = WaitFor "menu" "map"
+Press 113 410 278 13   # BTN_PRTYSLCT
+$s = WaitFor "menu" "party"
+Report "The map's button has the party" ($s.menu -eq "party") "menu=$($s.menu)"
+Shot "cg_party"
+Key $ESC[0] $ESC[1]
+[void](WaitFor "menu" "map")
+Key $ESC[0] $ESC[1]
+[void](WaitFor "menu" "-")
 Key 0x43 0x2E
 $s = WaitFor "menu" "character"
 Report "C shows the character" ($s.menu -eq "character") "menu=$($s.menu)"

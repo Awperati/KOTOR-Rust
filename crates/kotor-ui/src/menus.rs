@@ -310,6 +310,16 @@ impl Ui<'_> {
             if view.is_hidden(&c.tag) || c.kind == SCROLLBAR {
                 continue;
             }
+            let moved = view.patches.get(&c.tag).and_then(|p| p.place);
+            if let Some([left, top, width, height]) = moved {
+                let r = [ox + left, oy + top, width, height];
+                if view.holes.contains(&c.tag) {
+                    cv.clear_rect(r[0], r[1], r[2], r[3], view.hole_veil);
+                } else {
+                    self.draw_plain(cv, view, c, r);
+                }
+                continue;
+            }
             if view.holes.contains(&c.tag) {
                 let e = &c.extent;
                 cv.clear_rect(ox + e.left, oy + e.top, e.width, e.height, view.hole_veil);
@@ -718,7 +728,8 @@ impl Ui<'_> {
             })
             .filter(|c| {
                 let e = &c.extent;
-                inside([e.left, e.top, e.width, e.height])
+                let moved = view.patches.get(&c.tag).and_then(|p| p.place);
+                inside(moved.unwrap_or([e.left, e.top, e.width, e.height]))
             })
             .map(|c| {
                 let e = &c.extent;

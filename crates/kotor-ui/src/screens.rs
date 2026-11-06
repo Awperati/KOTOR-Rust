@@ -159,6 +159,8 @@ pub struct Patch {
     pub inset: i32,
     /// A thin line of this colour instead of the file's border.
     pub line: Option<[u8; 3]>,
+    /// Where it goes, in layout units, in place of where the file has it.
+    pub place: Option<[i32; 4]>,
     /// In place of the control, this rectangle of layout units in this colour.
     pub cover: Option<([i32; 4], [u8; 3])>,
 }
