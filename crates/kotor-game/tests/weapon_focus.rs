@@ -58,3 +58,40 @@ fn weapon_focus_adds_one_with_its_own_kind_of_weapon_only() {
     w.object_mut(pc).unwrap().feats.clear();
     assert_eq!(with, w.attack_bonus_of(pc, 4));
 }
+
+#[test]
+fn weapon_specialization_adds_two_damage_with_its_own_kind_of_weapon_only() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    // Specialization is the Focus feat plus 14 in `feat.2da`: 46 blaster, 47 rifle, 49 heavy, 50 lightsaber, 51 melee.
+    let kinds = [
+        ("g_w_blstrpstl001", 46),
+        ("g_w_blstrrfl001", 47),
+        ("g_w_rptnblstr01", 49),
+        ("g_w_lghtsbr01", 50),
+        ("g_w_lngswrd01", 51),
+    ];
+    for (template, feat) in kinds {
+        let item = w.spawn_item(template);
+        let o = w.object_mut(pc).unwrap();
+        o.equipped.insert(4, item);
+        o.feats.retain(|f| !(46..=51).contains(f));
+        let (least, most) = w.damage_range_of(pc, 4).unwrap();
+        w.object_mut(pc).unwrap().feats.insert(feat);
+        assert_eq!(
+            w.damage_range_of(pc, 4),
+            Some((least + 2, most + 2)),
+            "{template} with feat {feat}"
+        );
+        for other in [46, 47, 49, 50, 51].into_iter().filter(|f| *f != feat) {
+            let o = w.object_mut(pc).unwrap();
+            o.feats.retain(|f| !(46..=51).contains(f));
+            o.feats.insert(other);
+            assert_eq!(
+                w.damage_range_of(pc, 4),
+                Some((least, most)),
+                "{template} with feat {other}"
+            );
+        }
+    }
+}

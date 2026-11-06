@@ -221,13 +221,8 @@ impl World {
             let fist = slot == 4 && !self.objects.get(&id)?.equipped.contains_key(&4);
             fist.then_some(Weapon::UNARMED)
         })?;
-        let (flat, dice) = self.gear_damage(id, slot);
-        let add = flat
-            + if w.ranged {
-                0
-            } else {
-                ability_mod(self.ability_score(id, STR))
-            };
+        let (_, dice) = self.gear_damage(id, slot);
+        let add = self.flat_damage(id, slot, w.ranged);
         let (least, most) = dice.iter().fold((0, 0), |(l, m), (count, sides)| {
             (l + count, m + count * sides)
         });
@@ -235,6 +230,18 @@ impl World {
             damage(w.dice, add, Outcome::Hit, 1) + least,
             damage(w.dice * w.sides, add, Outcome::Hit, 1) + most,
         ))
+    }
+
+    /// What is added to a hit's damage whatever the dice say: the gear's flat damage, Weapon Specialization, and
+    /// Strength in melee.
+    pub(crate) fn flat_damage(&mut self, id: ObjId, slot: i32, ranged: bool) -> i32 {
+        self.gear_damage(id, slot).0
+            + self.weapon_spec_bonus(id, slot)
+            + if ranged {
+                0
+            } else {
+                ability_mod(self.ability_score(id, STR))
+            }
     }
 
     /// Armor class: 10 plus the armor items' `baseac` plus natural AC plus Dexterity modifier.
@@ -455,7 +462,6 @@ impl World {
         boost: crate::combat_actions::FeatBoost,
     ) {
         let weapon = self.weapon_of(attacker);
-        let str_mod = ability_mod(self.ability_score(attacker, STR));
         let bonus = self.attack_bonus_of(attacker, 4) + boost.to_hit;
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
@@ -467,7 +473,7 @@ impl World {
         let mut dealt = 0;
         if outcome != Outcome::Miss {
             let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
-            let mod_ = self.gear_damage(attacker, 4).0 + if weapon.ranged { 0 } else { str_mod };
+            let mod_ = self.flat_damage(attacker, 4, weapon.ranged);
             let more = self.roll_gear_damage(attacker, 4, target, outcome == Outcome::Critical);
             dealt = damage(dice, mod_, outcome, weapon.multiplier) + boost.damage + more;
             // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.

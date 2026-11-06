@@ -89,5 +89,5 @@ The 8 s body rule (`World::body_gone`): it hides a dead creature from `GetIsObje
 
 ## Weapon Focus
 
-`attack_bonus_of` added nothing for the Weapon Focus feats. It now adds 1 with the feat that covers the weapon in the slot (`crates/kotor-game/src/weapon_focus.rs`): Blaster 32 (one-handed blasters), Blaster Rifle 33, Heavy Weapons 35 (repeating blasters), Lightsaber 36, Melee Weapons 37, picked by the item's `weaponwield` and `weaponmattype` in `baseitems.2da`. **Assumed:** that mapping and the +1. Not done: Weapon Specialization (feats 46 to 51, which the tabletop rules make +2 damage). Test: `tests/weapon_focus.rs`.
+`attack_bonus_of` added nothing for the Weapon Focus feats. It now adds 1 with the feat that covers the weapon in the slot (`crates/kotor-game/src/weapon_focus.rs`): Blaster 32 (one-handed blasters), Blaster Rifle 33, Heavy Weapons 35 (repeating blasters), Lightsaber 36, Melee Weapons 37, picked by the item's `weaponwield` and `weaponmattype` in `baseitems.2da`. **Assumed:** that mapping and the +1. Weapon Specialization (feats 46 to 51, the Focus feat plus 14) adds 2 to the damage of a hit and to the range the sheet shows, through `World::flat_damage`, which `resolve_with` and `damage_range_of` share. **Assumed:** +2, as in the tabletop rules. Test: `tests/weapon_focus.rs`.
 
