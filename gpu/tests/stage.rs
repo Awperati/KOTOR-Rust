@@ -926,6 +926,13 @@ fn the_jedi_duel_ends_without_any_click() {
     }
     let ev = &s.game.world.events;
     assert!(ended.is_some(), "end_cut04 waits for a click");
+    // The video has the player free about 24 s after the door opens (docs/REFERENCE.md). Each pause in the scene used to be
+    // counted twice, which made it 37 s.
+    let ended = ended.unwrap();
+    assert!(
+        (18.0..27.0).contains(&ended),
+        "the duel scene lasts {ended} s"
+    );
     assert!(ev.iter().any(|e| e.contains("end_darkjedi01) dies")));
 }
 

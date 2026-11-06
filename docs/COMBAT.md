@@ -53,6 +53,8 @@ All sizes below are my assumptions, not measured from the game.
 | Encounters (GAPS 6) | A creature whose CR is over the player's level plus `encdifficulty.2da` `value` stays home, unless it is the weakest on offer. `GetIsEncounterCreature` is real | `encounters.rs` |
 
 Bug 32 (the dark Jedi fight): nothing hangs. Before `end_door16` is opened the Jedi and the Apprentice swap blows at 1 hit point each, because scripts hold them (`k_pend_cut19`, `k_pend_cut20`), so the fight looks endless. Opening the door runs `end_cut04`, a scripted 38 s sequence: pause 6.7 s, release of the Jedi's hit point at 17.8 s, the Apprentice dies at 21 s, the Jedi at 23 s, then waits and camera holds to 38 s. It needs no click (`the_jedi_duel_ends_without_any_click`). A fixed bound on the duel changed nothing, so I took it out.
+
+**Bug 32 found and fixed:** the stage counted every pause in the scene twice. A cutscene node waited its voice or camera length plus the hold of its `ActionPauseConversation` (the `ActionWait`s up to the resume), and the countdown also stood still while the pause lasted. In `end_cut04` that was 4 + 3 + 4 + 3.8 s, about 14.8 s. A node now lasts its voice or camera length, or the pause if that is longer (`update_line` in `gpu/src/stage.rs`). The scene runs 22.8 s instead of 36.6 s, against about 24 s from the door to control in the video. The test bounds it between 18 and 27 s. Trace: `gpu/examples/duel_timeline.rs`.
 Frames: `docs/shots/combat` at 720p and 2160p, made by `gpu/examples/combat_shots.rs`.
 
 ## Immunity and weapon sounds (GAPS row 9 leftovers, bug 33)

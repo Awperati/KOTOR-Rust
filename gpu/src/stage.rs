@@ -946,7 +946,9 @@ impl Stage {
             for n in names {
                 self.model(&n);
             }
-            let seconds = self.beat.as_ref().map_or(1.5, |b| b.length + b.hold);
+            // The pause a node's script makes already lasts as long as its `hold`, and runs from the node's start, so the
+            // node lasts its voice or its camera, or the pause if that is longer (bug 32: the duel ran the holds twice).
+            let seconds = self.beat.as_ref().map_or(1.5, |b| b.length);
             // A node whose only replies say nothing is a cutscene's: it moves on by itself, when its voice-over ends.
             self.line_left = (self.settings().auto_advance
                 && replies.iter().all(|r| r.trim().is_empty()))
@@ -954,15 +956,13 @@ impl Stage {
         } else {
             self.beat_time += dt;
         }
-        if self.game.world.conversation_paused() {
-            return;
-        }
         if self.pilot.is_some() {
             return;
         }
+        let paused = self.game.world.conversation_paused();
         if let Some(left) = self.line_left.as_mut() {
             *left -= dt;
-            if *left <= 0.0 {
+            if *left <= 0.0 && !paused {
                 self.line_left = None;
                 self.game.world.dialogue_choose(0);
             }
