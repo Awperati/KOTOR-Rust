@@ -1775,6 +1775,11 @@ impl Stage {
         let w = &self.game.world;
         self.hover_target
             .filter(|id| w.object(*id).is_some_and(|o| !o.dead) || w.lootable(*id))
+            // The one being fought stays the target when the cursor leaves it, as at 6:05, so its slots can be reached.
+            .or_else(|| {
+                let fought = w.combat.target.get(&w.pc).copied();
+                fought.filter(|id| w.object(*id).is_some_and(|o| !o.dead))
+            })
             .or_else(|| w.nearest_usable(USE_REACH))
     }
 
@@ -1827,6 +1832,8 @@ impl Stage {
             |p: Option<(f32, f32)>| p.map_or("-".to_string(), |p| format!("{:.0},{:.0}", p.0, p.1));
         let attack_slot = at(self.hud_pixel("BTN_TARGET0", layout));
         let feat_slot = at(self.hud_pixel("BTN_TARGET1", layout));
+        let power_slot = at(self.hud_pixel("BTN_TARGET2", layout));
+        let disengage = at(self.hud_pixel("BTN_CLEARALL", layout));
         let (paused, note) = self.pause_view();
         let floats = self.floats_shown().len();
         let foe = self
@@ -1838,7 +1845,7 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={attack_slot} slot1={feat_slot} foe={foe} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={attack_slot} slot1={feat_slot} slot2={power_slot} disengage={disengage} foe={foe} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

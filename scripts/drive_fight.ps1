@@ -5,7 +5,7 @@ param([string]$Shots)
 # The pilot plays up to the first fight at its own speed and hands over when an enemy is seen. It writes no saves.
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_fight.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--power","23","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle
 "window $h"
@@ -19,6 +19,19 @@ function ToPixel($s, [string]$place) {
 function ClickSlot($s, [string]$slot) { $p = ToPixel $s $s[$slot]; Click $p[0] $p[1] }
 function HoverLayout($s, [string]$place) { $p = ToPixel $s $place; Hover $p[0] $p[1] }
 
+function FindFoe {
+  # The arrow key turns the camera, in the pause too, until they are near the middle of the picture.
+  $until = (Get-Date).AddSeconds(30)
+  do {
+    $s = State
+    $x = if ($s.foe -ne "-") { [double]($s.foe -split ',')[0] } else { -1 }
+    if ($x -lt [double]$s.width / 3 -or $x -gt [double]$s.width * 2 / 3) { Key 0x25 0x14B 120 } else { HoverLayout $s $s.foe }
+    Start-Sleep -Milliseconds 50
+    $s = State
+  } while ($s.target -notlike "Sith*" -and (Get-Date) -lt $until)
+  $s
+}
+
 WaitLog
 # The pilot's run takes it there at its own speed.
 $until = (Get-Date).AddSeconds(180)
@@ -28,17 +41,24 @@ $s = WaitFor "paused" "true"
 Report "An enemy pauses the game" ($s.paused -eq "true" -and $s.note -like "ENEMY*") "paused=$($s.paused) note=$($s.note) foe=$($s.foe)"
 Shot "fight_sighted"
 # The cursor on the enemy makes them the target: the bar with its slots shows.
-$until = (Get-Date).AddSeconds(30)
-do {
-  $s = State
-  $x = if ($s.foe -ne "-") { [double]($s.foe -split ',')[0] } else { -1 }
-  # The arrow key turns the camera, in the pause too, until they are near the middle of the picture.
-  if ($x -lt [double]$s.width / 3 -or $x -gt [double]$s.width * 2 / 3) { Key 0x25 0x14B 120 } else { HoverLayout $s $s.foe }
-  Start-Sleep -Milliseconds 50
-  $s = State
-} while ($s.target -notlike "Sith*" -and (Get-Date) -lt $until)
+$s = FindFoe
 Report "The cursor finds them" ($s.target -like "Sith*" -and $s.slot1 -ne "-") "foe=$($s.foe) target=$($s.target) slot0=$($s.slot0) slot1=$($s.slot1)"
 Shot "fight_target"
+
+# The first slot attacks, and the Disengage button leaves it. All of this in the pause, so that the Sith is still there.
+ClickSlot $s "slot0"
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ($s.engaged -ne "true" -and (Get-Date) -lt $until)
+Report "The first slot attacks" ($s.engaged -eq "true") "engaged=$($s.engaged) target=$($s.target)"
+Shot "fight_attack_slot"
+$p = ToPixel $s $s.disengage
+Click $p[0] $p[1]
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ($s.engaged -eq "true" -and (Get-Date) -lt $until)
+Report "The Disengage button" ($s.engaged -eq "false") "engaged=$($s.engaged) disengage=$($s.disengage)"
+Shot "fight_disengage_button"
+$s = FindFoe
+Report "The cursor finds them again" ($s.target -like "Sith*") "foe=$($s.foe) target=$($s.target)"
 
 # The second slot: its name under the cursor, and a click queues the feat and starts the attack.
 HoverLayout $s $s.slot1
@@ -49,6 +69,13 @@ ClickSlot $s "slot1"
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ([int]$s.queue -eq 0 -and $s.engaged -ne "true" -and (Get-Date) -lt $until)
 Report "The feat slot queues it" ([int]$s.queue -gt 0 -or $s.engaged -eq "true") "queue=$($s.queue) engaged=$($s.engaged) target=$($s.target)"
+# The third slot: the power given for this run.
+$queued = [int]$s.queue
+$s = State
+ClickSlot $s "slot2"
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ([int]$s.queue -le $queued -and (Get-Date) -lt $until)
+Report "The power slot queues it" ([int]$s.queue -gt $queued) "queue $queued -> $($s.queue) slot2=$($s.slot2)"
 Shot "fight_queued"
 Key $SPACE[0] $SPACE[1]
 $s = WaitFor "paused" "false"

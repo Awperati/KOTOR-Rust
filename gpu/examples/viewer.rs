@@ -14,6 +14,7 @@
 //!     --state-log     print the game's state every few frames, for a test driver
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
 //!     --no-chargen    New Game starts at once, with the preset character
+//!     --power N       give the player this power of `spells.2da` and the Force for it when a game starts, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
 //!                     gives a level (`level`), for a test driver
@@ -118,6 +119,9 @@ impl Sound {
     }
 }
 
+/// Force points `--power` gives, enough for any power.
+const DRIVER_FORCE: i32 = 100;
+
 struct App {
     stage: Stage,
     sound: Sound,
@@ -135,6 +139,7 @@ struct App {
     /// What a test driver asked for once a game has started, from the menu or at once.
     near: Option<String>,
     xp: Option<i32>,
+    power: Option<i32>,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -223,6 +228,15 @@ impl App {
             if let Some(tag) = self.near.take() {
                 if !self.stage.stand_near(&tag) {
                     eprintln!("no floor beside {tag}");
+                }
+            }
+            if let Some(power) = self.power.take() {
+                let w = &mut self.stage.game.world;
+                let pc = w.pc;
+                if let Some(o) = w.object_mut(pc) {
+                    o.spells.insert(power);
+                    o.max_force = o.max_force.max(DRIVER_FORCE);
+                    o.force = o.max_force;
                 }
             }
             if let Some(xp) = self.xp.take() {
@@ -570,6 +584,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|s| s * 60),
         near: opt("--near"),
         xp: opt("--xp").and_then(|n| n.parse().ok()),
+        power: opt("--power").and_then(|n| n.parse().ok()),
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,

@@ -2452,6 +2452,26 @@ fn the_upgrade_bench_puts_a_crystal_in_a_lightsaber() {
 }
 
 #[test]
+fn the_one_being_fought_stays_the_target_when_the_cursor_leaves() {
+    let Some((mut s, _)) = in_game("fought_target") else {
+        return;
+    };
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let here = w.object(pc).unwrap().position;
+    let foe = w.spawn_creature("n_sithsoldier003", [here[0] + 40.0, here[1], here[2]]);
+    s.hover((1.0, 1.0), SIZE);
+    assert!(
+        !s.state_line().contains("target=Sith"),
+        "too far to be chosen"
+    );
+    s.game.world.combat.target.insert(pc, foe);
+    assert!(s.state_line().contains("target=Sith"), "{}", s.state_line());
+    s.game.world.object_mut(foe).unwrap().dead = true;
+    assert!(!s.state_line().contains("target=Sith"), "and not once dead");
+}
+
+#[test]
 fn the_party_screens_ok_asks_first() {
     let Some((mut s, _)) = in_game("party_ok") else {
         return;
