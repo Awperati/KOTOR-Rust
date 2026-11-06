@@ -2003,6 +2003,41 @@ fn the_messages_tab_shows_what_was_said_and_fought() {
 }
 
 #[test]
+fn the_party_screen_shows_whoever_is_chosen_in_3d() {
+    let Some((mut s, _)) = in_game("party_figure") else {
+        return;
+    };
+    s.game.world.available.insert(2, "end_trask".to_string());
+    s.open_party();
+    s.update(DT);
+    assert!(s.figure_camera().is_none(), "nobody is chosen yet");
+
+    // Someone who is not here comes from their creature file.
+    assert!(!s.game.world.npc_slots.contains_key(&2));
+    press(&mut s, "BTN_NPC2");
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    let (hx, hy) = (455 * SIZE.0 / 640, 215 * SIZE.1 / 480);
+    assert_eq!(o.rgba[((hy * o.width + hx) * 4 + 3) as usize], 0, "a hole");
+    let (scene, camera, alone) = s.frame_scene();
+    assert!(alone);
+    assert!(!scene.meshes.is_empty());
+    let pc = s.game.world.pc;
+    let here = s.game.world.object(pc).unwrap().position;
+    assert!((camera.eye[0] - here[0]).hypot(camera.eye[1] - here[1]) > 1.0);
+
+    // Once with the party, they are here and look the same.
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_DONE");
+    assert!(s.game.world.npc_slots.contains_key(&2));
+    s.open_party();
+    press(&mut s, "BTN_NPC2");
+    let (now, _, alone) = s.frame_scene();
+    assert!(alone);
+    assert_eq!(now.meshes.len(), scene.meshes.len());
+}
+
+#[test]
 fn space_ends_a_pause_that_began_just_after_a_talk() {
     let Some((mut s, _)) = in_game("pause_after_talk") else {
         return;

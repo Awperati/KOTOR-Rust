@@ -1358,13 +1358,23 @@ impl Stage {
                 .map(|i| (i.base_item, i.template.clone()));
             (o.appearance, o.template.clone(), armour)
         };
+        self.rig_for(appearance, &template, armour)
+    }
+
+    /// The body of a creature file's appearance in some armour: its base item and template.
+    fn rig_for(
+        &mut self,
+        appearance: i32,
+        template: &str,
+        armour: Option<(i32, String)>,
+    ) -> Option<Rc<Rig>> {
         let number = |inst: &mut Install, name: &str, ty: ResType, field: &str| {
             inst.read(name, ty)
                 .ok()
                 .and_then(|b| Gff::parse(&b).ok())
                 .and_then(|g| g.root.int(field))
         };
-        let mut var = number(&mut self.inst, &template, ResType(2027), "TextureVar").unwrap_or(1);
+        let mut var = number(&mut self.inst, template, ResType(2027), "TextureVar").unwrap_or(1);
         let mut letter = None;
         if let Some((base, item)) = armour {
             letter = self

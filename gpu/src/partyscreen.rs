@@ -53,6 +53,11 @@ impl Stage {
         self.tutorial(super::notices::TUTORIAL_PARTY);
     }
 
+    /// The slot whose figure is on show.
+    pub(super) fn party_figure_slot(&self) -> Option<i32> {
+        self.menus.party.as_ref().and_then(|d| d.shown)
+    }
+
     /// The party screen, from the map or a test.
     pub fn open_party(&mut self) {
         self.start_party(None);
@@ -114,8 +119,8 @@ impl Stage {
         }
         let about = shown.and_then(|s| self.game.world.party_candidate(s));
         match (shown, about) {
-            (Some(slot), Some((name, level, class))) => {
-                v.fill("LBL_3D", PORTRAITS[slot as usize]);
+            (Some(_), Some((name, level, class))) => {
+                v.hole = Some("LBL_3D".to_string());
                 v.text("LBL_NPC_NAME", name);
                 let label = self.ui.strref(STR_LEVEL);
                 let class = self.ui.strref(class);

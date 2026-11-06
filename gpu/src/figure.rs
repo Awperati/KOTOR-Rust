@@ -1,15 +1,22 @@
 //! The 3D figure on the character sheet and the level-up panel, as the reference video has it at 1:23:50: the screen
 //! leaves a hole in its picture, and behind it the renderer draws the leader alone, with a camera that puts them in the
 //! hole. **Assumed:** a figure about 1.9 m high. **Not built:** the glowing backdrop, for which I found no picture, so the
-//! renderer's dark clear colour shows behind them, and turning the figure. The party screen keeps portraits: its figure
-//! is someone who is not in the world.
+//! renderer's dark clear colour shows behind them, and turning the figure. The party screen has one too, as at 3:12:00, of
+//! whoever is chosen: with nothing in their hands, as the video has them, and from their creature file if they are not here.
 
 use super::{Screen, Stage};
-use kotor_render::{Camera, Scene};
+use kotor_core::ResType;
+use kotor_game::SLOT_BODY;
+use kotor_gff::Gff;
+use kotor_render::{Camera, Rig, Scene};
+use std::rc::Rc;
 
 /// Where the holes are, from `character.gui`'s `LBL_3DCHAR` and `maincg.gui`'s `MODEL_LBL`: left, top, width, height.
 const CHARACTER_HOLE: [f32; 4] = [55.0, 110.0, 259.0, 295.0];
 const LEVEL_HOLE: [f32; 4] = [155.0, 89.0, 162.0, 186.0];
+const PARTY_HOLE: [f32; 4] = [326.0, 109.0, 258.0, 213.0];
+const CREATURE_FILE: ResType = ResType(2027);
+const ITEM_FILE: ResType = ResType(2025);
 const FIGURE_HEIGHT: f32 = 1.9;
 /// A little air over the head and under the feet.
 const FIGURE_MARGIN: f32 = 1.15;
@@ -20,6 +27,7 @@ impl Stage {
         match self.top()? {
             Screen::Character => Some(CHARACTER_HOLE),
             Screen::LevelUp => Some(LEVEL_HOLE),
+            Screen::Party => self.party_figure_slot().map(|_| PARTY_HOLE),
             _ => None,
         }
     }
@@ -50,8 +58,58 @@ impl Stage {
         })
     }
 
-    /// The leader alone.
+    /// Who a party slot offers, from the creature file: what they wear is what they were left with, or else the file's.
+    fn benched_rig(&mut self, slot: i32) -> Option<Rc<Rig>> {
+        let w = &self.game.world;
+        let template = w.available.get(&slot)?.clone();
+        let kept = w.bench.get(&slot).map(|b| {
+            let worn = b.worn.iter().find(|(s, _, _)| *s == SLOT_BODY);
+            worn.map(|(_, t, _)| t.clone())
+        });
+        let file = Gff::parse(&self.inst.read(&template, CREATURE_FILE).ok()?).ok()?;
+        let appearance = file.root.int("Appearance_Type")? as i32;
+        let from_file = || {
+            let items = file.root.list("Equip_ItemList").unwrap_or_default();
+            let armour = items.iter().find(|e| e.id == 1 << SLOT_BODY)?;
+            armour.str("EquippedRes").map(str::to_string)
+        };
+        let armour = kept.unwrap_or_else(from_file).and_then(|item| {
+            let file = Gff::parse(&self.inst.read(&item, ITEM_FILE).ok()?).ok()?;
+            Some((file.root.int("BaseItem")? as i32, item))
+        });
+        self.rig_for(appearance, &template, armour)
+    }
+
+    /// Whoever the party screen has chosen, standing where the camera looks.
+    fn party_figure(&mut self, slot: i32) -> Scene {
+        let mut scene = Scene::default();
+        let w = &self.game.world;
+        let Some(at) = w.object(w.pc).map(|o| o.position) else {
+            return scene;
+        };
+        let heading = w.pc_mover.heading;
+        let here = w
+            .npc_slots
+            .get(&slot)
+            .copied()
+            .filter(|id| w.object(*id).is_some());
+        let rig = match here {
+            Some(id) => self.rig_of(id),
+            None => self.benched_rig(slot),
+        };
+        if let Some(rig) = rig {
+            self.add_creature(&mut scene, &rig, &[], &None, at, heading);
+        }
+        scene
+    }
+
+    /// The leader alone, or whoever the party screen has chosen.
     pub fn figure_scene(&mut self) -> Scene {
+        if self.top() == Some(Screen::Party) {
+            if let Some(slot) = self.party_figure_slot() {
+                return self.party_figure(slot);
+            }
+        }
         let mut scene = Scene::default();
         let pc = self.game.world.pc;
         let Some(pose) = self.game.poses().into_iter().find(|p| p.id == pc) else {
