@@ -110,6 +110,8 @@ const SECOND_LOOKS: u32 = 30;
 const GIVE_UP_SECONDS: f32 = 15.0;
 /// How many times a locked door is tried.
 const LOCK_TRIES: u32 = 8;
+/// How long it goes on with no module it has not seen. Its longest wait so far is 4,100 s, in the Sith base and back.
+const NEW_MODULE_SECONDS: f32 = 8000.0;
 /// A mortal pilot takes a medpack below half its hit points, at most one a round.
 const MEDPACK_SECONDS: f32 = 3.0;
 const GEAR_SECONDS: f32 = 1.0;
@@ -147,6 +149,9 @@ pub struct Autopilot {
     medpack_wait: f32,
     gear_wait: f32,
     ways_retried: bool,
+    new_module_at: f32,
+    /// The things that took it to another module, by module and tag, and where to.
+    exits: BTreeMap<(String, String), String>,
     /// Nothing more to try.
     pub finished: bool,
     /// Hold lines that want no answer for as long as a person would read them, in game time.
@@ -205,6 +210,8 @@ impl Autopilot {
             medpack_wait: 0.0,
             gear_wait: 0.0,
             ways_retried: false,
+            new_module_at: 0.0,
+            exits: BTreeMap::new(),
             finished: false,
             read_lines: false,
             digests: Vec::new(),
@@ -274,6 +281,17 @@ impl Autopilot {
             return;
         }
         let w = &mut g.world;
+        // Two modules with only each other to go to would hold it for good: `tar_m04aa` and `tar_m05aa` did.
+        if self.time - self.new_module_at > NEW_MODULE_SECONDS {
+            self.stall(
+                w,
+                "softlock",
+                "find a new module",
+                format!("none in {NEW_MODULE_SECONDS} s"),
+            );
+            self.finished = true;
+            return;
+        }
         if self.immortal {
             let pc = w.pc;
             if let Some(o) = w.object_mut(pc) {
@@ -519,7 +537,15 @@ impl Autopilot {
                     w.transcript.len() - self.lines_at_start
                 ));
             }
+            // What it was using took it away: a ladder is a way out, for when the module is done.
+            if let Some(Goal::Use(_, tag)) = &self.goal {
+                self.exits
+                    .insert((self.module.clone(), tag.clone()), w.module.clone());
+            }
             self.module = w.module.clone();
+            if !self.modules.contains(&self.module) {
+                self.new_module_at = self.time;
+            }
             self.modules.push(self.module.clone());
             self.log
                 .push(format!("entered {} at {:.0} s", self.module, self.time));
@@ -911,6 +937,16 @@ impl Autopilot {
                 (o.id, o.kind, at, o.link_module.clone())
             })
             .collect();
+        let module = &self.module;
+        ways.extend(
+            w.objects
+                .values()
+                .filter(|o| o.kind == Kind::Placeable && !self.tried.contains(&o.id))
+                .filter_map(|o| {
+                    let to = self.exits.get(&(module.clone(), o.tag.clone()))?;
+                    Some((o.id, o.kind, o.position, to.clone()))
+                }),
+        );
         // Where it has been least first: the Sith commander's building is a way out it would otherwise never take, and
         // the lower city has two doors it would go back and forth through for good.
         ways.sort_by(|a, b| {
@@ -922,7 +958,7 @@ impl Autopilot {
         let mut no_way_out = None;
         for (id, kind, at, module) in ways {
             let label = format!("leave for {module}");
-            let moved = if kind == Kind::Door {
+            let moved = if kind != Kind::Trigger {
                 w.click(id)
             } else {
                 w.walk_to(at)
@@ -1021,7 +1057,9 @@ impl Autopilot {
                     && !self.unreachable.contains(&o.id)
                     && match o.kind {
                         Kind::Creature => !o.conversation.is_empty(),
-                        Kind::Placeable => true,
+                        Kind::Placeable => !self
+                            .exits
+                            .contains_key(&(self.module.clone(), o.tag.clone())),
                         Kind::Door => !o.open && o.link_module.is_empty(),
                         _ => false,
                     }

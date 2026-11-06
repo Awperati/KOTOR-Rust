@@ -75,6 +75,44 @@ fn the_pilot_goes_where_it_has_been_least_and_finds_the_lower_citys_rooms() {
 }
 
 #[test]
+fn a_ladder_that_took_the_pilot_away_waits_until_the_module_is_done() {
+    let Some(mut w) = world() else {
+        return;
+    };
+    w.load_module("tar_m05aa").unwrap();
+    w.enter_area();
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    let run_until = |g: &mut Game, p: &mut Autopilot, module: &str, leave: bool, most: f32| {
+        let end = p.time + most;
+        while p.time < end && !p.finished && (g.world.module == module) == leave {
+            p.run_steps(g, 60);
+        }
+    };
+    // The ladder by the door takes it up into `tar_m04aa`, and the door there brings it back.
+    run_until(&mut g, &mut p, "tar_m05aa", true, 900.0);
+    run_until(&mut g, &mut p, "tar_m05aa", false, 1500.0);
+    assert_eq!(g.world.module, "tar_m05aa", "{:?}", p.modules);
+    let back = p.time;
+    run_until(&mut g, &mut p, "tar_m05aa", true, 100.0);
+    assert!(p.time >= back + 100.0, "left after {} s", p.time - back);
+}
+
+#[test]
+fn the_pilot_stops_when_nothing_new_has_come_for_a_long_time() {
+    let Some(w) = world() else {
+        return;
+    };
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    p.run_steps(&mut g, 60);
+    p.time += 9000.0;
+    p.run_steps(&mut g, 1);
+    assert!(p.finished);
+    assert_eq!(p.stalls.last().unwrap().kind, "softlock");
+}
+
+#[test]
 fn a_foe_with_something_to_say_is_still_fought() {
     let Some(mut w) = world() else {
         return;
