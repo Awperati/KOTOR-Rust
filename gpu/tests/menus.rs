@@ -941,6 +941,73 @@ fn a_level_waits_for_the_screen_and_its_pages_spend_and_cancel() {
     assert_eq!(s.menu_name(), "character");
 }
 
+#[test]
+fn the_journal_lists_quests_swaps_to_completed_and_sorts() {
+    let Some((mut s, _)) = in_game("journal") else {
+        return;
+    };
+    // The file has quests with words, and two tags that need their last state to end.
+    let tags = s.game.world.quest_tags();
+    assert!(tags.len() > 20, "{}", tags.len());
+    let w = &mut s.game.world;
+    w.journal.clear();
+    w.journal_order.clear();
+    let (a, b) = (tags[0].clone(), tags[1].clone());
+    w.journal.insert(a.clone(), 1);
+    w.journal.insert(b.clone(), 1);
+    w.journal_order = vec![a.clone(), b.clone()];
+    let quests = w.quests();
+    assert_eq!(quests.len(), 2, "{quests:?}");
+    assert_eq!(quests[0].tag, a, "the newest first");
+    assert!(!quests[0].name.is_empty());
+
+    // J opens it, from the game and from the tabs, and closes it. It runs from the HUD's button too.
+    s.open_journal();
+    assert_eq!(s.menu_name(), "journal");
+    s.open_journal();
+    assert_eq!(s.menu_name(), "-");
+    s.update(DT);
+    let p = s.hud_pixel("BTN_JOU", SIZE).unwrap();
+    s.click(p, SIZE);
+    assert_eq!(s.menu_name(), "journal");
+
+    // A click on a row chooses it, and the words follow.
+    s.hover((1.0, 1.0), SIZE);
+    let first = frame(&mut s);
+    click_row(&mut s, "LB_ITEMS", 1);
+    s.hover((1.0, 1.0), SIZE);
+    let second = frame(&mut s);
+    assert!(first != second);
+    // Sort changes the title and the button.
+    press(&mut s, "BTN_SORT");
+    s.hover((1.0, 1.0), SIZE);
+    let sorted = frame(&mut s);
+    assert!(sorted != second);
+
+    // Active and completed quests are apart. Nothing is completed yet, so the list is empty.
+    press(&mut s, "BTN_SWAPTEXT");
+    s.hover((1.0, 1.0), SIZE);
+    let done = frame(&mut s);
+    assert!(done != sorted);
+    let p = s.menu_pixel("LB_ITEMS", Some(0), SIZE).unwrap();
+    s.click(p, SIZE);
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) == done, "no row there to choose");
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+    s.game.world.events.clear();
+
+    // A save keeps the order.
+    let dir = std::env::temp_dir().join(format!("kotor_rs_journal_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("j.sav");
+    s.game.world.save_to(&path, "journal").unwrap();
+    s.game.world.journal_order.clear();
+    s.game.world.load_from(&path).unwrap();
+    assert_eq!(s.game.world.journal_order, vec![a, b]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);
@@ -968,7 +1035,7 @@ fn the_tabs_change_screen_and_the_hud_buttons_open_them() {
     press(&mut s, "BTN_INV");
     assert_eq!(s.menu_name(), "inventory");
     // The tabs for screens not built say so and stay.
-    press(&mut s, "BTN_JOU");
+    press(&mut s, "BTN_ABI");
     assert_eq!(s.menu_name(), "inventory");
     assert!(
         s.menu_message().contains("not built"),

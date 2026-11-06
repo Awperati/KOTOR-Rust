@@ -251,6 +251,10 @@ Key $KEY_C[0] $KEY_C[1]
 $s = WaitFor "menu" "character"
 Report "C opens the character" ($s.menu -eq "character") "menu=$($s.menu)"
 Shot "live_character"
+Key 0x4A 0x24
+$s = WaitFor "menu" "journal"
+Report "J opens the journal" ($s.menu -eq "journal") "menu=$($s.menu)"
+Shot "live_journal"
 Key $ESC[0] $ESC[1]
 $s = WaitFor "menu" "-"
 Report "Esc closes it" ($s.menu -eq "-") "menu=$($s.menu)"

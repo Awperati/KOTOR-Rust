@@ -11,6 +11,7 @@ mod force;
 mod game;
 mod host;
 mod items;
+mod journal;
 mod levelup;
 mod play;
 mod rules;
@@ -37,6 +38,7 @@ pub use items::{
     CannotEquip, ItemView, SLOTS, SLOT_BELT, SLOT_BODY, SLOT_HANDS, SLOT_HEAD, SLOT_IMPLANT,
     SLOT_LEFT_ARM, SLOT_LEFT_HAND, SLOT_RIGHT_ARM, SLOT_RIGHT_HAND,
 };
+pub use journal::Quest;
 pub use levelup::Choice;
 pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,

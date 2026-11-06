@@ -23,6 +23,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | Esc | back out of a screen, or pause |
 | I | inventory |
 | U | equipment |
+| J | journal |
 | C | character |
 
 Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG` and `--autopilot` (a scripted player takes the controls and prints what stalls).
@@ -95,6 +96,9 @@ Item pictures are `i<itemclass>_<number>`. Measured over the 557 item templates 
 Experience does not raise the player's level by itself: `World::hold_levels`, which the stage sets, makes the level wait. A mark shows on the portrait, and the character screen shows Auto Level Up and Level Up. `maincg.gui` with `leveluppnl.gui` over it lists the steps, and a step opens once those before it are done: Attributes on levels divisible by 4, Skills, Feats when there are slots, Powers when the class gets some, Accept. Back or Esc on the panel puts the creature back as it was. Cancel or Esc on a page puts back that page.
 
 Feats and powers are chains of up to three pictures, each with an arrow to what it leads to: green is had already, dim cannot be taken, yellow is chosen or under the cursor. Recommended follows the class's columns in `feat.2da`, `skills.2da` and `classes.2da`, and the alignment's in `spells.2da`. Party members still level up by themselves. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/levelup.rs`.
+
+## Journal
+J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `World::journal` with their names and the words of their state from `global.jrl`, with the planet first as the file has one. One button swaps active and completed quests, and one goes through the four orders. Scripts and conversations both set a state, and a save keeps the order. Quest items are not built, so their button is greyed. Experience for a quest's state, the file's `XP_Percentage`, is not paid here. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/journal.rs`.
 
 ## Loot
 All of this is the game's own data, measured with `crates/kotor-game/examples/loot_census.rs` over the BIFs and 117 modules. There is no `itemcreate` table in the game: its 2DAs with item in the name are `baseitems`, `itempropdef`, `itemprops`, `itemvalue` and `skillvsitemcost`. `treasurescale.2da` exists and no template or script here was seen using it.

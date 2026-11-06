@@ -190,6 +190,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     click(&mut s, "BTN_STEPNAME5", None);
     s.escape();
 
+    // Quests from the stock journal, by their tags: the journal.
+    let tags = s.game.world.quest_tags();
+    for tag in tags.iter().take(5) {
+        s.game.world.journal.insert(tag.clone(), 10);
+        s.game.world.journal_order.push(tag.clone());
+    }
+    s.open_journal();
+    s.set_view(size);
+    click(&mut s, "LB_ITEMS", Some(1));
+    shot(&mut gpu, &mut s, "journal", &out);
+    s.escape();
+
     // A body that left something, as a list, then with treasure.
     let at = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
     let foe = s

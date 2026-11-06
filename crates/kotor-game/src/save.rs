@@ -227,7 +227,12 @@ impl World {
                 (
                     "PT_JOURNAL",
                     list_of(self.journal.iter(), |(tag, state)| {
-                        st(vec![("Tag", s(tag)), ("State", Value::Int(*state))])
+                        let order = self.journal_order.iter().position(|t| t == tag);
+                        st(vec![
+                            ("Tag", s(tag)),
+                            ("State", Value::Int(*state)),
+                            ("Order", Value::Int(order.map_or(i32::MAX, |o| o as i32))),
+                        ])
                     }),
                 ),
                 ("PT_GOLD", Value::Int(self.gold)),
@@ -705,6 +710,14 @@ impl World {
             .iter()
             .filter_map(|x| Some((x.str("Tag")?.to_string(), x.int("State")? as i32)))
             .collect();
+        let mut order: Vec<(i64, String)> = p
+            .list("PT_JOURNAL")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| Some((x.int("Order").unwrap_or(0), x.str("Tag")?.to_string())))
+            .collect();
+        order.sort();
+        self.journal_order = order.into_iter().map(|o| o.1).collect();
         self.party = p
             .list("PT_MEMBERS")
             .unwrap_or_default()

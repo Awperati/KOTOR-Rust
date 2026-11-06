@@ -3,8 +3,9 @@
 
 use super::{Cue, Stage};
 use kotor_game::{
-    read_save_info, CannotEquip, ItemView, ObjId, SaveInfo, SLOT_BELT, SLOT_BODY, SLOT_HANDS,
-    SLOT_HEAD, SLOT_IMPLANT, SLOT_LEFT_ARM, SLOT_LEFT_HAND, SLOT_RIGHT_ARM, SLOT_RIGHT_HAND,
+    read_save_info, CannotEquip, ItemView, ObjId, Quest, SaveInfo, SLOT_BELT, SLOT_BODY,
+    SLOT_HANDS, SLOT_HEAD, SLOT_IMPLANT, SLOT_LEFT_ARM, SLOT_LEFT_HAND, SLOT_RIGHT_ARM,
+    SLOT_RIGHT_HAND,
 };
 use kotor_ui::{Hit, MenuView, Row};
 use std::path::{Path, PathBuf};
@@ -47,6 +48,11 @@ const TABS: [(&str, &str, &str); 8] = [
     ("BTN_MAP", "LBLH_MAP", "lbl_icn_map"),
     ("BTN_OPT", "LBLH_OPT", "lbl_icn_opt"),
 ];
+/// The journal's orders, each with the talk table's name.
+const QUEST_SORTS: [u32; 4] = [32173, 32174, 32175, 32176];
+const STR_SORT: u32 = 42566;
+const STR_ACTIVE_QUESTS: u32 = 32178;
+const STR_COMPLETED_QUESTS: u32 = 32177;
 const STR_CONTAINER: u32 = 393;
 const STR_SELECT_ITEM: u32 = 38154;
 /// What the pause menu's right side says under the cursor: the buttons the talk table has words for.
@@ -123,6 +129,8 @@ pub(super) enum Screen {
     LevelSkills,
     LevelFeats,
     LevelPowers,
+    /// `journal.gui`.
+    Journal,
 }
 
 /// What the player chose on the option pages. Kept in a text file beside the saves.
@@ -245,6 +253,7 @@ impl Screen {
             Screen::LevelSkills => "level_skills",
             Screen::LevelFeats => "level_feats",
             Screen::LevelPowers => "level_powers",
+            Screen::Journal => "journal",
         }
     }
 
@@ -295,6 +304,9 @@ pub(super) struct Menus {
     refused: bool,
     /// The level being taken.
     level: Option<levelup::Draft>,
+    /// The journal lists completed quests, and in which of `QUEST_SORTS`.
+    journal_completed: bool,
+    journal_sort: usize,
     settings: Settings,
     /// Where the settings are kept; `None` keeps them in memory, as in tests.
     settings_file: Option<PathBuf>,
@@ -415,6 +427,7 @@ impl Stage {
             Screen::LevelSkills => self.level_skills_view(),
             Screen::LevelFeats => self.level_feats_view(),
             Screen::LevelPowers => self.level_powers_view(),
+            Screen::Journal => self.journal_view(),
         };
         if top != Screen::Name {
             v.hover = hover;
@@ -426,6 +439,7 @@ impl Stage {
             Screen::Equip => Some("BTN_EQU"),
             Screen::Inventory => Some("BTN_INV"),
             Screen::Character => Some("BTN_CHAR"),
+            Screen::Journal => Some("BTN_JOU"),
             Screen::Pause if self.started => Some("BTN_OPT"),
             _ => None,
         };
@@ -526,6 +540,65 @@ impl Stage {
         if selected.is_none() {
             v.inert(&["BTN_SAVELOAD"]);
         }
+        v
+    }
+
+    /// The quests the journal lists, in the order it lists them.
+    fn listed_quests(&mut self) -> Vec<Quest> {
+        let completed = self.menus.journal_completed;
+        let mut quests = self.game.world.quests();
+        quests.retain(|q| q.completed == completed);
+        match self.menus.journal_sort {
+            1 => quests.sort_by(|a, b| a.name.cmp(&b.name)),
+            2 => quests.sort_by_key(|q| q.priority),
+            3 => quests.sort_by_key(|q| q.planet),
+            _ => {}
+        }
+        quests
+    }
+
+    /// `journal.gui`, as the reference video has it at 51:30. Quest items are not built, so their button is greyed.
+    fn journal_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("journal");
+        v.inert(&["BTN_QUESTITEMS"]);
+        let (shown, other) = if self.menus.journal_completed {
+            (STR_COMPLETED_QUESTS, STR_ACTIVE_QUESTS)
+        } else {
+            (STR_ACTIVE_QUESTS, STR_COMPLETED_QUESTS)
+        };
+        let sort = self.menus.journal_sort;
+        let title = format!(
+            "{} - {}",
+            self.ui.strref(shown),
+            self.ui.strref(QUEST_SORTS[sort])
+        );
+        v.text("LBL_TITLE", title);
+        let other = self.ui.strref(other);
+        v.text("BTN_SWAPTEXT", other);
+        let next = QUEST_SORTS[(sort + 1) % QUEST_SORTS.len()];
+        let button = format!("{} {}", self.ui.strref(STR_SORT), self.ui.strref(next));
+        v.text("BTN_SORT", button);
+        let quests = self.listed_quests();
+        let selected = self.menus.selected;
+        let rows = quests
+            .iter()
+            .enumerate()
+            .map(|(i, q)| Row {
+                text: q.name.clone(),
+                selected: selected == Some(i),
+                ..Row::default()
+            })
+            .collect();
+        v.lists
+            .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
+        let words = match selected.and_then(|s| quests.get(s)) {
+            Some(q) => match q.planet {
+                Some(planet) => format!("{}:\n{}", self.ui.strref(planet), q.text),
+                None => q.text.clone(),
+            },
+            None => String::new(),
+        };
+        v.text("LBL_ITEM_DESCRIPTION", words);
         v
     }
 
@@ -996,6 +1069,7 @@ impl Stage {
         self.menus.stack.pop();
         self.menus.stack.push(screen);
         self.menus.first = 0;
+        self.menus.selected = (screen == Screen::Journal).then_some(0);
         self.leave_slot();
         self.menus.hover_slot = None;
     }
@@ -1006,9 +1080,15 @@ impl Stage {
             "BTN_EQU" => self.open_equip(),
             "BTN_INV" => self.open_inventory(),
             "BTN_CHAR" => self.open_character(),
+            "BTN_JOU" => self.open_journal(),
             "BTN_OPT" => self.escape(),
             _ => {}
         }
+    }
+
+    /// The J key: the journal, or back to the game if it is up.
+    pub fn open_journal(&mut self) {
+        self.open_items(Screen::Journal);
     }
 
     /// The C key: the character, or back to the game if it is up.
@@ -1035,12 +1115,13 @@ impl Stage {
         let from_game = top.is_none() && self.started && !self.game.world.in_dialogue();
         let swapping = matches!(
             top,
-            Some(Screen::Inventory | Screen::Equip | Screen::Character)
+            Some(Screen::Inventory | Screen::Equip | Screen::Character | Screen::Journal)
         );
         if from_game || swapping {
             self.menus.stack.pop();
             self.menus.stack.push(screen);
             self.menus.first = 0;
+            self.menus.selected = (screen == Screen::Journal).then_some(0);
             self.leave_slot();
             self.menus.hover_slot = None;
             self.menus.hover = None;
@@ -1197,6 +1278,7 @@ impl Stage {
                 "BTN_EQU" => Some(Screen::Equip),
                 "BTN_INV" => Some(Screen::Inventory),
                 "BTN_CHAR" => Some(Screen::Character),
+                "BTN_JOU" => Some(Screen::Journal),
                 "BTN_OPT" => Some(Screen::Pause),
                 _ => None,
             };
@@ -1284,6 +1366,19 @@ impl Stage {
             (Screen::Inventory, "BTN_USEITEM") => self.use_about_item(),
             (Screen::Inventory | Screen::Character, "BTN_EXIT") => {
                 self.menus.stack.pop();
+            }
+            (Screen::Journal, "BTN_EXIT") => {
+                self.menus.stack.pop();
+            }
+            (Screen::Journal, "BTN_SWAPTEXT") => {
+                self.menus.journal_completed = !self.menus.journal_completed;
+                self.menus.selected = Some(0);
+                self.menus.first = 0;
+            }
+            (Screen::Journal, "BTN_SORT") => {
+                self.menus.journal_sort = (self.menus.journal_sort + 1) % QUEST_SORTS.len();
+                self.menus.selected = Some(0);
+                self.menus.first = 0;
             }
             (Screen::Character, "BTN_LEVELUP") => self.start_level_up(),
             (Screen::Character, "BTN_AUTO") => self.auto_level_up(),

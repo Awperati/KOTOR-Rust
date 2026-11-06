@@ -1662,12 +1662,14 @@ impl Host for Adapter<'_> {
                 .is_some_and(|o| o.open)),
             // ---- game state: journal, experience, party, items
             "AddJournalQuestEntry" => {
-                self.world.journal.insert(string(args, 0), int(args, 1)?);
+                self.world.set_journal(&string(args, 0), int(args, 1)?);
                 self.record(name, args);
                 None
             }
             "RemoveJournalQuestEntry" => {
-                self.world.journal.remove(&string(args, 0));
+                let tag = string(args, 0);
+                self.world.journal.remove(&tag);
+                self.world.journal_order.retain(|t| *t != tag);
                 None
             }
             "GetJournalEntry" => Some(Value::Int(

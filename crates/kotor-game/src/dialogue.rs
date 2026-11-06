@@ -83,6 +83,11 @@ impl World {
             });
             self.events
                 .push(format!("journal: quest {q} entry {idx:?}"));
+            if let Some(state) = idx.filter(|i| *i >= 0) {
+                if self.journal.get(&q).is_none_or(|old| *old < state) {
+                    self.set_journal(&q, state);
+                }
+            }
         }
     }
 

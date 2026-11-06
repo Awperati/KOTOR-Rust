@@ -286,6 +286,7 @@ impl App {
             KeyCode::KeyI if pressed => self.stage.open_inventory(),
             KeyCode::KeyU if pressed => self.stage.open_equip(),
             KeyCode::KeyC if pressed => self.stage.open_character(),
+            KeyCode::KeyJ if pressed => self.stage.open_journal(),
             KeyCode::ArrowLeft => {
                 self.turning = if pressed { TURN_SPEED } else { 0.0 };
             }

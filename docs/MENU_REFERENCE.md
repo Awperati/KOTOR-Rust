@@ -16,7 +16,7 @@ The video's player runs at 16:9 with a mod or setting we cannot identify, so it 
 | Conversation | 2:30, 2:35 | `dialogue` | yes |
 | Load screen between modules | 3:59:45 | none, not built | yes |
 | Level-up | 22:20, 1:23:25 | `level_panel`, `level_attributes`, `level_skills`, `level_feats`, `character_level_up` | yes |
-| Journal | 51:30 | none, not built | yes |
+| Journal | 51:30 | `journal` | yes |
 | Map | 3:50:35 | none, not built | yes |
 | Party selection | 2:16:45 | none, not built | yes |
 | Character creation | 0:25 | none, not built | yes |
@@ -32,7 +32,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | What | Before | Now |
 |---|---|---|
 | Screens on a wide window | centred, black at the sides | stretched over the window, 3 across to 2.25 down at 1080p |
-| Tabs over equipment, inventory, character and pause | none | `top.gui`; the screen that is up uses `lbl_icn_*2`, which is green. Abilities, Messages, Journal and Map tabs say they are not built |
+| Tabs over equipment, inventory, character and pause | none | `top.gui`; the screen that is up uses `lbl_icn_*2`, which is green. Abilities, Messages and Map tabs say they are not built |
 | HUD | `maininterface.gui`, portraits at the right | `mipc28x6.gui`: portraits bottom left, four action slots bottom right, eight menu buttons top right that open their screens, map frame top left |
 | Target name and health | fixed at the top | a bar floating over the target |
 | Pictures with `blending additive` in their TXI | black boxes | their black is see-through. This applies to every interface picture |

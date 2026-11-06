@@ -295,6 +295,10 @@ pub struct World {
     pub inside: HashSet<(ObjId, ObjId)>,
     /// Journal: quest tag to the entry state last set.
     pub journal: BTreeMap<String, i32>,
+    /// Quest tags, the last changed first.
+    pub journal_order: Vec<String>,
+    /// `global.jrl`, once read.
+    pub(crate) journal_file: Option<Rc<Gff>>,
     /// Party members besides the player, in join order.
     pub party: Vec<ObjId>,
     /// Which creature holds each `AddPartyMember` slot.
@@ -489,6 +493,8 @@ impl World {
             hero: 1,
             interactive_dialogue: false,
             hold_levels: false,
+            journal_order: Vec::new(),
+            journal_file: None,
             steer: None,
             difficulty: 1,
             opened: None,
