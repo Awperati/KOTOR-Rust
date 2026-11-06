@@ -918,6 +918,7 @@ impl GpuRenderer {
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
+            pass.set_bind_group(0, &globals_bind, &[]);
             for (additive, count, buffer, bind) in &particle_draws {
                 pass.set_pipeline(if *additive {
                     &self.additive_pipeline
