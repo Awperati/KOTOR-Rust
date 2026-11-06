@@ -111,6 +111,25 @@ fn the_names_of_globals_ignore_case() {
 }
 
 #[test]
+fn a_feat_talent_strikes_and_the_gang_fight_talk_gets_its_death() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m03aa").unwrap();
+    let pc = w.pc;
+    let bek = w.by_tag("tar03_bekcs0")[0];
+    // The script takes the Bek down to one hit point, and a Vulkar with an assured hit finishes them with a feat.
+    w.run_script("k_ptar_gangcs1", pc).unwrap();
+    run(&mut w, 30.0, |w| w.object(bek).is_none_or(|o| o.dead));
+    assert!(
+        w.object(bek).is_none_or(|o| o.dead),
+        "{:?}",
+        w.combat.log.last()
+    );
+}
+
+#[test]
 fn a_locked_door_does_not_open() {
     let Some(mut w) = world() else { return };
     let d = door(&w, "end_door02", 40.8);

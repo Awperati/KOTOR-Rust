@@ -556,7 +556,7 @@ impl World {
             }
             _ => MoveStatus::Idle,
         };
-        self.collide_pc(before);
+        let held_up = self.collide_pc(before);
         let pc = self.pc;
         if let Some(p) = self.objects.get_mut(&pc) {
             p.position = self.pc_mover.pos;
@@ -565,7 +565,7 @@ impl World {
         self.update_combat(dt);
         self.expire_effects();
         self.update_knockouts();
-        if status == MoveStatus::Arrived {
+        if status == MoveStatus::Arrived || held_up {
             if let Some(t) = self.pending.take() {
                 self.interact(t);
             }

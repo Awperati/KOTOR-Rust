@@ -17,12 +17,12 @@ Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fet
 - **Pictures**: software renderer for areas, characters with skinning and animation, walk sheets (`docs/RENDER.md`).
 
 ## What is guessed (documented where each is used)
-Walk speed 1.6 m/s and turn rate; door block radius, door swing 1.0 s (measured) and which side's clip; creature radius 0.4 m and follow distances; combat
-(3 s rounds, one attack per round, reach 2 m / 12 m, critical confirmation roll, no line of sight); **kill XP = challenge rating x 25**; average level-up HP;
+NPC turn rate; which side's door clip; creature radius 0.4 m and follow distances; combat
+(one attack per round, reach 2 m / 12 m, critical confirmation roll, no line of sight); **kill XP = challenge rating x 25, paid in full to each standing party member**; average level-up HP;
 spell save DC; x4 skill points at level 1; knocked-out recovery to 1 HP; the 30-point attribute schedule (the three classes' recommended scores do cost exactly
 30, which supports it); which appearance column is which body size; cutscene lengths (animation ids from 1200 index the stunt model's animations: ids 1200-1203
 match the four animation lengths in order, ids 1219/1220 unresolved); GUI text alignment codes, control draw order, and the font fallback for `fnt_d16x16`.
-See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`.
+See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`. Run speed, turns, round length and door time are now measured against the reference video: `REFERENCE.md`.
 
 ## Unverified against the real game
 - **Nothing has been compared with the original engine running.** Every check is against the game's *data* (tables, scripts, models), not its behaviour.
@@ -38,7 +38,7 @@ See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`.
 1. **Kill XP**: the XP a first Sith soldier gives (we say challenge rating x 25; the real number decides that rule).
 2. **Level 1 numbers**: a new Soldier with the class's recommended scores: HP (we get 12), defense (12), attack bonus (+1), saves (+4/+2/+1), skill points (8), feats.
 3. **Attribute buying**: the point cost of raising a score to 15, 16, 17, 18 (we use 2, 2, 3, 3 per step).
-4. **Walk speed**: seconds from the start position to the first door (we walk 1.6 m/s; door about 5.7 m away).
+4. **Run speed**: seconds from the start position to the first door (we run 5.4 m/s; door about 5.7 m away).
 5. **Opening cutscene**: its length (we get about 19 s for the path the script takes) and where the camera cuts.
 6. **First fight**: HP of the first Sith soldier (15 in our data), whether a knocked-out party member stands up with 1 HP, and how long a Force Armor lasts.
 7. **Dialogue box and HUD**: compare `cargo run -p kotor-ui --example ui -- <dir>` PNGs with a screenshot (font, spacing, where the reply list sits).
@@ -60,20 +60,37 @@ Most to least blocking, all absent unless stated:
 ## How far the autopilot gets
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 6000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 2,502 game seconds in 4.9 wall seconds. `end_m01aa` -> `end_m01ab` (382 s) -> `STUNT_00` and `tar_m02af` (677 s) -> `tar_m02aa` -> `tar_m02ac` -> `tar_m02ab` -> `tar_m02ac` -> `tar_m02ae`. 24 kills, 106 door uses, 12 items, 1,005 lines, no routine left unhandled.
+Last run: 2,756 game seconds in 23 wall seconds. `end_m01aa` -> `end_m01ab` -> `STUNT_00` and `tar_m02af` (about 500 s) -> the upper city, cantina and duel ring -> `tar_m03aa`, the lower city. 30 kills, 132 door uses, 38 items, 2,178 lines, experience 1,610.
 
-What is left, by how early it blocks:
-1. **Item use and level-up by hand.** Nothing can use a medpac, so `Mod_OnActvtItem` (`k_pend_activate`) never fires. Experience levels the hero by itself, with no choices. The pilot gets past both because later scripts set the tutorial step too.
+**Where it stops: `tar_m03aa`.** The pilot talks, fights and tries every door, then has nothing left. No walk, fight or script stall is logged before this any more. The way on is plot, not a fault I have found:
+- `tar03_underdoor`, to the undercity elevator, is unlocked by `k_ptar_unlockund`, a node of `tar03_sithpat31`. Replies there depend on `k_ptar_sithpaper`, and the pilot has no Sith papers.
+- `tar03_bekdoor` is toggled by the trigger `tar03_bektoggle`, on a condition about the party that I have not read.
+- `tar03_blkdoor` and `tar03_javydoor` are also locked. I have not read what opens them.
+
+I do not know yet where the papers come from, nor how much of the game runs past this point.
+
+Fixed on the way, earliest first, each with a test:
+1. **A closed door blocked only a 1.1 m disc.** The pilot walked round it, past locked doors. It now blocks its whole width, from its model's mesh.
+2. **The second module's real route.** With no way round, the pilot needs the footlocker's spikes for the security panel. It wrote off anything out of reach for good, and now keeps it until a door opens.
+3. **A door could not be reached when a neighbouring door shares its face.** `tar_m02af` has two. A route may now end on a blocked face.
+4. **The player stuck on people**, at (104, 108) in the cantina and elsewhere. Someone stood on a route corner, or beside a wall, or the player was wedged between two. It now walks through in those cases, and stops when someone stands where the route ends.
+5. **Global names ignored case nowhere.** `k_ptar_dueler_ud` sets `TAR_DUELOVER` and the announcer reads `Tar_DuelOver`, so a duel never ended.
+6. **`SurrenderToEnemies` did nothing.** It now ends the fight on both sides and makes the fighter neutral. The second half is an assumption.
+7. **`tar03_cutdlg`: the pause that ran out.** A feat used as a talent did nothing, and `EffectAssuredHit` was ignored, so the Bek whose death resumes the talk never died.
+8. **Plot creatures could be killed**, such as `tar03_turret`. They now take no harm, and the pilot leaves them alone.
+
+What is left, by how early it matters:
+1. **Item use and level-up by hand.** Nothing can use a medpac, so `Mod_OnActvtItem` (`k_pend_activate`) never fires. Experience levels the hero by itself, with no choices.
 2. **`k_pend_screenchg`** waits for the inventory and other screens through `GetSubScreenID`, which answers a fixed value. I do not know what calls that script in the original.
-3. **Talents ignore their category** (`GetCreatureTalentBest`, `GetCreatureTalentRandom`): a creature casts the first power it can pay for, helpful or not.
+3. **Talents ignore their category** (`GetCreatureTalentBest`, `GetCreatureTalentRandom`): a creature casts the first power it can pay for, helpful or not. A feat used as a talent is a plain attack.
 4. **Grenades fly unseen.** Their rows in `spells.2da` name a projectile model, which is not drawn. No Force power has a projectile in that table.
-5. **Slipping past a locked door.** Once, at `ptar_lockde` in `tar_m02aa`, the hero ended up on the far side of a closed locked door after many tries. Cause not found. The pilot now tries plain locked doors twice, which hides it.
-6. **The crowded cantina, `tar_m02ae`: where the last run stops.** Most walks there make under a metre of progress in 8 seconds, ending at (104, 108), and the way back to `tar_m02ac` fails too. The same happens for a while in `tar_m02ac` at (122, 98) and `tar_m02ab` at (150, 104). Cause not found; freeing steps away from people pressing on the hero changed nothing.
-7. **`tar03_cutdlg` in `tar_m03aa`**, reached by one earlier run: its pause was never lifted. A pause now ends after 60 seconds and is logged as a script error, so a player cannot be stuck there, but the cause is not found and no test covers it.
+5. **The pilot has no skills.** `recommended_character` spends no skill points, so it never passes a skill check.
+6. **Blows can land on the dead.** The log shows `Black Vulkar attacks Remains` right after a death. It harms nothing.
+7. **Some scripts are named and not there:** `talktest` too, in `tar_m02ac`.
 
 8. **Neck in the owner's screenshot: not reproduced.** It shows the neck cut flat with a dark plate at the collar. `cargo run --release -p kotor-render --example head_fit` follows the neck's vertices through all 1,072 animation samples: the join stays under 6 cm, and at 2.2 to 2.7 cm in idle, walk, run and combat ready. `PFHC01` reads 8.6 cm because its ponytail is its lowest part. No pose or texture I tried gives that plate. Which build, pose and camera the owner had is not known.
 
-Logged but no block: `end_door10_cut2`, `end_door19`, `end_door07` and `ptar_lockde` are shut as far as the pilot can tell and the way on lies elsewhere. `k_pend_carth11` and `k_swg_gizka01` are named by conversations but are not in the game's files.
+Logged but no block: `end_door10_cut2`, `end_door19`, `end_door07`, `end_door08`, `tar02_labdoor`, `tar02_arenadoor` and `ptar_lockde` are shut as far as the pilot can tell and the way on lies elsewhere. `k_pend_carth11` is named by `end_trask01` in `end_m01aa` but only `end_m01ab` has the file. The talk carries on past it, which `the_pilot_plays_off_the_endar_spire` checks. `k_swg_gizka01` and `talktest` are named by conversations and I found neither file.
 
 Routines answering a fixed value on these modules, all others being real: `GetAttemptedSpellTarget`, `GetCreatureTalentBest`, `GetCreatureTalentRandom`, `GetEffectType`, `GetIsDebilitated`, `GetIsEncounterCreature`, `GetIsLinkImmune`, `GetLastAttackAction`, `GetNPCAIStyle`, `GetPartyAIStyle`, `GetPlayerRestrictMode`, `GetSoloMode`, `GetUserActionsPending`, `ResistForce`.
 

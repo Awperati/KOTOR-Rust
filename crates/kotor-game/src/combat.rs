@@ -354,6 +354,17 @@ impl World {
         }
     }
 
+    /// `EffectAssuredHit` is on: a blow cannot miss.
+    fn has_assured_hit(&self, id: ObjId) -> bool {
+        self.objects.get(&id).is_some_and(|o| {
+            o.effects.iter().any(|h| {
+                self.effects
+                    .get(h.wrapping_sub(1) as usize)
+                    .is_some_and(|e| e.name == "EffectAssuredHit")
+            })
+        })
+    }
+
     fn resolve_with(
         &mut self,
         attacker: ObjId,
@@ -366,7 +377,10 @@ impl World {
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
         let threat = weapon.threat * boost.threat.max(1);
-        let outcome = resolve_attack(roll, confirm, bonus, defense, threat);
+        let mut outcome = resolve_attack(roll, confirm, bonus, defense, threat);
+        if outcome == Outcome::Miss && self.has_assured_hit(attacker) {
+            outcome = Outcome::Hit;
+        }
         let mut dealt = 0;
         if outcome != Outcome::Miss {
             let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
@@ -482,7 +496,8 @@ impl World {
         let Some(t) = self.objects.get_mut(&target) else {
             return false;
         };
-        if t.dead || t.down {
+        // **Assumption:** the plot flag means no harm at all. `tar03_turret` in `tar_m03aa` has it, and took blows till it fell.
+        if t.dead || t.down || t.plot {
             return false;
         }
         t.hp -= amount;

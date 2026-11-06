@@ -14,8 +14,8 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 |---|---|
 | W A S D | run in that direction, relative to the camera; Shift walks |
 | Right button drag, or the arrow keys | turn the camera round the player |
-| Left click on the floor | walk there |
-| Left click on a creature, door or placeable | walk up and talk, open or use; an enemy is attacked |
+| Left click on the floor | run there |
+| Left click on a creature, door or placeable | run up and talk, open or use; an enemy is attacked |
 | E | use the nearest thing within 2.5 m |
 | Left click on a reply, or 1-9 | take that reply, or take an item from a container or a body |
 | Space or Enter | end a line, or close a container |

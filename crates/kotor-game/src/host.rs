@@ -832,6 +832,14 @@ impl Host for Adapter<'_> {
                             });
                             (spell, self.obj(caller, args, 1), item)
                         }
+                        // Kind 2 is a feat. `k_ptar_gangcs1` kills with one, and its talk waits on that.
+                        // **Assumption:** the blow is a plain attack: what the feat adds is not applied.
+                        Some(Value::Engine(_, h)) if h >> 24 == 2 => {
+                            let t = self.obj(caller, args, 1);
+                            self.world.queue(caller, Action::Attack(t));
+                            self.record(name, args);
+                            return Ok(None);
+                        }
                         _ => {
                             self.record(name, args);
                             return Ok(None);

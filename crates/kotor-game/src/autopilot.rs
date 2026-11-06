@@ -600,6 +600,7 @@ impl Autopilot {
                     && o.id != pc
                     && !o.dead
                     && !o.party_member
+                    && !o.plot
                     && !self.tried.contains(&o.id)
                     && dist2d(o.position, here) <= FIGHT_RANGE
                     && w.reputation(pc, o.id) <= 10

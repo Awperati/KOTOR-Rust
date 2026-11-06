@@ -164,6 +164,16 @@ fn experience_raises_levels_with_hit_points_skills_and_feats() {
 }
 
 #[test]
+fn a_plot_creature_takes_no_harm() {
+    let Some(mut w) = world() else { return };
+    let (pc, foe) = (w.pc, soldier(&w));
+    w.object_mut(foe).unwrap().plot = true;
+    let hp = w.object(foe).unwrap().hp;
+    assert!(!w.hurt(pc, foe, 1000));
+    assert_eq!(w.object(foe).unwrap().hp, hp);
+}
+
+#[test]
 fn a_surrender_ends_the_fight_on_both_sides() {
     let Some(mut w) = world() else { return };
     let (pc, foe) = (w.pc, soldier(&w));

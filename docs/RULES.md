@@ -19,7 +19,7 @@ power's routine trace).
 - Skill check: d20 + ranks + key ability modifier + effects against a DC; a skill that is not usable untrained fails with 0 ranks.
 - Ranks: a class skill rank costs 1 point and is capped at level + 3; cross-class costs 2 and is capped at half.
 - Level-up (`level_up`, `grant_xp`): hit points, Force points, skill points, feat slots and granted feats; XP crosses as many levels as `exptable` says.
-- Kills: the party earns the victim's `ChallengeRating` x 25, shared among the standing party. Party members at 0 hit points are knocked out
+- Kills: the party earns the victim's `ChallengeRating` x 25, paid in full to each of the standing party (an assumption, see `REFERENCE.md`). Party members at 0 hit points are knocked out
   and stand up with 1 hit point when no fight involves them; everyone down at once sets `World::game_over`. Anyone else dies (death script runs).
 - Powers (`cast_spell`): must be known, affordable and in range (touch 2.25, short 10, medium 15, long 28 m, `P` = self); the cost is paid; the impact
   script runs with `GetSpellId`, `GetSpellTargetObject`, `GetLastSpellCaster` set; `FortitudeSave`/`ReflexSave`/`WillSave` and `GetSpellSaveDC` work.

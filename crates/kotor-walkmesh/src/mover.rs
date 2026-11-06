@@ -99,9 +99,14 @@ impl Mover {
         self.next < self.route.len()
     }
 
-    /// The waypoint being walked to, unless it is where the route ends.
-    pub fn next_corner(&self) -> Option<[f32; 3]> {
-        (self.next + 1 < self.route.len()).then(|| self.route[self.next])
+    /// The waypoint being walked to.
+    pub fn next_waypoint(&self) -> Option<[f32; 3]> {
+        self.route.get(self.next).copied()
+    }
+
+    /// Whether the waypoint being walked to is where the route ends.
+    pub fn on_last_leg(&self) -> bool {
+        self.next + 1 == self.route.len()
     }
 
     /// Metres of route left, measured through the remaining waypoints.
