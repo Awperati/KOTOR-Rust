@@ -871,7 +871,7 @@ impl Autopilot {
             }
         }
         // 3. A way out: a door or a trigger that names another module.
-        let way_out = w
+        let mut ways: Vec<(ObjId, Kind, [f32; 3], String)> = w
             .objects
             .values()
             .filter(|o| {
@@ -892,9 +892,17 @@ impl Autopilot {
                 };
                 (o.id, o.kind, at, o.link_module.clone())
             })
-            .min_by(|a, b| dist2d(a.2, here).total_cmp(&dist2d(b.2, here)));
+            .collect();
+        // Where it has been least first: the Sith commander's building is a way out it would otherwise never take, and
+        // the lower city has two doors it would go back and forth through for good.
+        ways.sort_by(|a, b| {
+            let visits = |m: &String| self.modules.iter().filter(|v| *v == m).count();
+            visits(&a.3)
+                .cmp(&visits(&b.3))
+                .then(dist2d(a.2, here).total_cmp(&dist2d(b.2, here)))
+        });
         let mut no_way_out = None;
-        if let Some((id, kind, at, module)) = way_out {
+        for (id, kind, at, module) in ways {
             let label = format!("leave for {module}");
             let moved = if kind == Kind::Door {
                 w.click(id)
@@ -907,7 +915,7 @@ impl Autopilot {
                 return;
             }
             // Doors may yet open: this only counts once nothing else is left.
-            no_way_out = Some(label);
+            no_way_out.get_or_insert(label);
         }
         // 4. Nothing new: what is left unreachable or locked may have opened up, once.
         if !self.unreachable.is_empty() && self.doors_opened > 0 {

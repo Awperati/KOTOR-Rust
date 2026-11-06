@@ -60,14 +60,16 @@ Most to least blocking, all absent unless stated:
 ## How far the autopilot gets
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 6000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 2,756 game seconds in 23 wall seconds. `end_m01aa` -> `end_m01ab` -> `STUNT_00` and `tar_m02af` (about 500 s) -> the upper city, cantina and duel ring -> `tar_m03aa`, the lower city. 30 kills, 132 door uses, 38 items, 2,178 lines, experience 1,610.
+Last run: 6,764 game seconds in 35 wall seconds, level 3 with 4,935 experience. `end_m01aa` -> `end_m01ab` -> `tar_m02af` (about 440 s) -> the upper city, cantina and duel ring -> `tar_m03aa`, the lower city (1,474 s) -> `tar_m03ab`, `tar_m03ae`, the hidden Bek base `tar_m11aa`, `tar_m03ad` -> `tar_m09aa`, the Sith base (4,065 s), and `tar_m02ad`.
 
-**Where it stops: `tar_m03aa`.** The pilot talks, fights and tries every door, then has nothing left. No walk, fight or script stall is logged before this any more. The way on is plot, not a fault I have found:
-- `tar03_underdoor`, to the undercity elevator, is unlocked by `k_ptar_unlockund`, a node of `tar03_sithpat31`. Replies there depend on `k_ptar_sithpaper`, and the pilot has no Sith papers.
-- `tar03_bekdoor` is toggled by the trigger `tar03_bektoggle`, on a condition about the party that I have not read.
-- `tar03_blkdoor` and `tar03_javydoor` are also locked. I have not read what opens them.
+The pilot takes the way out it has used least, so it finds the Sith armour and papers by itself. I do not know that this is the intended order of the story.
 
-I do not know yet where the papers come from, nor how much of the game runs past this point.
+**Where it stops: `tar_m09aa`.** `ptar_elevdoor` and `ptar_armdoor` stay locked and the way on to `tar_m09ab` has no route. I have not read what opens them.
+
+Other things logged on the way, by first appearance:
+- **Fights it gives up on after 90 s:** `tar03_vulkcut1`, `tar03_gangboss`, `tar09_medicaldrd`, `SithTech`, `tar09_wardrd`, `SithPatrol091`. Causes not read. They do not stop it.
+- **Pauses that ran out:** `tar03_cutdlg` again on a later visit, `tar02_sithintero`. Causes not read.
+- **`tar03_underdoor`** still needs the papers shown to `tar03_sithpat31`. Replies there depend on `k_ptar_sithpaper`. The bek door opens on `TAR_BEKBASEOPEN` or Sith armour, by the trigger `tar03_bektoggle`.
 
 Fixed on the way, earliest first, each with a test:
 1. **A closed door blocked only a 1.1 m disc.** The pilot walked round it, past locked doors. It is now a line as wide as its model's mesh, which nothing crosses and which sight stops at. Faces would not do: a door's faces can reach metres to either side.
@@ -83,7 +85,7 @@ Fixed on the way, earliest first, each with a test:
 
 `AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, takes a medpack below half its hit points at most once a round, and a party that is down ends the run. A leader knocked out hands over to someone standing. Each fight is logged as `FIGHT won` or `FIGHT lost`.
 
-Last run: 34 fights won, none lost, 3,559 game seconds. **It dies in `tar_m03aa` at (201, 222)**, level 2 with 24 hit points, to `tar03_turret` by the undercity elevator: d20 + 23 against Defense 16, 2 to 6 a hit, and they cannot be hurt. It went there because the locked door is its way out.
+Last run: 30 fights won, none lost, 1,834 game seconds. 13 in `end_m01aa`, 8 in `end_m01ab`, 5 in `tar_m02ac`, 1 in `tar_m02ae`, 3 in `tar_m03aa`. **It dies in `tar_m03aa` at (204, 224)**, level 2 with 24 hit points, to `tar03_turret` by the undercity elevator: d20 + 23 against Defense 16, 2 to 6 a hit, and they cannot be hurt. It walked to the locked door there, which is one of its ways out. A person warned by the patrol would not, so this is the pilot's mistake as much as a hard fight.
 
 So this does not yet say much about balance:
 - **Nobody can rest.** Rest, or healing between fights, is not built, so only medpacks heal. I do not know how fast the original heals out of combat.

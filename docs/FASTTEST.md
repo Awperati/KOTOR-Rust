@@ -6,13 +6,13 @@ The game runs in fixed steps of 1/60 s, and every game timer counts those steps.
 
 | Way | Command | Measured |
 |---|---|---|
-| No window | `cargo run --release -p kotor-game --example autopilot -- end_m01aa 900 120` | 440 game seconds per wall second |
+| No window | `cargo run --release -p kotor-game --example autopilot -- end_m01aa 900 120` | 606 game seconds per wall second |
 | Window, 16x | `viewer --autopilot` (16x is the default with `--autopilot`) | 15.6 |
 | Window, 64x | `viewer --autopilot --speed 64` | 58.5 |
 | Window, 256x | `viewer --autopilot --speed 256` | 182 |
 | Window, watching | `viewer --autopilot --speed 1` | 1, and lines stay up long enough to read |
 
-Measured on 6 Nov 2026 over 900 game seconds, in a hidden 1280x720 window with `--mute`. With no window, the pilot leaves the Endar Spire at 503 game seconds, in about 1.1 wall seconds (worked out from the rate; the whole 900.8 game seconds took 2.05). That no-window figure was measured after the pilot began running and using the second module's real route, so it reaches busier places sooner. The window figures are from before that and have not been measured again.
+Measured on 6 Nov 2026 over 900 game seconds, in a hidden 1280x720 window with `--mute`. With no window, the pilot leaves the Endar Spire at 503 game seconds, in about 0.8 wall seconds (worked out from the rate; the whole 900.8 game seconds took 1.5). That no-window figure was measured after the pilot began running and using the second module's real route, so it reaches busier places sooner. Blocking doors by faces had cost 440 against 606: every route for someone walking through doors worked out each door's faces twice. A door is now a line, which costs nothing to lift. The window figures are from before that and have not been measured again.
 
 Other switches:
 - `--speed N` works without `--autopilot` too, for playing by hand. I have measured it only with the pilot.
