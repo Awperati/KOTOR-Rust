@@ -437,6 +437,22 @@ fn the_pilot_goes_to_each_planet_on_the_map_once() {
     assert_eq!(g.world.global_numbers.get("K_FUTURE_PLANET").copied(), last);
 }
 
+/// The whole party down holds the world still. An immortal pilot stood through the rest of the run in `tar_m09aa`.
+#[test]
+fn an_immortal_pilot_gets_up_when_the_whole_party_is_down() {
+    let Some(mut w) = world() else {
+        return;
+    };
+    let pc = w.pc;
+    w.object_mut(pc).unwrap().down = true;
+    w.game_over = true;
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    p.run_steps(&mut g, 2);
+    assert!(!g.world.game_over);
+    assert!(!g.world.object(pc).unwrap().down);
+}
+
 #[test]
 fn the_pilot_shoots_down_a_fighter_from_the_turret() {
     let Some(dir) = kotor_core::install_dir() else {

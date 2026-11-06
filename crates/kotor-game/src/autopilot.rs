@@ -443,6 +443,8 @@ impl Autopilot {
                     o.dead = false;
                 }
             }
+            // The whole party down holds the world still, so it must get up too.
+            w.game_over = false;
         } else {
             if w.game_over {
                 self.die(w);
@@ -1216,6 +1218,40 @@ impl Autopilot {
                 return;
             }
         }
+        // What a trigger does when walked into. The Ebon Hawk's ramp asks for a party and leaves. The enclave's start the
+        // Jedi Council's scenes.
+        if exploring {
+            let next = w
+                .objects
+                .values()
+                .filter(|o| {
+                    o.kind == Kind::Trigger
+                        && o.polygon.len() >= 3
+                        && o.scripts.contains_key("ScriptOnEnter")
+                        && !self.tried.contains(&o.id)
+                })
+                .map(|o| (o.id, o.tag.clone(), polygon_middle(o)))
+                .min_by(|a, b| dist2d(a.2, here).total_cmp(&dist2d(b.2, here)));
+            if let Some((id, tag, middle)) = next {
+                self.tried.insert(id);
+                // The ramp's trigger runs on past the floor, and its middle with it: try towards each corner.
+                let corners = w.object(id).map_or(Vec::new(), |o| o.polygon.clone());
+                let inside = corners.iter().map(|c| {
+                    [
+                        (middle[0] + c[0]) / 2.0,
+                        (middle[1] + c[1]) / 2.0,
+                        middle[2],
+                    ]
+                });
+                let at = std::iter::once(middle)
+                    .chain(inside)
+                    .find(|at| w.walk_to(*at));
+                if let Some(at) = at {
+                    self.set_goal(Goal::Walk(at, format!("walk into {tag}")));
+                    return;
+                }
+            }
+        }
         // 3. A way out: a door or a trigger that names another module.
         let mut ways: Vec<(ObjId, Kind, [f32; 3], String)> = w
             .objects
@@ -1267,39 +1303,6 @@ impl Autopilot {
             }
             // Doors may yet open: this only counts once nothing else is left.
             no_way_out.get_or_insert(label);
-        }
-        // A module with no door out may have a script for one: the Ebon Hawk's ramp is a trigger that asks for a party.
-        if !way_out {
-            let next = w
-                .objects
-                .values()
-                .filter(|o| {
-                    o.kind == Kind::Trigger
-                        && o.polygon.len() >= 3
-                        && o.scripts.contains_key("ScriptOnEnter")
-                        && !self.tried.contains(&o.id)
-                })
-                .map(|o| (o.id, o.tag.clone(), polygon_middle(o)))
-                .min_by(|a, b| dist2d(a.2, here).total_cmp(&dist2d(b.2, here)));
-            if let Some((id, tag, middle)) = next {
-                self.tried.insert(id);
-                // The ramp's trigger runs on past the floor, and its middle with it: try towards each corner.
-                let corners = w.object(id).map_or(Vec::new(), |o| o.polygon.clone());
-                let inside = corners.iter().map(|c| {
-                    [
-                        (middle[0] + c[0]) / 2.0,
-                        (middle[1] + c[1]) / 2.0,
-                        middle[2],
-                    ]
-                });
-                let at = std::iter::once(middle)
-                    .chain(inside)
-                    .find(|at| w.walk_to(*at));
-                if let Some(at) = at {
-                    self.set_goal(Goal::Walk(at, format!("walk into {tag}")));
-                    return;
-                }
-            }
         }
         // 4. Nothing new: what is left unreachable or locked may have opened up, once.
         if !self.unreachable.is_empty() && self.doors_opened > 0 {
