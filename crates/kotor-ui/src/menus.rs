@@ -49,6 +49,17 @@ pub struct Cell {
     pub selected: bool,
 }
 
+/// A picture laid over a screen, centred on a point of the layout.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Mark {
+    pub at: (f32, f32),
+    pub picture: String,
+    pub size: (i32, i32),
+    /// How much of the picture across and down shows, from its top left.
+    pub part: [f32; 2],
+    pub tint: [f32; 3],
+}
+
 /// What is under the cursor.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Hit {
@@ -76,6 +87,8 @@ pub struct MenuView {
     pub dialog: Option<Box<MenuView>>,
     /// The scene shows around the panel, instead of black.
     pub over_scene: bool,
+    /// Pictures over the screen, in order.
+    pub marks: Vec<Mark>,
 }
 
 impl MenuView {
@@ -202,6 +215,19 @@ impl Ui<'_> {
             } else {
                 let e = &c.extent;
                 self.draw_plain(cv, view, c, [ox + e.left, oy + e.top, e.width, e.height]);
+            }
+        }
+        for m in &view.marks {
+            if let Some(img) = self.texture(&m.picture).cloned() {
+                let shown = [
+                    0,
+                    0,
+                    (img.width as f32 * m.part[0]) as i32,
+                    (img.height as f32 * m.part[1]) as i32,
+                ];
+                let (w, h) = m.size;
+                let at = [m.at.0 as i32 - w / 2, m.at.1 as i32 - h / 2, w, h];
+                cv.draw_image(&img, shown, at, m.tint, 1.0, Default::default());
             }
         }
         if !view.message.is_empty() {

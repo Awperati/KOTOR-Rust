@@ -290,6 +290,7 @@ impl App {
             KeyCode::KeyU if pressed => self.stage.open_equip(),
             KeyCode::KeyC if pressed => self.stage.open_character(),
             KeyCode::KeyJ if pressed => self.stage.open_journal(),
+            KeyCode::KeyM if pressed => self.stage.open_map(),
             KeyCode::ArrowLeft => {
                 self.turning = if pressed { TURN_SPEED } else { 0.0 };
             }

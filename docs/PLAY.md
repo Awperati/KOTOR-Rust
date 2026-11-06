@@ -24,6 +24,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | I | inventory |
 | U | equipment |
 | J | journal |
+| M | map |
 | C | character |
 
 Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG` and `--autopilot` (a scripted player takes the controls and prints what stalls).
@@ -102,6 +103,10 @@ J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `Worl
 
 ## Party
 `partyselection.gui` shows who is on offer, from `World::available`, with the file's dark pictures for who is not. A click shows someone, Add or Remove changes who comes along, up to two, and nothing happens until OK. A script asks for it with `ShowPartySelectionGUI`: those it forces are chosen already and stay, Cancel is greyed, and its exit script runs on OK. The map's button will open it too. The viewer's `--autopilot` has no screens, so forced members join straight away and levels are taken as they come. **Not built:** a member who is left behind is gone from the world, and comes back as their template says, with no gained levels or carried items. The game keeps them. A save keeps the leader, the character the player made, and `min_one_hp`.
+
+
+## Map
+M, the HUD's button or the tab opens `map.gui` with the area's name and its picture, `lbl_map<area>`. Marks show the player and the notes the area's waypoints have, and the arrows go through them. Party Selection opens that screen, except in a fight. Return to Hideout is greyed. **Not built:** the dark over what has not been seen, an arrow that turns with the player, the small map on the HUD, and `SetMapPinEnabled`. **Assumed:** see the top of `crates/kotor-game/src/area_map.rs`.
 
 
 ## Loot

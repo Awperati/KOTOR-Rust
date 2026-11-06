@@ -1090,6 +1090,61 @@ fn the_party_screen_adds_removes_and_answers_a_script() {
     assert_eq!(s.game.world.party_slots(), vec![6, 8]);
 }
 
+#[test]
+fn the_map_shows_the_area_the_party_and_its_notes() {
+    let Some((mut s, _)) = in_game("map") else {
+        return;
+    };
+    // The numbers place the player on the picture.
+    let map = s.game.world.area_map().expect("the first area has a map");
+    assert_eq!(map.picture, "lbl_mapm01aa");
+    let p = s.game.world.object(s.game.world.pc).unwrap().position;
+    let [u, v] = map.place(p[0], p[1]);
+    assert!(
+        (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v),
+        "{u} {v}"
+    );
+
+    // M opens it and closes it, so do the HUD's button and the tab.
+    s.open_map();
+    assert_eq!(s.menu_name(), "map");
+    let open = frame(&mut s);
+    s.open_map();
+    assert_eq!(s.menu_name(), "-");
+    s.update(DT);
+    let hud = s.hud_pixel("BTN_MAP", SIZE).unwrap();
+    s.click(hud, SIZE);
+    assert_eq!(s.menu_name(), "map");
+    press(&mut s, "BTN_INV");
+    press(&mut s, "BTN_MAP");
+    assert_eq!(s.menu_name(), "map");
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) == open);
+
+    // Up and down go through the notes, if the area has more than one.
+    if map.notes.len() > 1 {
+        press(&mut s, "BTN_DOWN");
+        s.hover((1.0, 1.0), SIZE);
+        assert!(frame(&mut s) != open);
+        press(&mut s, "BTN_UP");
+        s.hover((1.0, 1.0), SIZE);
+        assert!(frame(&mut s) == open);
+    }
+
+    // The party button opens that screen, and comes back here.
+    press(&mut s, "BTN_PRTYSLCT");
+    assert_eq!(s.menu_name(), "party");
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "map");
+    // Moving moves the mark.
+    let o = s.game.world.object_mut(s.game.world.pc).unwrap();
+    o.position[1] += 20.0;
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) != open);
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);

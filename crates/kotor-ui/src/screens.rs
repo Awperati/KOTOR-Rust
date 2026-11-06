@@ -159,6 +159,7 @@ impl<'a> Ui<'a> {
             "savename",
             "container",
             "partyselection",
+            "map",
             "maincg",
             "leveluppnl",
             "abchrgen",

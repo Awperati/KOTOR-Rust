@@ -255,6 +255,10 @@ Key 0x4A 0x24
 $s = WaitFor "menu" "journal"
 Report "J opens the journal" ($s.menu -eq "journal") "menu=$($s.menu)"
 Shot "live_journal"
+Key 0x4D 0x32
+$s = WaitFor "menu" "map"
+Report "M opens the map" ($s.menu -eq "map") "menu=$($s.menu)"
+Shot "live_map"
 Key $ESC[0] $ESC[1]
 $s = WaitFor "menu" "-"
 Report "Esc closes it" ($s.menu -eq "-") "menu=$($s.menu)"

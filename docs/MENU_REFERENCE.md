@@ -17,7 +17,7 @@ The video's player runs at 16:9 with a mod or setting we cannot identify, so it 
 | Load screen between modules | 3:59:45 | none, not built | yes |
 | Level-up | 22:20, 1:23:25 | `level_panel`, `level_attributes`, `level_skills`, `level_feats`, `character_level_up` | yes |
 | Journal | 51:30 | `journal` | yes |
-| Map | 3:50:35 | none, not built | yes |
+| Map | 3:50:35 | `map` | yes |
 | Party selection | 3:12:00, 7:17:05 | `party` | yes |
 | Character creation | 0:25 | none, not built | yes |
 | Upgrade | 20:00 | none, not built | yes |
@@ -32,7 +32,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | What | Before | Now |
 |---|---|---|
 | Screens on a wide window | centred, black at the sides | stretched over the window, 3 across to 2.25 down at 1080p |
-| Tabs over equipment, inventory, character and pause | none | `top.gui`; the screen that is up uses `lbl_icn_*2`, which is green. Abilities, Messages and Map tabs say they are not built |
+| Tabs over equipment, inventory, character and pause | none | `top.gui`; the screen that is up uses `lbl_icn_*2`, which is green. Abilities and Messages tabs say they are not built |
 | HUD | `maininterface.gui`, portraits at the right | `mipc28x6.gui`: portraits bottom left, four action slots bottom right, eight menu buttons top right that open their screens, map frame top left |
 | Target name and health | fixed at the top | a bar floating over the target |
 | Pictures with `blending additive` in their TXI | black boxes | their black is see-through. This applies to every interface picture |
@@ -57,7 +57,9 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Level-up figure | the 3D figure on the panel | an empty space | no 3D in menus |
 | Feat rows | about 22 pixels high at 1080p, so all fit | the file's 56 units, so they scroll | as list rows |
 | Feat button | "Add Feat", "Remove Feat" | "Add", "Remove", the file's words | I found no stock string with theirs |
-| Map | a picture of the area, top left | a frame and an arrow | no map built |
+| Small map on the HUD | a picture of the area, top left | a frame and an arrow | the map screen came first; this needs the picture cut to the player |
+| Map picture | pixel-sized, small, placed low on the right at 3:50:35 | the map part, 440 of its 512 across, fills the file's place for it | as text size |
+| Map marks | an arrow that turns, and notes with their own pictures; what has not been seen is dark | plain circles, and all of it shows | not built |
 | Main menu | Malak in 3D with moving fog on the left | the still picture | no 3D in menus |
 | Character sheet | the 3D figure on a glowing backdrop | the portrait | no 3D in menus |
 | Party portrait on sheets | a small portrait to change member, bottom left | none | party switching not built |

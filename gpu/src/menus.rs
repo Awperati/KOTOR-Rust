@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "levelup.rs"]
 mod levelup;
+#[path = "mapscreen.rs"]
+mod mapscreen;
 #[path = "partyscreen.rs"]
 mod partyscreen;
 
@@ -135,6 +137,8 @@ pub(super) enum Screen {
     Journal,
     /// `partyselection.gui`.
     Party,
+    /// `map.gui`.
+    Map,
 }
 
 /// What the player chose on the option pages. Kept in a text file beside the saves.
@@ -259,6 +263,7 @@ impl Screen {
             Screen::LevelPowers => "level_powers",
             Screen::Journal => "journal",
             Screen::Party => "party",
+            Screen::Map => "map",
         }
     }
 
@@ -311,6 +316,7 @@ pub(super) struct Menus {
     level: Option<levelup::Draft>,
     /// The party being chosen.
     party: Option<partyscreen::Draft>,
+    map: Option<mapscreen::Shown>,
     /// The journal lists completed quests, and in which of `QUEST_SORTS`.
     journal_completed: bool,
     journal_sort: usize,
@@ -436,6 +442,7 @@ impl Stage {
             Screen::LevelPowers => self.level_powers_view(),
             Screen::Journal => self.journal_view(),
             Screen::Party => self.party_view_screen(),
+            Screen::Map => self.map_view(),
         };
         if top != Screen::Name {
             v.hover = hover;
@@ -448,6 +455,7 @@ impl Stage {
             Screen::Inventory => Some("BTN_INV"),
             Screen::Character => Some("BTN_CHAR"),
             Screen::Journal => Some("BTN_JOU"),
+            Screen::Map => Some("BTN_MAP"),
             Screen::Pause if self.started => Some("BTN_OPT"),
             _ => None,
         };
@@ -1089,6 +1097,7 @@ impl Stage {
             "BTN_INV" => self.open_inventory(),
             "BTN_CHAR" => self.open_character(),
             "BTN_JOU" => self.open_journal(),
+            "BTN_MAP" => self.open_map(),
             "BTN_OPT" => self.escape(),
             _ => {}
         }
@@ -1123,7 +1132,13 @@ impl Stage {
         let from_game = top.is_none() && self.started && !self.game.world.in_dialogue();
         let swapping = matches!(
             top,
-            Some(Screen::Inventory | Screen::Equip | Screen::Character | Screen::Journal)
+            Some(
+                Screen::Inventory
+                    | Screen::Equip
+                    | Screen::Character
+                    | Screen::Journal
+                    | Screen::Map
+            )
         );
         if from_game || swapping {
             self.menus.stack.pop();
@@ -1287,6 +1302,7 @@ impl Stage {
                 "BTN_INV" => Some(Screen::Inventory),
                 "BTN_CHAR" => Some(Screen::Character),
                 "BTN_JOU" => Some(Screen::Journal),
+                "BTN_MAP" => Some(Screen::Map),
                 "BTN_OPT" => Some(Screen::Pause),
                 _ => None,
             };
@@ -1389,6 +1405,7 @@ impl Stage {
                 self.menus.first = 0;
             }
             (Screen::Party, _) => self.party_press(tag),
+            (Screen::Map, _) => self.map_press(tag),
             (Screen::Character, "BTN_LEVELUP") => self.start_level_up(),
             (Screen::Character, "BTN_AUTO") => self.auto_level_up(),
             (screen, _) if screen.is_level() => self.level_press(screen, tag),

@@ -10,5 +10,5 @@ mod screens;
 pub use canvas::{Canvas, Orient};
 pub use font::{flip_rows, parse_font_txi, Font, Glyph};
 pub use gui::{Border, Control, Extent, Gui, GuiText};
-pub use menus::{Cell, Hit, MenuView, Row};
+pub use menus::{Cell, Hit, Mark, MenuView, Row};
 pub use screens::{DialogueView, HudMember, Patch, Ui, SCREEN};

@@ -202,6 +202,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "journal", &out);
     s.escape();
 
+    // Where the party is: the map.
+    s.open_map();
+    shot(&mut gpu, &mut s, "map", &out);
+    s.escape();
+
     // Who can come along: the party.
     for (slot, template) in [(2, "end_trask"), (6, "n_calonord"), (8, "n_calonord")] {
         s.game.world.available.insert(slot, template.to_string());

@@ -1,6 +1,7 @@
 //! The game world without graphics: objects, a clock, per-object action queues, delayed commands,
 //! the routines scripts call, and the dialogue runner. It reads the installed game and never writes it.
 
+mod area_map;
 mod autopilot;
 mod chargen;
 mod combat;
@@ -20,6 +21,7 @@ mod save;
 mod sheet;
 mod world;
 
+pub use area_map::{AreaMap, MapNote};
 pub use autopilot::{Autopilot, Stall};
 pub use chargen::{
     attribute_cost, BodySize, CharacterSpec, ABILITY_NAMES, ATTRIBUTE_BASE, ATTRIBUTE_MAX,
