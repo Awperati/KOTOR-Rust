@@ -86,13 +86,12 @@ pub(crate) fn slide_around(
 }
 
 impl World {
-    /// Centres of living creatures that block `who`: everyone but itself, and the party too unless `who` is the
-    /// player (the player pushes through its own party).
+    /// Centres of living creatures that block `who`: everyone but itself, the party included (bug 15). A player pressed
+    /// against someone for half a second walks through, see `collide_pc`.
     fn blockers_for(&self, who: ObjId) -> Vec<[f32; 2]> {
         self.objects
             .values()
             .filter(|o| o.kind == Kind::Creature && !o.dead && o.id != who)
-            .filter(|o| who != self.pc || !(o.party_member || self.party.contains(&o.id)))
             .map(|o| [o.position[0], o.position[1]])
             .collect()
     }

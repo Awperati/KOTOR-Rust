@@ -1,7 +1,7 @@
 //! Interaction and movement on top of the world: picking, click-to-walk, doors, triggers, module
 //! transitions and the per-step update.
 
-use crate::follow::{dist2d, trim_route};
+use crate::follow::{dist2d, slide_around, trim_route};
 use crate::world::{DoorState, Kind, ObjId, Object, World};
 use kotor_core::{Error, ResType, Result};
 use kotor_script::OBJECT_INVALID;
@@ -753,6 +753,18 @@ impl World {
             return true;
         };
         let status = mover.step(nav, &params, dt);
+        // Walkers go round the people in their way (bug 15), except the one they walk to.
+        if id != self.pc && mover.pos != pos {
+            let blockers: Vec<[f32; 2]> = self
+                .objects
+                .values()
+                .filter(|o| {
+                    o.kind == Kind::Creature && !o.dead && o.id != id && Some(o.id) != target
+                })
+                .map(|o| [o.position[0], o.position[1]])
+                .collect();
+            mover.pos = slide_around(nav, pos, mover.pos, &blockers);
+        }
         let now = mover.pos;
         if let Some(o) = self.objects.get_mut(&id) {
             o.position = now;
@@ -910,7 +922,13 @@ impl World {
             o.inventory.clone(),
             o.equipped.iter().map(|(s, i)| (*s, *i)).collect(),
         );
-        let drops = |w: &World, i: &ObjId| w.objects.get(i).is_some_and(|o| o.droppable);
+        // **Assumption:** the remains hold everything carried, whatever the item's Droppable says (bug 34: the Jedi's
+        // two lightsabers). Only a creature's own claws, bite and hide (`baseitems.2da` rows 81 to 84) go with it.
+        let drops = |w: &World, i: &ObjId| {
+            w.objects
+                .get(i)
+                .is_some_and(|o| o.droppable || !(81..=84).contains(&o.base_item))
+        };
         let mut loot = Vec::new();
         for i in carried {
             if drops(self, &i) {
