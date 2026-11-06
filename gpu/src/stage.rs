@@ -311,6 +311,7 @@ impl Stage {
         let mut world = World::new(base).map_err(e)?;
         world.interactive_dialogue = true;
         world.hold_levels = true;
+        world.party_screen = true;
         Ok(world)
     }
 
@@ -477,6 +478,7 @@ impl Stage {
 
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
+        self.take_party_request();
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);

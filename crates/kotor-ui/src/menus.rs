@@ -225,9 +225,17 @@ impl Ui<'_> {
         if c.kind == CHECKBOX {
             let ticked = patch.value.is_some_and(|v| v.0 != 0);
             let picture = c.selected.as_ref().filter(|_| ticked).unwrap_or(&c.border);
+            // A square one with no words is a frame round what lies under it, as on the party screen.
             let side = r[3] * 3 / 4;
-            let tick = [r[0], r[1] + (r[3] - side) / 2, side, side];
+            let tick = if r[2] == r[3] {
+                r
+            } else {
+                [r[0], r[1] + (r[3] - side) / 2, side, side]
+            };
             self.draw_border(cv, picture, tick, None);
+            if let (true, Some(h)) = (lit, &c.hilight) {
+                self.draw_border(cv, h, tick, None);
+            }
             let Some(t) = &c.text else { return };
             let text = patch.text.clone().unwrap_or_else(|| match t.strref {
                 Some(s) if t.text.is_empty() => self.strref(s),

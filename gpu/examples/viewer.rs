@@ -215,6 +215,9 @@ impl App {
             self.keys[4],
         );
         if let Some(p) = self.pilot.as_mut() {
+            // A scripted player opens no screens: levels and forced party members come straight away.
+            self.stage.game.world.hold_levels = false;
+            self.stage.game.world.party_screen = false;
             p.step(&mut self.stage.game, dt);
             for l in &p.log[self.pilot_seen..] {
                 println!("pilot: {l}");

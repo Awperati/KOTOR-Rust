@@ -18,7 +18,7 @@ The video's player runs at 16:9 with a mod or setting we cannot identify, so it 
 | Level-up | 22:20, 1:23:25 | `level_panel`, `level_attributes`, `level_skills`, `level_feats`, `character_level_up` | yes |
 | Journal | 51:30 | `journal` | yes |
 | Map | 3:50:35 | none, not built | yes |
-| Party selection | 2:16:45 | none, not built | yes |
+| Party selection | 3:12:00, 7:17:05 | `party` | yes |
 | Character creation | 0:25 | none, not built | yes |
 | Upgrade | 20:00 | none, not built | yes |
 | Save and load screens | not found | `save_list`, `load_list`, `save_name` | **no** |
@@ -52,6 +52,8 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | List rows | about 13 layout units high, a small icon, no border until chosen | the file's 50, with a border and a large icon | The rows follow `PROTOITEM`, and their height depends on text size |
 | HUD size | pixel-sized, so smaller at 1080p | scales with the window | as text size |
 | Bottom bar in a conversation | about 12% of the height | about 22% | our larger text needs the room |
+| Party figure | the 3D figure on a coloured backdrop | the portrait | no 3D in menus |
+| Party OK | asks "Are you sure this is the party composition you want?" at 3:12:00 | no question | I did not look for where it asks or for its string |
 | Level-up figure | the 3D figure on the panel | an empty space | no 3D in menus |
 | Feat rows | about 22 pixels high at 1080p, so all fit | the file's 56 units, so they scroll | as list rows |
 | Feat button | "Add Feat", "Remove Feat" | "Add", "Remove", the file's words | I found no stock string with theirs |

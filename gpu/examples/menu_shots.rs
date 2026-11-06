@@ -202,6 +202,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "journal", &out);
     s.escape();
 
+    // Who can come along: the party.
+    for (slot, template) in [(2, "end_trask"), (6, "n_calonord"), (8, "n_calonord")] {
+        s.game.world.available.insert(slot, template.to_string());
+    }
+    s.open_party();
+    s.set_view(size);
+    click(&mut s, "BTN_NPC2", None);
+    click(&mut s, "BTN_ACCEPT", None);
+    shot(&mut gpu, &mut s, "party", &out);
+    s.escape();
+
     // A body that left something, as a list, then with treasure.
     let at = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
     let foe = s

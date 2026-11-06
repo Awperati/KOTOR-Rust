@@ -100,6 +100,10 @@ Feats and powers are chains of up to three pictures, each with an arrow to what 
 ## Journal
 J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `World::journal` with their names and the words of their state from `global.jrl`, with the planet first as the file has one. One button swaps active and completed quests, and one goes through the four orders. Scripts and conversations both set a state, and a save keeps the order. Quest items are not built, so their button is greyed. Experience for a quest's state, the file's `XP_Percentage`, is not paid here. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/journal.rs`.
 
+## Party
+`partyselection.gui` shows who is on offer, from `World::available`, with the file's dark pictures for who is not. A click shows someone, Add or Remove changes who comes along, up to two, and nothing happens until OK. A script asks for it with `ShowPartySelectionGUI`: those it forces are chosen already and stay, Cancel is greyed, and its exit script runs on OK. The map's button will open it too. The viewer's `--autopilot` has no screens, so forced members join straight away and levels are taken as they come. **Not built:** a member who is left behind is gone from the world, and comes back as their template says, with no gained levels or carried items. The game keeps them. A save keeps the leader, the character the player made, and `min_one_hp`.
+
+
 ## Loot
 All of this is the game's own data, measured with `crates/kotor-game/examples/loot_census.rs` over the BIFs and 117 modules. There is no `itemcreate` table in the game: its 2DAs with item in the name are `baseitems`, `itempropdef`, `itemprops`, `itemvalue` and `skillvsitemcost`. `treasurescale.2da` exists and no template or script here was seen using it.
 

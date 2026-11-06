@@ -83,7 +83,7 @@ const PRESENTATION: &[&str] = &[
 /// The side a party member fights on. `repute.2da` has the player's row hostile to `Hostile_1` and friendly to this one.
 ///
 /// **Assumption:** Trask's template says neutral, which would leave him out of every fight, so joining must change it.
-const PARTY_FACTION: i32 = 2;
+pub(crate) const PARTY_FACTION: i32 = 2;
 
 /// Routines that become queued actions with no effect on the headless world.
 const RECORDED_ACTIONS: &[&str] = &[
@@ -1212,6 +1212,15 @@ impl Host for Adapter<'_> {
             // `k_pend_traskdl29` adds Trask this way and `k_pend_reset` carries on from there.
             "ShowPartySelectionGUI" => {
                 self.record(name, args);
+                if self.world.party_screen {
+                    let forced = [1, 2].iter().filter(|i| args.len() > **i);
+                    let forced = forced.filter_map(|i| int(args, *i).ok());
+                    self.world.party_request = Some(crate::party::PartyRequest {
+                        forced: forced.filter(|slot| *slot >= 0).collect(),
+                        script: string(args, 0),
+                    });
+                    return Ok(None);
+                }
                 let beside = self
                     .world
                     .object(caller)

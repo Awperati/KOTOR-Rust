@@ -341,6 +341,9 @@ pub struct World {
     pub interactive_dialogue: bool,
     /// The player takes each level on a screen, instead of when the experience comes in.
     pub hold_levels: bool,
+    /// `ShowPartySelectionGUI` waits for a screen, instead of bringing the forced members straight away.
+    pub party_screen: bool,
+    pub party_request: Option<crate::party::PartyRequest>,
     /// The direction the player is being steered this step, and whether at a run.
     pub steer: Option<([f32; 2], bool)>,
     /// The game's difficulty: a row of `difficultyopt.2da`, 0 easy, 1 normal, 2 difficult.
@@ -493,6 +496,8 @@ impl World {
             hero: 1,
             interactive_dialogue: false,
             hold_levels: false,
+            party_screen: false,
+            party_request: None,
             journal_order: Vec::new(),
             journal_file: None,
             steer: None,

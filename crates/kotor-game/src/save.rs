@@ -291,7 +291,9 @@ impl World {
         bools.sort();
         let mut k = key_struct(o.id);
         for (name, v) in [
-            ("IsPlayer", Value::Byte((o.id == self.pc) as u8)),
+            ("IsPlayer", Value::Byte((o.id == self.hero) as u8)),
+            ("IsLeader", Value::Byte((o.id == self.pc) as u8)),
+            ("MinOneHP", Value::Byte(o.min_one_hp as u8)),
             ("Name", s(&o.name)),
             ("Position", Value::Vector(o.position)),
             ("Facing", Value::Float(o.facing)),
@@ -458,8 +460,8 @@ impl World {
             return Err(Error::NotFound(format!("module {module}")));
         }
 
-        // A fresh start: only the player object survives, then the module is built again.
-        let pc = self.pc;
+        // A fresh start: only the character the player made survives, then the module is built again.
+        let pc = self.hero;
         let mut player = self
             .objects
             .remove(&pc)
@@ -545,8 +547,12 @@ impl World {
         self.objects
             .retain(|id, o| wanted.contains(id) || matches!(o.kind, Kind::Module | Kind::Area));
         let resolve = |e: &Struct| map.get(&key_of(e)).copied();
+        let mut leader = pc;
         for e in saved {
             let Some(id) = resolve(e) else { continue };
+            if e.int("IsLeader") == Some(1) {
+                leader = id;
+            }
             let inventory: Vec<ObjId> = e
                 .list("Inventory")
                 .unwrap_or_default()
@@ -601,6 +607,7 @@ impl World {
             o.dead = flag("Dead");
             o.party_member = flag("PartyMember");
             o.spawned = true;
+            o.min_one_hp = flag("MinOneHP");
             o.locked = flag("Locked");
             o.level = e.int("Level").unwrap_or(1) as i32;
             o.open = flag("Open");
@@ -762,11 +769,12 @@ impl World {
         }
         let pos = match p.get("PT_PLAYER_POS") {
             Some(Value::Vector(v)) => *v,
-            _ => self.object(pc).map_or([0.0; 3], |o| o.position),
+            _ => self.object(leader).map_or([0.0; 3], |o| o.position),
         };
         let heading = p.float("PT_PLAYER_HEAD").unwrap_or(0.0) as f32;
         self.pc_mover = kotor_walkmesh::Mover::new(pos, heading);
-        if let Some(o) = self.objects.get_mut(&pc) {
+        self.pc = leader;
+        if let Some(o) = self.objects.get_mut(&leader) {
             o.position = pos;
         }
         Ok(())

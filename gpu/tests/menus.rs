@@ -491,7 +491,7 @@ fn a_body_with_loot_is_a_target_and_opens_as_a_list() {
     let foe = s
         .game
         .world
-        .spawn_creature("n_calonord", [at[0] + 1.0, at[1], at[2]]);
+        .spawn_creature("n_calonord", [at[0] + 0.1, at[1], at[2]]);
     let hp = s.game.world.object(foe).unwrap().hp;
     s.game.world.hurt(pc, foe, hp + 1);
     s.update(DT);
@@ -1006,6 +1006,88 @@ fn the_journal_lists_quests_swaps_to_completed_and_sorts() {
     s.game.world.load_from(&path).unwrap();
     assert_eq!(s.game.world.journal_order, vec![a, b]);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_party_screen_adds_removes_and_answers_a_script() {
+    let Some((mut s, _)) = in_game("party") else {
+        return;
+    };
+    let w = &mut s.game.world;
+    w.party_request = None;
+    w.available.clear();
+    for id in w.party.clone() {
+        w.object_mut(id).unwrap().party_member = false;
+    }
+    w.party.clear();
+    w.npc_slots.clear();
+    w.available.insert(2, "end_trask".to_string());
+    w.available.insert(6, "n_calonord".to_string());
+    w.available.insert(8, "n_calonord".to_string());
+
+    // Only who is offered can be chosen, and the game waits.
+    s.open_party();
+    assert_eq!(s.menu_name(), "party");
+    assert!(s.menu_pixel("BTN_NPC0", None, SIZE).is_none());
+    let empty = frame(&mut s);
+    let t = s.game.world.time;
+    s.update(DT);
+    assert_eq!(s.game.world.time, t);
+
+    // A click shows someone, and Add takes them. The words change, and the screen says how many places are left.
+    press(&mut s, "BTN_NPC2");
+    s.hover((1.0, 1.0), SIZE);
+    let shown = frame(&mut s);
+    assert!(shown != empty);
+    press(&mut s, "BTN_ACCEPT");
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) != shown);
+    assert!(s.game.world.party.is_empty(), "not until OK");
+
+    // Cancel changes nothing.
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "-");
+    assert!(s.game.world.party.is_empty());
+
+    // OK brings them. There are only two places.
+    s.open_party();
+    for slot in ["BTN_NPC2", "BTN_NPC6", "BTN_NPC8"] {
+        press(&mut s, slot);
+        press(&mut s, "BTN_ACCEPT");
+    }
+    press(&mut s, "BTN_DONE");
+    assert_eq!(s.menu_name(), "-");
+    let w = &s.game.world;
+    assert_eq!(w.party.len(), 2);
+    assert_eq!(w.party_slots(), vec![2, 6]);
+    let member = w.npc_slots[&2];
+    assert_eq!(w.object(member).unwrap().faction, 2);
+
+    // Taking someone off sends them away.
+    s.open_party();
+    press(&mut s, "BTN_NPC2");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_DONE");
+    let w = &s.game.world;
+    assert_eq!(w.party_slots(), vec![6]);
+    assert!(w.object(member).is_none());
+
+    // A script asks for the screen. Who it forces cannot be taken off, and it cannot be cancelled.
+    s.game.world.party_request = Some(kotor_game::PartyRequest {
+        script: String::new(),
+        forced: vec![8],
+    });
+    s.update(DT);
+    assert_eq!(s.menu_name(), "party");
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "party");
+    s.escape();
+    assert_eq!(s.menu_name(), "party");
+    press(&mut s, "BTN_NPC8");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_DONE");
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(s.game.world.party_slots(), vec![6, 8]);
 }
 
 /// The picture of the game, with nothing open.

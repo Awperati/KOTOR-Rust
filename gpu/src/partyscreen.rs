@@ -1,0 +1,178 @@
+//! `partyselection.gui`: who comes along. A script asks for it with `ShowPartySelectionGUI`, and the map's button opens it.
+//! Nothing changes until OK. The reference video has it at 3:12:00 and 7:17:05. **Assumed:** a click shows someone and
+//! Add takes them: the video shows the screen, not the clicks.
+
+use super::{Screen, Stage};
+use kotor_game::{PartyRequest, PARTY_SIZE};
+use kotor_ui::MenuView;
+
+const STR_ADD: u32 = 38455;
+const STR_REMOVE: u32 = 38456;
+const STR_LEVEL: u32 = 32154;
+/// Who each slot is in the game, from the file's own `LBL_NA` pictures: these with a 2 are for those not on offer.
+const PORTRAITS: [&str; 9] = [
+    "po_pbastila",
+    "po_pcanderous",
+    "po_pcarth",
+    "po_phk47",
+    "po_pjolee",
+    "po_pjuhani",
+    "po_pmission",
+    "po_pt3m3",
+    "po_pzaalbar",
+];
+
+/// The party being chosen.
+pub(super) struct Draft {
+    chosen: Vec<i32>,
+    /// The slot whose name is on show.
+    shown: Option<i32>,
+    request: Option<PartyRequest>,
+}
+
+impl Stage {
+    /// Open the screen, with the leader back as the character the player made.
+    fn start_party(&mut self, request: Option<PartyRequest>) {
+        let w = &mut self.game.world;
+        w.switch_leader(w.hero);
+        let mut chosen = w.party_slots();
+        if let Some(r) = &request {
+            for slot in r.forced.iter().filter(|s| w.available.contains_key(s)) {
+                if !chosen.contains(slot) {
+                    chosen.push(*slot);
+                }
+            }
+        }
+        self.menus.party = Some(Draft {
+            chosen,
+            shown: None,
+            request,
+        });
+        self.menus.stack.push(Screen::Party);
+        self.menus.hover = None;
+    }
+
+    /// The party screen, from the map or a test.
+    pub fn open_party(&mut self) {
+        self.start_party(None);
+    }
+
+    /// A script has asked for the screen.
+    pub(in crate::stage) fn take_party_request(&mut self) {
+        if let Some(request) = self.game.world.party_request.take() {
+            self.start_party(Some(request));
+        }
+    }
+
+    pub(super) fn party_view_screen(&mut self) -> MenuView {
+        let mut v = MenuView::new("partyselection");
+        let Some((chosen, shown, forced, required)) = self.menus.party.as_ref().map(|d| {
+            let forced = d.request.as_ref().map_or(Vec::new(), |r| r.forced.clone());
+            let required = d.request.is_some();
+            (d.chosen.clone(), d.shown, forced, required)
+        }) else {
+            return v;
+        };
+        for (slot, portrait) in PORTRAITS.iter().enumerate() {
+            let n = slot as i32;
+            let offered = self.game.world.available.contains_key(&n);
+            let (tag_char, tag_na, tag_button) = (
+                format!("LBL_CHAR{slot}"),
+                format!("LBL_NA{slot}"),
+                format!("BTN_NPC{slot}"),
+            );
+            if offered {
+                v.hide(&[&tag_na]);
+                v.fill(&tag_char, *portrait);
+                v.value(&tag_button, chosen.contains(&n) as i32, 1);
+            } else {
+                v.hide(&[&tag_char, &tag_button]);
+            }
+        }
+        let places = PARTY_SIZE.saturating_sub(chosen.len());
+        v.text("LBL_COUNT", places.to_string());
+        if required {
+            v.inert(&["BTN_BACK"]);
+        }
+        let word = if shown.is_some_and(|s| chosen.contains(&s)) {
+            STR_REMOVE
+        } else {
+            STR_ADD
+        };
+        let word = self.ui.strref(word);
+        v.text("BTN_ACCEPT", word);
+        let can_change = shown.is_some_and(|s| {
+            if chosen.contains(&s) {
+                !forced.contains(&s)
+            } else {
+                places > 0
+            }
+        });
+        if !can_change {
+            v.inert(&["BTN_ACCEPT"]);
+        }
+        let about = shown.and_then(|s| self.game.world.party_candidate(s));
+        match (shown, about) {
+            (Some(slot), Some((name, level, class))) => {
+                v.fill("LBL_3D", PORTRAITS[slot as usize]);
+                v.text("LBL_NPC_NAME", name);
+                let label = self.ui.strref(STR_LEVEL);
+                let class = self.ui.strref(class);
+                v.text("LBL_NPC_LEVEL", format!("{label} {level} {class}"));
+            }
+            _ => {
+                v.hide(&["LBL_3D"]);
+                v.text("LBL_NPC_NAME", "");
+                v.text("LBL_NPC_LEVEL", "");
+            }
+        }
+        v
+    }
+
+    fn close_party(&mut self, keep: bool) {
+        let Some(d) = self.menus.party.take() else {
+            return;
+        };
+        self.menus.stack.pop();
+        let script = d.request.map_or(String::new(), |r| r.script);
+        if keep {
+            self.game.world.choose_party(&d.chosen, &script);
+        }
+    }
+
+    pub(super) fn party_press(&mut self, tag: &str) {
+        match tag {
+            "BTN_DONE" => self.close_party(true),
+            "BTN_BACK" => {
+                let required = self
+                    .menus
+                    .party
+                    .as_ref()
+                    .is_some_and(|d| d.request.is_some());
+                if !required {
+                    self.close_party(false);
+                }
+            }
+            "BTN_ACCEPT" => {
+                let Some(d) = self.menus.party.as_mut() else {
+                    return;
+                };
+                let Some(slot) = d.shown else { return };
+                let forced = d.request.as_ref().is_some_and(|r| r.forced.contains(&slot));
+                if d.chosen.contains(&slot) {
+                    if !forced {
+                        d.chosen.retain(|s| *s != slot);
+                    }
+                } else if d.chosen.len() < PARTY_SIZE {
+                    d.chosen.push(slot);
+                }
+            }
+            _ => {
+                let slot = tag.strip_prefix("BTN_NPC").and_then(|n| n.parse().ok());
+                if let (Some(d), Some(slot)) = (self.menus.party.as_mut(), slot) {
+                    d.shown = Some(slot);
+                }
+            }
+        }
+    }
+}

@@ -14,6 +14,33 @@ fn fresh() -> World {
     world().expect("install")
 }
 
+#[test]
+fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
+    let Some(mut w) = world() else { return };
+    let hero = w.pc;
+    let spec = w.recommended_character("Player", 0, 1).unwrap();
+    w.create_character(&spec).unwrap();
+    let carth = w.by_tag("end_trask")[0];
+    w.party.push(carth);
+    w.object_mut(carth).unwrap().party_member = true;
+    w.object_mut(carth).unwrap().min_one_hp = true;
+    assert!(w.switch_leader(carth));
+    let bytes = w.save_bytes("leader").unwrap();
+
+    let mut back = fresh();
+    back.load_save(&bytes).unwrap();
+    assert_eq!(back.hero, hero);
+    assert_ne!(back.pc, hero);
+    assert_eq!(back.object(back.pc).unwrap().tag, "end_trask");
+    assert!(back.object(back.pc).unwrap().min_one_hp);
+    assert_eq!(back.party, vec![hero]);
+    // And a world led by someone else takes it too.
+    let again = back.save_bytes("again").unwrap();
+    back.load_save(&again).unwrap();
+    assert_eq!(back.hero, hero);
+    assert_eq!(back.party, vec![hero]);
+}
+
 /// Play a little: open the first door, give Trask to the party with an item, earn XP, set variables, hurt a creature.
 fn play(w: &mut World) {
     let d = *w

@@ -158,6 +158,7 @@ impl<'a> Ui<'a> {
             "saveload",
             "savename",
             "container",
+            "partyselection",
             "maincg",
             "leveluppnl",
             "abchrgen",

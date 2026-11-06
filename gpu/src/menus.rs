@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "levelup.rs"]
 mod levelup;
+#[path = "partyscreen.rs"]
+mod partyscreen;
 
 /// Longest name a save can be given, and the characters the interface font has.
 const SAVE_NAME_MAX: usize = 32;
@@ -131,6 +133,8 @@ pub(super) enum Screen {
     LevelPowers,
     /// `journal.gui`.
     Journal,
+    /// `partyselection.gui`.
+    Party,
 }
 
 /// What the player chose on the option pages. Kept in a text file beside the saves.
@@ -254,6 +258,7 @@ impl Screen {
             Screen::LevelFeats => "level_feats",
             Screen::LevelPowers => "level_powers",
             Screen::Journal => "journal",
+            Screen::Party => "party",
         }
     }
 
@@ -304,6 +309,8 @@ pub(super) struct Menus {
     refused: bool,
     /// The level being taken.
     level: Option<levelup::Draft>,
+    /// The party being chosen.
+    party: Option<partyscreen::Draft>,
     /// The journal lists completed quests, and in which of `QUEST_SORTS`.
     journal_completed: bool,
     journal_sort: usize,
@@ -428,6 +435,7 @@ impl Stage {
             Screen::LevelFeats => self.level_feats_view(),
             Screen::LevelPowers => self.level_powers_view(),
             Screen::Journal => self.journal_view(),
+            Screen::Party => self.party_view_screen(),
         };
         if top != Screen::Name {
             v.hover = hover;
@@ -1380,6 +1388,7 @@ impl Stage {
                 self.menus.selected = Some(0);
                 self.menus.first = 0;
             }
+            (Screen::Party, _) => self.party_press(tag),
             (Screen::Character, "BTN_LEVELUP") => self.start_level_up(),
             (Screen::Character, "BTN_AUTO") => self.auto_level_up(),
             (screen, _) if screen.is_level() => self.level_press(screen, tag),
@@ -1428,6 +1437,10 @@ impl Stage {
             Some(Screen::Equip) if self.menus.slot.is_some() => {
                 self.leave_slot();
                 self.menus.message.clear();
+            }
+            Some(Screen::Party) => {
+                self.party_press("BTN_BACK");
+                self.menus.hover = None;
             }
             Some(Screen::LevelUp) => self.abandon_level(),
             Some(screen) if screen.is_level() => {
