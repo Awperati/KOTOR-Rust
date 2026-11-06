@@ -146,6 +146,7 @@ pub struct Autopilot {
     fight: Option<FightResult>,
     medpack_wait: f32,
     gear_wait: f32,
+    ways_retried: bool,
     /// Nothing more to try.
     pub finished: bool,
     /// Hold lines that want no answer for as long as a person would read them, in game time.
@@ -203,6 +204,7 @@ impl Autopilot {
             fight: None,
             medpack_wait: 0.0,
             gear_wait: 0.0,
+            ways_retried: false,
             finished: false,
             read_lines: false,
             digests: Vec::new(),
@@ -526,6 +528,7 @@ impl Autopilot {
             self.unreachable.clear();
             self.lock_tries.clear();
             self.second_looks = SECOND_LOOKS;
+            self.ways_retried = false;
             self.module_time = 0.0;
             self.still = 0.0;
         }
@@ -628,19 +631,18 @@ impl Autopilot {
         // Once everything has been said, take them in a scattered order: one leads out of the loop, and plain turns
         // can keep missing it when menus of different sizes take turns.
         self.reply_turn = self.reply_turn.wrapping_mul(2_654_435_761).wrapping_add(11);
-        // A mortal pilot takes what its skills and tools offer first: `end_securitycomp`'s overload clears a room for it.
-        let skilled = (!self.immortal)
-            .then(|| {
-                replies
-                    .iter()
-                    .position(|r| r.starts_with('[') && !self.replies.contains(r))
-            })
-            .flatten();
+        // What its skills and tools offer comes first: `end_securitycomp`'s overload clears a room. Each owner's replies
+        // count apart, since the Sith base's terminals say the same things and open different doors.
+        let owner = w.dialogue_owner().unwrap_or(0);
+        let seen = |p: &Self, r: &String| p.replies.contains(&format!("{owner} {r}"));
+        let skilled = replies
+            .iter()
+            .position(|r| r.starts_with('[') && !seen(self, r));
         let pick = skilled
-            .or_else(|| replies.iter().position(|r| !self.replies.contains(r)))
+            .or_else(|| replies.iter().position(|r| !seen(self, r)))
             .unwrap_or((self.reply_turn >> 8) % replies.len().max(1));
         if let Some(r) = replies.get(pick) {
-            self.replies.insert(r.clone());
+            self.replies.insert(format!("{owner} {r}"));
         }
         w.dialogue_choose(pick);
     }
@@ -957,6 +959,14 @@ impl Autopilot {
         if self.idle < GIVE_UP_SECONDS {
             return;
         }
+        // A way out it set off for and never reached, because a fight came first, is still a way out. Once a visit.
+        if !self.ways_retried {
+            self.ways_retried = true;
+            self.idle = 0.0;
+            self.tried
+                .retain(|id| w.object(*id).is_none_or(|o| o.link_module.is_empty()));
+            return;
+        }
         if let Some(label) = no_way_out {
             self.stall(
                 w,
@@ -1026,7 +1036,10 @@ impl Autopilot {
                 _ => true,
             };
             if !usable {
-                self.tried.insert(id);
+                // A foe with something to say stays a foe, and it can turn friendly: only a thing is done with for good.
+                if w.object(id).is_none_or(|o| o.kind != Kind::Creature) {
+                    self.tried.insert(id);
+                }
                 continue;
             }
             // A mortal pilot looks round first: a talk can open a door on what it is not ready for, as the damaged droid

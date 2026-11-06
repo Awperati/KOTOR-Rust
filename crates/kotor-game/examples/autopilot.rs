@@ -69,6 +69,13 @@ fn main() {
         "--- experience {}",
         g.world.object(g.world.pc).map_or(0, |o| o.xp)
     );
+    for q in g.world.quests() {
+        let state = g.world.journal.get(&q.tag).copied().unwrap_or(0);
+        println!(
+            "--- quest {} state {state} completed {}",
+            q.tag, q.completed
+        );
+    }
     println!(
         "--- routines that only answered nothing: {:?}",
         g.world.stubbed
@@ -140,11 +147,23 @@ fn trace(w: &World) {
     let Some(nav) = w.nav.as_ref() else {
         return;
     };
-    for row in (0..90).rev() {
-        let y = row as f32 * 2.0;
+    // The whole area: a module's rooms lie on both sides of zero.
+    let span = |axis: usize| {
+        w.objects
+            .values()
+            .fold((f32::MAX, f32::MIN), |(lo, hi), o| {
+                (lo.min(o.position[axis]), hi.max(o.position[axis]))
+            })
+    };
+    let (west, east) = span(0);
+    let (south, north) = span(1);
+    let rows = ((north - south) / 2.0) as i32 + 6;
+    let cols = ((east - west) / 2.0) as i32 + 6;
+    for row in (0..rows).rev() {
+        let y = south - 6.0 + row as f32 * 2.0;
         let mut line = format!("{y:4.0} ");
-        for col in 0..60 {
-            let x = col as f32 * 2.0;
+        for col in 0..cols {
+            let x = west - 6.0 + col as f32 * 2.0;
             let near = |p: [f32; 3]| (p[0] - x).abs() <= 1.0 && (p[1] - y).abs() <= 1.0;
             let door = w
                 .objects

@@ -75,6 +75,46 @@ fn the_pilot_goes_where_it_has_been_least_and_finds_the_lower_citys_rooms() {
 }
 
 #[test]
+fn a_foe_with_something_to_say_is_still_fought() {
+    let Some(mut w) = world() else {
+        return;
+    };
+    w.load_module("tar_m02ae").unwrap();
+    w.enter_area();
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    p.run_steps(&mut g, 60);
+    let w = &mut g.world;
+    let pc = w.pc;
+    let here = w.object(pc).unwrap().position;
+    let foe = w
+        .objects
+        .values()
+        .find(|o| {
+            o.kind == Kind::Creature
+                && o.id != pc
+                && !o.plot
+                && !o.conversation.is_empty()
+                && (o.position[0] - here[0]).hypot(o.position[1] - here[1]) > 30.0
+        })
+        .unwrap()
+        .id;
+    w.object_mut(foe).unwrap().faction = 1;
+    // It looks over who there is to talk to with this one hostile and far away.
+    p.run_steps(&mut g, 60);
+    let w = &mut g.world;
+    let pc = w.pc;
+    let here = w.object(pc).unwrap().position;
+    w.teleport(foe, [here[0] + 1.0, here[1], here[2]]);
+    let mut fought = false;
+    for _ in 0..60 {
+        p.run_steps(&mut g, 60);
+        fought |= g.world.combat.target.get(&g.world.pc) == Some(&foe);
+    }
+    assert!(fought, "{}", p.summary(&g.world));
+}
+
+#[test]
 fn a_mortal_pilot_spends_its_points_wears_its_finds_and_takes_medpacks() {
     let Some(w) = world() else {
         return;
