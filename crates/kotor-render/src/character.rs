@@ -42,6 +42,9 @@ pub struct Rig {
     sup: Vec<Model>,
     body_tex: Option<String>,
     head_tex: Option<String>,
+    /// The texture the body's meshes name themselves, which `appearance.2da` replaces: `PFBAM` names `pfbam01` however
+    /// dark the skin of the row that wears it.
+    replaces: Option<String>,
 }
 
 impl Rig {
@@ -76,6 +79,7 @@ impl Rig {
         Ok(Rig {
             body_tex: body_texture.or_else(|| main_texture(&body_m)),
             head_tex: head_m.as_ref().and_then(main_texture),
+            replaces: None,
             body: body_m,
             head: head_m,
             sup,
@@ -166,6 +170,16 @@ impl Rig {
             self.body_tex.as_deref(),
             Some(&body_skin),
         );
+        if let Some(old) = &self.replaces {
+            for m in &mut scene.meshes {
+                if m.texture
+                    .as_deref()
+                    .is_some_and(|t| t.eq_ignore_ascii_case(old))
+                {
+                    m.texture.clone_from(&self.body_tex);
+                }
+            }
+        }
         if let Some(head_m) = &self.head {
             let head_mats = head_m.world_matrices(None);
             // A creature's body has its own `head_g` to line the head's up with, and its bones bend the head too.
@@ -263,10 +277,11 @@ pub fn rig_for_outfit(
             .map(str::to_string)
     };
     let worn = letter.and_then(|l| get(&format!("model{}", l.to_ascii_lowercase())));
-    // **Assumption:** the player's rows name no `race`, and column b is the starting clothes (a is underwear).
+    // The player's rows name no `race`. With nothing on, a hero wears column a, a vest and shorts in the row's own skin:
+    // the reference video shows that until the footlocker's clothes go on (docs/REFERENCE.md).
     let race = worn
         .or_else(|| get("race"))
-        .or_else(|| get("modelb"))
+        .or_else(|| get("modela"))
         .ok_or_else(|| Error::NotFound(format!("appearance row {appearance_row} model")))?;
     if get("modeltype").as_deref() != Some("B") {
         return Rig::load(inst, &race, None, None);
@@ -284,7 +299,12 @@ pub fn rig_for_outfit(
             let heads = TwoDa::parse(&inst.read("heads", ResType::TWODA).ok()?).ok()?;
             heads.get(row, "head").map(str::to_string)
         });
-    Rig::load(inst, &race, head.as_deref(), body_texture)
+    let named = body_texture.is_some();
+    let mut rig = Rig::load(inst, &race, head.as_deref(), body_texture)?;
+    if named {
+        rig.replaces = main_texture(&rig.body);
+    }
+    Ok(rig)
 }
 
 /// [`rig_for_appearance`] posed once.

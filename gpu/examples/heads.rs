@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The window's own textures, upscaled ones included.
     let mut stage = kotor_gpu::stage::Stage::open("end_m01aa", true)?;
     for row in rows {
-        let rig = rig_for_outfit(&mut inst, row, 1, Some('b'))?;
+        let rig = rig_for_outfit(&mut inst, row, 1, None)?;
         for anim in ["pause1", "g8r1", "run"] {
             let scene = rig.pose(Some((anim, 0.5)))?;
             // The neck, from where the top of the body and the bottom of the head meet.
