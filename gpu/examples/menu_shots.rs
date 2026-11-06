@@ -240,6 +240,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.set_view(size);
     click(&mut s, "LB_ITEMS", Some(1));
     shot(&mut gpu, &mut s, "journal", &out);
+    let quest_item = s.game.world.carried(s.game.world.pc).first().copied();
+    if let Some(o) = quest_item.and_then(|i| s.game.world.object_mut(i)) {
+        o.plot = true;
+    }
+    click(&mut s, "BTN_QUESTITEMS", None);
+    click(&mut s, "LB_ITEMS", Some(0));
+    shot(&mut gpu, &mut s, "quest_items", &out);
+    click(&mut s, "BTN_BACK", None);
+    if let Some(o) = quest_item.and_then(|i| s.game.world.object_mut(i)) {
+        o.plot = false;
+    }
     click(&mut s, "BTN_ABI", None);
     shot(&mut gpu, &mut s, "abilities_skills", &out);
     click(&mut s, "BTN_FEATS", None);

@@ -119,6 +119,8 @@ pub struct Patch {
     pub live: bool,
     /// A list of words: show the page that ends this many lines before the last, with a bar.
     pub from_end: Option<usize>,
+    /// A list of words starts this many layout units higher, for more lines than the file left room for.
+    pub rise: i32,
 }
 
 /// What the dialogue box shows.

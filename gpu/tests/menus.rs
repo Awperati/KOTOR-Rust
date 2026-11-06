@@ -2329,6 +2329,42 @@ fn a_random_name_comes_from_the_games_letter_tables() {
 }
 
 #[test]
+fn quest_items_lists_what_is_carried_for_a_quest() {
+    let Some((mut s, _)) = in_game("quest_items") else {
+        return;
+    };
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let plain = w.spawn_item("g_i_medeqpmnt01");
+    let quest = w.spawn_item("g_w_blstrrfl001");
+    w.carry(pc, plain);
+    w.carry(pc, quest);
+    w.object_mut(quest).unwrap().plot = true;
+    s.open_journal();
+    press(&mut s, "BTN_QUESTITEMS");
+    assert_eq!(s.menu_name(), "quest_items");
+    let listed = frame(&mut s);
+    // One row, and its words show when it is clicked.
+    let second = s.menu_pixel("LB_ITEMS", Some(1), SIZE).unwrap();
+    s.hover(second, SIZE);
+    assert_eq!(frame(&mut s), listed, "only that one");
+    let row = s.menu_pixel("LB_ITEMS", Some(0), SIZE).unwrap();
+    s.hover(row, SIZE);
+    s.click(row, SIZE);
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) != listed, "its words");
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "journal");
+    // The inventory has the same button, and Esc leaves it.
+    s.escape();
+    s.open_inventory();
+    press(&mut s, "BTN_QUESTITEMS");
+    assert_eq!(s.menu_name(), "quest_items");
+    s.escape();
+    assert_eq!(s.menu_name(), "inventory");
+}
+
+#[test]
 fn the_party_screens_ok_asks_first() {
     let Some((mut s, _)) = in_game("party_ok") else {
         return;

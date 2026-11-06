@@ -407,6 +407,7 @@ impl Ui<'_> {
                     return;
                 };
                 let [x, y, w, _] = first_row;
+                let y = y - patch.rise;
                 let room = list.extent.top + list.extent.height - y;
                 let n = (room / f.line_height.max(1)).max(0) as usize;
                 let lines = f.wrap(&text, w);

@@ -10,6 +10,7 @@ const STR_ADD: u32 = 38455;
 const STR_REMOVE: u32 = 38456;
 const STR_LEVEL: u32 = 32154;
 const STR_SURE: u32 = 38328;
+const QUESTION_RISE: i32 = 10;
 /// Who each slot is in the game, from the file's own `LBL_NA` pictures: these with a 2 are for those not on offer.
 const PORTRAITS: [&str; 9] = [
     "po_pbastila",
@@ -139,8 +140,9 @@ impl Stage {
         if asking {
             let mut d = MenuView::new("confirm");
             d.text("LB_MESSAGE", self.ui.strref(STR_SURE));
-            // The file's font runs off the box; the video has the small one.
+            // The file's font runs off the box, and the video's much smaller letters fit on a line. Here it takes two.
             d.font("LB_MESSAGE", "fnt_d16x16");
+            d.patches.entry("LB_MESSAGE".to_string()).or_default().rise = QUESTION_RISE;
             d.hover = self.menus.hover.clone();
             v.dialog = Some(Box::new(d));
         }

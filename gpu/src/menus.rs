@@ -170,6 +170,8 @@ pub(super) enum Screen {
     /// `abilities.gui` and `messages.gui`.
     Abilities,
     Messages,
+    /// `questitem.gui`, over the journal or the inventory.
+    QuestItems,
     /// Making a character: `classsel`, `maincg` with its panels, `portcust`, `abchrgen`, `name`.
     ChargenClass,
     ChargenMain,
@@ -384,6 +386,7 @@ impl Screen {
             Screen::Journal => "journal",
             Screen::Abilities => "abilities",
             Screen::Messages => "messages",
+            Screen::QuestItems => "quest_items",
             Screen::ChargenClass => "chargen_class",
             Screen::ChargenMain => "chargen",
             Screen::ChargenPortrait => "chargen_portrait",
@@ -677,6 +680,7 @@ impl Stage {
             Screen::Journal => self.journal_view(),
             Screen::Abilities => self.abilities_view(),
             Screen::Messages => self.messages_view(),
+            Screen::QuestItems => self.quest_items_view(),
             Screen::ChargenClass => self.chargen_class_view(),
             Screen::ChargenMain => self.chargen_main_view(),
             Screen::ChargenPortrait => self.chargen_portrait_view(),
@@ -787,10 +791,9 @@ impl Stage {
         quests
     }
 
-    /// `journal.gui`, as the reference video has it at 51:30. Quest items are not built, so their button is greyed.
+    /// `journal.gui`, as the reference video has it at 51:30.
     fn journal_view(&mut self) -> MenuView {
         let mut v = MenuView::new("journal");
-        v.inert(&["BTN_QUESTITEMS"]);
         let (shown, other) = if self.menus.journal_completed {
             (STR_COMPLETED_QUESTS, STR_ACTIVE_QUESTS)
         } else {
@@ -857,6 +860,10 @@ impl Stage {
         match top {
             Some(Screen::Container) => w.container_items().into_iter().map(|i| i.0).collect(),
             Some(Screen::Inventory) => carried,
+            Some(Screen::QuestItems) => carried
+                .into_iter()
+                .filter(|i| w.object(*i).is_some_and(|o| o.plot))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -937,11 +944,38 @@ impl Stage {
             .map_or(String::new(), |o| format!("{}/{}", o.hp, o.max_hp))
     }
 
-    /// `inventory.gui`. Quest items are greyed.
+    /// `questitem.gui`: what is carried for a quest, with the words of the one under the cursor, else the one clicked.
+    /// **Assumed:** the file's `Plot` flag is what makes one, and they stay in the inventory's list too. The reference
+    /// video was not searched for this screen.
+    fn quest_items_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("questitem");
+        let selected = self.menus.selected;
+        let items = self.listed_items();
+        let mut rows = self.item_rows();
+        for (n, row) in rows.iter_mut().enumerate() {
+            row.selected = selected == Some(n);
+        }
+        v.lists
+            .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
+        let under = match self.menus.hover {
+            Some(Hit::Row(_, n)) => Some(n),
+            _ => None,
+        };
+        let about = under
+            .or(selected)
+            .and_then(|n| items.get(n))
+            .and_then(|i| self.game.world.item_view(*i));
+        v.text(
+            "LB_ITEM_DESCRIPTION",
+            about.map_or(String::new(), |a| a.description),
+        );
+        v
+    }
+
+    /// `inventory.gui`.
     fn inventory_view(&mut self) -> MenuView {
         let mut v = MenuView::new("inventory");
         self.change_buttons(&mut v);
-        v.inert(&["BTN_QUESTITEMS"]);
         let about_item = self.menus.about;
         let usable = about_item
             .and_then(|i| self.game.world.item_view(i))
@@ -1758,6 +1792,16 @@ impl Stage {
             (Screen::Inventory, "BTN_USEITEM") => self.use_about_item(),
             (Screen::Inventory | Screen::Character, "BTN_EXIT") => {
                 self.menus.stack.pop();
+            }
+            (Screen::Journal | Screen::Inventory, "BTN_QUESTITEMS") => {
+                self.menus.stack.push(Screen::QuestItems);
+                self.menus.selected = None;
+                self.menus.first = 0;
+                self.menus.hover = None;
+            }
+            (Screen::QuestItems, "BTN_BACK") => {
+                self.menus.stack.pop();
+                self.menus.selected = None;
             }
             (Screen::Journal, "BTN_EXIT") => {
                 self.menus.stack.pop();
