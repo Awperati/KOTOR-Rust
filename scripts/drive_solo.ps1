@@ -12,9 +12,16 @@ $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 $ENTER = @(0x0D, 0x1C); $ONE = @(0x31, 0x02); $ESC = @(0x1B, 0x01); $KEY_V = @(0x56, 0x2F)
 
 WaitLog
-# The opening's lines come first.
-$until = (Get-Date).AddSeconds(60)
-do { Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]; $s = State } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
+# The opening's lines come first, and a line can start a moment after the last: quiet means quiet for three seconds.
+$until = (Get-Date).AddSeconds(90)
+$quiet = (Get-Date)
+do {
+  $s = State
+  if ($s.dlg -eq "true") {
+    Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]
+    $quiet = (Get-Date)
+  }
+} while (((Get-Date) - $quiet).TotalSeconds -lt 3 -and (Get-Date) -lt $until)
 Report "In the game, with the party following" ($s.dlg -eq "false" -and $s.solo -eq "false") "dlg=$($s.dlg) solo=$($s.solo)"
 Shot "solo_off"
 

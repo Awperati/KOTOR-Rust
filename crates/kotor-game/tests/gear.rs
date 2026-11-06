@@ -121,8 +121,17 @@ fn a_robe_of_one_side_is_only_for_that_side() {
     // The Jedi robe with a light side limit, in the game's words at 1512.
     let robe = w.spawn_item("g_a_jedirobe06");
     w.object_mut(pc).unwrap().feats.extend(0..300);
-    w.object_mut(pc).unwrap().alignment = 50;
-    assert_eq!(w.can_wear(pc, robe), Err(CannotEquip::Alignment));
-    w.object_mut(pc).unwrap().alignment = 90;
-    assert_ne!(w.can_wear(pc, robe), Err(CannotEquip::Alignment));
+    let allowed = |w: &mut World, robe, alignment| {
+        w.object_mut(pc).unwrap().alignment = alignment;
+        w.can_wear(pc, robe) != Err(CannotEquip::Alignment)
+    };
+    assert!(!allowed(&mut w, robe, 40));
+    assert!(allowed(&mut w, robe, 41));
+    assert!(allowed(&mut w, robe, 50), "the middle may use both");
+    assert!(allowed(&mut w, robe, 90));
+
+    // And the dark one the other way round.
+    let robe = w.spawn_item("g_a_mstrrobe06");
+    assert!(allowed(&mut w, robe, 59));
+    assert!(!allowed(&mut w, robe, 60));
 }

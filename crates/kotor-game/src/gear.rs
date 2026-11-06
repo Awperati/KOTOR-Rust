@@ -37,6 +37,11 @@ const MASSIVE_CRITICAL: i32 = 49;
 const ONLY_FEAT: i32 = 57;
 /// `iprp_saveelement`'s row for everything, and `iprp_savingthrow`'s.
 const AGAINST_ALL: i32 = 0;
+/// `iprp_aligngrp`'s rows, and the band in the middle of the scale.
+const LIMIT_NEUTRAL: i32 = 1;
+const LIMIT_LIGHT: i32 = 2;
+const LIMIT_DARK: i32 = 3;
+const LIMIT_BAND: (i32, i32) = (40, 60);
 const SAVE_ALL: i32 = 0;
 const RIGHT_HAND: i32 = crate::items::SLOT_RIGHT_HAND;
 const LEFT_HAND: i32 = crate::items::SLOT_LEFT_HAND;
@@ -51,6 +56,17 @@ pub(crate) struct ItemProperty {
     /// How many dice of how many sides it adds, if dice.
     dice: (i32, i32),
     waits_for: Option<i32>,
+}
+
+/// Whether an alignment may use what is limited to a row of `iprp_aligngrp`. The middle may use both sides' things, by the
+/// owner's order through Top Dog.
+fn side_allows(row: i32, alignment: i32) -> bool {
+    match row {
+        LIMIT_LIGHT => alignment > LIMIT_BAND.0,
+        LIMIT_DARK => alignment < LIMIT_BAND.1,
+        LIMIT_NEUTRAL => (LIMIT_BAND.0..=LIMIT_BAND.1).contains(&alignment),
+        _ => true,
+    }
 }
 
 /// Whether what a limit asks for is among what a creature is. No limit of a kind means anyone.
@@ -278,9 +294,8 @@ impl World {
                 .map(|p| p.subtype)
                 .collect()
         };
-        let side = self.alignment_side(who);
         (
-            passes(&of(ONLY_SIDE), |s| s == side),
+            passes(&of(ONLY_SIDE), |s| side_allows(s, c.alignment)),
             passes(&of(ONLY_CLASS), |k| k == c.class)
                 && passes(&of(ONLY_RACE), |r| r == c.race)
                 && passes(&of(ONLY_FEAT), |f| c.feats.contains(&f)),

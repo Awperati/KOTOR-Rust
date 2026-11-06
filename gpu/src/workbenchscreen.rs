@@ -10,6 +10,8 @@ use kotor_render::{Camera, Scene};
 use kotor_ui::{Hit, MenuView, Row};
 use std::collections::BTreeMap;
 
+/// The file's words start on their box's edge. **Assumed:** this far in, by eye.
+const WORDS_IN: i32 = 4;
 const KINDS: [(&str, &str, BenchKind); 4] = [
     ("BTN_LIGHTSABER", "LBL_LSABER", BenchKind::Lightsaber),
     ("BTN_RANGED", "LBL_RANGED", BenchKind::Ranged),
@@ -195,6 +197,10 @@ impl Stage {
             name.map_or(String::new(), |n| self.ui.strref(n)),
         );
         v.text("LBL_UPGRADE_COUNT", choices.len().to_string());
+        v.patches
+            .entry("LBL_UPGRADES".to_string())
+            .or_default()
+            .inset = WORDS_IN;
         if listing {
             v.hide(&[
                 "LBL_PROPERTY",
@@ -220,6 +226,10 @@ impl Stage {
             let mut lines: Vec<String> = properties.iter().map(|p| self.ui.strref(*p)).collect();
             lines.extend(names);
             v.text("LBL_PROPERTY", lines.join("\n"));
+            v.patches
+                .entry("LBL_PROPERTY".to_string())
+                .or_default()
+                .inset = WORDS_IN;
         }
         let about = self.game.world.item_view(item);
         v.text("LB_DESC_LS", about.map_or(String::new(), |a| a.description));

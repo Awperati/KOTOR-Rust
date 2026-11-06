@@ -152,6 +152,8 @@ pub struct Patch {
     pub rise: i32,
     /// Its picture is darkened: it cannot be used now.
     pub greyed: bool,
+    /// Its words stand this many layout units in from each side.
+    pub inset: i32,
 }
 
 /// What the dialogue box shows.
@@ -636,7 +638,8 @@ impl<'a> Ui<'a> {
             });
             if !text.is_empty() {
                 let color = patch.color.unwrap_or(t.color);
-                self.draw_text(cv, &t.font, &text, r, t.alignment, color);
+                let words = [r[0] + patch.inset, r[1], r[2] - patch.inset * 2, r[3]];
+                self.draw_text(cv, &t.font, &text, words, t.alignment, color);
             }
         }
         // **Assumption:** the first control in the list is the topmost, so draw from the last to the first
