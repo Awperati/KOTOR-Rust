@@ -28,6 +28,12 @@ function Open($name, $module, $extra) {
   do { $s = State } while ([double]$s.speed -gt 0.05 -and (Get-Date) -lt $until)
   $s
 }
+# Wait by the game's clock, sixty steps a second: a slow frame at 2160p can drop time, so a sleep is not enough.
+function WaitSteps([int]$n) {
+  $start = [int](State).steps
+  $until = (Get-Date).AddSeconds(60)
+  do { Start-Sleep -Milliseconds 20 } while ([int](State).steps -lt $start + $n -and (Get-Date) -lt $until)
+}
 function Close { Stop-Process -Id $script:v.Id -Force -ErrorAction SilentlyContinue }
 # Every state line from a size of the log on, as numbers.
 function Samples($from) {
@@ -56,9 +62,9 @@ $tag = $Size -replace 'x.*', ''
 $s = Open "run" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767")
 Report "In the module" ($s.module -eq $RUN_MODULE) "module=$($s.module) pc=$($s.pc) z=$($s.pcz)"
 $m = Mark
-Down $W; Start-Sleep -Milliseconds 1100
-$s = State; Shot "move_sprint_$tag"
-Start-Sleep -Milliseconds 300; Up $W; Start-Sleep -Milliseconds 700
+Down $W; WaitSteps 66
+Shot "move_sprint_$tag"
+WaitSteps 18; Up $W; WaitSteps 42
 $rows = @(Samples $m); Note "sprint and stop" $rows
 $top = TopSpeed $rows
 $fast = @($rows | Where-Object { $_.speed -ge $SPRINT - 0.05 })
@@ -71,7 +77,7 @@ Report "Speeds up and slows down" ($ramp.Count -ge 1) "$($ramp.Count) samples be
 Report "The view widens" ((($rows | Measure-Object fov -Maximum).Maximum) -gt (($rows | Measure-Object fov -Minimum).Minimum + 2)) "fov $(($rows | Measure-Object fov -Minimum).Minimum) to $(($rows | Measure-Object fov -Maximum).Maximum)"
 
 $m = Mark
-Down $SHIFT; Down $W; Start-Sleep -Milliseconds 800; Up $W; Up $SHIFT; Start-Sleep -Milliseconds 400
+Down $SHIFT; Down $W; WaitSteps 48; Up $W; Up $SHIFT; WaitSteps 24
 $rows = @(Samples $m); Note "walk" $rows
 $top = TopSpeed $rows
 Report "Walk speed" ([Math]::Abs($top - $WALK) -lt 0.1) "top $top m/s, want $WALK"
@@ -81,9 +87,8 @@ $before = State
 Key $CTRL[0] $CTRL[1] 30
 Start-Sleep -Milliseconds 150
 Shot "move_roll_$tag"
-# By the game's clock: a slow frame at 2160p can drop time, so a sleep is not enough.
-$until = (Get-Date).AddSeconds(15)
-do { Start-Sleep -Milliseconds 100; $after = State } while (($after.roll -eq "true" -or [double]$after.speed -gt 0.05) -and (Get-Date) -lt $until)
+WaitSteps 66
+$after = State
 $rows = @(Samples $m); Note "roll" $rows
 $rolled = @($rows | Where-Object { $_.roll -eq "true" })
 $xa = $before.pc -split ','; $xb = $after.pc -split ','
@@ -99,7 +104,7 @@ $s = Open "ledge" $LEDGE_MODULE @("--place", $PLACE)
 Report "At the ledge" ([Math]::Abs([double]$s.pcz - $LEDGE_Z) -lt 0.2) "pc=$($s.pc) z=$($s.pcz)"
 $m = Mark
 $high = [double]$s.pcz
-Down $W; Start-Sleep -Milliseconds 950
+Down $W; WaitSteps 57
 Shot "move_ledge_top_$tag"
 $until = (Get-Date).AddSeconds(6)
 do { $s = State } while ($s.air -eq "true" -or ((Get-Date) -lt $until -and [double]$s.pcz -gt $LEDGE_Z - 1.8))
