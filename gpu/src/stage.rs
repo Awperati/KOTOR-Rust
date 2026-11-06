@@ -23,6 +23,8 @@ mod moving;
 mod racescreen;
 #[path = "roomshell.rs"]
 mod roomshell;
+#[path = "seamless_stage.rs"]
+mod seamless_stage;
 pub use menus::{about_words, default_saves_dir, default_settings_file, Settings};
 
 type Mat = [[f32; 4]; 4];
@@ -291,6 +293,7 @@ pub struct Stage {
     /// The rooms, for the camera to stay inside.
     shell: roomshell::RoomShell,
     static_scene: Scene,
+    seam: seamless_stage::Seam,
     /// Goes up whenever `static_scene` is replaced.
     pub static_version: u64,
     rigs: HashMap<(i32, u32, Option<char>), Option<Rc<Rig>>>,
@@ -430,6 +433,7 @@ impl Stage {
             floor: None,
             shell: Default::default(),
             static_scene: Scene::default(),
+            seam: Default::default(),
             static_version: 0,
             rigs: HashMap::new(),
             baseitems: None,
@@ -539,19 +543,27 @@ impl Stage {
     /// The world is in a new module: rebuild what is drawn and start its music.
     fn enter_module(&mut self) -> Result<(), String> {
         let e = |e: kotor_core::Error| e.to_string();
+        // A seamless crossing has the new module's picture ready.
+        let ready = self.seamless_arrive();
         self.module = self.game.world.module.clone();
         self.inst.load_module(&self.module).map_err(e)?;
         let area = self.area_name();
         // The turret's sky moves, so it is drawn with what moves.
         let turret = self.game.world.minigame.is_some();
-        let mut scene = if turret {
-            Scene::default()
-        } else {
-            kotor_render::load_area(&mut self.inst, &area).map_err(e)?
+        let preloaded = ready.is_some();
+        let (mut scene, chests) = match ready {
+            Some((scene, chests)) => (scene, chests),
+            None => {
+                let scene = if turret {
+                    Scene::default()
+                } else {
+                    kotor_render::load_area(&mut self.inst, &area).map_err(e)?
+                };
+                (scene, chest_templates(&mut self.inst, &area))
+            }
         };
         self.shell = roomshell::RoomShell::of(&scene);
-        let chests = chest_templates(&mut self.inst, &area);
-        if !turret {
+        if !turret && !preloaded {
             kotor_render::add_area_objects_except(
                 &mut scene,
                 &mut self.inst,
@@ -564,6 +576,7 @@ impl Stage {
         self.chests = chests;
         self.chest_bodies.clear();
         self.lids.clear();
+        self.seam.base = scene.clone();
         self.static_scene = scene;
         self.static_version += 1;
         self.floor = Floor::load(&mut self.inst, &area).ok();
@@ -679,6 +692,7 @@ impl Stage {
             }
             self.autosave();
         }
+        self.seamless_tick();
         self.scan_music_events();
         self.play_world_sounds(dt_game);
         self.play_effects_at();

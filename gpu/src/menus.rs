@@ -274,6 +274,8 @@ pub struct Settings {
     pub movement_modern: bool,
     /// A click on the floor walks there.
     pub click_to_walk: bool,
+    /// Doors between modules open onto the next area and the party walks through, with no loading in between.
+    pub seamless_areas: bool,
 }
 
 impl Default for Settings {
@@ -309,6 +311,7 @@ impl Default for Settings {
             glow_boxes: true,
             movement_modern: true,
             click_to_walk: true,
+            seamless_areas: true,
         }
     }
 }
@@ -319,7 +322,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -348,7 +351,8 @@ impl Settings {
             self.noto_font,
             self.glow_boxes,
             self.movement_modern,
-            self.click_to_walk
+            self.click_to_walk,
+            self.seamless_areas
         )
     }
 
@@ -390,6 +394,7 @@ impl Settings {
                 "vsync" => s.vsync = v == "true",
                 "noto_font" => s.noto_font = v == "true",
                 "glow_boxes" => s.glow_boxes = v == "true",
+                "seamless_areas" => s.seamless_areas = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')

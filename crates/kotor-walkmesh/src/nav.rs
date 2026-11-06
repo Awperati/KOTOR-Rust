@@ -310,6 +310,62 @@ impl NavMesh {
         })
     }
 
+    /// The faces a walker can reach from `from` without crossing a blocked line or entering a blocked face. Told apart
+    /// from the rest, they show what lies behind a closed door. Empty when `from` is not on the floor.
+    pub fn reachable_from(&self, from: V3) -> Vec<bool> {
+        let mut seen = vec![false; self.tris.len()];
+        let Some(start) = self.face_beside(from, 1.5) else {
+            return seen;
+        };
+        let mut entry = vec![from; self.tris.len()];
+        let mut stack = vec![start];
+        seen[start] = true;
+        while let Some(n) = stack.pop() {
+            for l in &self.links[n] {
+                if seen[l.to] || self.blocked[l.to] != 0 {
+                    continue;
+                }
+                let door = [
+                    (l.a[0] + l.b[0]) / 2.0,
+                    (l.a[1] + l.b[1]) / 2.0,
+                    (l.a[2] + l.b[2]) / 2.0,
+                ];
+                if self.crosses_block(entry[n], door) {
+                    continue;
+                }
+                seen[l.to] = true;
+                entry[l.to] = door;
+                stack.push(l.to);
+            }
+        }
+        seen
+    }
+
+    /// Join the face under `a` to the face under `b`, as across a doorway whose two sides are different walkmeshes.
+    /// `portal` is the stretch of the doorway the join covers, for string pulling. Returns whether both faces exist.
+    pub fn bridge(&mut self, a: V3, b: V3, portal: (V3, V3)) -> bool {
+        let (Some((i, _)), Some((j, _))) = (
+            self.locate(a[0], a[1], a[2] + 0.5),
+            self.locate(b[0], b[1], b[2] + 0.5),
+        ) else {
+            return false;
+        };
+        if i == j || self.links[i].iter().any(|l| l.to == j) {
+            return false;
+        }
+        self.links[i].push(Link {
+            to: j,
+            a: portal.0,
+            b: portal.1,
+        });
+        self.links[j].push(Link {
+            to: i,
+            a: portal.0,
+            b: portal.1,
+        });
+        true
+    }
+
     /// Number of faces currently blocked.
     pub fn blocked_count(&self) -> usize {
         self.blocked.iter().filter(|&&b| b > 0).count()

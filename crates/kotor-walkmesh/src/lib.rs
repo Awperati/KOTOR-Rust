@@ -5,6 +5,7 @@ mod layout;
 mod mover;
 mod nav;
 mod query;
+pub mod seamless;
 
 pub use bwm::{parse_bwm, Aabb, Bwm, Face, WALKABLE_SURFACES};
 pub use layout::{parse_lyt, parse_vis, Layout, Room, VisEntry};

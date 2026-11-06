@@ -105,6 +105,47 @@ impl Scene {
         self.meshes.iter().map(|m| m.triangles.len()).sum()
     }
 
+    /// A copy turned `yaw` radians about the vertical axis and then shifted, for a neighbouring area stitched on to this one.
+    pub fn moved(&self, yaw: f32, shift: [f32; 3]) -> Scene {
+        let (s, c) = yaw.sin_cos();
+        let spin = |p: [f32; 3]| [c * p[0] - s * p[1], s * p[0] + c * p[1], p[2]];
+        let mut out = self.clone();
+        for m in &mut out.meshes {
+            for p in &mut m.positions {
+                let q = spin(*p);
+                *p = [q[0] + shift[0], q[1] + shift[1], q[2] + shift[2]];
+            }
+            for n in &mut m.normals {
+                *n = spin(*n);
+            }
+        }
+        out.min = [f32::MAX; 3];
+        out.max = [f32::MIN; 3];
+        for m in &out.meshes {
+            for p in &m.positions {
+                for (k, v) in p.iter().enumerate() {
+                    out.min[k] = out.min[k].min(*v);
+                    out.max[k] = out.max[k].max(*v);
+                }
+            }
+        }
+        out
+    }
+
+    /// Add another scene's meshes to this one.
+    pub fn append(&mut self, other: Scene) {
+        if self.meshes.is_empty() {
+            self.min = other.min;
+            self.max = other.max;
+        } else {
+            for k in 0..3 {
+                self.min[k] = self.min[k].min(other.min[k]);
+                self.max[k] = self.max[k].max(other.max[k]);
+            }
+        }
+        self.meshes.extend(other.meshes);
+    }
+
     fn grow(&mut self, p: [f32; 3]) {
         for (k, v) in p.iter().enumerate() {
             self.min[k] = self.min[k].min(*v);

@@ -367,7 +367,8 @@ impl World {
         let Some(d) = self.objects.get(&id) else {
             return;
         };
-        if !d.link_module.is_empty() {
+        // A door whose neighbour is joined just opens: the player walks through, see `update_seamless`.
+        if !d.link_module.is_empty() && !self.seamless.attached.contains_key(&id) {
             self.transition_request = Some((d.link_module.clone(), d.link_to.clone()));
             return;
         }
@@ -695,6 +696,7 @@ impl World {
             }
         }
         self.update_triggers();
+        self.update_seamless();
         self.update_encounters();
         self.update_early_force(dt);
         if let Some((module, wp)) = self.transition_request.take() {

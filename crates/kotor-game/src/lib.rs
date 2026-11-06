@@ -28,6 +28,8 @@ mod pazaak;
 mod play;
 mod rules;
 mod save;
+pub mod seamless;
+mod seamless_world;
 mod sheet;
 mod store;
 mod swoop;
@@ -71,6 +73,7 @@ pub use play::{
 };
 pub use rules::{save_passes, skill_passes, Check, LevelUp, Save};
 pub use save::{read_save_info, SaveInfo, SAVE_VERSION};
+pub use seamless_world::{Attached, Crossing, State as SeamlessState, LET_GO, THRESHOLD};
 pub use sheet::{CannotUse, Sheet};
 pub use store::{CannotTrade, StoreLine, StoreOpen};
 pub use swoop::{

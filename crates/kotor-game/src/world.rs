@@ -359,6 +359,8 @@ pub struct World {
     pub(crate) pc_pressed: f32,
     /// The objects of each module the player has left, in the form a save keeps them.
     pub(crate) left_modules: BTreeMap<String, Vec<Struct>>,
+    /// Seamless areas: neighbours joined through doors. See `docs/SEAMLESS.md`.
+    pub seamless: crate::seamless_world::State,
     door_widths: HashMap<i64, Option<f32>>,
     pub(crate) plot: Option<TwoDa>,
     pub(crate) rng: u64,
@@ -602,6 +604,7 @@ impl World {
             exptable: Vec::new(),
             pc_pressed: 0.0,
             left_modules: BTreeMap::new(),
+            seamless: Default::default(),
             door_widths: HashMap::new(),
             plot: None,
             rng: 0x2545_F491_4F6C_DD1D,
