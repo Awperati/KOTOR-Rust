@@ -46,6 +46,7 @@ pub enum Action {
     Recorded(String),
     OpenDoor(ObjId),
     CloseDoor(ObjId),
+    SetLocked(ObjId, bool),
     /// Move to a position at once (`ActionJumpToLocation`).
     Jump([f32; 3]),
     /// Walk there, and finish only on arrival, so the actions behind it wait (`ActionMoveToObject` and friends, in a
@@ -926,7 +927,7 @@ impl World {
         Ok(())
     }
 
-    fn program(&mut self, name: &str) -> Option<Rc<Program>> {
+    pub(crate) fn program(&mut self, name: &str) -> Option<Rc<Program>> {
         let key = name.to_ascii_lowercase();
         if let Some(p) = self.programs.get(&key) {
             return p.clone();
@@ -1103,6 +1104,11 @@ impl World {
                 self.open_door(d);
             }
             Action::CloseDoor(d) => self.close_door(d),
+            Action::SetLocked(d, locked) => {
+                if let Some(o) = self.object_mut(d) {
+                    o.locked = locked;
+                }
+            }
             Action::Jump(p) => self.teleport(id, p),
             Action::Attack(t) => self.perform_attack(id, t),
             Action::Cast {

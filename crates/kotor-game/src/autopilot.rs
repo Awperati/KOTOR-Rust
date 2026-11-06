@@ -661,12 +661,24 @@ impl Autopilot {
         // count apart, since the Sith base's terminals say the same things and open different doors.
         let owner = w.dialogue_owner().unwrap_or(0);
         let seen = |p: &Self, r: &String| p.replies.contains(&format!("{owner} {r}"));
-        let skilled = replies
+        // Nobody who has read it says what gets them shot by a guard who cannot be hurt, unless nothing else is on offer.
+        let fatal: Vec<bool> = (0..replies.len()).map(|k| w.reply_is_fatal(k)).collect();
+        let safe: Vec<usize> = (0..replies.len()).filter(|k| !fatal[*k]).collect();
+        let choices = if safe.is_empty() {
+            (0..replies.len()).collect()
+        } else {
+            safe
+        };
+        let skilled = choices
             .iter()
-            .position(|r| r.starts_with('[') && !seen(self, r));
+            .copied()
+            .find(|k| replies[*k].starts_with('[') && !seen(self, &replies[*k]));
         let pick = skilled
-            .or_else(|| replies.iter().position(|r| !seen(self, r)))
-            .unwrap_or((self.reply_turn >> 8) % replies.len().max(1));
+            .or_else(|| choices.iter().copied().find(|k| !seen(self, &replies[*k])))
+            .or_else(|| {
+                (!choices.is_empty()).then(|| choices[(self.reply_turn >> 8) % choices.len()])
+            })
+            .unwrap_or(0);
         if let Some(r) = replies.get(pick) {
             self.replies.insert(format!("{owner} {r}"));
         }

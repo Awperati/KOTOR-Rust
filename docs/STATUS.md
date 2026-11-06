@@ -60,7 +60,7 @@ Most to least blocking, all absent unless stated:
 ## How far the autopilot gets
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 80000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 19,373 game seconds in 43 wall seconds, 168 kills, experience 12,335, level 5, 3,338 door tries, 106 items, 9,182 lines. It ends when no new module has come for 8,000 s. No script errors. The 447 `locked` stalls are doors it tried and gave up on.
+Last run: 19,805 game seconds in 49 wall seconds, 150 kills, experience 11,251, level 5, 2,079 door tries, 102 items, 17,756 lines. It ends when no new module has come for 8,000 s. Script errors: 1. The 225 `locked` stalls are doors it tried and gave up on.
 
 | Module | First entered, game s | Visits |
 |---|---|---|
@@ -71,31 +71,29 @@ Last run: 19,373 game seconds in 43 wall seconds, 168 kills, experience 12,335, 
 | `tar_m02aa`, upper city | 453 | 9 |
 | `tar_m02ac` | 521 | 10 |
 | `tar_m02ae`, cantina and duel ring | 767 | 6 |
-| `tar_m02ab` | 1,042 | 10 |
-| `tar_m03aa`, lower city | 1,249 | 9 |
-| `tar_m03ab` | 1,431 | 2 |
-| `tar_m03ae` | 1,822 | 2 |
-| `tar_m11aa`, hidden Bek base | 2,109 | 1 |
-| `tar_m03ad` | 2,508 | 2 |
-| `tar_m09aa`, Sith base | 3,021 | 7 |
-| `tar_m02ad` | 3,642 | 5 |
-| `tar_m09ab`, Sith base, governor | 4,522 | 5 |
-| `tar_m10aa`, Black Vulkar base | 8,390 | 12 |
-| `tar_m05ab`, sewers | 9,045 | 8 |
-| `tar_m05aa`, sewers | 9,417 | 12 |
-| `tar_m04aa`, undercity, outside the gate | 9,433 | 8 |
-| `tar_m10ac` | 11,372 | 7 |
+| `tar_m02ab` | 1,042 | 12 |
+| `tar_m03aa`, lower city | 1,249 | 16 |
+| `tar_m03ab` | 1,435 | 3 |
+| `tar_m03ae` | 1,793 | 3 |
+| `tar_m11aa`, hidden Bek base | 2,031 | 3 |
+| `tar_m04aa`, undercity | 2,458 | 7 |
+| `tar_m03ad` | 2,940 | 3 |
+| `tar_m09aa`, Sith base | 3,445 | 11 |
+| `tar_m02ad` | 4,075 | 6 |
+| `tar_m09ab`, Sith base, governor | 7,697 | 8 |
+| `tar_m10aa`, Black Vulkar base | 9,727 | 8 |
+| `tar_m05ab`, sewers | 10,486 | 6 |
+| `tar_m10ac` | 11,029 | 5 |
+| `tar_m05aa`, sewers | 11,805 | 8 |
 
 That is 20 of the 97 named modules in the install, not counting `STUNT_` ones, and 18 of Taris's 23. Being in a module does not mean its story is done.
 
-**Quests:** 15 of the 101 in `global.jrl` were started, and 2 completed: `end_attack` and `tar_rancor`. Still open with the state reached: `tar_duelring` 30, `tar_bastsearch` 30, `tar_bendakbounty` 10, `tar_largobounty` 10, `k_swg_carthtalk` 10, `tar_rakghoulserum` 2, and at 1 `tar_vulkarbase`, `k_rapidtransit`, `tar_diabounty`, `tar_matrik`, `tar_selvenbounty`, `k_pazaak`, `tar_planetinfo`.
+**Quests:** 17 of the 101 in `global.jrl` were started, and 4 completed: `end_attack`, `tar_infectedoutcasts`, `tar_rakghoulserum`, `tar_rancor`. Still open with the state reached: `tar_bastsearch` 40, `tar_diabounty` 40, `tar_duelring` 30, `k_swg_carthtalk` 10, `tar_bendakbounty` 10, `tar_largobounty` 10, `k_pazaak` 1, `k_rapidtransit` 1, `tar_matrik` 1, `tar_planetinfo` 1, `tar_rukilapprentice` 1, `tar_selvenbounty` 1, `tar_vulkarbase` 1.
 
 **No module holds it now. What it cannot reach:** every way left is story, a talk or a door it cannot open.
 
 | Not reached | What leads there | What stops the pilot |
 |---|---|---|
-| Inside the `tar_m04aa` gate, by the lift | `tar03_underdoor`, DC 100, opened by `k_ptar_unlockund` from `tar03_sithpat31` with the Sith papers | The pilot took the reply that runs `k_ptar_killpc` before it had the papers. That guard hits at +21 and is plot, so it can be neither talked to again nor killed. A real player would have died there. |
-| Inside the gate, from outside | `tar04_maingate`, DC 100, opened in `tar04_outman045` and `tar04_outwom043` | Those people stand inside. |
 | `tar_m11ab` | door `ptar_secdoor` in `tar_m11aa` | `tar11_secdoor`, DC 100, tried 25 times. I found no script in that module naming it. Not read further. |
 | `tar_m03af`, then `tar_m03mg`, the swoop race | `k_ptar_kandrace`, `k_ptar_bekrace`, then `k_ptar_swooprun` | Talks it did not reach. Which replies, not read. The minigame is not built. |
 | `tar_m08aa`, Davik's estate | `k_ptar_davikest`, `k_ptar_freeda_ud`, `k_ptar_godav_en` | Not reached. Not read further. |
@@ -130,6 +128,8 @@ Fixed on the way, earliest first, each with a test:
 18. **`GetFirstObjectInShape` walks could not nest.** `k_ai_master` began its outer walk again for good, and ran to the step limit 54 times a run. Each size and mask now walks on its own. **That is an assumption.**
 19. **A ladder beside a door kept the pilot out of a module.** It used `tar05_lad04aai` first, each visit. What took it away now waits until the module is done.
 20. **Talks did not move quests.** Their state is in `QuestEntry`, and the code read `PlotIndex`, which is nearly always -1. Only scripts moved quests before this.
+21. **The pilot took a reply a real player dies of.** `k_ptar_killpc` sets the plot guard at `tar03_underdoor`, who hits at +21, on the player. It now avoids a reply that can turn someone who cannot be hurt. **That this rule covers all such replies is an assumption.** It takes one only when nothing else is on offer.
+22. **`ActionUnlockObject` and `ActionLockObject` did nothing.** So the guard could not let anyone by, and the undercity's inside was out of reach. **That they always work, with no skill check, is an assumption.**
 
 ## A pilot that can die
 

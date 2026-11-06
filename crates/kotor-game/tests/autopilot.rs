@@ -115,6 +115,40 @@ fn the_pilot_stops_when_nothing_new_has_come_for_a_long_time() {
 }
 
 #[test]
+fn the_reply_that_sets_an_unhurtable_guard_on_the_player_is_known() {
+    let Some(mut w) = world() else {
+        return;
+    };
+    w.load_module("tar_m03aa").unwrap();
+    w.enter_area();
+    let guard = id_of(&w, "SithPatrol031");
+    let at = w.object(guard).unwrap().position;
+    let pc = w.pc;
+    w.teleport(pc, [at[0] + 1.0, at[1], at[2]]);
+    let mut fatal = Vec::new();
+    // The first talk only warns. The second offers what gets a player shot.
+    for _ in 0..2 {
+        assert!(w.click(guard));
+        for _ in 0..30 {
+            let Some((_, _, _, replies)) = w.dialogue_view() else {
+                break;
+            };
+            let safe = (0..replies.len()).rfind(|k| !w.reply_is_fatal(*k));
+            fatal.extend(
+                (0..replies.len())
+                    .filter(|k| w.reply_is_fatal(*k))
+                    .map(|k| replies[k].clone()),
+            );
+            w.dialogue_choose(safe.unwrap_or(0));
+        }
+    }
+    assert!(!w.in_dialogue());
+    fatal.dedup();
+    assert_eq!(fatal.len(), 1, "{fatal:?}");
+    assert!(w.reputation(pc, guard) > 10, "it stays calm");
+}
+
+#[test]
 fn a_foe_with_something_to_say_is_still_fought() {
     let Some(mut w) = world() else {
         return;

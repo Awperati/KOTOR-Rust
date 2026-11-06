@@ -205,6 +205,58 @@ impl World {
         }
     }
 
+    /// Whether reply `k` of the held line sets someone who cannot be hurt on the player: a fight it cannot win, as
+    /// `k_ptar_killpc` starts with the Sith guard at the undercity door. Conditions on the way are not weighed.
+    ///
+    /// **Assumption:** this is what such replies have in common. A foe that can be hurt is a fight, not a death.
+    pub fn reply_is_fatal(&mut self, k: usize) -> bool {
+        let Some(run) = self.conv.as_ref() else {
+            return false;
+        };
+        if !self.object(run.owner).is_some_and(|o| o.plot) {
+            return false;
+        }
+        let Some(h) = run.held.as_ref() else {
+            return false;
+        };
+        let Some(first) = h.shown.get(k).and_then(|t| {
+            h.options
+                .iter()
+                .find_map(|(r, text)| (text == t).then_some(*r))
+        }) else {
+            return false;
+        };
+        let d = &run.dialog;
+        let mut scripts: Vec<String> = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        let mut todo = vec![first];
+        while let Some(r) = todo.pop() {
+            if !seen.insert(r) {
+                continue;
+            }
+            let reply = &d.replies[r];
+            scripts.extend(reply.script.clone());
+            for l in &reply.links {
+                let entry = &d.entries[l.index as usize];
+                scripts.extend(entry.script.clone());
+                // A reply with words is another choice. One without is said on the way.
+                let wordless = entry
+                    .links
+                    .iter()
+                    .map(|l| l.index as usize)
+                    .filter(|r| self.node_text(&d.replies[*r]).is_empty());
+                todo.extend(wordless);
+            }
+        }
+        let Some(turn) = self.routine_id("ChangeToStandardFaction") else {
+            return false;
+        };
+        scripts.iter().filter(|s| !s.is_empty()).any(|s| {
+            self.program(s)
+                .is_some_and(|p| p.reachable_routines().contains(&turn))
+        })
+    }
+
     /// Who a held conversation belongs to.
     pub fn dialogue_owner(&self) -> Option<ObjId> {
         self.conv.as_ref().map(|c| c.owner)

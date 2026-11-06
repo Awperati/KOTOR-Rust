@@ -73,6 +73,22 @@ fn log_of(w: &mut World, calls: &[(&str, Vec<Vec<u8>>)]) -> Vec<String> {
 }
 
 #[test]
+fn a_door_asked_by_script_unlocks_itself() {
+    let Some(mut w) = world() else { return };
+    let door = w
+        .objects
+        .values()
+        .find(|o| o.kind == kotor_game::Kind::Door && o.locked)
+        .unwrap()
+        .id;
+    // `k_ptar_unlockund` does this to the door at the way down to the undercity.
+    let p = program(&w, &[("ActionUnlockObject", vec![co(0)])]);
+    w.run_program(&p, door).unwrap();
+    w.step(0.1);
+    assert!(!w.object(door).unwrap().locked);
+}
+
+#[test]
 fn a_walk_inside_a_walk_leaves_the_outer_one_where_it_was() {
     let Some(mut w) = world() else { return };
     let shape = |size: f32, name: &'static str| -> Vec<(&'static str, Vec<Vec<u8>>)> {

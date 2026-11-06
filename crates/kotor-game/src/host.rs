@@ -100,8 +100,6 @@ const RECORDED_ACTIONS: &[&str] = &[
     "ActionForceMoveToLocation",
     "ActionEquipItem",
     "ActionUnequipItem",
-    "ActionLockObject",
-    "ActionUnlockObject",
     "ActionAttack",
     "ActionUseTalentOnObject",
     "ActionCastSpellAtObject",
@@ -1676,6 +1674,13 @@ impl Host for Adapter<'_> {
             "ActionOpenDoor" => {
                 let d = self.obj(caller, args, 0);
                 self.world.queue(caller, Action::OpenDoor(d));
+                None
+            }
+            // **Assumption:** a script's unlocking always works, with no skill check: `k_ptar_unlockund` asks the door to do it.
+            "ActionLockObject" | "ActionUnlockObject" => {
+                let d = self.obj(caller, args, 0);
+                let locked = name == "ActionLockObject";
+                self.world.queue(caller, Action::SetLocked(d, locked));
                 None
             }
             "ActionCloseDoor" => {

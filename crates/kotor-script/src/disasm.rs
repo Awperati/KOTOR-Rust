@@ -1,4 +1,5 @@
 use kotor_core::{latin1, Error, Reader, Result};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 /// Decoded operation with its operands. Branch targets are absolute offsets.
@@ -201,6 +202,40 @@ fn target(at: u32, rel: i32) -> Result<u32> {
 }
 
 /// Decode a whole NCS file into instructions.
+impl Program {
+    /// Every routine the code can reach from its start. A script holds its whole library, so a plain list would say little.
+    pub fn reachable_routines(&self) -> BTreeSet<u16> {
+        let at: HashMap<u32, usize> = self
+            .instructions
+            .iter()
+            .enumerate()
+            .map(|(i, ins)| (ins.offset, i))
+            .collect();
+        let mut seen = vec![false; self.instructions.len()];
+        let mut found = BTreeSet::new();
+        let mut todo = vec![0usize];
+        while let Some(mut i) = todo.pop() {
+            while let Some(ins) = self.instructions.get(i).filter(|_| !seen[i]) {
+                seen[i] = true;
+                match ins.op {
+                    Op::Action { routine, .. } => {
+                        found.insert(routine);
+                    }
+                    Op::Jsr(t) | Op::Jz(t) | Op::Jnz(t) => todo.extend(at.get(&t)),
+                    Op::Jmp(t) => {
+                        todo.extend(at.get(&t));
+                        break;
+                    }
+                    Op::Retn => break,
+                    _ => {}
+                }
+                i += 1;
+            }
+        }
+        found
+    }
+}
+
 pub fn disassemble(data: &[u8]) -> Result<Program> {
     let mut r = Reader::new(data);
     let tag = r.tag()?;
