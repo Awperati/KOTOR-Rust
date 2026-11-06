@@ -32,6 +32,9 @@ pub struct NavMesh {
     lines: Vec<(V3, V3)>,
     /// Faces by the grid cells their bounds touch, so that finding the face under a point need not try them all.
     cells: HashMap<(i32, i32), Vec<u32>>,
+    /// Upright faces that are not floor (walls and the sides of obstacles), for sight, and the cells they touch.
+    walls: Vec<[V3; 3]>,
+    wall_cells: HashMap<(i32, i32), Vec<u32>>,
 }
 
 /// Size of a cell in `NavMesh::cells`, in metres.
@@ -73,6 +76,39 @@ fn tri_height(t: &[V3; 3], x: f32, y: f32) -> Option<f32> {
     (l1 >= eps && l2 >= eps && l3 >= eps).then(|| l1 * a[2] + l2 * b[2] + l3 * c[2])
 }
 
+/// Whether the segment `p` to `q` passes through the triangle (Moller and Trumbore).
+fn segment_hits_triangle(p: V3, q: V3, a: V3, b: V3, c: V3) -> bool {
+    let sub = |u: V3, v: V3| [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
+    let cross = |u: V3, v: V3| {
+        [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ]
+    };
+    let dot = |u: V3, v: V3| u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+    let d = sub(q, p);
+    let (e1, e2) = (sub(b, a), sub(c, a));
+    let h = cross(d, e2);
+    let det = dot(e1, h);
+    if det.abs() < 1e-9 {
+        return false;
+    }
+    let f = 1.0 / det;
+    let s = sub(p, a);
+    let u = f * dot(s, h);
+    if !(0.0..=1.0).contains(&u) {
+        return false;
+    }
+    let qv = cross(s, e1);
+    let v = f * dot(d, qv);
+    if v < 0.0 || u + v > 1.0 {
+        return false;
+    }
+    let t = f * dot(e2, qv);
+    (0.0..=1.0).contains(&t)
+}
+
 /// Heap entry ordered by lowest `f` first.
 struct Open {
     f: f32,
@@ -100,9 +136,34 @@ impl NavMesh {
     /// faces inside a mesh and across the borders of neighbouring rooms.
     pub fn from_meshes(meshes: &[Bwm]) -> NavMesh {
         let mut tris = Vec::new();
+        let mut walls = Vec::new();
         for m in meshes {
             for f in m.faces.iter().filter(|f| f.walkable()) {
                 tris.push(f.vertices.map(|i| m.vertices[i as usize]));
+            }
+            // Upright faces only: a floor that cannot be walked on is no wall to sight.
+            for f in m
+                .faces
+                .iter()
+                .filter(|f| !f.walkable() && f.normal[2].abs() < 0.7)
+            {
+                walls.push(f.vertices.map(|i| m.vertices[i as usize]));
+            }
+        }
+        let mut wall_cells: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for (i, t) in walls.iter().enumerate() {
+            let low = cell(
+                t[0][0].min(t[1][0]).min(t[2][0]) - 1e-3,
+                t[0][1].min(t[1][1]).min(t[2][1]) - 1e-3,
+            );
+            let high = cell(
+                t[0][0].max(t[1][0]).max(t[2][0]) + 1e-3,
+                t[0][1].max(t[1][1]).max(t[2][1]) + 1e-3,
+            );
+            for cx in low.0..=high.0 {
+                for cy in low.1..=high.1 {
+                    wall_cells.entry((cx, cy)).or_default().push(i as u32);
+                }
             }
         }
         let centroids: Vec<V3> = tris
@@ -156,7 +217,43 @@ impl NavMesh {
             blocked,
             lines: Vec::new(),
             cells,
+            walls,
+            wall_cells,
         }
+    }
+
+    /// Number of upright non-floor faces kept for sight.
+    pub fn wall_count(&self) -> usize {
+        self.walls.len()
+    }
+
+    /// Whether a wall stands between `p` and `q` (both at eye height).
+    pub fn sight_blocked(&self, p: V3, q: V3) -> bool {
+        let len = ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2)).sqrt();
+        let steps = (len / (CELL * 0.5)).ceil().max(1.0) as usize;
+        let mut seen: Vec<u32> = Vec::new();
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let c = cell(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t);
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    let Some(list) = self.wall_cells.get(&(c.0 + dx, c.1 + dy)) else {
+                        continue;
+                    };
+                    for &w in list {
+                        if seen.contains(&w) {
+                            continue;
+                        }
+                        seen.push(w);
+                        let [a, b, c3] = self.walls[w as usize];
+                        if segment_hits_triangle(p, q, a, b, c3) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Block every face whose centre is within `radius` (metres, in 3D) of `centre`. Returns how many faces

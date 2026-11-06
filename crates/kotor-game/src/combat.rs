@@ -612,25 +612,44 @@ impl World {
         self.clear_line(a, b)
     }
 
-    /// Whether a line between two places stays over walkable, unblocked floor.
+    /// Whether one can see from `a` to `b`: no closed door and no wall in between, at eye height, and no long stretch
+    /// without floor under the line.
     ///
-    /// **Assumption:** the walkmesh stands in for sight, since walls and closed doors end it. Pits and railings block
-    /// this line though the game may see across them.
+    /// **Assumption:** floor missing for under 2.5 m is an obstacle that can be looked over, a table or a crate (bug 25),
+    /// where it used to end sight. A wall is any upright face of the area's walkmesh that is not floor. Pits and
+    /// railings longer than that still block sight, though the game may see across them.
     pub(crate) fn clear_line(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        const EYE: f32 = 1.5;
+        const LOOK_OVER: f32 = 2.5;
         let Some(nav) = self.nav.as_ref() else {
             return true;
         };
         if nav.crosses_block(a, b) {
             return false;
         }
+        if nav.sight_blocked([a[0], a[1], a[2] + EYE], [b[0], b[1], b[2] + EYE]) {
+            return false;
+        }
         let len = dist2d(a, b);
-        let steps = (len / 0.75).ceil().max(1.0) as usize;
+        let step = 0.75;
+        let steps = (len / step).ceil().max(1.0) as usize;
         let top = a[2].max(b[2]) + 1.5;
-        (1..steps).all(|i| {
+        let mut gap = 0.0;
+        for i in 1..steps {
             let t = i as f32 / steps as f32;
-            nav.walkable_at(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, top)
+            if nav
+                .walkable_at(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, top)
                 .is_some()
-        })
+            {
+                gap = 0.0;
+            } else {
+                gap += len / steps as f32;
+                if gap > LOOK_OVER {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn update_perception(&mut self) {
