@@ -238,3 +238,24 @@ fn what_is_not_marked_droppable_is_still_in_the_remains() {
     assert!(w.object(soldier).unwrap().inventory.contains(&weapon));
     assert!(!w.object(soldier).unwrap().equipped.contains_key(&4));
 }
+
+#[test]
+fn credits_a_script_gives_are_credits_and_the_player_is_called_by_their_name() {
+    let Some(mut w) = world_in("end_m01aa") else {
+        return;
+    };
+    let pc = w.pc;
+    let before = w.gold;
+    let item = w.spawn_item("g_i_credits003");
+    let stack = w.object(item).unwrap().stack.max(1);
+    w.object_mut(pc).unwrap().inventory.push(item);
+    w.cash_in(pc);
+    assert_eq!(w.gold, before + stack);
+    assert!(w.object(item).is_none());
+    assert!(!w.object(pc).unwrap().inventory.contains(&item));
+
+    let hero = w.hero;
+    w.object_mut(hero).unwrap().name = "Revan Ordo".to_string();
+    let line = w.fill_line_for_test("I am <FullName>, or <FirstName> of the <LastName>s.");
+    assert_eq!(line, "I am Revan Ordo, or Revan of the Ordos.");
+}

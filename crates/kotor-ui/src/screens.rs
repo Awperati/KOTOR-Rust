@@ -322,6 +322,12 @@ impl<'a> Ui<'a> {
                 (0..t.row_count()).filter_map(|r| t.get(r, "baseresref").map(str::to_string)),
             );
         }
+        // What items look like in the slots and the lists: `ia_`, `ii_` and `iw_`, from the item's kind.
+        names.extend(self.inst.overlay_resources().filter_map(|(name, kind, _)| {
+            let name = name.to_string().to_ascii_lowercase();
+            let is_item = ["ia_", "ii_", "iw_"].iter().any(|p| name.starts_with(p));
+            (is_item && kind == kotor_core::ResType::TPC).then_some(name)
+        }));
         names.retain(|n| !n.is_empty());
         names.iter_mut().for_each(|n| *n = n.to_ascii_lowercase());
         names.sort();

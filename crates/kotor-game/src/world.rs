@@ -787,14 +787,29 @@ impl World {
         self.fill_tokens(self.raw_text(l))
     }
 
-    /// Replace `<CUSTOMn>` with the value set by `SetCustomToken`.
+    /// Replace `<CUSTOMn>` with the value set by `SetCustomToken`, and `<FullName>`, `<FirstName>` and `<LastName>` with the
+    /// name of the character the player made. The talk table uses them in 137 lines.
     pub(crate) fn fill_tokens(&self, mut s: String) -> String {
+        if s.contains("Name>") {
+            if let Some(name) = self.object(self.hero).map(|o| o.name.as_str()) {
+                let (first, last) = name.split_once(' ').unwrap_or((name, ""));
+                s = s
+                    .replace("<FullName>", name)
+                    .replace("<FirstName>", first)
+                    .replace("<LastName>", last);
+            }
+        }
         if s.contains("<CUSTOM") {
             for (n, v) in &self.tokens {
                 s = s.replace(&format!("<CUSTOM{n}>"), v);
             }
         }
         s
+    }
+
+    /// For a test: a line as it would be said.
+    pub fn fill_line_for_test(&self, line: &str) -> String {
+        self.fill_tokens(line.to_string())
     }
 
     fn raw_text(&self, l: &LocString) -> String {

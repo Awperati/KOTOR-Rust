@@ -632,8 +632,12 @@ impl Ui<'_> {
         r: [i32; 4],
     ) {
         let rects = cell_rects(r);
+        // A screen is stretched across a wide window, and these pictures are square.
+        let across = cv.scale / cv.scale_x;
         for (n, cell) in cells.iter().enumerate().take(rects.len()) {
-            let at = rects[n];
+            let [x, y, w, h] = rects[n];
+            let side = ((h as f32 * across).round() as i32).min(w);
+            let at = [x + (w - side) / 2, y, side, h];
             let tint = if cell.dim { [0.3; 3] } else { [1.0; 3] };
             if let Some(img) = self.texture_shared(&cell.icon) {
                 let full = [0, 0, img.width as i32, img.height as i32];
@@ -658,9 +662,10 @@ impl Ui<'_> {
             if n + 1 < cells.len() {
                 if let Some(img) = self.texture_shared("lbl_rightminus") {
                     let full = [0, 0, img.width as i32, img.height as i32];
-                    let side = 14;
-                    let x = (at[0] + at[2] + rects[n + 1][0] - side) / 2;
-                    let arrow = [x, at[1] + (at[3] - side) / 2, side, side];
+                    let high = 14;
+                    let side = (high as f32 * across).round() as i32;
+                    let x = (rects[n][0] + rects[n][2] + rects[n + 1][0] - side) / 2;
+                    let arrow = [x, at[1] + (at[3] - high) / 2, side, high];
                     cv.draw_image(
                         &img,
                         full,

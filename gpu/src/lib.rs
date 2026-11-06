@@ -210,20 +210,31 @@ enum AlphaLook {
     Blend,
 }
 
+/// How bright a mark's pixels are on average, at most. **Measured:** 13 of the game's scorch and shadow textures are under
+/// this, and its bushes and ferns are over it.
+const SOFT_MARK_BRIGHTEST: u64 = 40;
+
 /// **Assumption:** the shares that tell these apart are chosen by eye, not read from the game.
 fn alpha_look(img: &Image) -> AlphaLook {
-    let (mut gone, mut between) = (0usize, 0usize);
+    let (mut gone, mut between, mut seen, mut bright) = (0usize, 0usize, 0u64, 0u64);
     for p in img.rgba.chunks(4) {
         match p[3] {
             0..=19 => gone += 1,
             20..=234 => between += 1,
             _ => {}
         }
+        if p[3] > 19 {
+            seen += 1;
+            bright += p[0].max(p[1]).max(p[2]) as u64;
+        }
     }
     let n = (img.rgba.len() / 4).max(1);
+    // Scorch marks and painted shadows, as `LHR_blst02` on the Endar Spire's floors: nearly black with soft edges. Cut, they
+    // are hard black splats. Plants have as much in between, and stay cut for their depth.
+    let soft_and_dark = between * 8 > gone + between && bright < seen * SOFT_MARK_BRIGHTEST;
     if (gone + between) * 200 < n {
         AlphaLook::Opaque
-    } else if between * 3 > gone + between {
+    } else if between * 3 > gone + between || soft_and_dark {
         AlphaLook::Blend
     } else {
         AlphaLook::Cutout

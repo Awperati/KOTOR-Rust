@@ -907,6 +907,22 @@ fn the_mouse_look_box_does_not_flip_the_camera() {
 }
 
 #[test]
+fn back_on_the_main_menu_nothing_pops_up() {
+    let Some((mut s, _)) = in_game("no_popups") else {
+        return;
+    };
+    s.game.world.gold = 77;
+    s.update(DT);
+    s.enable_tutorials(true);
+    s.escape();
+    press(&mut s, "BTN_QUIT");
+    for _ in 0..30 {
+        s.update(DT);
+        assert_eq!(s.menu_name(), "main");
+    }
+}
+
+#[test]
 fn a_fight_is_saved_before_it_starts_in_the_one_file() {
     let Some((mut s, dir)) = in_game("fight_save") else {
         return;

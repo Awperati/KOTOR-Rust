@@ -174,6 +174,28 @@ impl World {
         self.spawn(Kind::Creature, template, ResType(2027), at)
     }
 
+    /// Credits a script has put in the party's hands are credits, and not an item in the bag.
+    pub fn cash_in(&mut self, who: ObjId) {
+        if who != self.pc && !self.party.contains(&who) {
+            return;
+        }
+        let Some(table) = self.table("baseitems") else {
+            return;
+        };
+        for item in self.carried(who) {
+            let Some(o) = self.objects.get(&item) else {
+                continue;
+            };
+            if table.get(o.base_item.max(0) as usize, "label") == Some("Credits") {
+                self.gold += o.stack.max(1);
+                self.objects.remove(&item);
+                if let Some(o) = self.objects.get_mut(&who) {
+                    o.inventory.retain(|i| *i != item);
+                }
+            }
+        }
+    }
+
     /// What a creature carries and does not wear.
     pub fn carried(&self, who: ObjId) -> Vec<ObjId> {
         let Some(o) = self.objects.get(&who) else {

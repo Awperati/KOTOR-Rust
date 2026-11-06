@@ -84,6 +84,13 @@ impl Stage {
     /// Once a step: see what has changed, and bring up what is waiting.
     pub(in crate::stage) fn notices_tick(&mut self) {
         self.panel_sound();
+        // On the main menu no game is going on: what the last one had is no change to tell of.
+        if !self.started && self.top() == Some(Screen::Main) {
+            self.menus.had = None;
+            self.menus.notices.clear();
+            self.menus.tutorials.clear();
+            return;
+        }
         let asked = std::mem::take(&mut self.game.world.tutorial_requests);
         for row in asked {
             self.tutorial(row);

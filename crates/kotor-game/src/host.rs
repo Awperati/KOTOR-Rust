@@ -1075,6 +1075,7 @@ impl Host for Adapter<'_> {
                     if let Some(o) = self.world.object_mut(to) {
                         o.inventory.push(item);
                     }
+                    self.world.cash_in(to);
                 }
                 self.record(name, args);
                 None
@@ -1936,6 +1937,7 @@ impl Host for Adapter<'_> {
                 if target == self.world.pc || self.world.party.contains(&target) {
                     self.world.items_acquired.push(id);
                 }
+                self.world.cash_in(target);
                 Some(Value::Object(id))
             }
             "GetModuleItemAcquired" => Some(Value::Object(self.world.item_acquired)),

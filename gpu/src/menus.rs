@@ -2179,6 +2179,8 @@ impl Stage {
     }
 
     fn load_selected(&mut self) {
+        // What the last game had is no change to tell of.
+        self.menus.had = None;
         let Some(path) = self.selected_file(Mode::Load).map(|f| f.path.clone()) else {
             return;
         };
