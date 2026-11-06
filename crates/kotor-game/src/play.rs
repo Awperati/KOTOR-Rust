@@ -750,6 +750,7 @@ impl World {
             self.item_acquired = item;
             self.run_module_script("Mod_OnAcquirItem");
         }
+        self.update_regeneration(dt);
         if let Some((module, wp)) = self.transition_request.take() {
             if let Err(e) = self.transition(&module, &wp) {
                 self.errors.push(format!("transition to {module}: {e}"));

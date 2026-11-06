@@ -465,6 +465,7 @@ pub struct World {
     /// The owner's early Force rules hold for this game. See `docs/EARLYFORCE.md`.
     pub early_force: bool,
     pub(crate) force_regen: f32,
+    pub(crate) hp_regen: f32,
     /// Who has just cast a power, for the animation.
     pub(crate) casts: Vec<(ObjId, i32)>,
     /// Animations scripts asked creatures for since the last step: who, which `ANIMATION_` constant, for how long.
@@ -607,6 +608,7 @@ impl World {
             available: BTreeMap::new(),
             early_force: false,
             force_regen: 0.0,
+            hp_regen: 0.0,
             casts: Vec::new(),
             animations: Vec::new(),
             store: None,

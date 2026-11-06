@@ -75,6 +75,29 @@ impl World {
         }
     }
 
+    /// The owner's rule: the party heals by itself, its Constitution modifier in hit points every 7 seconds, in a fight too.
+    /// A modifier of 0 or less gives none. Those down or dead do not heal. **Assumed:** enemies do not have this.
+    pub(crate) fn update_regeneration(&mut self, dt: f32) {
+        const SECONDS: f32 = 7.0;
+        const CONSTITUTION: usize = 2;
+        self.hp_regen += dt;
+        if self.hp_regen < SECONDS {
+            return;
+        }
+        self.hp_regen -= SECONDS;
+        let party: Vec<ObjId> = std::iter::once(self.pc)
+            .chain(self.party.iter().copied())
+            .collect();
+        for id in party {
+            let heals = crate::combat::ability_mod(self.ability_score(id, CONSTITUTION));
+            if let Some(o) = self.objects.get_mut(&id) {
+                if heals > 0 && !o.dead && !o.down {
+                    o.hp = (o.hp + heals).min(o.max_hp);
+                }
+            }
+        }
+    }
+
     /// The Force comes back slowly outside a fight, for the main character of a game with the early rules.
     pub(crate) fn update_early_force(&mut self, dt: f32) {
         if !self.early_force || !self.fight_is_over() {

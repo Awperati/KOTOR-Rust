@@ -771,3 +771,39 @@ fn the_new_state_survives_a_save() {
         "effect numbers are saved"
     );
 }
+
+#[test]
+fn the_party_heals_its_constitution_modifier_every_seven_seconds() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    let set = |w: &mut World, score: i32| {
+        let o = w.object_mut(pc).unwrap();
+        o.abilities[2] = score;
+        o.max_hp = 100;
+        o.hp = 50;
+    };
+    let run = |w: &mut World, seconds: f32| {
+        for _ in 0..(seconds * 20.0).round() as i32 {
+            // Only the player's own wounds are being measured.
+            w.step(0.05);
+        }
+    };
+    // The clock may be anywhere in its seven seconds to start with.
+    run(&mut w, 7.0);
+    set(&mut w, 10);
+    run(&mut w, 7.0);
+    assert_eq!(w.object(pc).unwrap().hp, 50, "modifier 0: none");
+    set(&mut w, 14);
+    run(&mut w, 6.9);
+    assert_eq!(w.object(pc).unwrap().hp, 50, "not yet");
+    run(&mut w, 0.2);
+    assert_eq!(w.object(pc).unwrap().hp, 52, "modifier 2: 2 points");
+    set(&mut w, 18);
+    w.object_mut(pc).unwrap().hp = 99;
+    run(&mut w, 7.0);
+    assert_eq!(
+        w.object(pc).unwrap().hp,
+        100,
+        "not past the most they can have"
+    );
+}
