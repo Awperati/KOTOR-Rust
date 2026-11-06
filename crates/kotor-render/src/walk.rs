@@ -40,27 +40,6 @@ impl Floor {
             .reduce(f32::min)
     }
 
-    /// The top of the walls around `(x, y)`, within `radius` metres: where the ceiling is, or would be. Only upright
-    /// faces that are not floor count, and only those above `from_z`. `None` where no wall stands near.
-    pub fn wall_top_near(&self, x: f32, y: f32, from_z: f32, radius: f32) -> Option<f32> {
-        let mut top: Option<f32> = None;
-        for m in &self.meshes {
-            for f in m
-                .faces
-                .iter()
-                .filter(|f| !f.walkable() && f.normal[2].abs() < 0.7)
-            {
-                for &i in &f.vertices {
-                    let v = m.vertices[i as usize];
-                    if (v[0] - x).hypot(v[1] - y) <= radius && v[2] > from_z {
-                        top = Some(top.map_or(v[2], |t| t.max(v[2])));
-                    }
-                }
-            }
-        }
-        top
-    }
-
     /// Highest walkable floor under `(x, y)` that is at or below `max_z`.
     pub fn height(&self, x: f32, y: f32, max_z: f32) -> Option<f32> {
         self.meshes

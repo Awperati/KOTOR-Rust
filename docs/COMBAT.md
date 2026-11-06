@@ -49,7 +49,6 @@ All sizes below are my assumptions, not measured from the game.
 | Remains (bug 34) | Everything carried goes into the remains whatever Droppable says, except creature claws, bite and hide (`baseitems.2da` rows 81-84) | `play.rs` `leave_loot` |
 | Collision (bug 15) | The player is stopped by party members too (walks through after 0.5 s pressed). Scripted walkers go round people | `follow.rs`, `play.rs` `step_move` |
 | Sight (bug 25) | Sight is blocked by closed doors and by upright non-floor walkmesh faces at eye height (1.5 m). Floor missing for under 2.5 m (tables, crates) no longer blocks | `combat.rs` `clear_line`, `NavMesh::sight_blocked` |
-| Camera (bug 26) | Tilted up, the camera stays 0.3 m under the top of the walls within 6 m | `gpu/src/stage.rs` `camera` |
 | Talents (GAPS 8) | `GetCreatureTalentBest` is the dearest affordable power of the right kind (categories 1-3 harmful), `Random` any. `GetIsDebilitated` follows disabling effects | `host.rs` |
 | Encounters (GAPS 6) | A creature whose CR is over the player's level plus `encdifficulty.2da` `value` stays home, unless it is the weakest on offer. `GetIsEncounterCreature` is real | `encounters.rs` |
 
