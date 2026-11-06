@@ -233,6 +233,7 @@ impl App {
         if let Some(until) = &self.pilot_until {
             if self.stage.pilot_arrived(until == "level") {
                 self.stage.take_over_from_pilot(self.auto_pause);
+                self.stage.keep_player_standing(until == "level");
                 self.pilot_until = None;
             }
         }

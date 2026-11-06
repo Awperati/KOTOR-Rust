@@ -52,6 +52,8 @@ pub(super) struct Fight {
     round: u32,
     down: std::collections::BTreeSet<ObjId>,
     target: Option<ObjId>,
+    /// A driver's player cannot fall.
+    unhurt: bool,
 }
 
 /// Which of the two choosing slots a tag is.
@@ -167,6 +169,11 @@ impl Stage {
         }
     }
 
+    /// The player's wounds heal at once, for a driver handed a fight a player of that level could not win.
+    pub fn keep_player_standing(&mut self, on: bool) {
+        self.menus.fight.unhurt = on;
+    }
+
     /// Things pause the game by themselves, as the Auto-Pause page says. Off unless asked for, like the pop-ups.
     pub fn enable_auto_pause(&mut self, on: bool) {
         self.menus.auto_pause_on = on;
@@ -215,6 +222,13 @@ impl Stage {
 
     /// See what should pause the game. Returns whether it is paused now.
     pub(in crate::stage) fn pause_tick(&mut self) -> bool {
+        if self.menus.fight.unhurt {
+            let w = &mut self.game.world;
+            let pc = w.pc;
+            if let Some(o) = w.object_mut(pc) {
+                o.hp = o.max_hp;
+            }
+        }
         if self.game.world.in_dialogue() {
             self.menus.paused = false;
             self.menus.fight.talk_ended = self.game.world.time;

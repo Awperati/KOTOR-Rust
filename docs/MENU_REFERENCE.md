@@ -102,3 +102,14 @@ Sith, the bar and Power Attack's name, a click on the feat slot, Space, the blow
 
 **Not real play:** the pilot played the part before the fight, and it cannot die, so the hand-over restores the player's Vitality.
 Trask fights as well, and can kill the Sith before the player does.
+
+## One level earned, live
+
+`scripts/drive_level.ps1` has no `--xp`. The pilot plays until the next enemy it sees is worth a level, then hands over at 1x. In the window the
+player attacks until a kill pays, the sheet offers Level Up, and the panel takes the level with Recommended and Accept.
+
+**What the run showed:** the first level comes from a script, about 675 experience near the end of `end_m01aa`, and no kill can give it. So this is
+level 2 to 3, in `tar_m09aa`, at 2,935 to 3,010 experience.
+
+**Not real play:** the pilot earned all but the last kill and cannot die. That far on, a level 2 player died in the first try, so the hand-over
+keeps them standing. A kill pays the whole party, and the driver does not check who landed it.

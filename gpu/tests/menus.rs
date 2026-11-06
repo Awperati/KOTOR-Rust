@@ -2042,6 +2042,14 @@ fn the_pilot_hands_a_fight_over_to_the_player() {
     assert!(s.state_line().contains("note=ENEMY"), "{}", s.state_line());
     // For a level it waits for an enemy worth one: one Sith is far from 1000 experience.
     assert!(!s.pilot_arrived(true));
+    // A driver's player can be kept standing.
+    s.toggle_pause();
+    let pc = s.game.world.pc;
+    s.game.world.object_mut(pc).unwrap().hp = 1;
+    s.keep_player_standing(true);
+    s.update(DT);
+    let o = s.game.world.object(pc).unwrap();
+    assert_eq!(o.hp, o.max_hp);
 }
 
 /// How many short sounds come out of the next update.

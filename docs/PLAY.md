@@ -35,6 +35,8 @@ Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`,
 
 `scripts/drive_fight.ps1` lets the pilot play to the first fight, takes over with `--pilot-until fight`, and fights it in the window: Enemy Sighted, the slots, words rising, the Messages tab, Disengage.
 
+`scripts/drive_level.ps1` lets the pilot earn experience until one kill short of a level, with `--pilot-until level`, and makes that kill and takes the level in the window. It has no `--xp`.
+
 `gpu/examples/shots.rs` writes frames to `docs/shots/play` from the offscreen renderer: no window and no screen capture.
 
 ## Resolutions
