@@ -56,23 +56,6 @@ impl World {
         self.power_slots_at(class, level)
     }
 
-    /// What a power costs this creature: under the early rules a power of the other side costs double.
-    /// **Assumption:** the factor, and the line at alignment 50.
-    pub fn power_cost(&mut self, id: ObjId, spell: i32) -> Option<i32> {
-        let (cost, _) = self.spell_cost_and_range(spell)?;
-        if !self.early_force || id != self.hero {
-            return Some(cost);
-        }
-        let side = self
-            .table("spells")
-            .and_then(|t| t.get(spell.max(0) as usize, "goodevil").map(str::to_string))
-            .unwrap_or_default();
-        let light = self.object(id).map_or(50, |o| o.alignment) >= 50;
-        let other =
-            (light && side.eq_ignore_ascii_case("E")) || (!light && side.eq_ignore_ascii_case("G"));
-        Some(if other { cost * 2 } else { cost })
-    }
-
     /// `AddMultiClass`: this creature is of this class from now on. Under the early rules what it has carries over and
     /// nothing is paid twice.
     pub(crate) fn add_multi_class(&mut self, id: ObjId, class: i32) {

@@ -16,7 +16,7 @@ All the numbers here are my proposal, and none comes from the game. Change them 
 | First power | Force Push, row 23, with its own script `k_sp1_generic`, cost and effects | The owner's screenshot |
 | New powers | One pick at every even level, from the normal list | Slower than any Jedi: `classpowergain.2da` gives them one or more each level |
 | Which powers | `usertype` powers, at the level of the `guardian` column, with their prerequisites | The strictest of the three, and non-Jedi have no column of their own |
-| Light and dark | A power of the other side costs double: `goodevil` E for alignment 50 and over, G for under 50. Force Push is neither | An assumption: the factor and the line are not measured |
+| Light and dark | As for everyone, in `crates/kotor-game/src/alignment.rs`: costs lean with alignment. Force Push is neither | The talk table's words, 41887. The numbers are an assumption |
 
 ## The slots
 

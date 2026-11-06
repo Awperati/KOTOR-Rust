@@ -125,42 +125,6 @@ fn a_power_comes_at_every_second_level_from_the_normal_list() {
 }
 
 #[test]
-fn a_power_of_the_other_side_costs_double() {
-    let Some(mut w) = world(true, 10) else {
-        return;
-    };
-    let pc = w.pc;
-    let (light, dark) = sides();
-    let (lc, dc) = (
-        w.spell_cost_and_range(light).unwrap().0,
-        w.spell_cost_and_range(dark).unwrap().0,
-    );
-    w.object_mut(pc).unwrap().alignment = 80;
-    assert_eq!(w.power_cost(pc, light), Some(lc));
-    assert_eq!(w.power_cost(pc, dark), Some(dc * 2));
-    w.object_mut(pc).unwrap().alignment = 20;
-    assert_eq!(w.power_cost(pc, light), Some(lc * 2));
-    assert_eq!(w.power_cost(pc, dark), Some(dc));
-}
-
-/// A light power and a dark power, from the table.
-fn sides() -> (i32, i32) {
-    let mut inst = Install::open(kotor_core::install_dir().unwrap()).unwrap();
-    let bytes = inst.read("spells", kotor_core::ResType::TWODA).unwrap();
-    let t = kotor_tables::TwoDa::parse(&bytes).unwrap();
-    let find = |side: &str| {
-        (0..t.row_count())
-            .find(|r| {
-                t.get(*r, "goodevil")
-                    .is_some_and(|v| v.eq_ignore_ascii_case(side))
-                    && t.int(*r, "forcepoints").unwrap_or(0) > 0
-            })
-            .unwrap() as i32
-    };
-    (find("G"), find("E"))
-}
-
-#[test]
 fn becoming_a_jedi_carries_the_powers_over_and_pays_nothing_twice() {
     let Some(mut w) = world(true, 10) else {
         return;

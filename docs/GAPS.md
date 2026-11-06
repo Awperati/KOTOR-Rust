@@ -22,7 +22,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 | 7 | **Area effects.** | Grenades have the fight screen's right slot now. Enemies throw none, see 8. `docs/STATUS.md` lists area-of-effect objects as not built. | S, then M |
 | 8 | **Enemy and party AI.** | `GetCreatureTalentBest` answered a fixed value 8,178 times, `GetCreatureTalentRandom` 898, `GetNPCAIStyle` 14,554, `GetPartyAIStyle` 2,426, and `GetIsDebilitated` 2,426. So AI choices run on made-up answers. In the mortal run the player landed 253 blows, Mission 48, Carth 37. | M to L |
 | 9 | **Effects that change nothing.** | `force.rs` keeps these but ignores them: damage types, resistances, immunities, regeneration, haste, speed, invisibility, shields, area effects. That makes many Force powers and items do less than they say. `ResistForce` answers a fixed value. | L |
-| 10 | **Alignment.** | `AdjustAlignment`, 9 calls, only records itself. Light and dark then change nothing, which matters for Force costs and story. | S |
+| 10 | **Alignment: built.** | `AdjustAlignment` moves the side, the sheet follows, and power costs lean with it, in `crates/kotor-game/src/alignment.rs`. Live in `drive_alignment.ps1`. How far costs lean is an assumption: the talk table, 41887, gives only the direction. | Done |
 | 11 | **Two weapons.** | The pilot leaves its left hand empty, as a second weapon is not built. Feats for it then mean nothing. | M |
 
 ## Stops side content
@@ -34,7 +34,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 | 14 | **Traps and mines.** | `docs/STATUS.md` lists traps as missing, and a chosen Security action too. Demolitions then means nothing. | M |
 | 15 | **Stealth.** | `AwardStealthXP`, 1 call, only records itself, and invisibility is not modelled. `docs/STATUS.md` lists stealth as not built. | M |
 | 16 | **Scenes whose pause runs out.** | `tar02_zelka021`, `tar04_outwom043`, `tar02_sithintero`. Each ended by our time limit, so some script's walk or death never came. Not read yet. | S each |
-| 17 | **Recorded with no effect.** | `SetPlotFlag`, 6 calls, in the duel ring among others. `SetSoloMode`, `SetNPCSelectability`, `SetPlayerRestrictMode` and `SetItemNonEquippable`. `AdjustReputation`. Each may matter somewhere. | S each |
+| 17 | **Recorded with no effect.** | `SetPlotFlag`, 6 calls, in the duel ring among others. `SetSoloMode`, `SetNPCSelectability`, `SetPlayerRestrictMode` and `SetItemNonEquippable`. Each may matter somewhere. | S each |
 
 ## Exists, so not a gap
 

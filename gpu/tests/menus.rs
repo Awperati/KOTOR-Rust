@@ -3492,6 +3492,33 @@ fn keys_one_two_and_three_are_the_slots_under_an_enemy() {
 }
 
 #[test]
+fn a_shift_from_the_games_script_shows_on_the_sheet_and_in_what_a_power_costs() {
+    let Some((mut s, _)) = in_game("shift") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.game.world.object_mut(pc).unwrap().alignment = 50;
+    s.open_character();
+    let needle = s.alignment_needle().unwrap();
+    s.game.world.run_script("k_act_lighthigh", pc).unwrap();
+    s.update(DT);
+    assert!(s.game.world.object(pc).unwrap().alignment > 50);
+    assert_ne!(s.alignment_needle().unwrap(), needle);
+    s.escape();
+
+    // Choke, a dark power: at 100 it costs double what it does at 50, and the screen says so.
+    s.game.world.objects.get_mut(&pc).unwrap().spells.insert(9);
+    s.open_abilities();
+    press(&mut s, "BTN_POWERS");
+    s.game.world.object_mut(pc).unwrap().alignment = 50;
+    let middle = frame(&mut s);
+    s.game.world.object_mut(pc).unwrap().alignment = 100;
+    assert!(frame(&mut s) != middle);
+    let cost = s.game.world.spell_cost_and_range(9).unwrap().0;
+    assert_eq!(s.game.world.power_cost(pc, 9), Some(cost * 2));
+}
+
+#[test]
 fn the_mist_behind_the_figure_follows_the_alignment() {
     let Some((mut s, _)) = in_game("figure_mist") else {
         return;

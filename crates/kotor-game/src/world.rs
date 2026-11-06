@@ -374,6 +374,8 @@ pub struct World {
     pub selected_planet: i32,
     /// A game of Pazaak is up, and how the last one went, for its end script.
     pub pazaak: Option<crate::pazaak::PazaakGame>,
+    /// How far each faction, in its row, has changed its mind about another (`AdjustReputation`).
+    pub(crate) reputation_shifts: BTreeMap<(i32, i32), i32>,
     pub last_pazaak_result: i32,
     /// What has been seen of each map, by its picture: `SEEN_COLS` by `SEEN_ROWS` cells.
     pub explored: BTreeMap<String, Vec<bool>>,
@@ -566,6 +568,7 @@ impl World {
             planet_lines: BTreeMap::new(),
             selected_planet: -1,
             pazaak: None,
+            reputation_shifts: BTreeMap::new(),
             last_pazaak_result: crate::pazaak::RESULT_LOST,
             explored: BTreeMap::new(),
             tutorial_seen: BTreeSet::new(),
@@ -1287,9 +1290,12 @@ impl World {
                 .map(str::to_ascii_lowercase)
         };
         let seen = |from: i32, of: i32| label(of).and_then(|l| table.int(from.max(0) as usize, &l));
-        seen(s.faction, t.faction)
+        let shift = self.reputation_shift((source, s.faction), (target, t.faction));
+        (seen(s.faction, t.faction)
             .or_else(|| seen(t.faction, s.faction))
             .map_or(50, |v| v as i32)
+            + shift)
+            .clamp(0, 100)
     }
 
     pub(crate) fn describe(&self, id: ObjId) -> String {

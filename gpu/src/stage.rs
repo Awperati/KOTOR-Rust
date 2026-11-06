@@ -1912,6 +1912,8 @@ impl Stage {
         let middle_slot = at(self.hud_pixel("BTN_TARGET1", layout));
         let right_slot = at(self.hud_pixel("BTN_TARGET2", layout));
         let disengage = at(self.hud_pixel("BTN_CLEARALL", layout));
+        let w = &self.game.world;
+        let align = w.object(w.pc).map_or(-1, |o| o.alignment);
         // The OK of a message, on a screen's 640 by 480.
         let ok = at(self.menu_pixel("BTN_OK", None, (640, 480)));
         let (paused, note) = self.pause_view();
@@ -1925,7 +1927,7 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} foe={foe} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} align={align} foe={foe} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

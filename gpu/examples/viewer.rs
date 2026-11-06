@@ -22,6 +22,7 @@
 //!     --store TAG     open this store when a game starts, as its script would, for a test driver
 //!     --global NAME=N set this global number when a game starts, for a test driver
 //!     --pazaak MAX    start a game of Pazaak with this most to wager when a game starts, for a test driver
+//!     --alignment N   the player's alignment when a game starts, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --appearance N  the player has this row of `appearance.2da` when a game starts, for a test driver
 //!     --original-underwear  the game's own underwear style, whatever Settings says, for a test driver
@@ -155,6 +156,7 @@ struct App {
     store: Option<String>,
     global: Option<String>,
     pazaak: Option<i32>,
+    alignment: Option<i32>,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -260,6 +262,13 @@ impl App {
                         .world
                         .global_numbers
                         .insert(name.to_ascii_uppercase(), value);
+                }
+            }
+            if let Some(alignment) = self.alignment.take() {
+                let w = &mut self.stage.game.world;
+                let pc = w.pc;
+                if let Some(o) = w.object_mut(pc) {
+                    o.alignment = alignment;
                 }
             }
             if let Some(max) = self.pazaak.take() {
@@ -661,6 +670,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         store: opt("--store"),
         global: opt("--global"),
         pazaak: opt("--pazaak").and_then(|n| n.parse().ok()),
+        alignment: opt("--alignment").and_then(|n| n.parse().ok()),
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,

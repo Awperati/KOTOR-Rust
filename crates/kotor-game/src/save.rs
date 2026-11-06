@@ -360,6 +360,16 @@ impl World {
                     }),
                 ),
                 (
+                    "ReputationList",
+                    list_of(self.reputation_shifts.iter(), |((from, of), by)| {
+                        st(vec![
+                            ("From", Value::Int(*from)),
+                            ("Of", Value::Int(*of)),
+                            ("By", Value::Int(*by)),
+                        ])
+                    }),
+                ),
+                (
                     "PlanetList",
                     list_of(self.planet_lines.values(), |p| {
                         st(vec![
@@ -979,6 +989,16 @@ impl World {
             .unwrap_or_default();
 
         // Globals, journal, party.
+        self.reputation_shifts = globals
+            .root
+            .list("ReputationList")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| {
+                let key = (x.int("From")? as i32, x.int("Of")? as i32);
+                Some((key, x.int("By")? as i32))
+            })
+            .collect();
         self.planet_lines = globals
             .root
             .list("PlanetList")

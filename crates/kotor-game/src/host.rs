@@ -70,8 +70,6 @@ const PRESENTATION: &[&str] = &[
     "SetPlayerRestrictMode",
     "SetItemNonEquippable",
     "SetIsDestroyable",
-    "AdjustAlignment",
-    "AdjustReputation",
 ];
 
 /// The side a party member fights on. `repute.2da` has the player's row hostile to `Hostile_1` and friendly to this one.
@@ -558,8 +556,8 @@ impl Host for Adapter<'_> {
                 });
                 let first = known.into_iter().find(|s| {
                     self.world
-                        .spell_cost_and_range(*s)
-                        .is_some_and(|(cost, _)| cost <= force)
+                        .power_cost(who, *s)
+                        .is_some_and(|cost| cost <= force)
                 });
                 self.default_hit(name);
                 Some(Value::Engine(3, first.map_or(0, |s| (1 << 24) | s as u32)))
@@ -1161,6 +1159,32 @@ impl Host for Adapter<'_> {
                     .object(self.obj(caller, args, 0))
                     .map_or(0, |o| o.alignment),
             )),
+            "GetAlignmentGoodEvil" => {
+                let who = self.obj(caller, args, 0);
+                Some(Value::Int(self.world.alignment_side(who)))
+            }
+            "SetGoodEvilValue" => {
+                let who = self.obj(caller, args, 0);
+                let value = int(args, 1)?.clamp(0, 100);
+                if let Some(o) = self.world.object_mut(who) {
+                    o.alignment = value;
+                }
+                self.record(name, args);
+                None
+            }
+            "AdjustAlignment" => {
+                let who = self.obj(caller, args, 0);
+                self.world
+                    .adjust_alignment(who, int(args, 1)?, int(args, 2)?);
+                self.record(name, args);
+                None
+            }
+            "AdjustReputation" => {
+                let (target, source) = (self.obj(caller, args, 0), self.obj(caller, args, 1));
+                self.world.adjust_reputation(target, source, int(args, 2)?);
+                self.record(name, args);
+                None
+            }
             "GetReputation" => Some(Value::Int(
                 self.world
                     .reputation(self.obj(caller, args, 0), self.obj(caller, args, 1)),

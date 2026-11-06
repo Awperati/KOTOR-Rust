@@ -91,7 +91,7 @@ impl Stage {
                 v.text("LBL_TOTALVAL", (ranks + bonus).to_string());
             }
             POWERS_TAB => {
-                let cost = self.game.world.spell_cost_and_range(shown.id).map(|c| c.0);
+                let cost = self.game.world.power_cost(self.game.world.pc, shown.id);
                 v.text("LBL_RANKVAL", cost.unwrap_or(0).to_string());
                 v.hide(&["LBL_BONUS", "LBL_BONUSVAL", "LBL_TOTAL", "LBL_TOTALVAL"]);
             }
