@@ -100,6 +100,8 @@ pub struct MenuView {
     pub message: String,
     /// A row of controls of its own, `top.gui`, drawn after this screen and asked first what is under the cursor.
     pub top: Option<Box<MenuView>>,
+    /// Holes darkened from their left, for a lit thing that the renderer lights evenly: the galaxy map's planet.
+    pub hole_shades: Vec<String>,
     /// A dialog over this screen. It takes all the input.
     pub dialog: Option<Box<MenuView>>,
     /// The scene shows around the panel, instead of black.
@@ -179,6 +181,9 @@ fn cell_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
     [0, 1, 2].map(|i| [row[0] + i * step, row[1] + 4, side, side])
 }
 
+/// How far across a shaded hole the dark comes, and how dark it starts: by eye from the video at 8:29:45.
+const SHADE_REACH: f32 = 0.75;
+const SHADE_DARKEST: f32 = 245.0;
 /// A needle's width in layout units, and how solid a picture's pixel has to be to count as the picture.
 const NEEDLE_WIDTH: i32 = 14;
 const SOLID: u8 = 128;
@@ -290,6 +295,14 @@ impl Ui<'_> {
             if view.holes.contains(&c.tag) {
                 let e = &c.extent;
                 cv.clear_rect(ox + e.left, oy + e.top, e.width, e.height, view.hole_veil);
+                if view.hole_shades.contains(&c.tag) {
+                    let reach = (e.width as f32 * SHADE_REACH) as i32;
+                    for x in 0..reach {
+                        let left = 1.0 - x as f32 / reach as f32;
+                        let dark = [0, 0, 0, (SHADE_DARKEST * left) as u8];
+                        cv.fill_rect(ox + e.left + x, oy + e.top, 1, e.height, dark);
+                    }
+                }
             } else if c.kind == LIST {
                 self.draw_list(cv, view, c, (ox, oy));
             } else {

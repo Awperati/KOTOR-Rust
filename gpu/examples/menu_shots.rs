@@ -435,6 +435,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.take_galaxy_choice();
     s.update(0.1);
 
+    // Pazaak: the wager, choosing a side deck, a game, and how a set ends.
+    use kotor_gpu::stage::{PazaakCard, PazaakSide, PazaakView};
+    s.show_pazaak(PazaakView::Wager {
+        value: 50,
+        maximum: 200,
+    });
+    shot(&mut gpu, &mut s, "pazaak_wager", &out);
+    s.show_pazaak(PazaakView::Setup {
+        available: [[2, 2, 1, 0, 1, 0], [2, 1, 1, 1, 0, 0], [1, 0, 1, 0, 0, 0]],
+        chosen: vec![
+            PazaakCard::Plus(1),
+            PazaakCard::Plus(2),
+            PazaakCard::Minus(1),
+            PazaakCard::Either(3),
+        ],
+    });
+    click(&mut s, "BTN_AVAIL02", None);
+    shot(&mut gpu, &mut s, "pazaak_setup", &out);
+    let table = |message| PazaakView::Table {
+        player: Box::new(PazaakSide {
+            played: vec![
+                PazaakCard::Main(4),
+                PazaakCard::Main(7),
+                PazaakCard::Plus(2),
+            ],
+            total: 13,
+            wins: 1,
+            hand: vec![
+                PazaakCard::Minus(3),
+                PazaakCard::Either(2),
+                PazaakCard::Plus(1),
+            ],
+            to_play: true,
+        }),
+        opponent: Box::new(PazaakSide {
+            played: vec![PazaakCard::Main(9), PazaakCard::Main(8)],
+            total: 17,
+            wins: 2,
+            hand: vec![PazaakCard::Main(0); 4],
+            to_play: false,
+        }),
+        message,
+    };
+    s.show_pazaak(table(None));
+    shot(&mut gpu, &mut s, "pazaak_table", &out);
+    s.show_pazaak(table(Some(32334)));
+    shot(&mut gpu, &mut s, "pazaak_message", &out);
+    s.close_pazaak();
+    s.update(0.1);
+
     // A shop: what it sells, the question over a dear item, and what it would buy.
     let keeper = s.game.world.spawn_creature("n_calonord", [0.0; 3]);
     if let Some(o) = s.game.world.object_mut(keeper) {

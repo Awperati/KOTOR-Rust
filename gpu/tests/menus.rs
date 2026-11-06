@@ -2895,6 +2895,38 @@ fn the_screens_of_a_game_keep_their_words_inside_their_boxes() {
     words_too_big(&mut s, "shop sell", &mut found);
     assert!(found.is_empty(), "{}", found.join("\n"));
 
+    // Pazaak: a full table, the longest cards, and the side deck.
+    {
+        use kotor_gpu::stage::{PazaakCard as C, PazaakSide, PazaakView};
+        let Some((mut s, _)) = in_game("fit_pazaak") else {
+            return;
+        };
+        s.show_pazaak(PazaakView::Wager {
+            value: 99999,
+            maximum: 99999,
+        });
+        words_too_big(&mut s, "wager", &mut found);
+        s.show_pazaak(PazaakView::Setup {
+            available: [[9; 6]; 3],
+            chosen: vec![C::Either(-6); 10],
+        });
+        words_too_big(&mut s, "setup", &mut found);
+        let side = PazaakSide {
+            played: vec![C::Main(10); 9],
+            total: 90,
+            wins: 3,
+            hand: vec![C::Either(-6); 4],
+            to_play: true,
+        };
+        s.show_pazaak(PazaakView::Table {
+            player: Box::new(side.clone()),
+            opponent: Box::new(side),
+            message: Some(32336),
+        });
+        words_too_big(&mut s, "table", &mut found);
+        assert!(found.is_empty(), "{}", found.join("\n"));
+    }
+
     // The galaxy map, on each planet the story can have.
     let Some(mut s) = at_galaxy("fit_galaxy") else {
         return;
@@ -2908,6 +2940,111 @@ fn the_screens_of_a_game_keep_their_words_inside_their_boxes() {
         words_too_big(&mut s, planet, &mut found);
     }
     assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+fn pazaak_table(message: Option<u32>) -> kotor_gpu::stage::PazaakView {
+    use kotor_gpu::stage::{PazaakCard, PazaakSide, PazaakView};
+    PazaakView::Table {
+        player: Box::new(PazaakSide {
+            played: vec![PazaakCard::Main(4), PazaakCard::Plus(2)],
+            total: 6,
+            wins: 1,
+            hand: vec![PazaakCard::Minus(3), PazaakCard::Either(2)],
+            to_play: true,
+        }),
+        opponent: Box::new(PazaakSide {
+            played: vec![PazaakCard::Main(9)],
+            total: 9,
+            wins: 2,
+            hand: vec![PazaakCard::Main(0); 3],
+            to_play: false,
+        }),
+        message,
+    }
+}
+
+#[test]
+fn pazaaks_screens_show_their_view_and_say_what_was_pressed() {
+    use kotor_gpu::stage::{PazaakCard, PazaakMove as M, PazaakView};
+    let Some((mut s, _)) = in_game("pazaak") else {
+        return;
+    };
+    let time = s.game.world.time;
+
+    // The wager.
+    s.show_pazaak(PazaakView::Wager {
+        value: 10,
+        maximum: 100,
+    });
+    assert_eq!(s.menu_name(), "pazaak");
+    frame(&mut s);
+    assert_eq!(s.game.world.time, time, "the game waits");
+    for (tag, wanted) in [
+        ("BTN_LESS", M::WagerLess),
+        ("BTN_MORE", M::WagerMore),
+        ("BTN_WAGER", M::Wager),
+        ("BTN_QUIT", M::Quit),
+    ] {
+        press(&mut s, tag);
+        assert_eq!(s.take_pazaak_moves(), [wanted], "{tag}");
+    }
+    let some = frame(&mut s);
+    s.show_pazaak(PazaakView::Wager {
+        value: 20,
+        maximum: 100,
+    });
+    assert!(frame(&mut s) != some, "the view shows");
+
+    // The side deck: none left is no button, a click picks, and Add Card says which.
+    let mut available = [[0; 6]; 3];
+    available[0][2] = 2;
+    available[2][1] = 1;
+    s.show_pazaak(PazaakView::Setup {
+        available,
+        chosen: vec![PazaakCard::Plus(1)],
+    });
+    assert!(s.menu_pixel("BTN_AVAIL00", None, SIZE).is_none());
+    press(&mut s, "BTN_YTEXT");
+    assert!(s.take_pazaak_moves().is_empty(), "nothing picked yet");
+    press(&mut s, "BTN_AVAIL21");
+    press(&mut s, "BTN_YTEXT");
+    assert_eq!(s.take_pazaak_moves(), [M::AddCard(2, 1)]);
+    press(&mut s, "BTN_CHOSEN0");
+    assert_eq!(s.take_pazaak_moves(), [M::RemoveCard(0)]);
+    press(&mut s, "BTN_ATEXT");
+    assert_eq!(s.take_pazaak_moves(), [M::Play]);
+
+    // The table: only what has been played, a flip only on a card that has one.
+    s.show_pazaak(pazaak_table(None));
+    assert!(s.menu_pixel("BTN_PLR1", None, SIZE).is_some());
+    assert!(s.menu_pixel("BTN_PLR2", None, SIZE).is_none());
+    assert!(s.menu_pixel("BTN_PLRSIDE2", None, SIZE).is_none());
+    assert!(s.menu_pixel("BTN_FLIP0", None, SIZE).is_none());
+    for (tag, wanted) in [
+        ("BTN_FLIP1", M::FlipHand(1)),
+        ("BTN_PLRSIDE0", M::PlayHand(0)),
+        ("BTN_XTEXT", M::EndTurn),
+        ("BTN_YTEXT", M::Stand),
+    ] {
+        press(&mut s, tag);
+        assert_eq!(s.take_pazaak_moves(), [wanted], "{tag}");
+    }
+
+    // How a set ended, in a box with its OK.
+    s.show_pazaak(pazaak_table(Some(32334)));
+    let ok = s.menu_pixel("BTN_OK", None, SIZE).unwrap();
+    s.hover(ok, SIZE);
+    s.click(ok, SIZE);
+    assert_eq!(s.take_pazaak_moves(), [M::Understood]);
+
+    // Esc asks to quit, and only the rules close it.
+    s.escape();
+    assert_eq!(s.take_pazaak_moves(), [M::Quit]);
+    assert_eq!(s.menu_name(), "pazaak");
+    s.close_pazaak();
+    assert_eq!(s.menu_name(), "-");
+    s.update(DT);
+    assert!(s.game.world.time > time);
 }
 
 fn at_galaxy(name: &str) -> Option<Stage> {

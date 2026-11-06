@@ -36,6 +36,9 @@ mod optionpages;
 #[path = "partyscreen.rs"]
 mod partyscreen;
 pub use galaxyscreen::PlanetLine;
+#[path = "pazaakscreen.rs"]
+mod pazaakscreen;
+pub use pazaakscreen::{PazaakCard, PazaakMove, PazaakSide, PazaakView};
 #[path = "storescreen.rs"]
 mod storescreen;
 #[path = "workbenchscreen.rs"]
@@ -183,6 +186,8 @@ pub(super) enum Screen {
     Store,
     /// `galaxymap.gui`.
     Galaxy,
+    /// `pazaakwager.gui`, `pazaaksetup.gui` or `pazaakgame.gui`.
+    Pazaak,
     /// `upgradesel.gui`, `upgradeitems.gui` and `upgrade.gui`.
     BenchKinds,
     BenchItems,
@@ -424,6 +429,7 @@ impl Screen {
             Screen::QuestItems => "quest_items",
             Screen::Store => "store",
             Screen::Galaxy => "galaxy",
+            Screen::Pazaak => "pazaak",
             Screen::BenchKinds => "bench_kinds",
             Screen::BenchItems => "bench_items",
             Screen::Bench => "bench",
@@ -511,6 +517,8 @@ pub(super) struct Menus {
     fight: fightscreen::Fight,
     /// A shop, while one is open.
     shop: storescreen::Shop,
+    /// Pazaak, while it is up.
+    pazaak: pazaakscreen::Pazaak,
     /// The galaxy map, once it has been up.
     galaxy: Option<galaxyscreen::Galaxy>,
     /// The words of the option the cursor last rested on.
@@ -734,6 +742,7 @@ impl Stage {
             Screen::QuestItems => self.quest_items_view(),
             Screen::Store => self.store_view(),
             Screen::Galaxy => self.galaxy_view(),
+            Screen::Pazaak => self.pazaak_view(),
             Screen::BenchKinds => self.bench_kinds_view(),
             Screen::BenchItems => self.bench_items_view(),
             Screen::Bench => self.bench_view(),
@@ -1775,6 +1784,7 @@ impl Stage {
         match (top, tag) {
             (Screen::Store, _) => self.store_press(tag),
             (Screen::Galaxy, _) => self.galaxy_press(tag),
+            (Screen::Pazaak, _) => self.pazaak_press(tag),
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),
@@ -1975,6 +1985,7 @@ impl Stage {
             Some(Screen::Container) => self.game.world.close_container(),
             Some(Screen::Store) => self.store_escape(),
             Some(Screen::Galaxy) => self.galaxy_escape(),
+            Some(Screen::Pazaak) => self.pazaak_escape(),
             Some(Screen::Equip) if self.menus.slot.is_some() => {
                 self.leave_slot();
                 self.menus.message.clear();

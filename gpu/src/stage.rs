@@ -17,7 +17,10 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
-pub use menus::{about_words, default_saves_dir, default_settings_file, PlanetLine, Settings};
+pub use menus::{
+    about_words, default_saves_dir, default_settings_file, PazaakCard, PazaakMove, PazaakSide,
+    PazaakView, PlanetLine, Settings,
+};
 
 type Mat = [[f32; 4]; 4];
 

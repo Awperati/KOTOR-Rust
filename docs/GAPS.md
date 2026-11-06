@@ -9,7 +9,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 | # | Gap | Evidence | Size |
 |---|---|---|---|
 | 1 | **Swoop race and turret minigames.** | The Taris story goes through `tar_m03mg`: `k_ptar_swooprun` leads there, and nothing else I found does. The video has the race at about 14,700 s. `nwscript.nss` has 97 `SWMG_` routines and our code answers none by name. `manm26mg` and `tat_m17mg` are more of the kind. | L |
-| 2 | **Galaxy map and leaving a planet.** | `tar_m02aa`'s `k_ptar_goebhawk` goes to `ebo_m12aa`, and the video leaves Taris at about 18,000 s. `SetPlanetSelectable` and `SetPlanetAvailable` only record themselves. Not reached yet, so unproven beyond that. | M |
+| 2 | **Galaxy map and leaving a planet: rules wanted.** | The screen is built and waits for them, in `gpu/src/galaxyscreen.rs`: `open_galaxy` and `take_galaxy_choice`. | `tar_m02aa`'s `k_ptar_goebhawk` goes to `ebo_m12aa`, and the video leaves Taris at about 18,000 s. `SetPlanetSelectable` and `SetPlanetAvailable` only record themselves. Not reached yet, so unproven beyond that. | M |
 | 3 | **Store screen: built.** | `store.gui`, compared with the video at 50:10. The price formula is still unchecked. | Done |
 
 ## Stops fights being judged
@@ -29,7 +29,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 
 | # | Gap | Evidence | Size |
 |---|---|---|---|
-| 12 | **Pazaak.** | `PlayPazaak` only records itself, and `GetLastPazaakResult` answers nothing. `k_pazaak` is a quest the pilot starts. | M |
+| 12 | **Pazaak: rules wanted.** | The screens are built and wait for them, in `gpu/src/pazaakscreen.rs`: `show_pazaak(view)`, `take_pazaak_moves()`, `close_pazaak()`. Still needed: `PlayPazaak` opening them, the deck and turn rules, wagers, the side deck's cards from the inventory, the opponent's play, and `GetLastPazaakResult`. `k_pazaak` is a quest the pilot starts. I found no game of it in the reference video. | M |
 | 13 | **Workbench and upgrades: built.** | `upgradesel`, `upgradeitems` and `upgrade`, opened by `ShowUpgradeScreen`. The pilot does not use them. | Done |
 | 14 | **Traps and mines.** | `docs/STATUS.md` lists traps as missing, and a chosen Security action too. Demolitions then means nothing. | M |
 | 15 | **Stealth.** | `AwardStealthXP`, 1 call, only records itself, and invisibility is not modelled. `docs/STATUS.md` lists stealth as not built. | M |

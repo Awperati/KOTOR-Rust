@@ -30,9 +30,10 @@ const GALAXY_FOOT: f32 = 256.0;
 const FOCAL: f32 = 533.0;
 /// How far the sun of `galaxy.mdl` lies from its origin toward its camera.
 const SUN_AT: f32 = 11.2;
-/// How near a planet's camera comes. The zoom goes on closer, and the video's planet runs past its hole's edges, where it
-/// is cut off. One camera draws both holes here, so this keeps it inside its own: a radius of about 70 layout units.
-const NEAREST: f32 = 4.0;
+/// How near a planet's camera comes: a radius of about 107 layout units, as the video has it, which runs past its hole.
+const NEAREST: f32 = 2.7;
+/// The top of the planet's hole. The other edges are the screen's picture, but this one opens onto the galaxy's hole.
+const PLANET_TOP: f32 = 261.0;
 /// Corners of a particle's two triangles.
 const QUAD_VERTICES: usize = 6;
 /// Seconds of the galaxy made at once when the screen opens, so that it is there already.
@@ -186,6 +187,7 @@ impl Stage {
         let mut v = MenuView::new(GUI);
         v.holes.push(GALAXY_HOLE.to_string());
         v.holes.push(PLANET_HOLE.to_string());
+        v.hole_shades.push(PLANET_HOLE.to_string());
         let Some(g) = self.menus.galaxy.as_ref() else {
             return v;
         };
@@ -318,6 +320,14 @@ impl Stage {
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                 );
+                // One camera draws both holes, so what would rise past its own is laid along that edge.
+                for mesh in &mut scene.meshes {
+                    for p in &mut mesh.positions {
+                        let top =
+                            camera.eye[2] - (PLANET_TOP - 240.0) / FOCAL * (camera.eye[0] - p[0]);
+                        p[2] = p[2].min(top);
+                    }
+                }
             }
         }
         Some((scene, camera))
