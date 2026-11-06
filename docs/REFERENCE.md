@@ -116,3 +116,7 @@ So a body and its head do not match exactly in the files themselves. Column b ha
 - A woman's body or neck in close-up: its hero is a man. Whether the owner's neck frame matches the original is still open.
 - HUD layout at 4K: it is 1080p.
 - Anything in this engine's own terms, such as object numbers or script state.
+
+## The Jedi duel on the Endar Spire (measured 6 Nov 2026, frames in `cache/ref/duel`)
+
+One frame every 2 s from 440 s. The player opens the door at about 522 s (video 1:22 in the sheet). The duel cutscene has no HUD and runs from 524 s to 540 s: the Jedi and the dark Jedi trade blows with lightsabers at 524 to 538 s, a white flash at 540 s, and the player has control again at about 546 s. So 16 s of duel and about 24 s from the door to control. Ours runs 38 s from `end_cut04` beginning to its end (`docs/COMBAT.md`), so it is about 14 s longer than the video. I did not find which script waits make up the difference.
