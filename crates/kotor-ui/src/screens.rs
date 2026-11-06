@@ -145,6 +145,7 @@ impl<'a> Ui<'a> {
             "optionsingame",
             "saveload",
             "savename",
+            "container",
             "inventory",
             "equip",
         ] {

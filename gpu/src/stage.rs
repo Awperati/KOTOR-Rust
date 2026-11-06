@@ -473,7 +473,7 @@ impl Stage {
 
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
-        if self.menu_open() {
+        if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
         }
@@ -915,7 +915,7 @@ impl Stage {
         self.pitch = (self.pitch + dy * 0.004).clamp(-0.2, 1.2);
     }
 
-    /// What the replies on screen are, in the conversation or the open container.
+    /// What the replies on screen are, in the conversation.
     fn choice_view(&self) -> Option<DialogueView> {
         let w = &self.game.world;
         if let Some((speaker, subtitle, _, replies)) = w.dialogue_view() {
@@ -926,18 +926,7 @@ impl Stage {
                 selected: self.hover_reply,
             });
         }
-        let id = w.opened?;
-        let mut replies: Vec<String> = w.container_items().into_iter().map(|i| i.1).collect();
-        if !replies.is_empty() {
-            replies.push("Take everything".to_string());
-        }
-        replies.push("Close".to_string());
-        Some(DialogueView {
-            speaker: w.object(id).map(|o| o.name.clone()).unwrap_or_default(),
-            subtitle: String::new(),
-            replies,
-            selected: self.hover_reply,
-        })
+        None
     }
 
     /// The row of the choice list under a pixel.
@@ -1049,7 +1038,7 @@ impl Stage {
 
     /// Key `n` (1-9): take that reply.
     pub fn number_key(&mut self, n: usize) {
-        if self.menu_open() {
+        if self.menu_open() && !self.container_up() {
             return;
         }
         self.hover_reply = 0;

@@ -61,6 +61,8 @@ pub(super) enum Screen {
     Name,
     Inventory,
     Equip,
+    /// `container.gui`, up for as long as the world has something open. The game runs on behind it.
+    Container,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,6 +81,7 @@ impl Screen {
             Screen::Name => "name",
             Screen::Inventory => "inventory",
             Screen::Equip => "equip",
+            Screen::Container => "container",
         }
     }
 }
@@ -151,12 +154,28 @@ fn played(seconds: f32) -> String {
 impl Stage {
     /// Whether a screen is up, which also stops the game's clock.
     pub fn menu_open(&self) -> bool {
-        !self.menus.stack.is_empty()
+        self.top().is_some()
+    }
+
+    /// The screen that has the input.
+    fn top(&self) -> Option<Screen> {
+        let w = &self.game.world;
+        let container = w.opened.is_some() && !w.in_dialogue();
+        self.menus
+            .stack
+            .last()
+            .copied()
+            .or(container.then_some(Screen::Container))
+    }
+
+    /// A container is up, and the game goes on behind it.
+    pub(super) fn container_up(&self) -> bool {
+        self.top() == Some(Screen::Container)
     }
 
     /// The name of the screen on top, for a test driver: `main`, `pause`, `load`, `save`, `name`; `-` in the game.
     pub fn menu_name(&self) -> &'static str {
-        self.menus.stack.last().map_or("-", |s| s.name())
+        self.top().map_or("-", Screen::name)
     }
 
     /// Exit was pressed on the main menu.
@@ -180,7 +199,7 @@ impl Stage {
     }
 
     pub(super) fn menu_view(&mut self) -> Option<MenuView> {
-        let top = *self.menus.stack.last()?;
+        let top = self.top()?;
         let hover = self.menus.hover.clone();
         let mut v = match top {
             Screen::Main => main_menu(),
@@ -197,6 +216,7 @@ impl Stage {
             }
             Screen::Inventory => self.inventory_view(),
             Screen::Equip => self.equip_view(),
+            Screen::Container => self.container_view(),
         };
         if top != Screen::Name {
             v.hover = hover;
@@ -306,10 +326,12 @@ impl Stage {
 
     /// The items a list on the screen shows, in order.
     fn listed_items(&mut self) -> Vec<ObjId> {
+        let top = self.top();
         let w = &mut self.game.world;
         let pc = w.pc;
         let carried = w.carried(pc);
-        match self.menus.stack.last() {
+        match top {
+            Some(Screen::Container) => w.container_items().into_iter().map(|i| i.0).collect(),
             Some(Screen::Inventory) => carried,
             Some(Screen::Equip) => {
                 let slot = self.menus.slot;
@@ -331,7 +353,9 @@ impl Stage {
             .into_iter()
             .filter_map(|i| {
                 let v = self.game.world.item_view(i)?;
-                let dim = v.slots != 0 && self.game.world.can_wear(pc, i).is_err();
+                let dim = !self.container_up()
+                    && v.slots != 0
+                    && self.game.world.can_wear(pc, i).is_err();
                 Some(self.item_row(&v, dim))
             })
             .collect()
@@ -449,6 +473,31 @@ impl Stage {
         v
     }
 
+    /// `container.gui`, over the scene. Nothing can be put into a container yet, so its button is hidden.
+    fn container_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("container");
+        v.over_scene = true;
+        v.hide(&["BTN_GIVEITEMS"]);
+        let w = &self.game.world;
+        let title = w.opened.and_then(|id| w.object(id)).map(|o| o.name.clone());
+        if let Some(name) = title.filter(|n| !n.is_empty()) {
+            v.text("LBL_MESSAGE", name);
+        }
+        let rows = self.item_rows();
+        v.lists
+            .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
+        v
+    }
+
+    /// Everything in the open container comes to the player, and it closes.
+    fn take_everything(&mut self) {
+        for (item, _) in self.game.world.container_items() {
+            self.game.world.take_item(item);
+        }
+        self.game.world.close_container();
+        self.menus.first = 0;
+    }
+
     /// The I key: the inventory, or back to the game if it is up.
     pub fn open_inventory(&mut self) {
         self.open_items(Screen::Inventory);
@@ -460,7 +509,7 @@ impl Stage {
     }
 
     fn open_items(&mut self, screen: Screen) {
-        let top = self.menus.stack.last().copied();
+        let top = self.top();
         if top == Some(screen) {
             self.menus.stack.pop();
             return;
@@ -484,6 +533,12 @@ impl Stage {
         let Some(item) = self.listed_items().get(row).copied() else {
             return;
         };
+        if self.container_up() {
+            self.game.world.take_item(item);
+            let left = self.listed_items().len();
+            self.menus.first = self.menus.first.min(left.saturating_sub(1));
+            return;
+        }
         self.menus.about = Some(item);
         let pc = self.game.world.pc;
         let slot = self.menus.slot;
@@ -538,7 +593,7 @@ impl Stage {
                 self.menus.about = Some(item);
                 self.menus.refused = false;
             }
-        } else if self.menus.stack.last() == Some(&Screen::Equip) {
+        } else if self.top() == Some(Screen::Equip) {
             self.menus.about = None;
         }
     }
@@ -558,8 +613,10 @@ impl Stage {
             }
             Some(Hit::Row(_, row)) => {
                 self.menus.delete_armed = None;
-                match self.menus.stack.last() {
-                    Some(Screen::Inventory | Screen::Equip) => self.use_listed_item(row),
+                match self.top() {
+                    Some(Screen::Inventory | Screen::Equip | Screen::Container) => {
+                        self.use_listed_item(row)
+                    }
                     _ => self.menus.selected = Some(row),
                 }
             }
@@ -569,10 +626,12 @@ impl Stage {
 
     /// What a button does.
     fn press(&mut self, tag: &str) {
-        let Some(top) = self.menus.stack.last().copied() else {
+        let Some(top) = self.top() else {
             return;
         };
         match (top, tag) {
+            (Screen::Container, "BTN_OK") => self.take_everything(),
+            (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),
             (Screen::Main | Screen::Pause, "BTN_LOADGAME") => self.open_saves(Mode::Load),
             (Screen::Main, "BTN_OPTIONS") => {
@@ -611,7 +670,8 @@ impl Stage {
 
     /// Enter: the screen's main button, where it has one.
     pub(super) fn menu_enter(&mut self) {
-        match self.menus.stack.last().copied() {
+        match self.top() {
+            Some(Screen::Container) => self.game.world.close_container(),
             Some(Screen::Saves(mode)) => self.save_or_load(mode),
             Some(Screen::Name) => self.write_save(),
             _ => {}
@@ -631,14 +691,15 @@ impl Stage {
 
     /// Esc: close what is open, back out of a screen, or in the game open the pause menu. The main menu stays.
     pub fn escape(&mut self) {
-        match self.menus.stack.last() {
+        match self.top() {
             Some(Screen::Main) => {}
+            Some(Screen::Container) => self.game.world.close_container(),
             Some(_) => {
                 self.menus.stack.pop();
                 self.menus.message.clear();
                 self.menus.hover = None;
             }
-            None if self.game.world.opened.is_some() => self.game.world.close_container(),
+
             None if self.started => self.menus.stack.push(Screen::Pause),
             None => {}
         }

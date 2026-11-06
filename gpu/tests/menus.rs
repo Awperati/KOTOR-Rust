@@ -472,3 +472,60 @@ fn a_body_with_loot_is_a_target_and_opens_as_a_list() {
     assert_eq!(s.menu_name(), "-");
     assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
 }
+
+#[test]
+fn a_container_opens_its_own_window_over_the_scene() {
+    let Some((mut s, _)) = in_game("container") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    assert_eq!(s.menu_name(), "-");
+    s.game.world.click(locker);
+    assert_eq!(s.menu_name(), "container");
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    assert_eq!(o.rgba[3], 0, "the scene shows around the panel");
+    // The game runs on behind it, unlike the other screens.
+    let t = s.game.world.time;
+    s.update(DT);
+    s.update(DT);
+    assert!(s.game.world.time > t);
+    // The keys for the game do not reach it: I, U and E do nothing, and Esc closes the window before it pauses.
+    s.open_inventory();
+    s.open_equip();
+    s.interact();
+    assert_eq!(s.menu_name(), "container");
+
+    // A click on a row takes that item.
+    let items = s.game.world.container_items();
+    assert!(items.len() >= 2);
+    click_row(&mut s, "LB_ITEMS", 1);
+    let left = s.game.world.container_items();
+    assert_eq!(left.len(), items.len() - 1);
+    assert!(!left.iter().any(|i| i.0 == items[1].0));
+    // Close keeps the rest in it, and it opens again with them.
+    press(&mut s, "BTN_CANCEL");
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(s.game.world.opened, None);
+    s.game.world.click(locker);
+    assert_eq!(s.menu_name(), "container");
+    assert_eq!(s.game.world.container_items(), left);
+    // Take All empties it and closes.
+    let gold = s.game.world.gold;
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.menu_name(), "-");
+    assert!(s.game.world.object(locker).unwrap().inventory.is_empty());
+    assert!(!s.game.world.carried(pc).is_empty() || s.game.world.gold > gold);
+    // Space closes an open one, and Esc does, and then Esc pauses.
+    s.game.world.click(locker);
+    s.continue_line();
+    assert_eq!(s.menu_name(), "-");
+    s.game.world.click(locker);
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    s.escape();
+    assert_eq!(s.menu_name(), "pause");
+}

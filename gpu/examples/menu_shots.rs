@@ -140,5 +140,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.interact();
     s.update(0.1);
     shot(&mut gpu, &mut s, "remains_open", &out);
+    s.escape();
     Ok(())
 }

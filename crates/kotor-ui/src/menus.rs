@@ -54,6 +54,8 @@ pub struct MenuView {
     pub stretch: Vec<String>,
     /// A dialog over this screen. It takes all the input.
     pub dialog: Option<Box<MenuView>>,
+    /// The scene shows around the panel, instead of black.
+    pub over_scene: bool,
 }
 
 impl MenuView {
@@ -118,7 +120,11 @@ impl Ui<'_> {
     /// A screen on black, or with `over` left showing around a dialog.
     pub fn menu_overlay(&mut self, view: &MenuView) -> Option<Image> {
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
-        cv.clear([0, 0, 0, 255]);
+        cv.clear(if view.over_scene {
+            [0, 0, 0, 0]
+        } else {
+            [0, 0, 0, 255]
+        });
         self.draw_view(&mut cv, view)?;
         if let Some(d) = &view.dialog {
             cv.fill_rect(0, 0, self.width as i32 + 1, 481, [0, 0, 0, 140]);
@@ -137,6 +143,10 @@ impl Ui<'_> {
         } else {
             [ox, oy, p.extent.width, p.extent.height]
         };
+        // **Assumed:** a panel over the scene gets a dark backing, since its picture is see-through and text must read.
+        if view.over_scene {
+            cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 0, 190]);
+        }
         self.draw_border(cv, &p.border, r, None);
         for c in &p.children {
             if view.is_hidden(&c.tag) || c.kind == SCROLLBAR {

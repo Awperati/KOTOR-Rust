@@ -78,7 +78,7 @@ $s = State
 Report "E opens the locker" ($s.opened -eq "true" -and [int]$s.items -gt 0) "opened=$($s.opened) items=$($s.items)"
 if ($Shots) { [Drv]::Save($h, "$Shots\live_locker.png") }
 $inv = [int]$s.inv
-Click 220 578
+Click 645 222   # the first row of container.gui
 $s = State
 Report "Click takes an item" ([int]$s.inv -eq $inv + 1) "inv $inv -> $($s.inv)"
 Key $SPACE[0] $SPACE[1]

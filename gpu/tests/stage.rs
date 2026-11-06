@@ -377,8 +377,10 @@ fn a_footlocker_opens_and_gives_up_its_items() {
     let before = s.game.world.object(pc).unwrap().inventory.len();
     s.update(DT);
     // The row list is on screen, and a click on the first row takes the first item.
-    let rows = kotor_ui_row(&mut s);
-    s.click(rows, (853, 480));
+    s.set_view((853, 480));
+    assert_eq!(s.menu_name(), "container");
+    let row = s.menu_pixel("LB_ITEMS", Some(0), (853, 480)).unwrap();
+    s.click(row, (853, 480));
     assert_eq!(
         s.game.world.object(pc).unwrap().inventory.len(),
         before + 1,
@@ -397,12 +399,6 @@ fn a_footlocker_opens_and_gives_up_its_items() {
     assert_eq!(carried as usize, before + items.len());
     s.continue_line();
     assert_eq!(s.game.world.opened, None);
-}
-
-/// A point on the first row of the choice list, on a 853x480 window.
-fn kotor_ui_row(s: &mut Stage) -> (f32, f32) {
-    s.set_view((853, 480));
-    (120.0, 385.0)
 }
 
 #[test]
@@ -518,17 +514,13 @@ fn every_resolution_gets_the_interface_pixel_for_pixel() {
             size,
             "one overlay pixel per screen pixel"
         );
-        // The box runs edge to edge at the bottom, and the upper middle is clear.
+        // The panel is in the middle, the scene shows around it, and the first row works at every size.
         let alpha = |x: u32, y: u32| o.rgba[((y * o.width + x) * 4 + 3) as usize];
-        assert!(
-            alpha(0, size.1 - 2) > 0 && alpha(size.0 - 1, size.1 - 2) > 0,
-            "{size:?}"
-        );
-        assert_eq!(alpha(size.0 / 2, size.1 / 3), 0, "{size:?}");
-        // The first row is at the same place on screen at every size: layout (120, 385) of 853 by 480.
-        let k = size.1 as f32 / 480.0;
+        assert_eq!(alpha(0, size.1 - 2), 0, "{size:?}");
+        assert!(alpha(size.0 / 2, size.1 / 3) > 0, "{size:?}");
         let before = s.game.world.container_items().len();
-        s.click((120.0 * k, 385.0 * k), size);
+        let row = s.menu_pixel("LB_ITEMS", Some(0), size).unwrap();
+        s.click(row, size);
         assert_eq!(s.game.world.container_items().len(), before - 1, "{size:?}");
     }
 }
