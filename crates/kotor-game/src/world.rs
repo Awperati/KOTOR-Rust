@@ -384,6 +384,8 @@ pub struct World {
     pub party_ai_style: i32,
     /// Every player-side creature is knocked out.
     pub game_over: bool,
+    /// Seconds since the party fell: the death sequence's clock, see `World::death_phase`.
+    pub death_clock: f32,
     /// An `ActionPauseConversation` ran and its resume has not yet.
     pub(crate) conv_paused: bool,
     /// When the pause in force began.
@@ -635,6 +637,7 @@ impl World {
             encounter_creatures: BTreeSet::new(),
             party_ai_style: 0,
             game_over: false,
+            death_clock: 0.0,
             conv_paused: false,
             conv_paused_at: None,
             hero: 1,

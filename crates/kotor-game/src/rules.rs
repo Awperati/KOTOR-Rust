@@ -20,6 +20,22 @@
 use crate::combat::ability_mod;
 use crate::world::{Kind, ObjId, World};
 
+/// The death sequence: the fall plays this long with the camera held, then the screen fades to black over the next
+/// seconds, then the game-over screen. **Assumed**, not measured: the original's timings are not in the reference video.
+pub const DEATH_FALL_SECONDS: f32 = 3.0;
+pub const DEATH_FADE_SECONDS: f32 = 2.0;
+
+/// Where the death sequence has got to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DeathPhase {
+    /// The party falls; nothing moves.
+    Falling,
+    /// Fading to black: 0 to 1.
+    Fading(f32),
+    /// Black, and the game-over screen is due.
+    Over,
+}
+
 pub const XP_PER_CHALLENGE_RATING: f32 = 25.0;
 pub const FIRST_LEVEL_SKILL_MULTIPLIER: i32 = 4;
 
@@ -525,6 +541,34 @@ impl World {
             })
     }
 
+    /// The death sequence's phase, if the whole party has fallen.
+    pub fn death_phase(&self) -> Option<DeathPhase> {
+        self.game_over.then(|| {
+            let t = self.death_clock;
+            if t < DEATH_FALL_SECONDS {
+                DeathPhase::Falling
+            } else if t < DEATH_FALL_SECONDS + DEATH_FADE_SECONDS {
+                DeathPhase::Fading((t - DEATH_FALL_SECONDS) / DEATH_FADE_SECONDS)
+            } else {
+                DeathPhase::Over
+            }
+        })
+    }
+
+    /// A step with the whole party down: input is dead, the fight is called off, and only the clock runs.
+    pub(crate) fn step_dead(&mut self, dt: f32) {
+        self.time += dt;
+        self.death_clock += dt;
+        self.steer = None;
+        self.roll_request = false;
+        self.pending = None;
+        self.pc_mover.stop();
+        self.close_container();
+        self.conv = None;
+        self.combat.target.clear();
+        self.combat.perceived.clear();
+    }
+
     /// Stand knocked-out party members up with 1 hit point once the fight is over; flag the game over when the whole
     /// party is down.
     pub(crate) fn update_knockouts(&mut self) {
@@ -542,6 +586,7 @@ impl World {
         if self.standing_party().is_empty() {
             if !self.game_over {
                 self.game_over = true;
+                self.death_clock = 0.0;
                 self.events
                     .push("game over: the whole party is down".into());
             }

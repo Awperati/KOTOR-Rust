@@ -673,6 +673,10 @@ impl World {
     /// Advance the game by `dt` seconds: the clock, delayed commands and action queues, the player's walk, the
     /// interaction waiting at the end of it, trigger enter/exit, and any requested module change.
     pub fn step(&mut self, dt: f32) {
+        if self.game_over {
+            self.step_dead(dt);
+            return;
+        }
         self.tick(dt);
         self.update_minigame(dt);
         self.update_race(dt);
@@ -689,9 +693,15 @@ impl World {
             self.pending = None;
             self.close_container();
         }
+        // A player who is down lies where it fell while the others fight on.
+        let pc_down = self.objects.get(&self.pc).is_some_and(|o| o.down || o.dead);
+        if pc_down {
+            self.pc_mover.stop();
+            self.pending = None;
+        }
         let status = match (
             self.nav.as_ref(),
-            self.steer.filter(|_| self.conv.is_none()),
+            self.steer.filter(|_| self.conv.is_none() && !pc_down),
         ) {
             (Some(_), Some((dir, run))) => {
                 self.pc_mover.stop();
