@@ -177,8 +177,12 @@ pub struct Autopilot {
     grenade_wait: f32,
     /// Where each module's ways out go, as far as it has seen.
     links: BTreeMap<String, BTreeSet<String>>,
-    /// How often it has stood in a module with a way out to each module it has not reached.
+    /// How often it has stood in a module with a way out to each module it has not reached since the last news.
     chased: BTreeMap<String, u32>,
+    /// The journal as it last looked. A new entry is news: someone it has met may have more to say.
+    journal_seen: BTreeMap<String, i32>,
+    /// The modules it has been to since then.
+    since_news: BTreeSet<String>,
     /// The things that took it to another module, by module and tag, and where to.
     exits: BTreeMap<(String, String), String>,
     /// Nothing more to try.
@@ -288,6 +292,8 @@ impl Autopilot {
             grenade_wait: 0.0,
             links: BTreeMap::new(),
             chased: BTreeMap::new(),
+            journal_seen: BTreeMap::new(),
+            since_news: BTreeSet::new(),
             exits: BTreeMap::new(),
             finished: false,
             read_lines: false,
@@ -721,6 +727,13 @@ impl Autopilot {
 
     fn notice_changes(&mut self, g: &mut Game) {
         let w = &mut g.world;
+        // After the race the messenger sends the party back to a cantina it has been to, and it stayed where it was for good.
+        if w.journal != self.journal_seen {
+            self.journal_seen.clone_from(&w.journal);
+            self.since_news.clear();
+            self.chased.clear();
+            self.new_module_at = self.time;
+        }
         if w.module != self.module {
             if !self.module.is_empty() {
                 self.log.push(format!(
@@ -743,8 +756,9 @@ impl Autopilot {
                 self.new_module_at = self.time;
             }
             self.modules.push(self.module.clone());
+            self.since_news.insert(self.module.clone());
             for to in self.links.get(&self.module).into_iter().flatten() {
-                if !self.modules.contains(to) {
+                if !self.since_news.contains(to) {
                     *self.chased.entry(to.clone()).or_default() += 1;
                 }
             }
@@ -1253,15 +1267,21 @@ impl Autopilot {
 
     /// How many ways out each module it knows of is from one it has not been to.
     fn hops_to_somewhere_new(&self) -> BTreeMap<String, u32> {
-        let mut hops: BTreeMap<String, u32> = self
-            .links
-            .values()
-            .flatten()
-            .filter(|m| !self.modules.contains(m))
-            // A gate it cannot open held it between two modules, with Kandon waiting in a third.
-            .filter(|m| self.chased.get(*m).is_none_or(|n| *n < CHASE_VISITS))
-            .map(|m| (m.clone(), 0))
-            .collect();
+        // Where it has never been, then where it has not been since the last news.
+        let wanted = |been: &dyn Fn(&String) -> bool| -> BTreeMap<String, u32> {
+            self.links
+                .values()
+                .flatten()
+                .filter(|m| !been(m))
+                // A gate it cannot open held it between two modules, with Kandon waiting in a third.
+                .filter(|m| self.chased.get(*m).is_none_or(|n| *n < CHASE_VISITS))
+                .map(|m| (m.clone(), 0))
+                .collect()
+        };
+        let mut hops = wanted(&|m| self.modules.contains(m));
+        if hops.is_empty() {
+            hops = wanted(&|m| self.since_news.contains(m));
+        }
         for n in 1..=self.links.len() as u32 {
             for (from, to) in &self.links {
                 if !hops.contains_key(from) && to.iter().any(|m| hops.get(m) == Some(&(n - 1))) {
@@ -1308,13 +1328,15 @@ impl Autopilot {
             .objects
             .values()
             .filter(|o| {
+                // What the fallen carried: the Sith Governor's remains hold the shield codes Canderous asks for.
+                let remains = w.lootable(o.id);
                 o.id != pc
-                    && !o.dead
+                    && (!o.dead || remains)
                     && !o.party_member
                     && !self.tried.contains(&o.id)
                     && !self.unreachable.contains(&o.id)
                     && match o.kind {
-                        Kind::Creature => !o.conversation.is_empty(),
+                        Kind::Creature => remains || !o.conversation.is_empty(),
                         Kind::Placeable => !self
                             .exits
                             .contains_key(&(self.module.clone(), o.tag.clone())),
@@ -1328,7 +1350,7 @@ impl Autopilot {
         for (id, d) in candidates {
             let usable = match w.object(id).map(|o| (o.kind, o.useable)) {
                 Some((Kind::Placeable, useable)) => useable,
-                Some((Kind::Creature, _)) => w.reputation(pc, id) > 10,
+                Some((Kind::Creature, _)) => w.lootable(id) || w.reputation(pc, id) > 10,
                 _ => true,
             };
             if !usable {
