@@ -160,14 +160,18 @@ impl World {
             let m = movers.entry(id).or_insert_with(|| Mover::new(old, 0.0));
             m.pos = old;
             let d = dist2d(old, pc_pos);
-            let nav = self.nav.as_ref().expect("checked above");
             if d <= FOLLOW_STOP {
                 m.stop();
             } else if d > FOLLOW_START && (replan || !m.has_route()) {
-                if let Some(route) = nav.find_path(old, pc_pos) {
+                // A shut door that is not locked is no wall to the party: they open it on the way (bug 39).
+                if let Some(route) = self.route_through_doors(old, pc_pos) {
                     m.follow(trim_route(route, FOLLOW_STOP));
                 }
             }
+            if d > FOLLOW_STOP {
+                self.open_doors_near(old);
+            }
+            let nav = self.nav.as_ref().expect("checked above");
             if m.has_route() {
                 // The party keeps up with a running player.
                 let params = kotor_walkmesh::MoveParams {

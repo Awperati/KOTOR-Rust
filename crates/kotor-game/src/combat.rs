@@ -683,19 +683,25 @@ impl World {
                 }
                 continue;
             }
-            let Some(nav) = self.nav.as_ref() else {
+            if self.nav.is_none() {
                 continue;
+            }
+            let moving = self.combat.chasers.get(&a).is_some_and(|m| m.has_route());
+            let fresh = if replan || !moving {
+                self.route_through_doors(apos, tpos)
+            } else {
+                None
             };
+            self.open_doors_near(apos);
+            let nav = self.nav.as_ref().expect("checked above");
             let m = self
                 .combat
                 .chasers
                 .entry(a)
                 .or_insert_with(|| Mover::new(apos, 0.0));
             m.pos = apos;
-            if replan || !m.has_route() {
-                if let Some(r) = nav.find_path(apos, tpos) {
-                    m.follow(crate::follow::trim_route(r, reach * 0.8));
-                }
+            if let Some(r) = fresh {
+                m.follow(crate::follow::trim_route(r, reach * 0.8));
             }
             if m.has_route() {
                 // A fighter runs at a foe.
