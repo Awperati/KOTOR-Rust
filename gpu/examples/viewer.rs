@@ -21,6 +21,7 @@
 //!     --gold N        give the player these credits when a game starts, for a test driver
 //!     --store TAG     open this store when a game starts, as its script would, for a test driver
 //!     --global NAME=N set this global number when a game starts, for a test driver
+//!     --pazaak MAX    start a game of Pazaak with this most to wager when a game starts, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --appearance N  the player has this row of `appearance.2da` when a game starts, for a test driver
 //!     --original-underwear  the game's own underwear style, whatever Settings says, for a test driver
@@ -153,6 +154,7 @@ struct App {
     gold: Option<i32>,
     store: Option<String>,
     global: Option<String>,
+    pazaak: Option<i32>,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -259,6 +261,9 @@ impl App {
                         .global_numbers
                         .insert(name.to_ascii_uppercase(), value);
                 }
+            }
+            if let Some(max) = self.pazaak.take() {
+                self.stage.game.world.start_pazaak(1, "", max, None);
             }
             if let Some(tag) = self.store.take() {
                 let w = &mut self.stage.game.world;
@@ -655,6 +660,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gold: opt("--gold").and_then(|n| n.parse().ok()),
         store: opt("--store"),
         global: opt("--global"),
+        pazaak: opt("--pazaak").and_then(|n| n.parse().ok()),
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,

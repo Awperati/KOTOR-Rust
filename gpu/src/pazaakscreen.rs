@@ -1,9 +1,10 @@
-//! Pazaak's three screens, from the stock files: `pazaakwager.gui`, `pazaaksetup.gui` and `pazaakgame.gui`. These only show
-//! what they are told and say what was pressed: the rules are the engine's and not built, so nothing in a game opens them.
+//! Pazaak's three screens, from the stock files: `pazaakwager.gui`, `pazaaksetup.gui` and `pazaakgame.gui`. They show
+//! `World::pazaak_view` and answer with `World::pazaak_move`: the rules are `kotor_game::pazaak`.
 //! **Not compared:** I found no game of Pazaak in the reference video. **Assumed:** a card is chosen with a click and goes
 //! over with Add Card, and which picture goes with which kind of card is read from the names of the file's own pictures.
 
-use super::{Screen, Stage};
+use super::Stage;
+use kotor_game::{PazaakCard, PazaakMove, PazaakSide, PazaakView};
 use kotor_ui::{MenuView, Notice};
 
 const WAGER_GUI: &str = "pazaakwager";
@@ -24,94 +25,26 @@ const TABLE_CARDS: usize = 9;
 const HAND_CARDS: usize = 4;
 const WINS: usize = 3;
 
-/// A card as the screens draw it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PazaakCard {
-    /// From the main deck.
-    Main(i32),
-    Plus(i32),
-    Minus(i32),
-    /// Either way: its sign is flipped in the hand, and this is what it would play as.
-    Either(i32),
-}
-
-impl PazaakCard {
-    fn picture(self) -> &'static str {
-        match self {
-            PazaakCard::Main(_) => PICTURE_MAIN,
-            PazaakCard::Plus(_) => PICTURE_PLUS,
-            PazaakCard::Minus(_) => PICTURE_MINUS,
-            PazaakCard::Either(_) => PICTURE_EITHER,
-        }
-    }
-
-    fn words(self) -> String {
-        match self {
-            PazaakCard::Main(n) => n.to_string(),
-            PazaakCard::Plus(n) => format!("+{n}"),
-            PazaakCard::Minus(n) => format!("-{n}"),
-            PazaakCard::Either(n) => format!("{n:+}"),
-        }
+fn picture(card: PazaakCard) -> &'static str {
+    match card {
+        PazaakCard::Main(_) => PICTURE_MAIN,
+        PazaakCard::Plus(_) => PICTURE_PLUS,
+        PazaakCard::Minus(_) => PICTURE_MINUS,
+        PazaakCard::Either(_) => PICTURE_EITHER,
     }
 }
 
-/// One side of the table.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct PazaakSide {
-    /// What it has played, in order.
-    pub played: Vec<PazaakCard>,
-    pub total: i32,
-    /// Sets won.
-    pub wins: usize,
-    /// The player's hand as itself. The opponent's shows only its backs, so only how many matters there.
-    pub hand: Vec<PazaakCard>,
-    pub to_play: bool,
-}
-
-/// What the screens show.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PazaakView {
-    Wager {
-        value: i32,
-        maximum: i32,
-    },
-    /// How many of each card there are, by the file's column and row, and those chosen so far.
-    Setup {
-        available: [[i32; 6]; 3],
-        chosen: Vec<PazaakCard>,
-    },
-    Table {
-        player: Box<PazaakSide>,
-        opponent: Box<PazaakSide>,
-        /// A row of the talk table, in a box with an OK: "You win the set."
-        message: Option<u32>,
-    },
-}
-
-/// What was pressed. The rules answer with the next view.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PazaakMove {
-    WagerLess,
-    WagerMore,
-    Wager,
-    Quit,
-    /// Add Card, with this column and row of the available cards.
-    AddCard(usize, usize),
-    /// A chosen card goes back.
-    RemoveCard(usize),
-    Play,
-    EndTurn,
-    Stand,
-    PlayHand(usize),
-    FlipHand(usize),
-    /// The OK of a message.
-    Understood,
+fn card_words(card: PazaakCard) -> String {
+    match card {
+        PazaakCard::Main(n) => n.to_string(),
+        PazaakCard::Plus(n) => format!("+{n}"),
+        PazaakCard::Minus(n) => format!("-{n}"),
+        PazaakCard::Either(n) => format!("{n:+}"),
+    }
 }
 
 #[derive(Default)]
 pub(super) struct Pazaak {
-    view: Option<PazaakView>,
-    moves: Vec<PazaakMove>,
     /// The available card with a click on it, by column and row.
     picked: Option<(usize, usize)>,
 }
@@ -127,31 +60,15 @@ fn available_card(column: usize, row: usize) -> PazaakCard {
 }
 
 impl Stage {
-    /// The screens come up, or go on to another view.
-    pub fn show_pazaak(&mut self, view: PazaakView) {
-        self.menus.pazaak.view = Some(view);
-        self.menus.hover = None;
-        if self.menus.stack.last() != Some(&Screen::Pazaak) {
-            self.menus.stack.push(Screen::Pazaak);
+    /// A pilot has nobody to play: for it the game is gone again, as it was before there was a game.
+    pub(in crate::stage) fn take_pazaak_request(&mut self) {
+        if self.pilot.is_some() {
+            self.game.world.pazaak = None;
         }
-    }
-
-    /// The screens go.
-    pub fn close_pazaak(&mut self) {
-        self.menus.pazaak = Pazaak::default();
-        if self.menus.stack.last() == Some(&Screen::Pazaak) {
-            self.menus.stack.pop();
-        }
-        self.menus.hover = None;
-    }
-
-    /// What has been pressed since last asked.
-    pub fn take_pazaak_moves(&mut self) -> Vec<PazaakMove> {
-        std::mem::take(&mut self.menus.pazaak.moves)
     }
 
     pub(super) fn pazaak_view(&mut self) -> MenuView {
-        match self.menus.pazaak.view.clone() {
+        match self.game.world.pazaak_view() {
             Some(PazaakView::Wager { value, maximum }) => self.pazaak_wager_view(value, maximum),
             Some(PazaakView::Setup { available, chosen }) => {
                 self.pazaak_setup_view(available, &chosen)
@@ -191,7 +108,7 @@ impl Stage {
                     v.hide(&[button.as_str(), words.as_str(), number.as_str()]);
                     continue;
                 }
-                v.text(&words, available_card(column, row).words());
+                v.text(&words, card_words(available_card(column, row)));
                 v.text(&number, count.to_string());
                 if picked == Some((column, row)) {
                     v.lit(&words);
@@ -202,8 +119,8 @@ impl Stage {
             let (button, words) = (format!("BTN_CHOSEN{n}"), format!("LBL_CHOSEN{n}"));
             match chosen.get(n) {
                 Some(card) => {
-                    v.fill(&button, card.picture());
-                    v.text(&words, card.words());
+                    v.fill(&button, picture(*card));
+                    v.text(&words, card_words(*card));
                 }
                 None => v.fill(&button, PICTURE_BACK),
             }
@@ -229,8 +146,8 @@ impl Stage {
                 let (button, words) = (format!("BTN_{side}{n}"), format!("LBL_{side}{n}"));
                 match who.played.get(n) {
                     Some(card) => {
-                        v.fill(&button, card.picture());
-                        v.text(&words, card.words());
+                        v.fill(&button, picture(*card));
+                        v.text(&words, card_words(*card));
                     }
                     None => v.hide(&[button.as_str(), words.as_str()]),
                 }
@@ -252,8 +169,8 @@ impl Stage {
             );
             match player.hand.get(n) {
                 Some(card) => {
-                    v.fill(&button, card.picture());
-                    v.text(&words, card.words());
+                    v.fill(&button, picture(*card));
+                    v.text(&words, card_words(*card));
                     if !matches!(card, PazaakCard::Either(_)) {
                         v.hide(&[flip.as_str()]);
                     }
@@ -279,8 +196,9 @@ impl Stage {
     }
 
     pub(super) fn pazaak_press(&mut self, tag: &str) {
-        let setup = matches!(self.menus.pazaak.view, Some(PazaakView::Setup { .. }));
-        let table = matches!(self.menus.pazaak.view, Some(PazaakView::Table { .. }));
+        let view = self.game.world.pazaak_view();
+        let setup = matches!(view, Some(PazaakView::Setup { .. }));
+        let table = matches!(view, Some(PazaakView::Table { .. }));
         let number = |prefix: &str| tag.strip_prefix(prefix)?.parse::<usize>().ok();
         let done = match tag {
             "BTN_LESS" => Some(PazaakMove::WagerLess),
@@ -305,12 +223,20 @@ impl Stage {
             self.menus.pazaak.picked = Some((place / 10, place % 10));
         }
         if let Some(done) = done {
-            self.menus.pazaak.moves.push(done);
+            self.pazaak_move(done);
         }
     }
 
-    /// Esc is Quit where there is one. In a game the rules decide what leaving costs, so it is theirs to answer.
+    fn pazaak_move(&mut self, m: PazaakMove) {
+        self.game.world.pazaak_move(m);
+        self.menus.hover = None;
+        if self.game.world.pazaak.is_none() {
+            self.menus.pazaak = Pazaak::default();
+        }
+    }
+
+    /// Esc is Quit where there is one. At the table it does nothing: the game has to be played out.
     pub(super) fn pazaak_escape(&mut self) {
-        self.menus.pazaak.moves.push(PazaakMove::Quit);
+        self.pazaak_move(PazaakMove::Quit);
     }
 }

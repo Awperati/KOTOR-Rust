@@ -372,6 +372,9 @@ pub struct World {
     pub galaxy: Option<crate::galaxy::GalaxyOpen>,
     pub planet_lines: BTreeMap<i32, crate::galaxy::PlanetLine>,
     pub selected_planet: i32,
+    /// A game of Pazaak is up, and how the last one went, for its end script.
+    pub pazaak: Option<crate::pazaak::PazaakGame>,
+    pub last_pazaak_result: i32,
     /// What has been seen of each map, by its picture: `SEEN_COLS` by `SEEN_ROWS` cells.
     pub explored: BTreeMap<String, Vec<bool>>,
     /// Rows of `tutorial.2da` that have come up in this game, and those scripts have asked for.
@@ -562,6 +565,8 @@ impl World {
             galaxy: None,
             planet_lines: BTreeMap::new(),
             selected_planet: -1,
+            pazaak: None,
+            last_pazaak_result: crate::pazaak::RESULT_LOST,
             explored: BTreeMap::new(),
             tutorial_seen: BTreeSet::new(),
             tutorial_requests: Vec::new(),

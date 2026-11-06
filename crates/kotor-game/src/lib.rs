@@ -20,6 +20,7 @@ mod journal;
 mod keymap;
 mod levelup;
 mod party;
+mod pazaak;
 mod play;
 mod rules;
 mod save;
@@ -55,6 +56,7 @@ pub use items::{
 pub use journal::Quest;
 pub use levelup::Choice;
 pub use party::{BenchedMember, PartyRequest, PARTY_SIZE};
+pub use pazaak::{PazaakCard, PazaakGame, PazaakMove, PazaakSide, PazaakView};
 pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,
 };

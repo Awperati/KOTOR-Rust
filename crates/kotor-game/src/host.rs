@@ -68,7 +68,6 @@ const PRESENTATION: &[&str] = &[
     "SetSoloMode",
     "SetNPCSelectability",
     "SetPlayerRestrictMode",
-    "PlayPazaak",
     "SetItemNonEquippable",
     "SetIsDestroyable",
     "AdjustAlignment",
@@ -1005,6 +1004,16 @@ impl Host for Adapter<'_> {
                 self.record(name, args);
                 None
             }
+            // ---- Pazaak
+            "PlayPazaak" => {
+                let opponent = self.obj(caller, args, 4);
+                let opponent = self.valid(opponent).then_some(opponent);
+                let (deck, script, max) = (int(args, 0)?, string(args, 1), int(args, 2)?);
+                self.world.start_pazaak(deck, &script, max, opponent);
+                self.record(name, args);
+                None
+            }
+            "GetLastPazaakResult" => Some(Value::Int(self.world.last_pazaak_result)),
             // ---- the galaxy map
             "ShowGalaxyMap" => {
                 self.world.galaxy = Some(crate::galaxy::GalaxyOpen {

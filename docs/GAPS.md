@@ -29,7 +29,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 
 | # | Gap | Evidence | Size |
 |---|---|---|---|
-| 12 | **Pazaak: rules wanted.** | The screens are built and wait for them, in `gpu/src/pazaakscreen.rs`: `show_pazaak(view)`, `take_pazaak_moves()`, `close_pazaak()`. Still needed: `PlayPazaak` opening them, the deck and turn rules, wagers, the side deck's cards from the inventory, the opponent's play, and `GetLastPazaakResult`. `k_pazaak` is a quest the pilot starts. I found no game of it in the reference video. | M |
+| 12 | **Pazaak: built, not reached.** | `PlayPazaak` starts it, with wager, side deck and sets, in `crates/kotor-game/src/pazaak.rs`. Live in `drive_pazaak.ps1`. The rules are from knowing the game: I found no game of it in the reference video. No run has reached a table in a game. | Done |
 | 13 | **Workbench and upgrades: built.** | `upgradesel`, `upgradeitems` and `upgrade`, opened by `ShowUpgradeScreen`. The pilot does not use them. | Done |
 | 14 | **Traps and mines.** | `docs/STATUS.md` lists traps as missing, and a chosen Security action too. Demolitions then means nothing. | M |
 | 15 | **Stealth.** | `AwardStealthXP`, 1 call, only records itself, and invisibility is not modelled. `docs/STATUS.md` lists stealth as not built. | M |

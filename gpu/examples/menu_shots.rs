@@ -424,53 +424,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.update(0.1);
 
     // Pazaak: the wager, choosing a side deck, a game, and how a set ends.
-    use kotor_gpu::stage::{PazaakCard, PazaakSide, PazaakView};
-    s.show_pazaak(PazaakView::Wager {
-        value: 50,
-        maximum: 200,
-    });
+    use kotor_game::PazaakMove as Paz;
+    s.game.world.gold += 500;
+    s.game.world.start_pazaak(1, "", 200, None);
+    s.update(0.1);
     shot(&mut gpu, &mut s, "pazaak_wager", &out);
-    s.show_pazaak(PazaakView::Setup {
-        available: [[2, 2, 1, 0, 1, 0], [2, 1, 1, 1, 0, 0], [1, 0, 1, 0, 0, 0]],
-        chosen: vec![
-            PazaakCard::Plus(1),
-            PazaakCard::Plus(2),
-            PazaakCard::Minus(1),
-            PazaakCard::Either(3),
-        ],
-    });
+    s.game.world.pazaak_move(Paz::Wager);
+    for (column, row) in [(0, 0), (0, 0), (0, 1), (0, 1)] {
+        s.game.world.pazaak_move(Paz::AddCard(column, row));
+    }
     click(&mut s, "BTN_AVAIL02", None);
     shot(&mut gpu, &mut s, "pazaak_setup", &out);
-    let table = |message| PazaakView::Table {
-        player: Box::new(PazaakSide {
-            played: vec![
-                PazaakCard::Main(4),
-                PazaakCard::Main(7),
-                PazaakCard::Plus(2),
-            ],
-            total: 13,
-            wins: 1,
-            hand: vec![
-                PazaakCard::Minus(3),
-                PazaakCard::Either(2),
-                PazaakCard::Plus(1),
-            ],
-            to_play: true,
-        }),
-        opponent: Box::new(PazaakSide {
-            played: vec![PazaakCard::Main(9), PazaakCard::Main(8)],
-            total: 17,
-            wins: 2,
-            hand: vec![PazaakCard::Main(0); 4],
-            to_play: false,
-        }),
-        message,
-    };
-    s.show_pazaak(table(None));
+    for (column, row) in [(0, 2), (0, 2), (0, 3), (0, 3), (0, 4), (0, 4)] {
+        s.game.world.pazaak_move(Paz::AddCard(column, row));
+    }
+    s.game.world.pazaak_move(Paz::Play);
+    s.game.world.pazaak_move(Paz::EndTurn);
+    s.game.world.pazaak_move(Paz::PlayHand(0));
+    s.update(0.1);
     shot(&mut gpu, &mut s, "pazaak_table", &out);
-    s.show_pazaak(table(Some(32334)));
+    for _ in 0..30 {
+        if matches!(
+            s.game.world.pazaak_view(),
+            Some(kotor_game::PazaakView::Table {
+                message: Some(_),
+                ..
+            })
+        ) {
+            break;
+        }
+        s.game.world.pazaak_move(Paz::Stand);
+    }
+    s.update(0.1);
     shot(&mut gpu, &mut s, "pazaak_message", &out);
-    s.close_pazaak();
+    s.game.world.pazaak = None;
+    s.game.world.gold -= 500;
     s.update(0.1);
 
     // A shop: what it sells, the question over a dear item, and what it would buy.

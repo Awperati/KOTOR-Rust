@@ -37,7 +37,6 @@ mod optionpages;
 mod partyscreen;
 #[path = "pazaakscreen.rs"]
 mod pazaakscreen;
-pub use pazaakscreen::{PazaakCard, PazaakMove, PazaakSide, PazaakView};
 #[path = "storescreen.rs"]
 mod storescreen;
 #[path = "workbenchscreen.rs"]
@@ -607,11 +606,13 @@ impl Stage {
         let w = &self.game.world;
         let container = w.opened.is_some() && !w.in_dialogue();
         let shop = w.store.is_some() && !w.in_dialogue();
+        let pazaak = w.pazaak.is_some() && !w.in_dialogue();
         self.menus
             .stack
             .last()
             .copied()
             .or(shop.then_some(Screen::Store))
+            .or(pazaak.then_some(Screen::Pazaak))
             .or(container.then_some(Screen::Container))
     }
 

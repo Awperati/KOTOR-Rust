@@ -98,8 +98,8 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 ## Pazaak
 
 `pazaakwager.gui`, `pazaaksetup.gui` and `pazaakgame.gui`, from the stock files. **Not compared:** I found no game of it in
-the reference video. **Not connected:** the rules are not built, so nothing in a game opens them. They show what they are
-told and say what was pressed. Frames: `pazaak_wager`, `pazaak_setup`, `pazaak_table`, `pazaak_message`. **Assumed:** which
+the reference video. `PlayPazaak` opens them, and `kotor_game::pazaak` has the rules, with what is assumed there. Live in
+`drive_pazaak.ps1`. Frames: `pazaak_wager`, `pazaak_setup`, `pazaak_table`, `pazaak_message`. **Assumed:** which
 picture goes with which kind of card, from the pictures' names, and that a card is picked with a click and goes over
 with Add Card.
 

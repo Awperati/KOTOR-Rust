@@ -17,10 +17,7 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
-pub use menus::{
-    about_words, default_saves_dir, default_settings_file, PazaakCard, PazaakMove, PazaakSide,
-    PazaakView, Settings,
-};
+pub use menus::{about_words, default_saves_dir, default_settings_file, Settings};
 
 type Mat = [[f32; 4]; 4];
 
@@ -515,6 +512,7 @@ impl Stage {
         self.take_bench_request();
         self.take_party_request();
         self.take_galaxy_request();
+        self.take_pazaak_request();
         self.notices_tick();
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
@@ -1914,6 +1912,8 @@ impl Stage {
         let middle_slot = at(self.hud_pixel("BTN_TARGET1", layout));
         let right_slot = at(self.hud_pixel("BTN_TARGET2", layout));
         let disengage = at(self.hud_pixel("BTN_CLEARALL", layout));
+        // The OK of a message, on a screen's 640 by 480.
+        let ok = at(self.menu_pixel("BTN_OK", None, (640, 480)));
         let (paused, note) = self.pause_view();
         let floats = self.floats_shown().len();
         let foe = self
@@ -1925,7 +1925,7 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} foe={foe} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} foe={foe} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
