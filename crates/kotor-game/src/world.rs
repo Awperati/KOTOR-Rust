@@ -334,6 +334,9 @@ pub struct World {
     pub npc_slots: HashMap<i32, ObjId>,
     /// A module change requested by a door or trigger: (module, waypoint tag). Carried out by `step`.
     pub transition_request: Option<(String, String)>,
+    /// When each creature died, and those a script has said stay when dead. See [`World::body_gone`].
+    pub(crate) died_at: BTreeMap<ObjId, f32>,
+    pub(crate) bodies_kept: BTreeSet<ObjId>,
     /// What the party has just come to hold, for the module's `Mod_OnAcquirItem`, oldest first.
     pub(crate) items_acquired: Vec<ObjId>,
     /// What `GetModuleItemAcquired` answers.
@@ -542,6 +545,9 @@ fn creature_defaults(o: &mut Object, utc: &Struct) {
         .map_or(o.hp.max(1), |h| h as i32);
 }
 
+/// Seconds a body lasts for scripts.
+const BODY_FADES_AFTER: f32 = 8.0;
+
 impl World {
     /// Open the game data and prepare an empty world containing the player character.
     pub fn new(mut inst: Install) -> Result<World> {
@@ -585,6 +591,8 @@ impl World {
             party: Vec::new(),
             npc_slots: HashMap::new(),
             transition_request: None,
+            died_at: BTreeMap::new(),
+            bodies_kept: BTreeSet::new(),
             items_acquired: Vec::new(),
             item_acquired: kotor_script::OBJECT_INVALID,
             race: None,
@@ -1469,6 +1477,20 @@ impl World {
     }
 
     /// Run the area's `OnEnter` script with the player as the entering object, as when a module is entered.
+    /// Whether scripts no longer find this body. The game fades a corpse away and leaves its things behind in a bag, while
+    /// here the remains stay to be looted. `k_ptar_tarisover` lets the party leave Taris only once `GetObjectByTag` no longer
+    /// finds Calo Nord. **Assumed:** how long that takes. A save keeps no time of death, so a body in one is gone.
+    pub(crate) fn body_gone(&self, id: ObjId) -> bool {
+        self.objects
+            .get(&id)
+            .is_some_and(|o| o.kind == Kind::Creature && o.dead)
+            && !self.bodies_kept.contains(&id)
+            && self
+                .died_at
+                .get(&id)
+                .is_none_or(|t| self.time - t >= BODY_FADES_AFTER)
+    }
+
     pub fn enter_area(&mut self) {
         let waiting: Vec<ObjId> = self
             .objects

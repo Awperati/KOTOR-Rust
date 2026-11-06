@@ -106,6 +106,8 @@ const PLAIN_LOCK_TRIES: u32 = 2;
 const READ_SECONDS: f32 = 7.0;
 /// How many talks in one module may send the pilot back round its doors.
 const SECOND_LOOKS: u32 = 30;
+/// How many times nothing left to do in a module sends it round everything again before it stops.
+const ROUNDS_IN_A_MODULE: u32 = 3;
 /// How long nothing to do has to last before the pilot stops.
 const GIVE_UP_SECONDS: f32 = 15.0;
 /// How many times a locked door is tried.
@@ -205,6 +207,8 @@ pub struct Autopilot {
     line_time: f32,
     /// How many more times a finished talk may send it back round the doors of this module.
     second_looks: u32,
+    /// How many more times this module may send it round everything again.
+    rounds_left: u32,
     /// Seconds until the next look for foes on the way somewhere.
     look_around: f32,
     /// Seconds with nothing to do.
@@ -308,6 +312,7 @@ impl Autopilot {
             line_serial: None,
             line_time: 0.0,
             second_looks: SECOND_LOOKS,
+            rounds_left: ROUNDS_IN_A_MODULE,
             look_around: 0.0,
             idle: 0.0,
             replies: HashSet::new(),
@@ -769,6 +774,7 @@ impl Autopilot {
             self.unreachable.clear();
             self.lock_tries.clear();
             self.second_looks = SECOND_LOOKS;
+            self.rounds_left = ROUNDS_IN_A_MODULE;
             self.ways_retried = false;
             self.party_filled = false;
             self.module_time = 0.0;
@@ -1132,7 +1138,10 @@ impl Autopilot {
         }
         // Going anywhere else ends any fight, or the chase would hold the player where it can still reach its target.
         w.stop_attacking(pc);
-        let exploring = self.module_time < EXPLORE_SECONDS;
+        // Davik's estate has no way out but a hangar behind 30 doors, and took more than this.
+        let way_out = w.objects.values().any(|o| !o.link_module.is_empty())
+            || self.exits.keys().any(|(m, _)| *m == self.module);
+        let exploring = self.module_time < EXPLORE_SECONDS || !way_out;
         // 2. Everyone to talk to, then everything to use, then every door.
         if exploring {
             let target = self.nearest_new(w, here);
@@ -1247,6 +1256,16 @@ impl Autopilot {
             return;
         }
         // A way out it set off for and never reached, because a fight came first, is still a way out. Once a visit.
+        // What did nothing before may do something now: Davik's cage release waits for the torturers to fall. And a way out
+        // it set off for can have been cut short by a fight, as in the Sith base.
+        if self.rounds_left > 0 {
+            self.rounds_left -= 1;
+            self.idle = 0.0;
+            self.tried.clear();
+            self.unreachable.clear();
+            self.forget_doors(w);
+            return;
+        }
         if !self.ways_retried {
             self.ways_retried = true;
             self.idle = 0.0;

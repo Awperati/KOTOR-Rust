@@ -111,6 +111,40 @@ fn a_creature_is_drawn_between_the_steps_it_moved_in() {
 }
 
 #[test]
+fn taris_can_be_left_once_calo_nord_has_been_dead_a_while() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("tar_m08aa").unwrap();
+    let pc = w.pc;
+    // He comes later, by script, and any guard will do for him here.
+    let calo = w.by_tag("DavikGuard01")[0];
+    w.object_mut(calo).unwrap().tag = "Calo082".to_string();
+    // The ramp's last reply: only with no Calo Nord for `GetObjectByTag` to find.
+    w.run_script("k_ptar_tarisover", pc).unwrap();
+    assert_eq!(w.transition_request, None, "he is alive");
+    w.object_mut(calo).unwrap().plot = false;
+    w.object_mut(calo).unwrap().min_one_hp = false;
+    w.hurt(pc, calo, 100_000);
+    assert!(w.object(calo).unwrap().dead);
+    w.run_script("k_ptar_tarisover", pc).unwrap();
+    assert_eq!(w.transition_request, None, "his body is still there");
+    w.time += 10.0;
+    w.run_script("k_ptar_tarisover", pc).unwrap();
+    assert_eq!(
+        w.transition_request,
+        Some(("STUNT_06".to_string(), String::new()))
+    );
+    assert!(
+        w.object(calo).unwrap().dead,
+        "his remains can still be looted"
+    );
+}
+
+#[test]
 fn the_module_hears_what_the_party_picks_up() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

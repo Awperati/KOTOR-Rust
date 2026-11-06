@@ -59,7 +59,6 @@ const PRESENTATION: &[&str] = &[
     "SurrenderToEnemies",
     "SaveNPCState",
     "AwardStealthXP",
-    "SetIsDestroyable",
 ];
 
 /// The side a party member fights on. `repute.2da` has the player's row hostile to `Hostile_1` and friendly to this one.
@@ -237,11 +236,25 @@ impl Host for Adapter<'_> {
                 float(args, 2),
             ])),
             // ---- objects
-            "GetIsObjectValid" => b(self.valid(self.obj(caller, args, 0))),
+            "GetIsObjectValid" => {
+                let id = self.obj(caller, args, 0);
+                b(self.valid(id) && !self.world.body_gone(id))
+            }
+            "SetIsDestroyable" => {
+                let id = self.obj(caller, &[], 0);
+                if int(args, 0)? == 0 {
+                    self.world.bodies_kept.insert(id);
+                } else {
+                    self.world.bodies_kept.remove(&id);
+                }
+                self.record(name, args);
+                None
+            }
             "GetFirstPC" => Some(Value::Object(self.world.pc)),
             "GetObjectByTag" | "GetWaypointByTag" => {
                 let nth = int(args, 1).unwrap_or(0).max(0) as usize;
-                let ids = self.world.by_tag(&string(args, 0));
+                let mut ids = self.world.by_tag(&string(args, 0));
+                ids.retain(|id| !self.world.body_gone(*id));
                 Some(Value::Object(
                     ids.get(nth).copied().unwrap_or(OBJECT_INVALID),
                 ))
@@ -426,8 +439,11 @@ impl Host for Adapter<'_> {
                     .filter(|(t, _)| *t >= 0)
                     .collect();
                 let mut c: Vec<(f32, ObjId)> = Vec::new();
+                // The dead count only when asked for by name. Davik's cage release opens when no enemy is near, and remains
+                // two metres off held it shut for good.
+                let dead_too = criteria.iter().any(|(t, _)| *t == 4);
                 for o in self.world.objects.values() {
-                    if o.kind != Kind::Creature || o.id == from {
+                    if o.kind != Kind::Creature || o.id == from || (o.dead && !dead_too) {
                         continue;
                     }
                     let ok = criteria.iter().all(|(t, v)| match t {

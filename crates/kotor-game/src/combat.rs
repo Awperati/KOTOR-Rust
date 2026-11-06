@@ -598,6 +598,7 @@ impl World {
             t.down = true;
         } else {
             t.dead = true;
+            self.died_at.insert(target, self.time);
         }
         self.combat
             .target
