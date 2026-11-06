@@ -38,6 +38,8 @@ fn the_pilot_plays_off_the_endar_spire() {
     // On the way: Trask talked and led, the fight in the first room played out and the Jedi duel ended.
     let said = |dialogue: &str| g.world.transcript.iter().any(|l| l.dialogue == dialogue);
     assert!(said("end_trask01") && said("end_cut04") && said("end_room3"));
+    // Talks move quests on: this one has no script that does, only `QuestEntry` on its nodes.
+    assert_eq!(g.world.journal.get("end_attack"), Some(&99));
     let events = g.world.events.join("\n");
     assert!(events.contains("Sith Apprentice (end_darkjedi01) dies"));
     assert!(events.contains("Trask (end_trask) leads the party"));

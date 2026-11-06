@@ -71,14 +71,14 @@ impl World {
         if let Some(s) = n.script.as_deref().filter(|s| !s.is_empty()) {
             let _ = self.run_script(s, owner);
         }
-        // Journal entries ride on the node as `Quest` and `PlotIndex`.
+        // Journal entries ride on the node as `Quest` and `QuestEntry`. `PlotIndex` is -1 on nearly all of them.
         let quest = n.extra.iter().find_map(|(l, v)| match (l.as_str(), v) {
             ("Quest", Value::String(q)) if !q.is_empty() => Some(q.clone()),
             _ => None,
         });
         if let Some(q) = quest {
             let idx = n.extra.iter().find_map(|(l, v)| match (l.as_str(), v) {
-                ("PlotIndex", Value::Int(i)) => Some(*i),
+                ("QuestEntry", Value::Dword(i)) => Some(*i as i32),
                 _ => None,
             });
             self.events
