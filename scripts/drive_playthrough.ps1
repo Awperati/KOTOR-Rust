@@ -10,9 +10,8 @@ $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyCont
 $script:stateFile = "$scratch\kotor_play.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--near","end_locker01","--xp","1000","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_play.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle
+$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
-$before = [Drv]::GetForegroundWindow()
 $ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $SPACE = @(0x20, 0x39); $ONE = @(0x31, 0x02); $W = @(0x57, 0x11); $D = @(0x44, 0x20)
 $E = @(0x45, 0x12); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E); $KEY_J = @(0x4A, 0x24); $KEY_M = @(0x4D, 0x32); $KEY_K = @(0x4B, 0x25)
 
@@ -194,8 +193,7 @@ Press 389 410 138 28
 [void](WaitFor "menu" "pause")
 Press 60 364 240 35
 [void](WaitFor "menu" "main")
-$during = [Drv]::GetForegroundWindow()
-Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+FocusReport
 Press 285 318 210 27   # BTN_EXIT
 $gone = $v.WaitForExit(10000)
 Report "Exit closes the window" $gone "exited=$gone"

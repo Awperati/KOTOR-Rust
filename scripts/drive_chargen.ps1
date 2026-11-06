@@ -8,7 +8,7 @@ function Start-Viewer {
   $script:stateFile = "$scratch\kotor_chargen.out"
   $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_chargen.err" -PassThru -NoNewWindow
   for ($i = 0; $i -lt 600 -and $script:v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $script:v.Refresh() }
-  $script:h = $script:v.MainWindowHandle
+  $script:h = $script:v.MainWindowHandle; [Drv]::NeverActive($script:h)
   "window $($script:h)"
   WaitLog
 }
@@ -22,7 +22,6 @@ function Custom([int]$n) { Press 377 (87 + 43 + 31 * ($n - 1) + [int]($n -gt 2))
 function Quick([int]$n) { Press 377 (87 + 59 + 30 * ($n - 1)) 195 31 }
 
 Start-Viewer
-$before = [Drv]::GetForegroundWindow()
 $s = WaitFor "menu" "main"
 Report "Opens on the main menu" ($s.menu -eq "main") "menu=$($s.menu)"
 Step "New Game asks the class" 285 222 210 22 "chargen_class"
@@ -113,8 +112,7 @@ Key 0x43 0x2E
 $s = WaitFor "menu" "character"
 Report "C shows the character" ($s.menu -eq "character") "menu=$($s.menu)"
 Shot "cg_in_game"
-$during = [Drv]::GetForegroundWindow()
-Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+FocusReport
 Stop-Process -Id $v.Id -Force
 
 # A quick one: portrait, name, play.
@@ -141,8 +139,7 @@ Quick 3
 $s = WaitFor "module" "end_m01aa"
 $s = State
 Report "Quick Character plays" ($s.module -eq "end_m01aa" -and $s.menu -eq "-") "menu=$($s.menu) module=$($s.module) hp=$($s.hp)"
-$during = [Drv]::GetForegroundWindow()
-Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+FocusReport
 Stop-Process -Id $v.Id -Force
 Get-Content "$scratch\kotor_chargen.err" -Tail 4
 if ($script:failed) { exit 1 }

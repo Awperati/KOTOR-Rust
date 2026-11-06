@@ -6,6 +6,18 @@ Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
 using System; using System.Drawing; using System.Runtime.InteropServices;
 public static class Drv {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
+  [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
+  // Windows activates the next window when the active one closes, and that can be this one. WS_EX_NOACTIVATE stops it.
+  // A click cannot activate it either, so only a driver sets it: the owner clicks the window to give it the keys.
+  public static void NeverActive(IntPtr h) {
+    SetWindowLongPtr(h, -20, (IntPtr)((long)GetWindowLongPtr(h, -20) | 0x08000000L));
+  }
+  public static string Who(IntPtr h) {
+    uint pid; GetWindowThreadProcessId(h, out pid);
+    try { return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName + "/" + pid; } catch { return "gone/" + pid; }
+  }
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
@@ -19,7 +31,24 @@ public static class Drv {
   }
 }
 "@
+# The foreground window, watched at every action and every look at the state: who had it, and whether it was ever ours.
+$script:focusChanges = New-Object System.Collections.ArrayList
+$script:lastForeground = [IntPtr]::Zero
+$script:ourForeground = 0
+function WatchFocus {
+  $f = [Drv]::GetForegroundWindow()
+  if ($f -ne $script:lastForeground) {
+    $script:lastForeground = $f
+    [void]$script:focusChanges.Add((Get-Date).ToString("HH:mm:ss.fff") + " " + [Drv]::Who($f))
+  }
+  if ($f -eq $h) { $script:ourForeground++ }
+}
+# Another window taking the foreground is not ours to answer for; this window having it is.
+function FocusReport {
+  Report "Never took focus" ($script:ourForeground -eq 0) "seen in the foreground $($script:ourForeground) times; foreground changed: $($script:focusChanges -join ', ')"
+}
 function State {
+  WatchFocus
   # Wait until the window has reported twice since this call: what was posted before it has then been handled.
   $start = (Get-Item $script:stateFile).Length
   $line = $null
@@ -39,6 +68,7 @@ function State {
   $o
 }
 function Key([int]$vk, [int]$scan, [int]$ms = 10) {
+  WatchFocus
   [void][Drv]::PostMessage($h, 0x100, [IntPtr]$vk, [IntPtr](1 -bor ($scan -shl 16)))
   if ($ms) { Start-Sleep -Milliseconds $ms }
   $up = [long]0xC0000001 -bor ([long]$scan -shl 16)
@@ -46,6 +76,7 @@ function Key([int]$vk, [int]$scan, [int]$ms = 10) {
 }
 function Hover([int]$x, [int]$y) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]0, [IntPtr](($y -shl 16) -bor $x)) }
 function Click([int]$x, [int]$y) {
+  WatchFocus
   Hover $x $y
   $l = [IntPtr](($y -shl 16) -bor $x)
   [void][Drv]::PostMessage($h, 0x201, [IntPtr]1, $l)

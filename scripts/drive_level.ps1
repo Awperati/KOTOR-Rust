@@ -8,9 +8,8 @@ param([string]$Shots)
 $script:stateFile = "$scratch\kotor_level.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--autopilot","--pilot-until","level","--frames","2000000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_level.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle
+$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
-$before = [Drv]::GetForegroundWindow()
 $KEY_C = @(0x43, 0x2E)
 function ToPixel($s, [string]$place) {
   $p = $place -split ','
@@ -77,8 +76,7 @@ $s = WaitFor "menu" "character"
 Report "Accept gives the level" ($s.menu -eq "character" -and [int]$s.level -eq [int]$start.level + 1) "menu=$($s.menu) level $($start.level) -> $($s.level)"
 Shot "level_done"
 
-$during = [Drv]::GetForegroundWindow()
-Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+FocusReport
 Stop-Process -Id $v.Id -Force
 Get-Content "$scratch\kotor_level.err" -Tail 4
 if ($script:failed) { exit 1 }

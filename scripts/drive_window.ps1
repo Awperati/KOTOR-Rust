@@ -7,9 +7,8 @@ param([string]$Shots, [int]$Speed = 1)
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle
+$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
-$before = [Drv]::GetForegroundWindow()
 $script:stateFile = "$scratch\kotor_drive.out"
 $SPACE = @(0x20, 0x39); $RETURN = @(0x0D, 0x1C); $ONE = @(0x31, 0x02); $E = @(0x45, 0x12); $W = @(0x57, 0x11); $D = @(0x44, 0x20)
 
@@ -92,8 +91,7 @@ foreach ($y in 600, 560, 520, 480, 640) {
 }
 Report "Click walks" $ok $detail
 
-$during = [Drv]::GetForegroundWindow()
-Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+FocusReport
 Stop-Process -Id $v.Id -Force
 Get-Content "$scratch\kotor_drive.err" -Tail 4
 
@@ -104,9 +102,8 @@ $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyCont
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle
+$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
-$before = [Drv]::GetForegroundWindow()
 $script:stateFile = "$scratch\kotor_drive2.out"
 $ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $KEY_I = @(0x49, 0x17); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E)
 
@@ -249,8 +246,7 @@ Press 389 410 138 28
 [void](WaitFor "menu" "pause")
 Press 60 364 240 35
 [void](WaitFor "menu" "main")
-$during = [Drv]::GetForegroundWindow()
-Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+FocusReport
 Press 285 318 210 27   # BTN_EXIT
 $gone = $v.WaitForExit(10000)
 Report "Exit closes the window" $gone "exited=$gone"

@@ -7,9 +7,8 @@ param([string]$Shots)
 $script:stateFile = "$scratch\kotor_fight.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--power","23","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle
+$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
-$before = [Drv]::GetForegroundWindow()
 $ENTER = @(0x0D, 0x1C); $SPACE = @(0x20, 0x39); $ONE = @(0x31, 0x02)
 # A slot's place in the state line is in layout units, across a width the window's shape gives.
 function ToPixel($s, [string]$place) {
@@ -111,8 +110,7 @@ do { $s = State } while ($s.engaged -eq "true" -and (Get-Date) -lt $until)
 Report "F disengages" ($s.engaged -eq "false") "engaged=$($s.engaged)"
 Shot "fight_disengaged"
 
-$during = [Drv]::GetForegroundWindow()
-Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+FocusReport
 Stop-Process -Id $v.Id -Force
 Get-Content "$scratch\kotor_fight.err" -Tail 4
 if ($script:failed) { exit 1 }
