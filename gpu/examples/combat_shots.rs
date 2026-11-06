@@ -58,20 +58,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for _ in 0..10 {
         s.update(DT);
     }
-    shot(&mut gpu, &mut s, &out.join(format!("push_0_before_{tag}.png")));
+    shot(
+        &mut gpu,
+        &mut s,
+        &out.join(format!("push_0_before_{tag}.png")),
+    );
     let w = &mut s.game.world;
-    w.object_mut(pc).unwrap().spells.insert(kotor_game::FORCE_PUSH);
+    w.object_mut(pc)
+        .unwrap()
+        .spells
+        .insert(kotor_game::FORCE_PUSH);
     w.object_mut(pc).unwrap().force = 50;
     let _ = w.cast_spell(pc, kotor_game::FORCE_PUSH, foe, true);
     for i in 1..=3 {
         for _ in 0..8 {
             s.update(DT);
         }
-        shot(
-            &mut gpu,
-            &mut s,
-            &out.join(format!("push_{i}_{tag}.png")),
-        );
+        shot(&mut gpu, &mut s, &out.join(format!("push_{i}_{tag}.png")));
     }
     let a = s.game.world.object(foe).unwrap().position;
     println!(
@@ -82,6 +85,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The camera tilted right up.
     s.pitch = 1.2;
     s.distance = 6.0;
-    shot(&mut gpu, &mut s, &out.join(format!("camera_tilted_{tag}.png")));
+    shot(
+        &mut gpu,
+        &mut s,
+        &out.join(format!("camera_tilted_{tag}.png")),
+    );
     Ok(())
 }
