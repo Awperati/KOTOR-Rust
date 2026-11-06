@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "abilityscreen.rs"]
 mod abilityscreen;
+#[path = "chargenscreen.rs"]
+mod chargenscreen;
 #[path = "fightscreen.rs"]
 mod fightscreen;
 #[path = "figure.rs"]
@@ -168,6 +170,12 @@ pub(super) enum Screen {
     /// `abilities.gui` and `messages.gui`.
     Abilities,
     Messages,
+    /// Making a character: `classsel`, `maincg` with its panels, `portcust`, `abchrgen`, `name`.
+    ChargenClass,
+    ChargenMain,
+    ChargenPortrait,
+    ChargenAttributes,
+    ChargenName,
     /// `partyselection.gui`.
     Party,
     /// `map.gui`.
@@ -376,6 +384,11 @@ impl Screen {
             Screen::Journal => "journal",
             Screen::Abilities => "abilities",
             Screen::Messages => "messages",
+            Screen::ChargenClass => "chargen_class",
+            Screen::ChargenMain => "chargen",
+            Screen::ChargenPortrait => "chargen_portrait",
+            Screen::ChargenAttributes => "chargen_attributes",
+            Screen::ChargenName => "chargen_name",
             Screen::Party => "party",
             Screen::Map => "map",
             Screen::Tutorial => "tutorial",
@@ -470,6 +483,12 @@ pub(super) struct Menus {
     abilities_tab: usize,
     messages_feedback: bool,
     message_back: usize,
+    /// New Game goes through the character's screens, the one being made, and the one made.
+    chargen_on: bool,
+    chargen: Option<chargenscreen::Draft>,
+    new_character: Option<kotor_game::CharacterSpec>,
+    /// The mist of the screen it was made for.
+    chargen_mist: Option<(Screen, crate::effects::Effects)>,
     /// The main menu's scene, once loaded, and whether it could not be.
     main_scene: Option<mainscene::MainScene>,
     main_scene_failed: bool,
@@ -626,7 +645,7 @@ impl Stage {
             Screen::Main => {
                 let mut v = main_menu();
                 if self.main_scene_ready() {
-                    v.hole = Some("LBL_3DVIEW".to_string());
+                    v.holes.push("LBL_3DVIEW".to_string());
                     v.hole_veil = mainscene::VEIL;
                 }
                 v
@@ -658,6 +677,11 @@ impl Stage {
             Screen::Journal => self.journal_view(),
             Screen::Abilities => self.abilities_view(),
             Screen::Messages => self.messages_view(),
+            Screen::ChargenClass => self.chargen_class_view(),
+            Screen::ChargenMain => self.chargen_main_view(),
+            Screen::ChargenPortrait => self.chargen_portrait_view(),
+            Screen::ChargenAttributes => self.chargen_attributes_view(),
+            Screen::ChargenName => self.chargen_name_view(),
             Screen::Party => self.party_view_screen(),
             Screen::Map => self.map_view(),
             Screen::Feedback => self.feedback_view(),
@@ -1207,7 +1231,7 @@ impl Stage {
         self.change_buttons(&mut v);
         v.hide(&["LBL_CLASS2", "LBL_LEVEL2"]);
         v.inert(&["BTN_SCRIPTS"]);
-        v.hole = Some("LBL_3DCHAR".to_string());
+        v.holes.push("LBL_3DCHAR".to_string());
         let w = &mut self.game.world;
         let pc = w.pc;
         if !w.level_ready(pc) {
@@ -1757,6 +1781,14 @@ impl Stage {
                 self.change_member(1)
             }
             (Screen::Party, _) => self.party_press(tag),
+            (
+                Screen::ChargenClass
+                | Screen::ChargenMain
+                | Screen::ChargenPortrait
+                | Screen::ChargenAttributes
+                | Screen::ChargenName,
+                _,
+            ) => self.chargen_press(top, tag),
             (Screen::Map, _) => self.map_press(tag),
             (Screen::Character, "BTN_LEVELUP") => self.start_level_up(),
             (Screen::Character, "BTN_AUTO") => self.auto_level_up(),
@@ -1782,12 +1814,19 @@ impl Stage {
             Some(Screen::Container) => self.game.world.close_container(),
             Some(Screen::Saves(mode)) => self.save_or_load(mode),
             Some(Screen::Name) => self.write_save(),
+            Some(Screen::ChargenName) => self.chargen_name_accept(),
             Some(Screen::Equip) => self.accept_slot(),
             _ => {}
         }
     }
 
     fn new_game(&mut self) {
+        if !self.begin_new_game() {
+            self.new_game_now();
+        }
+    }
+
+    fn new_game_now(&mut self) {
         self.menus.paused = false;
         let module = self.first_module.clone();
         match self.start_module(&module) {
@@ -1815,6 +1854,13 @@ impl Stage {
                 self.menus.hover = None;
             }
             Some(Screen::LevelUp) => self.abandon_level(),
+            Some(
+                screen @ (Screen::ChargenClass
+                | Screen::ChargenMain
+                | Screen::ChargenPortrait
+                | Screen::ChargenAttributes
+                | Screen::ChargenName),
+            ) => self.chargen_escape(screen),
             Some(screen) if screen.is_level() => {
                 self.cancel_page();
                 self.menus.message.clear();
@@ -1996,7 +2042,7 @@ impl Stage {
 
     /// Whether keys go to a text box.
     pub fn typing(&self) -> bool {
-        matches!(self.menus.stack.last(), Some(Screen::Name))
+        matches!(self.menus.stack.last(), Some(Screen::Name)) || self.chargen_typing()
     }
 
     /// Characters typed into the text box.

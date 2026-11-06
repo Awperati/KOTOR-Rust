@@ -19,3 +19,5 @@ That is the only check; the 1/2/3 steps and the pool are otherwise my inference.
 Not known / assumed: which of `appearance_s`, `appearancenumber`, `appearance_l` is the small, medium and large body (I used the order of their row
 numbers); only the first-level build exists (no multiclass, no Jedi class choice, no alignment or voice); the player's name is taken as given.
 Class, attributes, hit points, skills, feats, force and the look are saved with the world.
+
+The screens over these rules are `gpu/src/chargenscreen.rs`. Each class's frame is from the reference video at 0:24: Scoundrel small, Scout medium, Soldier large (`BodySize::of_class`). `World::random_name` reads `humanm.ltr`, `humanf.ltr` and `humanl.ltr`; how long a name runs is my guess. Feats in a spec are taken as a level's page takes them (`choose_feat`), so a regular slot holds a feat of either list.

@@ -19,6 +19,8 @@ use crate::world::{ObjId, World};
 pub const ATTRIBUTE_BASE: i32 = 8;
 pub const ATTRIBUTE_MAX: i32 = 18;
 pub const POINT_POOL: i32 = 30;
+const NAME_TRIES: usize = 30;
+const NAME_END_CHANCE: f32 = 0.45;
 pub const ABILITY_NAMES: [&str; 6] = [
     "Strength",
     "Dexterity",
@@ -51,6 +53,58 @@ pub enum BodySize {
     Large,
 }
 
+impl BodySize {
+    /// **From the reference video at 0:24:** each class has its own frame: `classes.2da` row 0 Soldier, 1 Scout, 2 Scoundrel.
+    pub fn of_class(class: i32) -> BodySize {
+        match class {
+            0 => BodySize::Large,
+            1 => BodySize::Medium,
+            _ => BodySize::Small,
+        }
+    }
+}
+
+/// `humanm.ltr`, `humanf.ltr` and `humanl.ltr`: what letters tend to follow what. Each row is cumulative.
+struct NameLetters {
+    count: usize,
+    numbers: Vec<f32>,
+}
+
+/// Where a name is in the word: which of a row's three lists to use.
+const LTR_START: usize = 0;
+const LTR_MIDDLE: usize = 1;
+const LTR_END: usize = 2;
+const LTR_HEADER: usize = 9;
+const LTR_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz'-";
+
+impl NameLetters {
+    fn parse(bytes: &[u8]) -> Option<NameLetters> {
+        let count = *bytes.get(LTR_HEADER - 1)? as usize;
+        let want = 3 * count * (1 + count + count * count);
+        let body = bytes.get(LTR_HEADER..LTR_HEADER + want * 4)?;
+        let numbers = body
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes(*b))
+            .collect();
+        Some(NameLetters { count, numbers })
+    }
+
+    /// The letter a number between 0 and 1 falls on, given the letters before it: `None` when nothing follows them.
+    fn letter(&self, before: &[usize], place: usize, roll: f32) -> Option<usize> {
+        let n = self.count;
+        let row = match before {
+            [] => place * n,
+            [a] => 3 * n + (a * 3 + place) * n,
+            [a, b] => 3 * n + 3 * n * n + ((a * n + b) * 3 + place) * n,
+            _ => return None,
+        };
+        let list = self.numbers.get(row..row + n)?;
+        list.iter().position(|p| *p > 0.0 && roll <= *p)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CharacterSpec {
     pub name: String,
@@ -80,6 +134,81 @@ impl World {
             out[i] = t.int(row, c)? as i32;
         }
         Some(out)
+    }
+
+    /// The portraits on offer for a gender (`portraits.2da` `sex`), in the table's order.
+    pub fn player_portraits(&mut self, gender: i32) -> Vec<i32> {
+        let Some(t) = self.table("portraits") else {
+            return Vec::new();
+        };
+        (0..t.row_count())
+            .filter(|r| t.int(*r, "forpc") == Some(1) && t.int(*r, "sex") == Some(gender as i64))
+            .map(|r| r as i32)
+            .collect()
+    }
+
+    /// The `appearance.2da` row a portrait has in a body size.
+    pub fn portrait_appearance(&mut self, portrait: i32, body: BodySize) -> Option<i32> {
+        let t = self.table("portraits")?;
+        let column = match body {
+            BodySize::Small => "appearance_s",
+            BodySize::Medium => "appearancenumber",
+            BodySize::Large => "appearance_l",
+        };
+        t.int(portrait.max(0) as usize, column).map(|a| a as i32)
+    }
+
+    fn name_part(&mut self, file: &str) -> Option<String> {
+        let bytes = self.inst.read(file, kotor_core::ResType(2036)).ok()?;
+        let letters = NameLetters::parse(&bytes)?;
+        let mut roll = || self.roll(10_000) as f32 / 10_000.0;
+        // **Assumed:** a name has at least four letters, and more than nine are cut short.
+        for _ in 0..NAME_TRIES {
+            let mut name = Vec::new();
+            for len in 0..3 {
+                match letters.letter(&name[..len], LTR_START, roll()) {
+                    Some(l) => name.push(l),
+                    None => break,
+                }
+            }
+            if name.len() < 3 {
+                continue;
+            }
+            loop {
+                let last = [name[name.len() - 2], name[name.len() - 1]];
+                let place = if name.len() >= 4 && roll() < NAME_END_CHANCE || name.len() >= 9 {
+                    LTR_END
+                } else {
+                    LTR_MIDDLE
+                };
+                let Some(l) = letters.letter(&last, place, roll()) else {
+                    break;
+                };
+                name.push(l);
+                if place == LTR_END {
+                    let mut out: String = name
+                        .iter()
+                        .map(|l| *LTR_ALPHABET.get(*l).unwrap_or(&b'a') as char)
+                        .collect();
+                    if let Some(first) = out.get_mut(0..1) {
+                        first.make_ascii_uppercase();
+                    }
+                    return Some(out);
+                }
+            }
+        }
+        None
+    }
+
+    /// A name from the game's letter tables, for the Random Name button.
+    pub fn random_name(&mut self, gender: i32) -> String {
+        let first = self.name_part(if gender == 1 { "humanf" } else { "humanm" });
+        let last = self.name_part("humanl");
+        match (first, last) {
+            (Some(a), Some(b)) => format!("{a} {b}"),
+            (Some(a), None) | (None, Some(a)) => a,
+            _ => String::new(),
+        }
     }
 
     /// Build the player character from a spec; the placeholder player object becomes the character.
@@ -188,11 +317,8 @@ impl World {
             }
         }
         for f in &spec.feats {
-            // Try the regular list, then the bonus list.
-            if self.take_feat(pc, *f, false).is_err() {
-                self.take_feat(pc, *f, true)
-                    .map_err(|e| format!("feat {f}: {e}"))?;
-            }
+            self.choose_feat(pc, *f)
+                .map_err(|e| format!("feat {f}: {e}"))?;
         }
         self.pc_mover.pos = self.objects[&pc].position;
         Ok(pc)

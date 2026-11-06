@@ -4,7 +4,7 @@ param([string]$Shots, [int]$Speed = 1)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 # It writes one save to %LOCALAPPDATA%\kotor-rs\saves, deletes it through the screen, and leaves other saves alone.
 . "$PSScriptRoot\drive_common.ps1"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle
@@ -101,7 +101,7 @@ Get-Content "$scratch\kotor_drive.err" -Tail 4
 # window, so a control at layout (x, y) is at (2x, 1.5y).
 $savesDir = Join-Path $env:LOCALAPPDATA "kotor-rs\saves"
 $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle

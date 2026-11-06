@@ -120,7 +120,7 @@ impl Stage {
         let about = shown.and_then(|s| self.game.world.party_candidate(s));
         match (shown, about) {
             (Some(_), Some((name, level, class))) => {
-                v.hole = Some("LBL_3D".to_string());
+                v.holes.push("LBL_3D".to_string());
                 v.text("LBL_NPC_NAME", name);
                 let label = self.ui.strref(STR_LEVEL);
                 let class = self.ui.strref(class);

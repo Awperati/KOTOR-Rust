@@ -1375,6 +1375,16 @@ fn all_tags(c: &Control) -> Vec<String> {
 /// Whether a picture's TXI says it is added to what is under it, so that its black is see-through. The HUD's mouldings
 /// are, and drawn plainly they are black boxes.
 fn additive(inst: &mut Install, name: &str) -> bool {
+    // These say nothing, but the reference video at 0:27 and 0:29 sees through their black.
+    const SEEN_THROUGH: [&str; 4] = [
+        "lbl_custpnl",
+        "lbl_quickpnl",
+        "lbl_qorcpnl",
+        "lbl_qorcustbox",
+    ];
+    if SEEN_THROUGH.contains(&name) {
+        return true;
+    }
     inst.read(name, kotor_core::ResType::TPC)
         .ok()
         .and_then(|d| kotor_image::parse_tpc(&d).ok())

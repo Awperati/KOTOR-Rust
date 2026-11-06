@@ -2138,6 +2138,192 @@ fn the_main_menu_has_its_scene_behind_a_hole_and_it_moves() {
     assert!(s.frame_particles().is_empty());
 }
 
+/// At the character's screens, from the main menu.
+fn at_chargen(name: &str) -> Option<Stage> {
+    let mut s = at_menu()?;
+    temp_saves(&mut s, name);
+    s.enable_chargen(true);
+    press(&mut s, "BTN_NEWGAME");
+    assert_eq!(s.menu_name(), "chargen_class");
+    Some(s)
+}
+
+#[test]
+fn a_custom_character_goes_through_every_step_into_a_new_game() {
+    let Some(mut s) = at_chargen("chargen_custom") else {
+        return;
+    };
+    assert!(!s.in_game(), "no game yet");
+    // Six figures, each in a hole, and the words follow the cursor.
+    let (scene, _, alone) = s.frame_scene();
+    assert!(alone);
+    assert!(!scene.meshes.is_empty());
+    let blank = frame(&mut s);
+    assert!(!s.frame_particles().is_empty(), "the mist");
+    let p = s.menu_pixel("BTN_SEL3", None, SIZE).unwrap();
+    s.hover(p, SIZE);
+    assert!(frame(&mut s) != blank);
+
+    // A male Soldier. Quick or Custom first, then the steps in order.
+    press(&mut s, "BTN_SEL3");
+    assert_eq!(s.menu_name(), "chargen");
+    let chosen = frame(&mut s);
+    press(&mut s, "CUST_CHAR_BTN");
+    assert!(frame(&mut s) != chosen, "the steps' panel");
+    press(&mut s, "BTN_STEPNAME3");
+    assert_eq!(s.menu_name(), "chargen", "skills wait for the portrait");
+
+    // The portrait: the arrows change it, Cancel puts it back, and OK keeps it.
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(s.menu_name(), "chargen_portrait");
+    let w = &s.game.world;
+    let first = w.object(w.pc).unwrap().portrait.clone();
+    press(&mut s, "BTN_ARRR");
+    let w = &s.game.world;
+    let next = w.object(w.pc).unwrap().portrait.clone();
+    assert_ne!(first, next);
+    press(&mut s, "BTN_BACK");
+    let w = &s.game.world;
+    assert_eq!(w.object(w.pc).unwrap().portrait, first);
+    press(&mut s, "BTN_STEPNAME1");
+    press(&mut s, "BTN_ARRR");
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+
+    // Attributes: from 8 with 30 points. OK waits until they are spent. Recommended spends them.
+    press(&mut s, "BTN_STEPNAME2");
+    assert_eq!(s.menu_name(), "chargen_attributes");
+    assert!(s.menu_pixel("STR_MINUS_BTN", None, SIZE).is_none());
+    press(&mut s, "STR_PLUS_BTN");
+    assert!(s.menu_pixel("STR_MINUS_BTN", None, SIZE).is_some());
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen_attributes", "points are left");
+    press(&mut s, "BTN_RECOMMENDED");
+    assert!(
+        s.menu_pixel("STR_PLUS_BTN", None, SIZE).is_none(),
+        "all spent"
+    );
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+
+    // Skills and feats are the level-up's pages.
+    press(&mut s, "BTN_STEPNAME3");
+    assert_eq!(s.menu_name(), "level_skills");
+    press(&mut s, "BTN_RECOMMENDED");
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+    press(&mut s, "BTN_STEPNAME4");
+    assert_eq!(s.menu_name(), "level_feats");
+    press(&mut s, "BTN_RECOMMENDED");
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let (ranks, feats) = {
+        let o = w.object(pc).unwrap();
+        (o.skills.clone(), o.feats.clone())
+    };
+    assert!(ranks.iter().sum::<i32>() > 0);
+
+    // The name is asked for, and the button makes one.
+    press(&mut s, "BTN_STEPNAME5");
+    assert_eq!(s.menu_name(), "chargen_name");
+    assert!(s.typing());
+    press(&mut s, "END_BTN");
+    assert_eq!(s.menu_name(), "chargen_name", "a name is needed");
+    press(&mut s, "BTN_RANDOM");
+    for _ in 0..40 {
+        s.backspace();
+    }
+    s.type_text("Revan");
+    press(&mut s, "END_BTN");
+    assert_eq!(s.menu_name(), "chargen");
+
+    // Play: a game, with this character.
+    press(&mut s, "BTN_STEPNAME6");
+    assert_eq!(s.menu_name(), "-");
+    assert!(s.in_game());
+    let w = &s.game.world;
+    let o = w.object(w.pc).unwrap();
+    assert_eq!(o.name, "Revan");
+    assert_eq!((o.class, o.level, o.gender), (0, 1, 0));
+    assert_eq!(o.portrait, next);
+    assert_eq!(o.skills, ranks);
+    assert_eq!(o.feats, feats);
+    assert_eq!(o.feat_slots, (0, 0));
+    assert!(o.max_hp > 0);
+}
+
+#[test]
+fn quick_character_takes_what_the_class_recommends() {
+    let Some(mut s) = at_chargen("chargen_quick") else {
+        return;
+    };
+    // A female Scoundrel. Her frame is the small one.
+    press(&mut s, "BTN_SEL6");
+    press(&mut s, "QUICK_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME2");
+    s.type_text("Mira");
+    press(&mut s, "END_BTN");
+    press(&mut s, "BTN_STEPNAME3");
+    assert_eq!(s.menu_name(), "-", "{}", s.menu_message());
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let wanted = w.recommended_abilities(2).unwrap();
+    let portrait_rows = w.player_portraits(1);
+    let o = w.object(pc).unwrap().clone();
+    assert_eq!(o.name, "Mira");
+    assert_eq!((o.class, o.gender), (2, 1));
+    assert_eq!(o.abilities, wanted);
+    assert!(o.skills.iter().sum::<i32>() > 0, "{:?}", o.skills);
+    assert_eq!(o.feat_slots, (0, 0));
+    assert!(portrait_rows
+        .iter()
+        .any(|p| w.portrait_appearance(*p, kotor_game::BodySize::Small) == Some(o.appearance)));
+}
+
+#[test]
+fn the_ways_back_from_the_characters_screens() {
+    let Some(mut s) = at_chargen("chargen_back") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL1");
+    press(&mut s, "CUST_CHAR_BTN");
+    // Back undoes a step, and Cancel asks Quick or Custom again.
+    press(&mut s, "BTN_STEPNAME1");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_BACK");
+    let step_one = frame(&mut s);
+    press(&mut s, "BTN_BACK");
+    assert_eq!(frame(&mut s), step_one, "nothing left to undo");
+    press(&mut s, "BTN_CANCEL");
+    assert!(s.menu_pixel("QUICK_CHAR_BTN", None, SIZE).is_some());
+    // That panel's Cancel, and Esc, go back to the classes and the main menu, and no game has begun.
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "chargen_class");
+    s.escape();
+    assert_eq!(s.menu_name(), "main");
+    assert!(!s.in_game());
+}
+
+#[test]
+fn a_random_name_comes_from_the_games_letter_tables() {
+    let Some(mut s) = at_menu() else { return };
+    for gender in [0, 1] {
+        for _ in 0..20 {
+            let name = s.game.world.random_name(gender);
+            let parts: Vec<&str> = name.split(' ').collect();
+            assert_eq!(parts.len(), 2, "{name}");
+            for part in parts {
+                assert!(part.len() >= 4, "{name}");
+                assert!(part.chars().next().unwrap().is_ascii_uppercase(), "{name}");
+            }
+        }
+    }
+}
+
 #[test]
 fn space_ends_a_pause_that_began_just_after_a_talk() {
     let Some((mut s, _)) = in_game("pause_after_talk") else {

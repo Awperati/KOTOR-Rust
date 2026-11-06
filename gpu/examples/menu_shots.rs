@@ -58,6 +58,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         s.update(1.0 / 30.0);
     }
     shot(&mut gpu, &mut s, "main_menu", &out);
+
+    // Making a character, as a custom one.
+    s.enable_chargen(true);
+    click(&mut s, "BTN_NEWGAME", None);
+    hover(&mut s, "BTN_SEL4");
+    shot(&mut gpu, &mut s, "chargen_class", &out);
+    click(&mut s, "BTN_SEL4", None);
+    shot(&mut gpu, &mut s, "chargen_quick_or_custom", &out);
+    click(&mut s, "CUST_CHAR_BTN", None);
+    click(&mut s, "BTN_STEPNAME1", None);
+    shot(&mut gpu, &mut s, "chargen_portrait", &out);
+    click(&mut s, "BTN_ACCEPT", None);
+    shot(&mut gpu, &mut s, "chargen_custom", &out);
+    click(&mut s, "BTN_STEPNAME2", None);
+    shot(&mut gpu, &mut s, "chargen_attributes", &out);
+    click(&mut s, "BTN_RECOMMENDED", None);
+    click(&mut s, "BTN_ACCEPT", None);
+    click(&mut s, "BTN_STEPNAME3", None);
+    click(&mut s, "BTN_RECOMMENDED", None);
+    shot(&mut gpu, &mut s, "chargen_skills", &out);
+    click(&mut s, "BTN_ACCEPT", None);
+    click(&mut s, "BTN_STEPNAME4", None);
+    click(&mut s, "BTN_RECOMMENDED", None);
+    shot(&mut gpu, &mut s, "chargen_feats", &out);
+    click(&mut s, "BTN_ACCEPT", None);
+    click(&mut s, "BTN_STEPNAME5", None);
+    click(&mut s, "BTN_RANDOM", None);
+    shot(&mut gpu, &mut s, "chargen_name", &out);
+    click(&mut s, "END_BTN", None);
+    shot(&mut gpu, &mut s, "chargen_ready", &out);
+    while s.menu_name() != "main" {
+        s.escape();
+    }
+    s.enable_chargen(false);
+    hover(&mut s, "BTN_NEWGAME");
     click(&mut s, "BTN_OPTIONS", None);
     shot(&mut gpu, &mut s, "options", &out);
     click(&mut s, "BTN_GAMEPLAY", None);

@@ -135,7 +135,10 @@ impl Stage {
         if let Some(fog) = self.main_scene_particles() {
             return fog;
         }
-        if self.figure_camera().is_some() {
+        if let Some(mist) = self.chargen_particles() {
+            return mist;
+        }
+        if self.figure_camera().is_some() || !self.in_game() {
             return Vec::new();
         }
         self.particles()
@@ -144,6 +147,9 @@ impl Stage {
     /// What a window should draw now, and with what camera; the last says that only this is drawn, for a figure.
     pub fn frame_scene(&mut self) -> (Scene, Camera, bool) {
         if let Some((scene, camera)) = self.main_scene_now() {
+            return (scene, camera, true);
+        }
+        if let Some((scene, camera)) = self.chargen_scene() {
             return (scene, camera, true);
         }
         match self.figure_camera() {

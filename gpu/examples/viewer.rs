@@ -13,6 +13,7 @@
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
+//!     --no-chargen    New Game starts at once, with the preset character
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
 //!                     gives a level (`level`), for a test driver
@@ -517,6 +518,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     stage.enable_tutorials(!flag("--no-tutorials") && !flag("--autopilot"));
     stage.enable_auto_pause(!flag("--no-auto-pause") && !flag("--autopilot"));
+    stage.enable_chargen(!flag("--no-chargen"));
     if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }

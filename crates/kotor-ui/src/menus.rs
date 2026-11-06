@@ -108,8 +108,8 @@ pub struct MenuView {
     pub marks: Vec<Mark>,
     /// A box over it all that takes all the input.
     pub notice: Option<Notice>,
-    /// A control that is a hole in the picture, for a figure behind it, and how much that is dimmed.
-    pub hole: Option<String>,
+    /// Controls that are holes in the picture, for a figure behind them, and how much that is dimmed.
+    pub holes: Vec<String>,
     pub hole_veil: u8,
 }
 
@@ -272,7 +272,7 @@ impl Ui<'_> {
             if view.is_hidden(&c.tag) || c.kind == SCROLLBAR {
                 continue;
             }
-            if view.hole.as_deref() == Some(c.tag.as_str()) {
+            if view.holes.contains(&c.tag) {
                 let e = &c.extent;
                 cv.clear_rect(ox + e.left, oy + e.top, e.width, e.height, view.hole_veil);
             } else if c.kind == LIST {

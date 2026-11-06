@@ -32,6 +32,7 @@ const DOOR_CAMERA_MARGIN: f32 = 1.2;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
 /// combat reads.
 const ARMOUR_SLOT: i32 = 1;
+const CLOTHES_LETTER: char = 'B';
 const RIGHT_HAND_SLOT: i32 = 4;
 const LEFT_HAND_SLOT: i32 = 5;
 /// Metres within which the E key finds something to use.
@@ -396,10 +397,13 @@ impl Stage {
         let e = |e: kotor_core::Error| e.to_string();
         let mut world = Stage::fresh_world(&self.dir, self.original)?;
         world.load_module(module).map_err(e)?;
-        // **Assumption:** until there is a character creation screen the player is the recommended Soldier.
-        let spec = world
-            .recommended_character("Player", 0, 1)
-            .ok_or("no recommended character")?;
+        // **Assumption:** with no character made on the screens the player is the recommended Soldier.
+        let spec = match self.take_new_character() {
+            Some(spec) => spec,
+            None => world
+                .recommended_character("Player", 0, 1)
+                .ok_or("no recommended character")?,
+        };
         world.create_character(&spec)?;
         self.game = Game::new(world);
         self.apply_difficulty();
@@ -485,6 +489,7 @@ impl Stage {
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.main_scene_tick(dt);
+        self.chargen_mist_tick(dt);
         self.take_party_request();
         self.notices_tick();
         if self.menu_open() && !self.container_up() {
@@ -1360,6 +1365,20 @@ impl Stage {
             (o.appearance, o.template.clone(), armour)
         };
         self.rig_for(appearance, &template, armour)
+    }
+
+    /// A body in the clothes a character starts with, as the character's screens show it: the second set of `appearance.2da`.
+    fn clothed_rig(&mut self, appearance: i32) -> Option<Rc<Rig>> {
+        let key = (appearance, 1, Some(CLOTHES_LETTER));
+        let inst = &mut self.inst;
+        self.rigs
+            .entry(key)
+            .or_insert_with(|| {
+                kotor_render::rig_for_outfit(inst, appearance as usize, 1, Some(CLOTHES_LETTER))
+                    .ok()
+                    .map(Rc::new)
+            })
+            .clone()
     }
 
     /// The body of a creature file's appearance in some armour: its base item and template.

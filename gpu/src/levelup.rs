@@ -132,7 +132,7 @@ impl Stage {
         let title = self.ui.strref(STR_LEVEL_UP);
         v.text("MAIN_TITLE_LBL", title);
         v.fill("PORTRAIT_LBL", self.portrait());
-        v.hole = Some("MODEL_LBL".to_string());
+        v.holes.push("MODEL_LBL".to_string());
         v.hide(&[
             "OLD_VIT_LBL",
             "NEW_VIT_LBL",
@@ -185,8 +185,11 @@ impl Stage {
         v
     }
 
-    /// A page's title, in place of the file's "Character Generation".
+    /// A page's title, in place of the file's "Character Generation", when a level is being taken.
     fn page_title(&mut self, v: &mut MenuView) {
+        if self.menus.chargen.is_some() {
+            return;
+        }
         let title = self.ui.strref(STR_LEVEL_UP);
         v.text("MAIN_TITLE_LBL", title);
     }
@@ -421,6 +424,32 @@ impl Stage {
         }
     }
 
+    /// A page of these screens spent on the character being made.
+    pub(super) fn enter_level_page(&mut self, screen: Screen) {
+        let w = &mut self.game.world;
+        let who = w.pc;
+        let (Some(before), Some(sheet)) = (w.object(who).cloned(), w.sheet(who)) else {
+            return;
+        };
+        self.menus.level = Some(Draft {
+            who,
+            page: before.clone(),
+            before,
+            saves: [sheet.fortitude, sheet.reflex, sheet.will],
+            done: [false; ACCEPT_STEP],
+            has_abilities: false,
+            has_powers: false,
+            ability_points: 0,
+            power_points: 0,
+            page_points: (0, 0),
+            taken: Vec::new(),
+            about: None,
+            hover_choice: None,
+            chosen: None,
+        });
+        self.enter_page(screen);
+    }
+
     fn enter_page(&mut self, screen: Screen) {
         let Some(d) = self.menus.level.as_ref() else {
             return;
@@ -489,6 +518,10 @@ impl Stage {
             d.done[step] = true;
         }
         self.menus.stack.pop();
+        if self.menus.chargen.is_some() {
+            let taken = self.menus.level.take().map_or(Vec::new(), |d| d.taken);
+            self.chargen_page_accepted(step, taken);
+        }
     }
 
     fn accept_level(&mut self) {
