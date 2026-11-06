@@ -91,13 +91,64 @@ fn test_modes_still_start_in_the_game() {
     assert_eq!(s.game.world.module, "end_m01aa");
 }
 
-/// A temp folder for saves, empty, so that a test never touches the real ones.
-/// A folder of this checkout's own: other checkouts run these tests at the same time.
-fn temp_place(name: &str) -> std::path::PathBuf {
-    let checkout = env!("CARGO_MANIFEST_DIR").replace(|c: char| !c.is_alphanumeric(), "_");
-    std::env::temp_dir().join(format!("kotor_rs_{checkout}_{name}"))
+/// The temp folders a test's thread has been given. They go when it ends.
+struct TempPlaces(std::cell::RefCell<Vec<std::path::PathBuf>>);
+
+impl Drop for TempPlaces {
+    fn drop(&mut self) {
+        for dir in self.0.get_mut() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
 }
 
+thread_local! {
+    static TEMP_PLACES: TempPlaces = const { TempPlaces(std::cell::RefCell::new(Vec::new())) };
+}
+
+/// A folder of this run's own: other runs of these tests can be going at the same time, in this checkout or another.
+fn temp_place(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("kotor_rs_{name}_{}", std::process::id()));
+    TEMP_PLACES.with(|p| p.0.borrow_mut().push(dir.clone()));
+    dir
+}
+
+/// Only for the test below: a second run of this program says where its folder is.
+#[test]
+fn temp_place_of_this_run() {
+    if std::env::var_os("KOTOR_SHOW_TEMP_PLACE").is_some() {
+        let dir = temp_place("two_runs");
+        std::fs::create_dir_all(&dir).unwrap();
+        println!("place={}", dir.display());
+    }
+}
+
+#[test]
+fn two_runs_at_once_have_different_temp_folders_and_leave_none() {
+    let start = || {
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "temp_place_of_this_run", "--nocapture"])
+            .env("KOTOR_SHOW_TEMP_PLACE", "1")
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+    let runs = [start(), start()];
+    let places: Vec<String> = runs
+        .into_iter()
+        .map(|run| {
+            let out = String::from_utf8(run.wait_with_output().unwrap().stdout).unwrap();
+            let line = out.lines().find_map(|l| l.split("place=").nth(1));
+            line.unwrap_or_else(|| panic!("{out}")).to_string()
+        })
+        .collect();
+    assert_ne!(places[0], places[1]);
+    for place in &places {
+        assert!(!std::path::Path::new(place).exists(), "{place}");
+    }
+}
+
+/// A temp folder for saves, empty, so that a test never touches the real ones.
 fn temp_saves(s: &mut Stage, name: &str) -> std::path::PathBuf {
     let dir = temp_place(name);
     let _ = std::fs::remove_dir_all(&dir);
@@ -1000,7 +1051,7 @@ fn the_journal_lists_quests_swaps_to_completed_and_sorts() {
     s.game.world.events.clear();
 
     // A save keeps the order.
-    let dir = std::env::temp_dir().join(format!("kotor_rs_journal_{}", std::process::id()));
+    let dir = temp_place("journal");
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("j.sav");
     s.game.world.save_to(&path, "journal").unwrap();

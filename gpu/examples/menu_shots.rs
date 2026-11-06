@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     click(&mut s, "BTN_BACK", None);
 
     // Saves in a folder of their own: frames must not touch the real ones.
-    let saves = std::env::temp_dir().join("kotor_rs_menu_shots");
+    let saves = std::env::temp_dir().join(format!("kotor_rs_menu_shots_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&saves);
     s.set_saves_dir(saves.clone());
     click(&mut s, "BTN_NEWGAME", None);
@@ -401,5 +401,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.update(0.1);
     shot(&mut gpu, &mut s, "remains_open", &out);
     s.escape();
+    let _ = std::fs::remove_dir_all(&saves);
     Ok(())
 }

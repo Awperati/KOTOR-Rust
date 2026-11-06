@@ -14,10 +14,9 @@ fn fresh() -> World {
     world().expect("install")
 }
 
-/// A place of this checkout's own: other checkouts run these tests at the same time.
+/// A place of this run's own: other runs of these tests can be going at the same time, in this checkout or another.
 fn temp_place(name: &str) -> std::path::PathBuf {
-    let checkout = env!("CARGO_MANIFEST_DIR").replace(|c: char| !c.is_alphanumeric(), "_");
-    std::env::temp_dir().join(format!("kotor_rs_{checkout}_{name}"))
+    std::env::temp_dir().join(format!("kotor_rs_{name}_{}", std::process::id()))
 }
 
 #[test]
@@ -424,6 +423,7 @@ fn a_save_keeps_its_header_and_a_replaced_file_is_whole() {
         1,
         "no part file is left behind"
     );
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::write(&path, b"junk").unwrap();
     assert!(kotor_game::read_save_info(&path).is_err());
     let _ = std::fs::remove_dir_all(&dir);
