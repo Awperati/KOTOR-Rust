@@ -135,6 +135,49 @@ fn a_feat_talent_strikes_and_the_gang_fight_talk_gets_its_death() {
 }
 
 #[test]
+fn a_module_runs_its_own_scripts_after_another_modules() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    assert!(
+        w.run_script("k_pend_carth11", pc).is_err(),
+        "not in this module"
+    );
+    w.transition("end_m01ab", "").unwrap();
+    assert!(
+        w.run_script("k_pend_carth11", pc).is_ok(),
+        "this one has it"
+    );
+    // `k_pend_sith_9` of the first module would turn the last room's troopers' AI off, with local boolean 62.
+    for id in w.by_tag("end_sith01") {
+        let o = w.object(id).unwrap();
+        assert_eq!(o.local_booleans.get(&62), None, "{:?}", o.local_booleans);
+    }
+}
+
+#[test]
+fn the_player_stops_at_someone_standing_where_its_route_ends() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m02ae").unwrap();
+    let id = w.by_tag("TarisMaleC021")[0];
+    let at = w.object(id).unwrap().position;
+    let pc = w.pc;
+    let from = [at[0], at[1] + 3.0, at[2]];
+    w.teleport(pc, from);
+    w.pc_mover.follow(vec![from, at]);
+    let t = run(&mut w, 5.0, |w| !w.pc_mover.has_route());
+    assert!(t < 5.0, "still walking");
+    let p = w.pc_mover.pos;
+    let gap = (p[0] - at[0]).hypot(p[1] - at[1]);
+    assert!(
+        gap >= 2.0 * kotor_game::CREATURE_RADIUS - 0.2,
+        "{gap} m away"
+    );
+}
+
+#[test]
 fn a_locked_door_does_not_open() {
     let Some(mut w) = world() else { return };
     let d = door(&w, "end_door02", 40.8);

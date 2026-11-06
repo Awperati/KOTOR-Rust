@@ -422,3 +422,65 @@ fn a_save_keeps_its_header_and_a_replaced_file_is_whole() {
     assert!(kotor_game::read_save_info(&path).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A soldier of the first module, killed, and the world back in that module after going elsewhere.
+fn kill_leave_and_return(through_a_save: bool) -> Option<()> {
+    let mut w = world()?;
+    let pc = w.pc;
+    let foe = w
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003")
+        .map(|o| o.id)?;
+    let (tag, nth) = {
+        let tag = w.object(foe)?.tag.clone();
+        let nth = w.by_tag(&tag).iter().position(|id| *id == foe)?;
+        (tag, nth)
+    };
+    let door = w.by_tag("end_door01")[0];
+    assert!(w.open_door(door));
+    for _ in 0..30 {
+        w.step(0.05);
+    }
+    assert!(w.hurt(pc, foe, 100_000));
+    assert!(w.object(foe)?.dead);
+    let xp = w.object(pc)?.xp;
+    assert!(xp > 0, "the kill paid");
+    w.transition("end_m01ab", "").unwrap();
+    if through_a_save {
+        let bytes = w.save_bytes("away").unwrap();
+        let again = w.save_bytes("away").unwrap();
+        assert_eq!(bytes, again);
+        w.load_save(&bytes).unwrap();
+        assert_eq!(
+            w.save_bytes("away").unwrap(),
+            bytes,
+            "a save survives a load"
+        );
+    }
+    w.transition("end_m01aa", "").unwrap();
+    let back = w.by_tag(&tag)[nth];
+    assert!(w.object(back)?.dead, "still dead");
+    assert_eq!(w.object(w.pc)?.xp, xp, "not paid twice");
+    // The door stays open, and walking through it works.
+    let door = w.by_tag("end_door01")[0];
+    assert_eq!(w.object(door)?.door, kotor_game::DoorState::Open);
+    let nav = w.nav.as_ref()?;
+    let a = w.object(door)?.position;
+    assert!(!nav.crosses_block([a[0] - 2.0, a[1], a[2]], [a[0] + 2.0, a[1], a[2]]));
+    Some(())
+}
+
+#[test]
+fn a_module_stays_as_it_was_left() {
+    if world().is_some() {
+        kill_leave_and_return(false).unwrap();
+    }
+}
+
+#[test]
+fn a_module_left_behind_survives_a_save_and_load() {
+    if world().is_some() {
+        kill_leave_and_return(true).unwrap();
+    }
+}

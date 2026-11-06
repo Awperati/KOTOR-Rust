@@ -7,13 +7,17 @@
 //! original's saves are not read. **Not saved (assumption):** `DelayCommand` blocks still pending, objects' action
 //! queues, conversations in progress, who is fighting whom, and `Effect` or location handles held by scripts. A load
 //! starts the module fresh, applies the saved state over it and does not run the area's enter scripts again.
+//!
+//! A module left behind keeps its objects the same way, in `World::left_modules` and in the save's `modules` resource,
+//! and a return visit applies them over a fresh load. **Assumption:** what was waiting on `DelayCommand` or in an action
+//! queue when the player left is lost, as in a save.
 
 use crate::party::BenchedMember;
 use crate::world::{DoorState, Kind, ObjId, World};
 use kotor_archive::{write_archive, Erf, ErfKind, NewResource, Source};
 use kotor_core::{Error, ResType, Result};
 use kotor_gff::{Gff, Struct, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// The save format version this engine writes and reads.
@@ -79,6 +83,15 @@ fn gff(file_type: &str, fields: Vec<(&str, Value)>) -> Result<Vec<u8>> {
 
 /// Identity of an object that survives a reload: kind, tag, template and which of that sort it is in id order.
 type Key = (u8, String, String, usize);
+
+fn key_of(e: &Struct) -> Key {
+    (
+        e.int("Kind").unwrap_or(255) as u8,
+        e.str("Tag").unwrap_or("").to_ascii_lowercase(),
+        e.str("Template").unwrap_or("").to_ascii_lowercase(),
+        e.int("Nth").unwrap_or(0) as usize,
+    )
+}
 
 /// What a save screen shows about a save, without loading it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -235,9 +248,14 @@ fn bench_from(e: &Struct) -> BenchedMember {
 
 impl World {
     fn keys(&self) -> HashMap<ObjId, Key> {
+        self.keys_without(&HashSet::new())
+    }
+
+    /// As [`World::keys`], counting only the objects not in `out_of_it`: the party is in one module and then another.
+    fn keys_without(&self, out_of_it: &HashSet<ObjId>) -> HashMap<ObjId, Key> {
         let mut seen: HashMap<(u8, String, String), usize> = HashMap::new();
         let mut out = HashMap::new();
-        for o in self.objects.values() {
+        for o in self.objects.values().filter(|o| !out_of_it.contains(&o.id)) {
             let base = (
                 kind_code(o.kind),
                 o.tag.to_ascii_lowercase(),
@@ -248,6 +266,50 @@ impl World {
             *n += 1;
         }
         out
+    }
+
+    /// Everything of the module the player is leaving, apart from `keep`: the party and what it carries.
+    pub(crate) fn module_snapshot(&self, keep: &HashSet<ObjId>) -> Vec<Struct> {
+        let keys = self.keys_without(keep);
+        let key_struct = |id: ObjId| -> Struct {
+            let k = keys.get(&id);
+            st(vec![
+                ("Kind", Value::Byte(k.map_or(255, |k| k.0))),
+                ("Tag", s(k.map_or("", |k| &k.1))),
+                ("Template", s(k.map_or("", |k| &k.2))),
+                ("Nth", Value::Dword(k.map_or(0, |k| k.3 as u32))),
+            ])
+        };
+        self.objects
+            .values()
+            .filter(|o| !keep.contains(&o.id) && !matches!(o.kind, Kind::Module | Kind::Area))
+            .map(|o| self.object_struct(o, &key_struct))
+            .collect()
+    }
+
+    /// Put a module that was left behind back as it was, over its fresh load.
+    pub(crate) fn restore_module(&mut self, saved: &[Struct], keep: &HashSet<ObjId>) {
+        let keys = self.keys_without(keep);
+        self.apply_objects(saved, keep, &keys);
+        self.sync_door_lines();
+    }
+
+    /// Doors in the navigation mesh, from their state.
+    fn sync_door_lines(&mut self) {
+        let shut: Vec<([f32; 3], [f32; 3])> = self
+            .objects
+            .values()
+            .filter(|o| {
+                o.kind == Kind::Door && (!o.open || matches!(o.door, DoorState::Opening(_)))
+            })
+            .map(crate::play::door_line)
+            .collect();
+        if let Some(n) = self.nav.as_mut() {
+            n.clear_lines();
+            for (a, b) in shut {
+                n.block_line(a, b);
+            }
+        }
     }
 
     /// The game as SAV archive bytes.
@@ -389,6 +451,18 @@ impl World {
                 ),
             )],
         )?;
+        let modules = gff(
+            "MOD ",
+            vec![(
+                "Modules",
+                list_of(self.left_modules.iter(), |(module, rows)| {
+                    st(vec![
+                        ("Module", s(module)),
+                        ("Objects", Value::List(rows.clone())),
+                    ])
+                }),
+            )],
+        )?;
         write_archive(
             ErfKind::Sav,
             &[
@@ -396,6 +470,7 @@ impl World {
                 NewResource::new("globalvars", rt(), globals),
                 NewResource::new("partytable", rt(), party),
                 NewResource::new("objects", rt(), objects),
+                NewResource::new("modules", rt(), modules),
             ],
         )
     }
@@ -538,115 +613,27 @@ impl World {
         k
     }
 
-    /// Write a save to `path`. Refuses a path inside the game's install folder (the install is read-only).
-    pub fn save_to(&self, path: &Path, save_name: &str) -> Result<()> {
-        let dir = self
-            .inst
-            .dir()
-            .canonicalize()
-            .unwrap_or_else(|_| self.inst.dir().to_path_buf());
-        let parent = path.parent().unwrap_or(Path::new("."));
-        let parent = parent
-            .canonicalize()
-            .unwrap_or_else(|_| parent.to_path_buf());
-        if parent.starts_with(&dir) {
-            return Err(Error::format(
-                "refusing to write inside the game's install folder",
-            ));
-        }
-        // A crash while writing must not cost the save that is being replaced.
-        let part = path.with_extension("part");
-        std::fs::write(&part, self.save_bytes(save_name)?)?;
-        std::fs::rename(&part, path)?;
-        Ok(())
-    }
-
-    /// Read a save from `path` (see [`World::load_save`]).
-    pub fn load_from(&mut self, path: &Path) -> Result<()> {
-        self.load_save(&std::fs::read(path)?)
-    }
-
-    /// Replace the world's state with a save made by [`World::save_bytes`]: the module is loaded fresh, then the
-    /// saved state is applied over it, whatever module the world was in. A file that cannot be read, or that names a
-    /// module the install does not have, leaves the world as it was.
-    pub fn load_save(&mut self, bytes: &[u8]) -> Result<()> {
-        let erf = Erf::open(Source::memory(bytes.to_vec()))?;
-        let read = |name: &str| -> Result<Gff> { Gff::parse(&erf.get(name, rt())?) };
-        let nfo = read("savenfo")?;
-        if nfo.root.int("SaveVersion") != Some(SAVE_VERSION as i64) {
-            return Err(Error::format("unsupported save version"));
-        }
-        let module = nfo.root.str("LASTMODULE").unwrap_or_default().to_string();
-        let time = nfo.root.float("TIMEPLAYED").unwrap_or(0.0) as f32;
-        let globals = read("globalvars")?;
-        let party = read("partytable")?;
-        let objects = read("objects")?;
-        let modules = self.inst.dir().join("modules");
-        if !["mod", "rim"]
-            .iter()
-            .any(|x| modules.join(format!("{module}.{x}")).is_file())
-        {
-            return Err(Error::NotFound(format!("module {module}")));
-        }
-
-        // A fresh start: only the character the player made survives, then the module is built again.
-        let pc = self.hero;
-        let mut player = self
-            .objects
-            .remove(&pc)
-            .ok_or_else(|| Error::format("the world has no player"))?;
-        self.objects.clear();
-        player.actions.clear();
-        player.effects.clear();
-        self.objects.insert(pc, player);
-        self.delayed.clear();
-        self.transcript.clear();
-        self.followers.clear();
-        self.inside.clear();
-        self.pending = None;
-        self.transition_request = None;
-        self.in_conversation = false;
-        self.conv = None;
-        self.conversation = None;
-        self.opened = None;
-        self.filled.clear();
-        self.steer = None;
-        self.combat = crate::combat::CombatState::new();
-        self.game_over = false;
-        self.last_power.clear();
-        self.effect_expiry.clear();
-        self.effect_spell.clear();
-        self.effect_cursor.clear();
-        self.party.clear();
-        self.npc_slots.clear();
-        self.inv_cursor.clear();
-        self.effects.clear();
-        self.load_module(&module)?;
-        self.time = time;
-
+    /// Match saved objects to the fresh ones of a module just loaded and give them their saved state. Whatever is in `keep`
+    /// is left alone. Returns who each saved key is now, and the saved leader.
+    fn apply_objects(
+        &mut self,
+        saved: &[Struct],
+        keep: &HashSet<ObjId>,
+        keys: &HashMap<ObjId, Key>,
+    ) -> (HashMap<Key, ObjId>, ObjId) {
         // Match saved objects to the fresh ones by (kind, tag, template, nth); spawn the rest; drop the unmatched.
-        let fresh: HashMap<Key, ObjId> = self
-            .keys()
-            .into_iter()
-            .filter(|(id, _)| *id != pc)
-            .map(|(id, k)| (k, id))
+        let fresh: HashMap<Key, ObjId> = keys
+            .iter()
+            .filter(|(id, _)| !keep.contains(id))
+            .map(|(id, k)| (k.clone(), *id))
             .collect();
-        let saved = objects.root.list("Objects").unwrap_or_default();
-        let key_of = |e: &Struct| -> Key {
-            (
-                e.int("Kind").unwrap_or(255) as u8,
-                e.str("Tag").unwrap_or("").to_ascii_lowercase(),
-                e.str("Template").unwrap_or("").to_ascii_lowercase(),
-                e.int("Nth").unwrap_or(0) as usize,
-            )
-        };
         let mut map: HashMap<Key, ObjId> = HashMap::new();
-        let mut wanted: std::collections::HashSet<ObjId> = std::collections::HashSet::new();
-        wanted.insert(pc);
+        let mut wanted: HashSet<ObjId> = HashSet::new();
+        wanted.extend(keep.iter().copied());
         for e in saved {
             let key = key_of(e);
             if e.int("IsPlayer") == Some(1) {
-                map.insert(key, pc);
+                map.insert(key, self.hero);
                 continue;
             }
             let id = match fresh.get(&key) {
@@ -676,7 +663,7 @@ impl World {
         self.objects
             .retain(|id, o| wanted.contains(id) || matches!(o.kind, Kind::Module | Kind::Area));
         let resolve = |e: &Struct| map.get(&key_of(e)).copied();
-        let mut leader = pc;
+        let mut leader = self.pc;
         for e in saved {
             let Some(id) = resolve(e) else { continue };
             if e.int("IsLeader") == Some(1) {
@@ -823,6 +810,117 @@ impl World {
                 .collect();
             o.actions.clear();
         }
+        (map, leader)
+    }
+
+    /// Write a save to `path`. Refuses a path inside the game's install folder (the install is read-only).
+    pub fn save_to(&self, path: &Path, save_name: &str) -> Result<()> {
+        let dir = self
+            .inst
+            .dir()
+            .canonicalize()
+            .unwrap_or_else(|_| self.inst.dir().to_path_buf());
+        let parent = path.parent().unwrap_or(Path::new("."));
+        let parent = parent
+            .canonicalize()
+            .unwrap_or_else(|_| parent.to_path_buf());
+        if parent.starts_with(&dir) {
+            return Err(Error::format(
+                "refusing to write inside the game's install folder",
+            ));
+        }
+        // A crash while writing must not cost the save that is being replaced.
+        let part = path.with_extension("part");
+        std::fs::write(&part, self.save_bytes(save_name)?)?;
+        std::fs::rename(&part, path)?;
+        Ok(())
+    }
+
+    /// Read a save from `path` (see [`World::load_save`]).
+    pub fn load_from(&mut self, path: &Path) -> Result<()> {
+        self.load_save(&std::fs::read(path)?)
+    }
+
+    /// Replace the world's state with a save made by [`World::save_bytes`]: the module is loaded fresh, then the
+    /// saved state is applied over it, whatever module the world was in. A file that cannot be read, or that names a
+    /// module the install does not have, leaves the world as it was.
+    pub fn load_save(&mut self, bytes: &[u8]) -> Result<()> {
+        let erf = Erf::open(Source::memory(bytes.to_vec()))?;
+        let read = |name: &str| -> Result<Gff> { Gff::parse(&erf.get(name, rt())?) };
+        let nfo = read("savenfo")?;
+        if nfo.root.int("SaveVersion") != Some(SAVE_VERSION as i64) {
+            return Err(Error::format("unsupported save version"));
+        }
+        let module = nfo.root.str("LASTMODULE").unwrap_or_default().to_string();
+        let time = nfo.root.float("TIMEPLAYED").unwrap_or(0.0) as f32;
+        let globals = read("globalvars")?;
+        let party = read("partytable")?;
+        let objects = read("objects")?;
+        let modules = self.inst.dir().join("modules");
+        if !["mod", "rim"]
+            .iter()
+            .any(|x| modules.join(format!("{module}.{x}")).is_file())
+        {
+            return Err(Error::NotFound(format!("module {module}")));
+        }
+
+        // A fresh start: only the character the player made survives, then the module is built again.
+        let pc = self.hero;
+        let mut player = self
+            .objects
+            .remove(&pc)
+            .ok_or_else(|| Error::format("the world has no player"))?;
+        self.objects.clear();
+        player.actions.clear();
+        player.effects.clear();
+        self.objects.insert(pc, player);
+        self.delayed.clear();
+        self.transcript.clear();
+        self.followers.clear();
+        self.inside.clear();
+        self.pending = None;
+        self.transition_request = None;
+        self.in_conversation = false;
+        self.conv = None;
+        self.conversation = None;
+        self.opened = None;
+        self.filled.clear();
+        self.steer = None;
+        self.combat = crate::combat::CombatState::new();
+        self.game_over = false;
+        self.last_power.clear();
+        self.effect_expiry.clear();
+        self.effect_spell.clear();
+        self.effect_cursor.clear();
+        self.party.clear();
+        self.npc_slots.clear();
+        self.inv_cursor.clear();
+        self.effects.clear();
+        self.load_module(&module)?;
+        self.time = time;
+
+        let keys = self.keys();
+        let keep: HashSet<ObjId> = std::iter::once(pc).collect();
+        let saved = objects.root.list("Objects").unwrap_or_default();
+        let (map, mut leader) = self.apply_objects(saved, &keep, &keys);
+        if !saved.iter().any(|e| e.int("IsLeader") == Some(1)) {
+            leader = pc;
+        }
+        let resolve = |e: &Struct| map.get(&key_of(e)).copied();
+        // Older saves have no `modules`: nothing is remembered of the modules left behind.
+        self.left_modules = read("modules")
+            .ok()
+            .map(|m| {
+                m.root
+                    .list("Modules")
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|x| {
+                        Some((x.str("Module")?.to_string(), x.list("Objects")?.to_vec()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
         // Globals, journal, party.
         self.global_numbers = globals
@@ -899,17 +997,7 @@ impl World {
         }
 
         // Rebuild what depends on the loaded state: doors in the navigation mesh, and the player's mover.
-        let open_doors: Vec<([f32; 3], [f32; 3])> = self
-            .objects
-            .values()
-            .filter(|o| o.kind == Kind::Door && o.door == DoorState::Open)
-            .map(crate::play::door_line)
-            .collect();
-        if let Some(n) = self.nav.as_mut() {
-            for (a, b) in open_doors {
-                n.unblock_line(a, b);
-            }
-        }
+        self.sync_door_lines();
         let pos = match p.get("PT_PLAYER_POS") {
             Some(Value::Vector(v)) => *v,
             _ => self.object(leader).map_or([0.0; 3], |o| o.position),

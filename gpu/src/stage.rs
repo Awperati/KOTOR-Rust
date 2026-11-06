@@ -1079,6 +1079,9 @@ impl Stage {
         }
         if let Some(p) = self.floor_under_ray(o, d) {
             if self.settings().combat_movement || !self.party_blocked() {
+                // A click on the floor ends a fight, or the chase would hold the player where it can still reach its target.
+                let pc = self.game.world.pc;
+                self.game.world.stop_attacking(pc);
                 self.game.world.walk_to(p);
             }
         }

@@ -328,6 +328,10 @@ pub struct World {
     pub constant_defaults: BTreeMap<String, usize>,
     pub(crate) repute: Option<TwoDa>,
     pub(crate) exptable: Vec<i32>,
+    /// Seconds the player has pressed on people without getting nearer where it is going.
+    pub(crate) pc_pressed: f32,
+    /// The objects of each module the player has left, in the form a save keeps them.
+    pub(crate) left_modules: BTreeMap<String, Vec<Struct>>,
     door_widths: HashMap<i64, Option<f32>>,
     pub(crate) plot: Option<TwoDa>,
     pub(crate) rng: u64,
@@ -503,6 +507,8 @@ impl World {
             constant_defaults: BTreeMap::new(),
             repute: None,
             exptable: Vec::new(),
+            pc_pressed: 0.0,
+            left_modules: BTreeMap::new(),
             door_widths: HashMap::new(),
             plot: None,
             rng: 0x2545_F491_4F6C_DD1D,
@@ -847,6 +853,10 @@ impl World {
     /// trigger of its GIT, with their event scripts, conversations and names.
     pub fn load_module(&mut self, module: &str) -> Result<()> {
         self.inst.load_module(module)?;
+        // Modules have their own copies under the same names: `k_pend_sith_9` in `end_m01aa` turns a soldier's AI off, and
+        // in `end_m01ab` it does not.
+        self.programs.clear();
+        self.item_templates.clear();
         let ifo = Gff::parse(&self.inst.read("module", ResType::IFO)?)?;
         let area_name = ifo
             .root

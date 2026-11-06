@@ -509,12 +509,20 @@ impl World {
             })
             .collect();
         keep.extend(carried);
+        // The module stays as the player leaves it, for coming back.
+        if !self.module.is_empty() {
+            let left = self.module_snapshot(&keep);
+            self.left_modules.insert(self.module.clone(), left);
+        }
         self.objects.retain(|id, _| keep.contains(id));
         self.delayed.clear();
         self.inside.clear();
         self.pending = None;
         self.pc_mover.stop();
         self.load_module(module)?;
+        if let Some(saved) = self.left_modules.remove(module) {
+            self.restore_module(&saved, &keep);
+        }
         if !waypoint.is_empty() {
             if let Some(wp) = self
                 .by_tag(waypoint)
@@ -565,7 +573,7 @@ impl World {
             }
             _ => MoveStatus::Idle,
         };
-        let held_up = self.collide_pc(before);
+        let held_up = self.collide_pc(before, dt);
         let pc = self.pc;
         if let Some(p) = self.objects.get_mut(&pc) {
             p.position = self.pc_mover.pos;

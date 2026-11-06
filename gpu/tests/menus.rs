@@ -93,7 +93,8 @@ fn test_modes_still_start_in_the_game() {
 
 /// A temp folder for saves, empty, so that a test never touches the real ones.
 fn temp_saves(s: &mut Stage, name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("kotor_rs_{name}"));
+    // Each process its own: two worktrees' gates can run at once.
+    let dir = std::env::temp_dir().join(format!("kotor_rs_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     s.set_saves_dir(dir.clone());
     dir

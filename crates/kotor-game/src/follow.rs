@@ -7,6 +7,8 @@ use crate::world::{Kind, ObjId, World};
 use kotor_walkmesh::{Mover, NavMesh};
 use std::collections::BTreeMap;
 
+/// How long the player presses on people, getting no nearer, before it walks through them.
+const PRESSED_SECONDS: f32 = 0.5;
 /// Radius of the disc a creature occupies (metres).
 pub const CREATURE_RADIUS: f32 = 0.4;
 /// A party member this far from the player starts walking towards it.
@@ -96,39 +98,39 @@ impl World {
     }
 
     /// Keep the player out of other creatures after it moved from `old`. Returns whether it has gone as far as it can,
-    /// someone standing where its route ends.
-    pub(crate) fn collide_pc(&mut self, old: [f32; 3]) -> bool {
+    /// someone standing where its route ends. When going round people gets it no nearer for a moment, it walks through:
+    /// someone on a corner of the route, beside a wall, or two people with no gap between them would hold it for good.
+    pub(crate) fn collide_pc(&mut self, old: [f32; 3], dt: f32) -> bool {
         let pos = self.pc_mover.pos;
         if pos == old {
             return false;
         }
-        let mut blockers = self.blockers_for(self.pc);
+        let blockers = self.blockers_for(self.pc);
         let reach = 2.0 * CREATURE_RADIUS;
         let on = |c: &[f32; 2], p: [f32; 3]| (p[0] - c[0]).hypot(p[1] - c[1]) < reach;
-        if let Some(next) = self.pc_mover.next_waypoint() {
-            if self.pc_mover.on_last_leg() {
-                // Who stands there is often who the player was walking up to, as in a fight.
-                if blockers.iter().any(|c| on(c, next)) && dist2d(pos, next) < 2.0 * reach {
-                    self.pc_mover.stop();
-                    self.pc_mover.pos = old;
-                    return true;
-                }
-            } else {
-                // Whoever stands on a corner of the route, the player can only get past by walking through.
-                blockers.retain(|c| !on(c, next));
+        let next = self.pc_mover.next_waypoint();
+        if let Some(next) = next.filter(|_| self.pc_mover.on_last_leg()) {
+            // Who stands there is often who the player was walking up to, as in a fight.
+            if blockers.iter().any(|c| on(c, next)) && dist2d(pos, next) < 2.0 * reach {
+                self.pc_mover.stop();
+                self.pc_mover.pos = old;
+                self.pc_pressed = 0.0;
+                return true;
             }
+        }
+        if self.pc_pressed >= PRESSED_SECONDS {
+            if !blockers.iter().any(|c| on(c, pos)) {
+                self.pc_pressed = 0.0;
+            }
+            return false;
         }
         let Some(nav) = self.nav.as_ref() else {
             return false;
         };
-        // So too when going round leaves the floor, or someone else is pressed against the far side.
         let slid = slide_around(nav, old, pos, &blockers);
-        let wedged = blockers
-            .iter()
-            .any(|c| (slid[0] - c[0]).hypot(slid[1] - c[1]) < reach - 0.01);
-        if slid != old && !wedged {
-            self.pc_mover.pos = slid;
-        }
+        self.pc_mover.pos = slid;
+        let nearer = next.is_some_and(|n| dist2d(slid, n) < dist2d(old, n) - 1e-3);
+        self.pc_pressed = if nearer { 0.0 } else { self.pc_pressed + dt };
         false
     }
 

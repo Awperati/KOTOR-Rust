@@ -854,6 +854,8 @@ impl Autopilot {
             self.set_goal(Goal::Fight(id));
             return;
         }
+        // Going anywhere else ends any fight, or the chase would hold the player where it can still reach its target.
+        w.stop_attacking(pc);
         let exploring = self.module_time < EXPLORE_SECONDS;
         // 2. Everyone to talk to, then everything to use, then every door.
         if exploring {

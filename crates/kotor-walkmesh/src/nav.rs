@@ -184,6 +184,11 @@ impl NavMesh {
         }
     }
 
+    /// No blocked lines at all.
+    pub fn clear_lines(&mut self) {
+        self.lines.clear();
+    }
+
     /// Whether going straight from `p` to `q` crosses a blocked line on its level.
     pub fn crosses_block(&self, p: V3, q: V3) -> bool {
         // More than a step, less than a storey: walkways pass over and under each other.
