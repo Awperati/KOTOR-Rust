@@ -1285,9 +1285,16 @@ fn a_tutorial_comes_once_over_a_screen_and_notices_flash() {
     s.escape();
 
     // A script asks for one with two pages: Continue, then OK. It pauses the game. Esc does what the button does.
+    // The HUD stays under it.
+    s.update(DT);
+    let portrait = ((720 - 40) * 1280 + 50) * 4;
+    let hud = s.overlay().unwrap().rgba[portrait..portrait + 4].to_vec();
+    assert_eq!(hud[3], 255, "the player's portrait");
     s.game.world.tutorial_requests.push(41);
     s.update(DT);
     assert_eq!(s.menu_name(), "tutorial");
+    s.update(DT);
+    assert_eq!(s.overlay().unwrap().rgba[portrait..portrait + 4], hud[..]);
     let time = s.game.world.time;
     s.update(DT);
     assert_eq!(s.game.world.time, time, "the game waits");

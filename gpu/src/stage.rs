@@ -1651,13 +1651,28 @@ impl Stage {
         if let Some(view) = self.menu_view() {
             let key = format!("{view:?}{}", self.ui_width);
             if key != self.overlay_key {
+                // A pop-up over the game leaves the HUD under it, as the video has it at 3:36.
+                let hud = (view.over_scene && view.notice.is_some()).then(|| {
+                    self.overlay_key.clear();
+                    self.refresh_game_overlay();
+                    self.overlay.take()
+                });
                 self.overlay_key = key;
                 self.overlay = self.ui.menu_overlay(&view);
                 self.apply_brightness();
+                if let (Some(Some(mut under)), Some(over)) = (hud, self.overlay.as_ref()) {
+                    crate::composite(&mut under, over);
+                    self.overlay = Some(under);
+                }
                 self.overlay_version += 1;
             }
             return;
         }
+        self.refresh_game_overlay();
+    }
+
+    /// The HUD, or the conversation's box.
+    fn refresh_game_overlay(&mut self) {
         let mut view = self.choice_view();
         if !self.settings().subtitles {
             // **Assumed:** with subtitles off the line being said goes, and the replies stay.

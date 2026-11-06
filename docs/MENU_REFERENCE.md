@@ -55,7 +55,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Key Mapping and Mouse Settings | greyed buttons | the stock pages. Keys start as the first keys here, the button called Original gives the table's, and only what is built is listed: see `gpu/src/keyscreen.rs`. Not seen in the video, so not compared. Tested in code; a changed key was not pressed live |
 | Feedback and Auto-Pause pages | greyed buttons | the stock pages, with the talk table's words beside them. Not seen in the video, so not compared. Not clicked live |
 | Auto Level Up, Combat Movement | greyed boxes | working. Not clicked live |
-| Tutorial pop-ups | none | a box with words and OK or Continue, from `tutorial.2da`, once each, as at 3:15, 3:36 and 4:00. What sets each off is read from the table's labels. Frames: `tutorial_screen`, `tutorial_game`. Over a screen and over the game tested in code; not clicked live, the driver turns them off |
+| Tutorial pop-ups | none | a box with words and OK or Continue, from `tutorial.2da`, once each, as at 3:15, 3:36 and 4:00. What sets each off is read from the table's labels. Over the game the HUD stays under the box. Frames: `tutorial_screen`, `tutorial_game`. Over a screen and over the game tested in code; not clicked live, the driver turns them off |
 | Notices | none | the HUD's own icons for quest, credits, XP from scripts, items and alignment, as at 3:46. Frame: `notices`. Not clicked live |
 | Pause | none | Space or the hourglass, which is framed in yellow; as at 5:50, an enemy first seen pauses the game with the box at the top right. The video's ring on the hourglass is a plain frame here. Frame: `enemy_sighted`. Clicked live in `scripts/drive_fight.ps1`, with the first Sith |
 | Combat slots and floats | empty | as at 6:05: feats in the second slot and hostile powers in the third, arrows through them, yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. In `drive_fight.ps1` the feat slot's name, its click and the words rising are live; the arrows and the powers' slot are tested in code |
@@ -78,7 +78,6 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Map picture | pixel-sized, small, placed low on the right at 3:50:35 | the map part, 440 of its 512 across, fills the file's place for it | as text size |
 | Map notes | circles with a small mark inside | plain circles | the mark's picture not found |
 | Main menu fog | thick over the lower half, Malak lost in it at 0:21 | thinner, lit by the renderer | the model's lights are not used, and a black veil guessed by eye stands in for them |
-| Tutorial pop-ups over the game | the HUD stays under the box | the HUD goes while it is up | the box is drawn as a screen |
 | Tutorial pop-up words | at 5:50 the words differ from the talk table's row 21 and 34 | the talk table's | where theirs come from not found |
 | Notice timing | not measured | 6 s, assumed | the video's are short and I sampled every 5 s |
 | Target slot words | also "Activate Left Action : 1" by the slot | the name on the bar only | that line is about keys, which are not built |

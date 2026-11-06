@@ -951,7 +951,7 @@ pub fn composite(scene: &mut Image, overlay: &Image) {
             let s = &overlay.rgba[(sy * overlay.width as usize + sx) * 4..][..4];
             let a = s[3] as u32;
             let i = ((y * scene.width + x) * 4) as usize;
-            for (d, s) in scene.rgba[i..i + 3].iter_mut().zip(s) {
+            for (d, s) in scene.rgba[i..i + 4].iter_mut().zip(s) {
                 *d = (*s as u32 + *d as u32 * (255 - a) / 255).min(255) as u8;
             }
         }
