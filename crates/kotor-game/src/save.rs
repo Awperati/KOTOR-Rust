@@ -117,6 +117,30 @@ pub fn read_save_info(path: &Path) -> Result<SaveInfo> {
     })
 }
 
+/// Cells as the lengths of their runs, the first of unseen ones.
+fn cell_runs(cells: &[bool]) -> String {
+    let mut runs = Vec::new();
+    let (mut value, mut length) = (false, 0);
+    for cell in cells {
+        if *cell != value {
+            runs.push(length.to_string());
+            (value, length) = (*cell, 0);
+        }
+        length += 1;
+    }
+    runs.push(length.to_string());
+    runs.join(" ")
+}
+
+fn cells_of_runs(runs: &str) -> Vec<bool> {
+    let mut cells = Vec::new();
+    for (n, run) in runs.split(' ').enumerate() {
+        let length: usize = run.parse().unwrap_or(0);
+        cells.resize(cells.len() + length, n % 2 == 1);
+    }
+    cells
+}
+
 fn value_list<'a>(values: impl IntoIterator<Item = &'a i32>) -> Value {
     list_of(values, |v| st(vec![("Value", Value::Int(*v))]))
 }
@@ -326,6 +350,12 @@ impl World {
                             ("State", Value::Int(*state)),
                             ("Order", Value::Int(order.map_or(i32::MAX, |o| o as i32))),
                         ])
+                    }),
+                ),
+                (
+                    "PT_EXPLORED",
+                    list_of(self.explored.iter(), |(map, cells)| {
+                        st(vec![("Map", s(map)), ("Runs", s(&cell_runs(cells)))])
                     }),
                 ),
                 (
@@ -840,6 +870,12 @@ impl World {
             .iter()
             .filter_map(|x| Some((x.int("Slot")? as i32, x.str("Template")?.to_string())))
             .collect();
+        self.explored = p
+            .list("PT_EXPLORED")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| Some((x.str("Map")?.to_string(), cells_of_runs(x.str("Runs")?))))
+            .collect();
         self.bench = p
             .list("PT_BENCH")
             .unwrap_or_default()
@@ -903,6 +939,7 @@ impl World {
         let _ = writeln!(out, "booleans {b:?}");
         let _ = writeln!(out, "journal {:?}", self.journal);
         let _ = writeln!(out, "bench {:?}", self.bench);
+        let _ = writeln!(out, "explored {:?}", self.explored);
         let party: Vec<String> = self.party.iter().map(&name).collect();
         let _ = writeln!(out, "party {party:?}");
         let mut slots: Vec<_> = self

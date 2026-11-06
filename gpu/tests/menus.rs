@@ -1151,11 +1151,22 @@ fn the_map_shows_the_area_the_party_and_its_notes() {
     assert_eq!(s.menu_name(), "party");
     press(&mut s, "BTN_BACK");
     assert_eq!(s.menu_name(), "map");
-    // Moving moves the mark.
+    // Moving moves the mark, and what is there has now been seen, also after going back.
+    let seen = |s: &Stage| {
+        let cells = s.game.world.explored.get("lbl_mapm01aa").expect("seen");
+        cells.iter().filter(|c| **c).count()
+    };
+    let before = seen(&s);
+    assert!(before > 0);
     let o = s.game.world.object_mut(s.game.world.pc).unwrap();
-    o.position[1] += 20.0;
+    o.position[1] += 30.0;
     s.hover((1.0, 1.0), SIZE);
     assert!(frame(&mut s) != open);
+    assert!(seen(&s) > before);
+    let o = s.game.world.object_mut(s.game.world.pc).unwrap();
+    o.position[1] -= 30.0;
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) != open, "more of the map shows than before");
     press(&mut s, "BTN_EXIT");
     assert_eq!(s.menu_name(), "-");
 }

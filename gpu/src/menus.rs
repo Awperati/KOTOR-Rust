@@ -1564,6 +1564,7 @@ impl Stage {
             return;
         }
         self.forget_view();
+        self.menus.map = None;
         if let Err(e) = self.enter_module() {
             self.game.world.errors.push(format!("stage: {e}"));
         }

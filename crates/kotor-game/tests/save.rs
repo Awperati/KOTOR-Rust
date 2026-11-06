@@ -42,6 +42,28 @@ fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
 }
 
 #[test]
+fn what_has_been_seen_of_a_map_grows_and_is_saved() {
+    let Some(mut w) = world() else { return };
+    let map = w.area_map().expect("the first area has a map");
+    let first = w.reveal(&map, 20.0, 20.0);
+    assert!(first > 0 && first < 100, "{first}");
+    assert_eq!(
+        w.reveal(&map, 20.0, 20.0),
+        first,
+        "the same place adds nothing"
+    );
+    assert!(w.reveal(&map, 30.0, 100.0) > first);
+    // Off the picture nothing happens.
+    let both = w.reveal(&map, 30.0, 100.0);
+    assert_eq!(w.reveal(&map, 9000.0, 9000.0), both);
+
+    let bytes = w.save_bytes("seen").unwrap();
+    let mut back = fresh();
+    back.load_save(&bytes).unwrap();
+    assert_eq!(back.explored, w.explored);
+}
+
+#[test]
 fn a_member_left_behind_keeps_levels_and_items_through_a_save() {
     let Some(mut w) = world() else { return };
     w.available.insert(2, "end_trask".to_string());

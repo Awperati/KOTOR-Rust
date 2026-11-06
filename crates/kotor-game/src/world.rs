@@ -344,6 +344,8 @@ pub struct World {
     /// `ShowPartySelectionGUI` waits for a screen, instead of bringing the forced members straight away.
     pub party_screen: bool,
     pub party_request: Option<crate::party::PartyRequest>,
+    /// What has been seen of each map, by its picture: `SEEN_COLS` by `SEEN_ROWS` cells.
+    pub explored: BTreeMap<String, Vec<bool>>,
     /// Who the party screen left behind, by slot.
     pub bench: BTreeMap<i32, crate::party::BenchedMember>,
     /// The direction the player is being steered this step, and whether at a run.
@@ -500,6 +502,7 @@ impl World {
             hold_levels: false,
             party_screen: false,
             party_request: None,
+            explored: BTreeMap::new(),
             bench: BTreeMap::new(),
             journal_order: Vec::new(),
             journal_file: None,

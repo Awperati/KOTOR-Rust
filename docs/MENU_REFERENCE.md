@@ -43,6 +43,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Pause menu, right side | empty | the words for Load, Save and Exit under the cursor, from the talk table |
 | Container title | the object's name | "Container Inventory" |
 | `fnt_console` at 4K | letters run together | the stock font: its upscaled picture was the cause |
+| What has not been seen of a map | all of it showed | a grid, as at 1:25:00 and 3:50:35: spacing and colours measured from those two frames, so close, not exact. Seen is a circle 14 of the picture's pixels round the player, with a soft edge |
 | Small map on the HUD | a frame and a still arrow | the map round the player, 120 of the picture's pixels, with `mm_barrow` turning, compared with 3:46. A click opens the map. Which way the arrow's picture points is read from the frame `hud_minimap` |
 | Choosing equipment | a click wore at once, a click on a worn slot took off | a click on a slot lists it, `inone` and None first, `(Equipped)` marked, words on the left, OK and Cancel. The owner chose this |
 
@@ -59,7 +60,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Feat rows | about 22 pixels high at 1080p, so all fit | the file's 56 units, so they scroll | as list rows |
 | Feat button | "Add Feat", "Remove Feat" | "Add", "Remove", the file's words | I found no stock string with theirs |
 | Map picture | pixel-sized, small, placed low on the right at 3:50:35 | the map part, 440 of its 512 across, fills the file's place for it | as text size |
-| Map marks | notes with their own pictures; what has not been seen is dark | plain circles, and all of it shows | not built |
+| Map notes | circles with a small mark inside | plain circles | the mark's picture not found |
 | Main menu | Malak in 3D with moving fog on the left | the still picture | no 3D in menus |
 | Character sheet | the 3D figure on a glowing backdrop | the portrait | no 3D in menus |
 | Party portrait on sheets | a small portrait to change member, bottom left | none | party switching not built |

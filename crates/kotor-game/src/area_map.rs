@@ -3,7 +3,8 @@
 //! **Assumed, not compared with the game's code:** the picture is `lbl_map` and the area's name, as the file names in the
 //! GUI texture pack suggest; a `NorthAxis` of 2 or 3 has the picture's across run along the world's y, since the numbers
 //! in `m01aa` only give the same scale both ways like that; `MapPt` is a fraction of the part of the picture that shows,
-//! from its top left.
+//! from its top left; what has been seen is a circle round the player of `SEEN_RADIUS`, measured from the width of the
+//! one short walk at 1:25:00 of the reference video.
 
 use crate::world::{ObjId, World};
 use kotor_core::ResType;
@@ -13,6 +14,12 @@ use kotor_gff::{Gff, Struct, Value};
 /// like that does the Bridge note of `m01aa` land on the bridge.
 const SHOWN_WIDTH: f32 = 440.0;
 const SHOWN_HEIGHT: f32 = 256.0;
+
+/// What has been seen of a map is kept in cells of this many of the picture's pixels.
+const CELL: f32 = 4.0;
+pub const SEEN_COLS: usize = (SHOWN_WIDTH / CELL) as usize;
+pub const SEEN_ROWS: usize = (SHOWN_HEIGHT / CELL) as usize;
+const SEEN_RADIUS: f32 = 14.0;
 
 /// A waypoint with a note on the map.
 #[derive(Clone, Debug, PartialEq)]
@@ -72,6 +79,31 @@ impl AreaMap {
 }
 
 impl World {
+    /// The player has been here: what is round them has been seen. Returns how many cells of this map are seen.
+    pub fn reveal(&mut self, map: &AreaMap, x: f32, y: f32) -> usize {
+        let cells = self
+            .explored
+            .entry(map.picture.clone())
+            .or_insert_with(|| vec![false; SEEN_COLS * SEEN_ROWS]);
+        let [px, py] = map.pixel(x, y);
+        let reach = (SEEN_RADIUS / CELL).ceil() as i32 + 1;
+        let (cx, cy) = ((px / CELL) as i32, (py / CELL) as i32);
+        for row in cy - reach..=cy + reach {
+            for col in cx - reach..=cx + reach {
+                let inside =
+                    (0..SEEN_COLS as i32).contains(&col) && (0..SEEN_ROWS as i32).contains(&row);
+                let (dx, dy) = (
+                    (col as f32 + 0.5) * CELL - px,
+                    (row as f32 + 0.5) * CELL - py,
+                );
+                if inside && dx * dx + dy * dy <= SEEN_RADIUS * SEEN_RADIUS {
+                    cells[row as usize * SEEN_COLS + col as usize] = true;
+                }
+            }
+        }
+        cells.iter().filter(|c| **c).count()
+    }
+
     /// The map of the area the party is in, if it has one.
     pub fn area_map(&mut self) -> Option<AreaMap> {
         let area = self.area;

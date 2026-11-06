@@ -221,6 +221,60 @@ impl<'a> Ui<'a> {
         Gui::parse(&self.inst.read(name, kotor_core::ResType(2047)).ok()?).ok()
     }
 
+    /// Whether a picture from `compose_seen_map` is here: changing the window's size forgets pictures.
+    pub fn has_picture(&self, name: &str) -> bool {
+        matches!(self.textures.get(name), Some(Some(_)))
+    }
+
+    /// Make a map as far as it has been seen: over the file's picture, what has not been seen shows a grid, as in the
+    /// reference video at 1:25:00. `seen` covers the part of a 512 wide picture that is the map. The edge is soft.
+    pub fn compose_seen_map(
+        &mut self,
+        out: &str,
+        picture: &str,
+        seen: &[bool],
+        cols: usize,
+        rows: usize,
+    ) {
+        let Some(img) = self.texture(picture).cloned() else {
+            return;
+        };
+        let (w, h) = (img.width as usize, img.height as usize);
+        let across = cols as f32 / (w as f32 * MAP_SHOWN_WIDTH / MINIMAP_FILE_WIDTH);
+        let down = rows as f32 / h as f32;
+        let cell = |c: i32, r: i32| -> f32 {
+            let inside = (0..cols as i32).contains(&c) && (0..rows as i32).contains(&r);
+            (inside && seen[r as usize * cols + c as usize]) as i32 as f32
+        };
+        let grid = (MAP_GRID * w as f32 / MINIMAP_FILE_WIDTH).max(1.0) as usize;
+        let mut rgba = img.rgba.clone();
+        for (y, line) in rgba.chunks_mut(w * 4).enumerate() {
+            let fy = y as f32 * down - 0.5;
+            let (r0, ty) = (fy.floor() as i32, fy - fy.floor());
+            for (x, p) in line.chunks_mut(4).enumerate() {
+                let fx = x as f32 * across - 0.5;
+                let (c0, tx) = (fx.floor() as i32, fx - fx.floor());
+                let top = cell(c0, r0) * (1.0 - tx) + cell(c0 + 1, r0) * tx;
+                let bottom = cell(c0, r0 + 1) * (1.0 - tx) + cell(c0 + 1, r0 + 1) * tx;
+                let seen = top * (1.0 - ty) + bottom * ty;
+                let line = x % grid == 0 || y % grid == 0;
+                let unseen = if line { MAP_GRID_LINE } else { MAP_GRID_BACK };
+                for k in 0..3 {
+                    p[k] = (p[k] as f32 * seen + unseen[k] * (1.0 - seen)) as u8;
+                }
+                p[3] = 255;
+            }
+        }
+        self.textures.insert(
+            out.to_ascii_lowercase(),
+            Some(Image {
+                width: img.width,
+                height: img.height,
+                rgba,
+            }),
+        );
+    }
+
     pub fn texture(&mut self, name: &str) -> Option<&Image> {
         if name.is_empty() {
             return None;
@@ -940,6 +994,11 @@ impl<'a> Ui<'a> {
 const HUD_GUI: &str = "mipc28x6";
 const HUD_FILE_SIZE: (i32, i32) = (800, 600);
 const HUD_FILE_MINIMAP: f32 = 120.0;
+/// The part of a 512 wide map picture that is the map. The grid over what has not been seen is measured from the video.
+const MAP_SHOWN_WIDTH: f32 = 440.0;
+const MAP_GRID: f32 = 18.0;
+const MAP_GRID_LINE: [f32; 3] = [0.0, 70.0, 105.0];
+const MAP_GRID_BACK: [f32; 3] = [2.0, 4.0, 22.0];
 /// What the HUD does not show now: combat, notices, the action queue and the map's picture are not built.
 const HUD_HIDDEN: [&str; 25] = [
     "LBL_CMBT",
