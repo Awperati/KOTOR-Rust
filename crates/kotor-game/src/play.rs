@@ -702,6 +702,10 @@ impl World {
         self.update_seamless();
         self.update_encounters();
         self.update_early_force(dt);
+        for item in std::mem::take(&mut self.items_acquired) {
+            self.item_acquired = item;
+            self.run_module_script("Mod_OnAcquirItem");
+        }
         if let Some((module, wp)) = self.transition_request.take() {
             if let Err(e) = self.transition(&module, &wp) {
                 self.errors.push(format!("transition to {module}: {e}"));
@@ -1124,7 +1128,7 @@ impl World {
         self.last_disturbed_by = pc;
         self.disturbed_item = item;
         self.run_event(from, "OnInvDisturbed");
-        self.carry(pc, item);
+        self.carry_acquired(pc, item);
         if !self.objects.contains_key(&from) {
             self.opened = None;
         }

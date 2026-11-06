@@ -310,6 +310,23 @@ impl World {
         true
     }
 
+    /// [`World::carry`], for an item new to whoever gets it: the module hears of it. An item that joins a stack goes, and
+    /// `k_ptar_acquire` and its like are told of the stack.
+    pub(crate) fn carry_acquired(&mut self, who: ObjId, item: ObjId) {
+        let template = self.objects.get(&item).map(|o| o.template.clone());
+        self.carry(who, item);
+        let held = if self.objects.contains_key(&item) {
+            Some(item)
+        } else {
+            self.carried(who)
+                .into_iter()
+                .find(|i| self.objects.get(i).map(|o| &o.template) == template.as_ref())
+        };
+        if let Some(held) = held.filter(|_| who == self.pc || self.party.contains(&who)) {
+            self.items_acquired.push(held);
+        }
+    }
+
     /// Give a creature an item: credits become the party's, and an item joins a stack of its own kind if there is
     /// room.
     pub fn carry(&mut self, who: ObjId, item: ObjId) {

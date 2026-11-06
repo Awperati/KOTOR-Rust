@@ -184,7 +184,7 @@ impl World {
             item
         };
         let pc = self.pc;
-        self.carry(pc, bought);
+        self.carry_acquired(pc, bought);
         Ok(())
     }
 

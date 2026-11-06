@@ -327,7 +327,8 @@ fn a_save_loads_from_another_module_and_from_no_module() {
         assert!(area.tag.to_ascii_lowercase().starts_with("m01ab") || !area.tag.is_empty());
         assert!(b.nav.is_some(), "the walkmesh is of the saved module");
         let t = b.by_tag("end_trask")[0];
-        assert_eq!(b.party, vec![t]);
+        // `k_pend_modab`, the module's own load script, takes Trask out of the party. He stays in the saved world.
+        assert_eq!(b.party, a.party);
         // An object whose template is in another module keeps what the template gave it.
         let (ours, theirs) = (b.object(t).unwrap(), a.object(trask).unwrap());
         assert_eq!(ours.scripts, theirs.scripts);

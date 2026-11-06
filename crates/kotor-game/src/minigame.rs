@@ -583,7 +583,7 @@ impl World {
         }
     }
 
-    fn run_module_script(&mut self, name: &str) {
+    pub(crate) fn run_module_script(&mut self, name: &str) {
         let module = self
             .objects
             .values()

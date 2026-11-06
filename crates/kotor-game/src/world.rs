@@ -334,6 +334,10 @@ pub struct World {
     pub npc_slots: HashMap<i32, ObjId>,
     /// A module change requested by a door or trigger: (module, waypoint tag). Carried out by `step`.
     pub transition_request: Option<(String, String)>,
+    /// What the party has just come to hold, for the module's `Mod_OnAcquirItem`, oldest first.
+    pub(crate) items_acquired: Vec<ObjId>,
+    /// What `GetModuleItemAcquired` answers.
+    pub(crate) item_acquired: ObjId,
     /// The swoop race, in a module that holds one.
     pub race: Option<crate::swoop::Race>,
     pub(crate) inv_cursor: HashMap<ObjId, usize>,
@@ -581,6 +585,8 @@ impl World {
             party: Vec::new(),
             npc_slots: HashMap::new(),
             transition_request: None,
+            items_acquired: Vec::new(),
+            item_acquired: kotor_script::OBJECT_INVALID,
             race: None,
             inv_cursor: HashMap::new(),
             effects: Vec::new(),
@@ -1474,6 +1480,11 @@ impl World {
             self.run_spawn_script(id);
         }
         self.entering = self.pc;
+        // The turret runs its own, as `start_minigame` loads it.
+        if self.minigame.is_none() {
+            self.run_module_script("Mod_OnModLoad");
+            self.run_module_script("Mod_OnClientEntr");
+        }
         let area = self.area;
         let script = self
             .objects

@@ -1917,8 +1917,12 @@ impl Host for Adapter<'_> {
                 if let Some(o) = self.world.object_mut(target) {
                     o.inventory.push(id);
                 }
+                if target == self.world.pc || self.world.party.contains(&target) {
+                    self.world.items_acquired.push(id);
+                }
                 Some(Value::Object(id))
             }
+            "GetModuleItemAcquired" => Some(Value::Object(self.world.item_acquired)),
             "DestroyObject" => {
                 let id = self.obj(caller, args, 0);
                 self.world.objects.remove(&id);

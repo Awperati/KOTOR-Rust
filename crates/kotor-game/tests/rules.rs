@@ -111,6 +111,50 @@ fn a_creature_is_drawn_between_the_steps_it_moved_in() {
 }
 
 #[test]
+fn the_module_hears_what_the_party_picks_up() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    let spec = w.recommended_character("Player", 0, 1).unwrap();
+    w.create_character(&spec).unwrap();
+    // The Sith base's: the Governor's shield codes put Canderous's plan in the journal.
+    w.transition("tar_m09ab", "").unwrap();
+    let pc = w.pc;
+    let codes = w.spawn_item("ptar_shieldcodes");
+    let body = w.by_tag("DarkJediap091")[0];
+    w.object_mut(body).unwrap().inventory.push(codes);
+    w.opened = Some(body);
+    w.take_item(codes);
+    assert!(w.carried(pc).contains(&codes));
+    w.step(1.0 / 60.0);
+    assert_eq!(w.journal.get("tar_escape"), Some(&25), "{:?}", w.journal);
+}
+
+#[test]
+fn a_module_runs_its_own_script_on_loading() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    w.trace = Some(Vec::new());
+    // The cantina's `Mod_OnClientEntr`, `k_ptar_m03ae_ce`, sets the scene with Mission and the Rodians by this number.
+    w.transition("tar_m03ae", "").unwrap();
+    let said = w.trace.take().unwrap();
+    assert!(
+        said.iter().any(|l| l.contains("tar_misslook")),
+        "{:?}",
+        &said[..said.len().min(12)]
+    );
+}
+
+#[test]
 fn every_minigame_in_the_install_reads_whole() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

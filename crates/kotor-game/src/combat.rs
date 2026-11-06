@@ -653,6 +653,9 @@ impl World {
                     self.run_event(id, "ScriptHeartbeat");
                 }
             }
+            if self.minigame.is_none() {
+                self.run_module_script("Mod_OnHeartbeat");
+            }
         }
         self.combat.perception_clock += dt;
         if self.combat.perception_clock >= PERCEPTION_SECONDS {
