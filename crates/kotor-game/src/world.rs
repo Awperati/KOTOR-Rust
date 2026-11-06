@@ -504,6 +504,8 @@ pub struct World {
     tables: HashMap<String, Option<Rc<TwoDa>>>,
     /// The first row of `feat.2da` that came from the second game.
     pub(crate) second_game_feats: Option<usize>,
+    /// Which placeable templates have an inventory, once asked.
+    pub(crate) inventory_templates: HashMap<String, bool>,
     /// What the item screens read from UTI files, by template.
     pub(crate) item_templates: HashMap<String, Rc<crate::items::ItemTemplate>>,
 }
@@ -704,6 +706,7 @@ impl World {
             shape_walks: HashMap::new(),
             tables: HashMap::new(),
             second_game_feats: None,
+            inventory_templates: HashMap::new(),
             item_templates: HashMap::new(),
         };
         let table =

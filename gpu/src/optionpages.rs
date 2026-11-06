@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 8] = [
+const STYLE_ROWS: [(&str, &str, &str); 14] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -55,6 +55,44 @@ const STYLE_ROWS: [(&str, &str, &str); 8] = [
         "English: American (original)",
         "What the game shows is spelt as in Australia: armour, colour, centre. Or as the game's files have it.",
     ),
+    (
+        "Nameplates: On",
+        "Nameplates: Off",
+        "A name and a health bar over every enemy in sight. Click one to attack it. F6 turns all of this off and on.",
+    ),
+    (
+        "Neutral creatures' plates: Always",
+        "Neutral creatures' plates: Under the cursor",
+        "Plates on neutral creatures all the time, or only under the cursor or as the target.",
+    ),
+    (
+        "Friends' plates: Always",
+        "Friends' plates: Under the cursor",
+        "Plates on the party and allies all the time, or only under the cursor or as the target.",
+    ),
+    (
+        "Object labels: On",
+        "Object labels: Off",
+        "Containers and remains in gold while they hold loot, and what can be used in cyan.",
+    ),
+    (
+        "Door labels: On",
+        "Door labels: Off",
+        "Labels on closed doors too.",
+    ),
+    (
+        "Looted containers: Hidden",
+        "Looted containers: Say [empty]",
+        "What has nothing left has no label, or says so in grey.",
+    ),
+];
+/// The rows after those that go round a list of values.
+const VALUE_ROWS: [(&str, &str); 2] = [
+    (
+        "Nameplate range",
+        "How far away an enemy gets a plate, in metres.",
+    ),
+    ("Nameplate size", "How large plates are, in per cent."),
 ];
 /// A box on the Auto-Pause page, and its words.
 const AUTOPAUSE: [(&str, u32); 6] = [
@@ -126,8 +164,20 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         10 => &mut s.auto_advance,
         11 => &mut s.seamless_areas,
         12 => &mut s.australian_english,
+        13 => &mut s.nameplates,
+        14 => &mut s.nameplates_neutral,
+        15 => &mut s.nameplates_friendly,
+        16 => &mut s.object_labels,
+        17 => &mut s.door_labels,
+        18 => &mut s.hide_empty,
         _ => return None,
     })
+}
+
+/// The value after this one in a list that goes round.
+fn next_of(list: &[i32], now: i32) -> i32 {
+    let at = list.iter().position(|v| *v == now).map_or(0, |n| n + 1);
+    list[at % list.len()]
 }
 
 fn autopause_flag<'a>(s: &'a mut Settings, tag: &str) -> Option<&'a mut bool> {
@@ -241,7 +291,18 @@ impl Stage {
                 ..Row::default()
             });
         }
-        // Thirteen rows, and six fit: the wheel brings up the rest.
+        for (n, value) in [settings.nameplate_range, settings.nameplate_size]
+            .into_iter()
+            .enumerate()
+        {
+            let unit = if n == 0 { "m" } else { "%" };
+            rows.push(Row {
+                text: format!("{}: {value} {unit}", VALUE_ROWS[n].0),
+                selected: true,
+                ..Row::default()
+            });
+        }
+        // More rows than fit: the wheel brings up the rest.
         v.lists
             .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
         self.option_words(&mut v, "LB_DESC");
@@ -291,20 +352,37 @@ impl Stage {
             self.menus.option_reason = Some(MOVEMENT_WORDS);
         }
         if let (Screen::Feedback, Some(Hit::Row(_, row))) = (screen, &self.menus.hover) {
-            if let Some((_, _, words)) = row
-                .checked_sub(FEEDBACK.len())
-                .and_then(|n| STYLE_ROWS.get(n))
-            {
+            let past = row.checked_sub(FEEDBACK.len());
+            let words = past.and_then(|n| STYLE_ROWS.get(n).map(|r| r.2)).or(past
+                .and_then(|n| n.checked_sub(STYLE_ROWS.len()))
+                .and_then(|n| VALUE_ROWS.get(n).map(|r| r.1)));
+            if let Some(words) = words {
                 self.menus.option_words = None;
                 self.menus.option_reason = Some(words);
             }
         }
     }
 
+    /// The nameplates key: all of them off, or on.
+    pub fn toggle_nameplates(&mut self) {
+        self.menus.settings.nameplates = !self.menus.settings.nameplates;
+        self.settings_changed();
+    }
+
     /// A click on a row of the Feedback list.
     pub(super) fn feedback_row(&mut self, row: usize) {
         if let Some(flag) = feedback_flag(&mut self.menus.settings, row) {
             *flag = !*flag;
+        }
+        let s = &mut self.menus.settings;
+        match row.checked_sub(FEEDBACK.len() + STYLE_ROWS.len()) {
+            Some(0) => {
+                s.nameplate_range = next_of(&super::super::nameplates::RANGES, s.nameplate_range)
+            }
+            Some(1) => {
+                s.nameplate_size = next_of(&super::super::nameplates::SIZES, s.nameplate_size)
+            }
+            _ => {}
         }
         self.settings_changed();
     }

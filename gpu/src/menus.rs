@@ -280,6 +280,18 @@ pub struct Settings {
     pub australian_english: bool,
     /// Doors between modules open onto the next area and the party walks through, with no loading in between.
     pub seamless_areas: bool,
+    /// A name and health bar over each enemy in sight, and the rest of what the F6 key turns off.
+    pub nameplates: bool,
+    /// The same all the time for neutral creatures and for friends, and not only when the cursor is on them.
+    pub nameplates_neutral: bool,
+    pub nameplates_friendly: bool,
+    /// Labels on what can be looted or used, on doors too, and whether what is empty still says so.
+    pub object_labels: bool,
+    pub door_labels: bool,
+    pub hide_empty: bool,
+    /// Metres, and per cent.
+    pub nameplate_range: i32,
+    pub nameplate_size: i32,
 }
 
 impl Default for Settings {
@@ -317,6 +329,14 @@ impl Default for Settings {
             click_to_walk: true,
             australian_english: true,
             seamless_areas: true,
+            nameplates: true,
+            nameplates_neutral: false,
+            nameplates_friendly: false,
+            object_labels: true,
+            door_labels: false,
+            hide_empty: false,
+            nameplate_range: 60,
+            nameplate_size: 100,
         }
     }
 }
@@ -327,7 +347,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\nmouse_look={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\nmouse_look={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -358,7 +378,15 @@ impl Settings {
             self.movement_modern,
             self.click_to_walk,
             self.seamless_areas,
-            self.australian_english
+            self.australian_english,
+            self.nameplates,
+            self.nameplates_neutral,
+            self.nameplates_friendly,
+            self.object_labels,
+            self.door_labels,
+            self.hide_empty,
+            self.nameplate_range,
+            self.nameplate_size
         )
     }
 
@@ -402,6 +430,14 @@ impl Settings {
                 "glow_boxes" => s.glow_boxes = v == "true",
                 "seamless_areas" => s.seamless_areas = v == "true",
                 "australian_english" => s.australian_english = v == "true",
+                "nameplates" => s.nameplates = v == "true",
+                "nameplates_neutral" => s.nameplates_neutral = v == "true",
+                "nameplates_friendly" => s.nameplates_friendly = v == "true",
+                "object_labels" => s.object_labels = v == "true",
+                "door_labels" => s.door_labels = v == "true",
+                "hide_empty" => s.hide_empty = v == "true",
+                "nameplate_range" => s.nameplate_range = v.parse().unwrap_or(s.nameplate_range),
+                "nameplate_size" => s.nameplate_size = v.parse().unwrap_or(s.nameplate_size),
                 "size" => {
                     s.size = v
                         .split_once('x')

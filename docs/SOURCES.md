@@ -60,3 +60,9 @@ API. kira is a fuller game audio engine (mixer tracks, tweens, clocks) that this
 
 **Built and checked:** `gpu/src/lib.rs` and `gpu/audio/src/lib.rs` compiled on the first try after the fetch (no source changes were needed).
 Clippy `-D warnings` and fmt pass on the whole `gpu/` workspace.
+
+## Nameplates
+
+How the nameplates and object labels behave comes from the README and settings file of the K1 Nameplates mod by phalladar
+(MIT, https://github.com/phalladar/k1-nameplates). None of its code or files are used: its DLL patches the original game and
+was never run. See `gpu/src/nameplates.rs` for what was kept and what was assumed.

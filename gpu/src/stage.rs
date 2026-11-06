@@ -23,6 +23,8 @@ mod deathscreen;
 mod menus;
 #[path = "moving.rs"]
 mod moving;
+#[path = "nameplates.rs"]
+mod nameplates;
 #[path = "racescreen.rs"]
 mod racescreen;
 #[path = "roomshell.rs"]
@@ -257,6 +259,20 @@ fn styled(mut rig: Rig, conventional: bool) -> Rc<Rig> {
 
 /// How far over a head its bar stays, in layout units.
 const TARGET_BAR_CLEAR: i32 = 6;
+/// The box holding two boxes: left, top, width, height.
+fn union_box(a: Option<[u32; 4]>, b: Option<[u32; 4]>) -> Option<[u32; 4]> {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            let (left, top) = (a[0].min(b[0]), a[1].min(b[1]));
+            let right = (a[0] + a[2]).max(b[0] + b[2]);
+            let bottom = (a[1] + a[3]).max(b[1] + b[3]);
+            Some([left, top, right - left, bottom - top])
+        }
+        (one, other) => one.or(other),
+    }
+}
+
+const SLOTS_AND_GAP: i32 = kotor_ui::TARGET_BAR_AND_SLOTS_HIGH - kotor_ui::TARGET_BAR_HIGH;
 
 /// The stock icon for a target's action, read from the texture names in `swpc_tex_gui.erf`.
 fn action_icon(action: &str) -> &'static str {
@@ -299,6 +315,12 @@ pub struct Stage {
     floor: Option<Floor>,
     /// The rooms, for the camera to stay inside.
     shell: roomshell::RoomShell,
+    plates: nameplates::PlateState,
+    hud_under_plates: Option<Image>,
+    plate_key: String,
+    plate_box: Option<[u32; 4]>,
+    /// The version the plates began moving at, the latest one, and the box they have moved in since.
+    plates_moved: Option<(u64, u64, [u32; 4])>,
     static_scene: Scene,
     seam: seamless_stage::Seam,
     /// Goes up whenever `static_scene` is replaced.
@@ -445,6 +467,11 @@ impl Stage {
             module: String::new(),
             floor: None,
             shell: Default::default(),
+            plates: Default::default(),
+            hud_under_plates: None,
+            plate_key: String::new(),
+            plate_box: None,
+            plates_moved: None,
             static_scene: Scene::default(),
             seam: Default::default(),
             static_version: 0,
@@ -1335,7 +1362,7 @@ impl Stage {
         let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
         // The bar's slots stay where they are while the cursor is on them, whatever lies behind.
         if !self.over_target_slots() {
-            self.hover_target = self.game.world.pick(o, d);
+            self.hover_target = self.plate_at(at.0, at.1).or(self.game.world.pick(o, d));
         }
     }
 
@@ -1404,7 +1431,7 @@ impl Stage {
         }
         let cam = self.camera();
         let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
-        if let Some(id) = self.game.world.pick(o, d) {
+        if let Some(id) = self.plate_at(x, y).or(self.game.world.pick(o, d)) {
             self.use_thing(id);
             return;
         }
@@ -2166,6 +2193,7 @@ impl Stage {
             self.overlay_key.clear();
         }
         if let Some(view) = self.menu_view() {
+            self.plates_view_none();
             let key = format!("{view:?}{}", self.ui_width);
             if key != self.overlay_key {
                 // A pop-up over the game leaves the HUD under it, as the video has it at 3:36.
@@ -2220,6 +2248,13 @@ impl Stage {
         let combat = self.combat_view(target.as_ref().map(|t| t.3));
         let target_at = self.target_on_screen(combat.attack.is_some() || combat.locked);
         self.ui.set_target_at(target_at);
+        self.ui.set_slots_above_bar(self.settings().nameplates);
+        // Only over the plain HUD: not in a conversation or a cutscene.
+        let plates = if view.is_none() && self.beat_camera().is_none() {
+            self.plates_view(target_at)
+        } else {
+            self.plates_view_none()
+        };
         let notices = self.notices_view();
         let floats = self.floats_view();
         let pause = self.pause_view();
@@ -2245,17 +2280,27 @@ impl Stage {
                     .collect::<Vec<_>>()
             ),
         };
-        if key == self.overlay_key {
+        // What is under the plates depends on whether one is the target's, which takes the place of its bar.
+        let key = format!("{key}{}", plates.iter().any(|p| p.framed));
+        let plate_key = format!("{plates:?}");
+        let redraw = key != self.overlay_key;
+        if !redraw && plate_key == self.plate_key {
             return;
         }
         self.overlay_key = key;
+        self.plate_key = plate_key;
+        self.ui.set_plates(plates);
+        if !redraw {
+            self.plates_on_hud(true);
+            return;
+        }
         self.ui.set_minimap(minimap);
         self.ui.set_notices(notices);
         self.ui.set_floats(floats);
         self.ui.set_solo(self.game.world.solo_mode);
         self.ui.set_pause(pause.0, pause.1);
         self.ui.set_combat(combat);
-        self.overlay = match view {
+        self.hud_under_plates = match view {
             // A wordless beat: the scene alone.
             Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
                 self.ui.letterbox_overlay()
@@ -2272,8 +2317,56 @@ impl Stage {
                 )
             }
         };
+        self.plates_on_hud(false);
+    }
+
+    /// What goes on screen: the HUD as last drawn, and the plates on it. With `same_hud`, only the plates have moved.
+    fn plates_on_hud(&mut self, same_hud: bool) {
+        if !self.settings().nameplates {
+            self.overlay = self.hud_under_plates.take();
+            self.plate_box = None;
+            self.apply_brightness();
+            self.overlay_version += 1;
+            return;
+        }
+        let new_box = self.ui.plates_box();
+        let plain = self.settings().brightness == 0.5;
+        let quick = same_hud && plain && self.overlay.is_some();
+        let dirty = union_box(self.plate_box, new_box);
+        self.plate_box = new_box;
+        if let (true, Some(hud), Some(picture)) =
+            (quick, self.hud_under_plates.as_ref(), self.overlay.as_ref())
+        {
+            if picture.width == hud.width && picture.height == hud.height {
+                let Some(dirty) = dirty else { return };
+                let picture = self.overlay.take().expect("just seen");
+                let hud = self.hud_under_plates.as_ref().expect("just seen");
+                self.overlay = Some(self.ui.move_plates(hud, picture, dirty));
+                // Those since the last full change, together.
+                let chained = self.plates_moved.filter(|m| m.1 == self.overlay_version);
+                let (from, all) = match chained {
+                    Some((from, _, all)) => {
+                        (from, union_box(Some(all), Some(dirty)).unwrap_or(dirty))
+                    }
+                    None => (self.overlay_version, dirty),
+                };
+                self.overlay_version += 1;
+                self.plates_moved = Some((from, self.overlay_version, all));
+                return;
+            }
+        }
+        let hud = self.hud_under_plates.as_ref();
+        let ui = &mut self.ui;
+        self.overlay = hud.map(|h| ui.plates_over(h));
         self.apply_brightness();
         self.overlay_version += 1;
+    }
+
+    /// If all that has changed since version `seen` of the overlay is inside a box, that box: left, top, width, height.
+    pub fn overlay_change_since(&self, seen: u64) -> Option<[u32; 4]> {
+        self.plates_moved
+            .filter(|m| m.0 <= seen && m.1 == self.overlay_version)
+            .map(|m| m.2)
     }
 
     /// The thing under the cursor, else the nearest in reach.
@@ -2376,6 +2469,14 @@ impl Stage {
             .and_then(|id| self.game.world.object(id))
             .and_then(|o| self.on_screen(o.position, 1.0))
             .map_or("-".to_string(), |p| format!("{},{}", p.0, p.1));
+        let shown = self.plates_shown();
+        let plates = shown.len();
+        let plate0 = shown
+            .first()
+            .map_or("-".to_string(), |(_, p)| format!("{},{}", p.0, p.1));
+        let enemy_plate = self
+            .enemy_plate()
+            .map_or("-".to_string(), |p| format!("{},{}", p.0, p.1));
         let w = &self.game.world;
         let here = self.pc_position();
         let view = w.dialogue_view();
@@ -2385,7 +2486,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
@@ -2428,6 +2529,13 @@ impl Stage {
     fn target_on_screen(&self, slots: bool) -> Option<(i32, i32)> {
         let w = &self.game.world;
         let o = w.object(self.target()?)?;
+        // A plate stays where it was when it becomes the target. Its slots go over it, if there is room.
+        if self.settings().nameplates {
+            let up = self.plate_up(o);
+            let (x, y) = self.on_screen(o.position, up)?;
+            let room = if slots { SLOTS_AND_GAP } else { 0 };
+            return Some((x, (y - kotor_ui::TARGET_BAR_HIGH).max(room)));
+        }
         let high = if slots {
             kotor_ui::TARGET_BAR_AND_SLOTS_HIGH
         } else {
@@ -2442,8 +2550,15 @@ impl Stage {
         Some((x, (y - high - TARGET_BAR_CLEAR).max(0)))
     }
 
-    /// Where a point of the world, `up` above the floor, is in the layout.
+    /// Where a point of the world, `up` above the floor, is in the layout, kept on the screen.
     fn on_screen(&self, at: [f32; 3], up: f32) -> Option<(i32, i32)> {
+        let wide = self.ui_width as i32;
+        let (x, y) = self.project(at, up)?;
+        Some((x.clamp(80, wide - 80), y.clamp(2, 440)))
+    }
+
+    /// Where a point of the world, `up` above the floor, is in the layout, on the screen or not.
+    fn project(&self, at: [f32; 3], up: f32) -> Option<(i32, i32)> {
         let cam = self.camera();
         let v = [
             at[0] - cam.eye[0],
@@ -2476,7 +2591,7 @@ impl Stage {
         let ny = dot(v, above) / (depth * t);
         let x = ((nx + 1.0) / 2.0 * wide) as i32;
         let y = ((1.0 - ny) / 2.0 * 480.0) as i32;
-        Some((x.clamp(80, wide as i32 - 80), y.clamp(2, 440)))
+        Some((x, y))
     }
 
     /// The thing under the cursor, else the nearest in reach: name, hit points, and what using it does.

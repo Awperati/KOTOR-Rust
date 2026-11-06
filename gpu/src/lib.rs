@@ -1298,6 +1298,49 @@ impl Presenter {
     }
 
     /// Replace the premultiplied picture stretched over the whole scene, or remove it.
+    /// As `set_overlay`, when all that has changed is inside a box: left, top, width, height.
+    pub fn set_overlay_box(&self, gpu: &GpuRenderer, img: &Image, change: [u32; 4]) {
+        let mut slot = self.overlay.borrow_mut();
+        let Some(o) = slot
+            .as_mut()
+            .filter(|o| o.width == img.width && o.height == img.height)
+        else {
+            drop(slot);
+            return self.set_overlay(gpu, Some(img));
+        };
+        let [left, top, width, height] = change;
+        let row = img.width as usize * 4;
+        let start = top as usize * row + left as usize * 4;
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &o.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: left,
+                    y: top,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &img.rgba[start..],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(img.width * 4),
+                rows_per_image: None,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        for y in top..top + height {
+            let from = y as usize * row + left as usize * 4;
+            let to = from + width as usize * 4;
+            o.pixels[from..to].copy_from_slice(&img.rgba[from..to]);
+        }
+    }
+
     pub fn set_overlay(&self, gpu: &GpuRenderer, img: Option<&Image>) {
         let mut slot = self.overlay.borrow_mut();
         let Some(img) = img else {

@@ -415,8 +415,14 @@ impl App {
                 });
         }
         if st.overlay_seen != stage.overlay_version {
+            let change = stage.overlay_change_since(st.overlay_seen);
             st.overlay_seen = stage.overlay_version;
-            st.presenter.set_overlay(&st.gpu, stage.overlay());
+            match (change, stage.overlay()) {
+                (Some(change), Some(picture)) => {
+                    st.presenter.set_overlay_box(&st.gpu, picture, change)
+                }
+                (_, picture) => st.presenter.set_overlay(&st.gpu, picture),
+            }
         }
         if self.frames.is_multiple_of(self.render_every) {
             let (scene, cam, figure) = stage.frame_scene();
@@ -479,6 +485,12 @@ impl App {
         // The Key Mapping page takes a key first, then what it says each key does.
         let name = format!("{code:?}");
         if pressed && self.stage.capture_key(&name) {
+            return;
+        }
+        if code == KeyCode::F6 {
+            if pressed {
+                self.stage.toggle_nameplates();
+            }
             return;
         }
         match self.stage.action_for_key(&name) {

@@ -64,6 +64,8 @@ pub struct Ui<'a> {
     /// The small map and its frame are switched off.
     minimap_off: bool,
     floats: Vec<Float>,
+    pub(crate) plates: Vec<crate::plates::Plate>,
+    slots_above_bar: bool,
     /// How many portraits the HUD shows.
     hud_party: usize,
     /// The game is paused, with the box at the top right if something paused it.
@@ -220,6 +222,8 @@ impl<'a> Ui<'a> {
             notices: Vec::new(),
             minimap_off: false,
             floats: Vec::new(),
+            plates: Vec::new(),
+            slots_above_bar: false,
             hud_party: 1,
             paused: false,
             solo: false,
@@ -920,7 +924,12 @@ impl<'a> Ui<'a> {
     ) -> Option<Image> {
         self.hud_party = party.len();
         let mut gui = self.gui(HUD_GUI)?;
-        place_hud(&mut gui.panel, self.width, self.target_at);
+        place_hud(
+            &mut gui.panel,
+            self.width,
+            self.target_at,
+            self.slots_above_bar,
+        );
         self.measure_for_hud();
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         let mut patches: HashMap<String, Patch> = HashMap::new();
@@ -967,7 +976,8 @@ impl<'a> Ui<'a> {
                     .entry("LBL_ACTIONDESC".to_string())
                     .or_default()
                     .text = Some(action.to_string());
-                if self.target_at.is_none() {
+                // The target's plate is its bar, with a frame.
+                if self.target_at.is_none() || self.plates.iter().any(|p| p.framed) {
                     for tag in ["LBL_NAMEBG", "LBL_NAME", "LBL_HEALTHBG", "PB_HEALTH"] {
                         hide(&mut patches, tag.to_string());
                     }
@@ -1210,6 +1220,20 @@ impl<'a> Ui<'a> {
     }
 
     /// The words rising over people in a fight.
+    /// The plates last given, for a test.
+    pub fn plates(&self) -> &[crate::plates::Plate] {
+        &self.plates
+    }
+
+    /// The slots of a target over its bar, and not under it.
+    pub fn set_slots_above_bar(&mut self, above: bool) {
+        self.slots_above_bar = above;
+    }
+
+    pub fn set_plates(&mut self, plates: Vec<crate::plates::Plate>) {
+        self.plates = plates;
+    }
+
     pub fn set_floats(&mut self, floats: Vec<Float>) {
         self.floats = floats;
     }
@@ -1232,7 +1256,12 @@ impl<'a> Ui<'a> {
     /// What the HUD has at a point of the layout: one of its menu buttons, or `BTN_ACTION0`.
     pub fn hud_hit(&mut self, x: f32, y: f32) -> Option<String> {
         let mut gui = self.gui(HUD_GUI)?;
-        place_hud(&mut gui.panel, self.width, self.target_at);
+        place_hud(
+            &mut gui.panel,
+            self.width,
+            self.target_at,
+            self.slots_above_bar,
+        );
         let shown = |tag: &str| match tag {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
             "BTN_TARGET0" | "BTN_TARGETUP0" | "BTN_TARGETDOWN0" => {
@@ -1280,7 +1309,12 @@ impl<'a> Ui<'a> {
     /// The layout point in the middle of a HUD control.
     pub fn hud_point(&mut self, tag: &str) -> Option<(f32, f32)> {
         let mut gui = self.gui(HUD_GUI)?;
-        place_hud(&mut gui.panel, self.width, self.target_at);
+        place_hud(
+            &mut gui.panel,
+            self.width,
+            self.target_at,
+            self.slots_above_bar,
+        );
         let e = &gui.find(tag)?.extent;
         Some((
             e.left as f32 + e.width as f32 / 2.0,
@@ -1528,7 +1562,7 @@ const HUD_BUTTONS: [&str; 36] = [
 /// Lay the HUD's file over a screen `width` units wide and 480 high, keeping its proportions: the left half stays at the
 /// left and the right half at the right. **Assumed:** the game keeps these at their pixel size, which at 1080p is smaller
 /// than this. The target's name bar goes over the target.
-fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>) {
+fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>, slots_above: bool) {
     let k = SCREEN.1 as f32 / HUD_FILE_SIZE.1 as f32;
     let scale = |v: i32| (v as f32 * k).round() as i32;
     for c in &mut panel.children {
@@ -1566,7 +1600,7 @@ fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>) {
     for c in &mut panel.children {
         if c.tag.starts_with("BTN_TARGET") || c.tag.starts_with("LBL_TARGET") {
             c.extent.left += x - bar / 2;
-            c.extent.top += y - up;
+            c.extent.top += y - up - if slots_above { SLOTS_UP } else { 0 };
         }
     }
 }
@@ -1578,6 +1612,8 @@ const BAR_GAP: i32 = 1;
 /// A target's bar with no slots, and with them.
 pub const TARGET_BAR_HIGH: i32 = BAR_NAME_HIGH + BAR_HEALTH_HIGH;
 pub const TARGET_BAR_AND_SLOTS_HIGH: i32 = TARGET_BAR_HIGH + BAR_GAP + 47;
+/// From under the bar to over it. A plate stays where it is when it becomes the target, or the cursor on it would lose it.
+const SLOTS_UP: i32 = TARGET_BAR_AND_SLOTS_HIGH + BAR_GAP;
 
 /// Spread a 640-wide HUD over a wider screen. The left side stays, the party and the map keep their distance from
 /// the right edge, and the action slot and the notice icons stay centred.

@@ -20,6 +20,8 @@ mod host;
 mod items;
 mod journal;
 mod k2feats;
+mod labels;
+pub use labels::ObjectLabel;
 mod keymap;
 mod levelup;
 mod minigame;

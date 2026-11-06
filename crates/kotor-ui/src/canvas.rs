@@ -238,6 +238,17 @@ impl Canvas {
         c
     }
 
+    /// More drawing on a picture, with `scale` pixels to a layout unit.
+    pub fn over(image: Image, scale: f32) -> Canvas {
+        Canvas {
+            width: image.width,
+            height: image.height,
+            scale,
+            scale_x: scale,
+            rgba: image.rgba,
+        }
+    }
+
     fn to_pixels(&self, x: i32, y: i32, w: i32, h: i32) -> [i32; 4] {
         let across = |v: i32| (v as f32 * self.scale_x).round() as i32;
         let down = |v: i32| (v as f32 * self.scale).round() as i32;
