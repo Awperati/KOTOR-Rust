@@ -2365,6 +2365,93 @@ fn quest_items_lists_what_is_carried_for_a_quest() {
 }
 
 #[test]
+fn the_upgrade_bench_puts_a_crystal_in_a_lightsaber() {
+    let Some((mut s, _)) = in_game("bench") else {
+        return;
+    };
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let saber = w.spawn_item("g_w_lghtsbr01");
+    let crystal = w.spawn_item("g_w_sbrcrstl01");
+    w.carry(pc, saber);
+    w.carry(pc, crystal);
+    assert_eq!(w.bench_kind(saber), Some(kotor_game::BenchKind::Lightsaber));
+    let before = w.item_properties(saber);
+
+    // A script opens it: only the kind with something to upgrade can be chosen.
+    s.game.world.upgrade_screen = true;
+    s.update(DT);
+    assert_eq!(s.menu_name(), "bench_kinds");
+    press(&mut s, "BTN_UPGRADEITEMS");
+    assert_eq!(s.menu_name(), "bench_kinds", "no kind chosen yet");
+    press(&mut s, "BTN_MELEE");
+    press(&mut s, "BTN_UPGRADEITEMS");
+    assert_eq!(s.menu_name(), "bench_kinds", "nothing of that kind");
+    press(&mut s, "BTN_LIGHTSABER");
+    press(&mut s, "BTN_UPGRADEITEMS");
+    assert_eq!(s.menu_name(), "bench_items");
+
+    // The lightsaber, then a slot, then the crystal in its list.
+    let row = s.menu_pixel("LB_ITEMS", Some(0), SIZE).unwrap();
+    s.hover(row, SIZE);
+    s.click(row, SIZE);
+    press(&mut s, "BTN_UPGRADEITEM");
+    assert_eq!(s.menu_name(), "bench");
+    let (scene, _, alone) = s.frame_scene();
+    assert!(alone);
+    assert!(!scene.meshes.is_empty(), "the item in its hole");
+    press(&mut s, "BTN_UPGRADE41");
+    let row = s.menu_pixel("LB_ITEMS", Some(1), SIZE).unwrap();
+    s.hover(row, SIZE);
+    s.click(row, SIZE);
+
+    // Cancel changes nothing.
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "bench_items");
+    assert!(s.game.world.carried(pc).contains(&crystal));
+    assert!(s.game.world.object(saber).unwrap().upgrades.is_empty());
+
+    // Assemble does: the crystal leaves the bag, and the property that waited for it is listed.
+    press(&mut s, "BTN_UPGRADEITEM");
+    press(&mut s, "BTN_UPGRADE41");
+    let row = s.menu_pixel("LB_ITEMS", Some(1), SIZE).unwrap();
+    s.hover(row, SIZE);
+    s.click(row, SIZE);
+    press(&mut s, "BTN_ASSEMBLE");
+    assert_eq!(s.menu_name(), "bench_items");
+    assert!(!s.game.world.carried(pc).contains(&crystal));
+    assert_eq!(
+        s.game.world.object(saber).unwrap().upgrades.get(&0),
+        Some(&0)
+    );
+    assert!(s.game.world.item_properties(saber).len() > before.len());
+
+    // A save keeps it.
+    let dir = temp_place("bench_save");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("b.sav");
+    s.game.world.save_to(&path, "bench").unwrap();
+    s.game.world.load_from(&path).unwrap();
+    let w = &s.game.world;
+    let found = w.objects.values().any(|o| o.upgrades.get(&0) == Some(&0));
+    assert!(found);
+
+    // Taking it out gives it back.
+    let saber = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| !o.upgrades.is_empty())
+        .map(|o| o.id)
+        .unwrap();
+    let pc = s.game.world.pc;
+    s.game.world.remove_upgrade(pc, saber, 0);
+    let back = s.game.world.bench_choices(pc, 0);
+    assert_eq!(back.len(), 1);
+}
+
+#[test]
 fn the_party_screens_ok_asks_first() {
     let Some((mut s, _)) = in_game("party_ok") else {
         return;

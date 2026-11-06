@@ -149,7 +149,7 @@ impl Stage {
         if let Some((scene, camera)) = self.main_scene_now() {
             return (scene, camera, true);
         }
-        if let Some((scene, camera)) = self.chargen_scene() {
+        if let Some((scene, camera)) = self.chargen_scene().or_else(|| self.bench_scene()) {
             return (scene, camera, true);
         }
         match self.figure_camera() {

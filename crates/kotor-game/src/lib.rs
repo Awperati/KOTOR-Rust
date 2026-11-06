@@ -22,6 +22,7 @@ mod rules;
 mod save;
 mod sheet;
 mod tutorial;
+mod workbench;
 mod world;
 
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
@@ -54,4 +55,5 @@ pub use play::{
 pub use rules::{save_passes, skill_passes, Check, LevelUp, Save};
 pub use save::{read_save_info, SaveInfo, SAVE_VERSION};
 pub use sheet::{CannotUse, Sheet};
+pub use workbench::BenchKind;
 pub use world::{Action, Delayed, DoorState, EffectRec, Kind, ObjId, Object, World};

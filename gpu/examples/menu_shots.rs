@@ -244,6 +244,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(o) = quest_item.and_then(|i| s.game.world.object_mut(i)) {
         o.plot = true;
     }
+    let pc = s.game.world.pc;
+    let saber = s.game.world.spawn_item("g_w_lghtsbr01");
+    let crystal = s.game.world.spawn_item("g_w_sbrcrstl01");
+    s.game.world.carry(pc, saber);
+    s.game.world.carry(pc, crystal);
+    s.escape();
+    s.open_bench();
+    click(&mut s, "BTN_LIGHTSABER", None);
+    shot(&mut gpu, &mut s, "bench_kinds", &out);
+    click(&mut s, "BTN_UPGRADEITEMS", None);
+    click(&mut s, "LB_ITEMS", Some(0));
+    shot(&mut gpu, &mut s, "bench_items", &out);
+    click(&mut s, "BTN_UPGRADEITEM", None);
+    shot(&mut gpu, &mut s, "bench", &out);
+    click(&mut s, "BTN_UPGRADE41", None);
+    shot(&mut gpu, &mut s, "bench_list", &out);
+    click(&mut s, "LB_ITEMS", Some(1));
+    shot(&mut gpu, &mut s, "bench_chosen", &out);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_BACK", None);
+    s.open_journal();
     click(&mut s, "BTN_QUESTITEMS", None);
     click(&mut s, "LB_ITEMS", Some(0));
     shot(&mut gpu, &mut s, "quest_items", &out);

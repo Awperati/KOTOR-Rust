@@ -33,6 +33,8 @@ mod notices;
 mod optionpages;
 #[path = "partyscreen.rs"]
 mod partyscreen;
+#[path = "workbenchscreen.rs"]
+mod workbenchscreen;
 
 /// Longest name a save can be given, and the characters the interface font has.
 const SAVE_NAME_MAX: usize = 32;
@@ -172,6 +174,10 @@ pub(super) enum Screen {
     Messages,
     /// `questitem.gui`, over the journal or the inventory.
     QuestItems,
+    /// `upgradesel.gui`, `upgradeitems.gui` and `upgrade.gui`.
+    BenchKinds,
+    BenchItems,
+    Bench,
     /// Making a character: `classsel`, `maincg` with its panels, `portcust`, `abchrgen`, `name`.
     ChargenClass,
     ChargenMain,
@@ -387,6 +393,9 @@ impl Screen {
             Screen::Abilities => "abilities",
             Screen::Messages => "messages",
             Screen::QuestItems => "quest_items",
+            Screen::BenchKinds => "bench_kinds",
+            Screen::BenchItems => "bench_items",
+            Screen::Bench => "bench",
             Screen::ChargenClass => "chargen_class",
             Screen::ChargenMain => "chargen",
             Screen::ChargenPortrait => "chargen_portrait",
@@ -486,6 +495,9 @@ pub(super) struct Menus {
     abilities_tab: usize,
     messages_feedback: bool,
     message_back: usize,
+    /// The upgrade bench as it is being used, and how far the item on it has turned.
+    bench: workbenchscreen::Draft,
+    bench_turn: f32,
     /// New Game goes through the character's screens, the one being made, and the one made.
     chargen_on: bool,
     chargen: Option<chargenscreen::Draft>,
@@ -681,6 +693,9 @@ impl Stage {
             Screen::Abilities => self.abilities_view(),
             Screen::Messages => self.messages_view(),
             Screen::QuestItems => self.quest_items_view(),
+            Screen::BenchKinds => self.bench_kinds_view(),
+            Screen::BenchItems => self.bench_items_view(),
+            Screen::Bench => self.bench_view(),
             Screen::ChargenClass => self.chargen_class_view(),
             Screen::ChargenMain => self.chargen_main_view(),
             Screen::ChargenPortrait => self.chargen_portrait_view(),
@@ -1644,6 +1659,7 @@ impl Stage {
                 match self.top() {
                     Some(Screen::Inventory | Screen::Container) => self.use_listed_item(row),
                     Some(Screen::Feedback) => self.feedback_row(row),
+                    Some(Screen::BenchItems | Screen::Bench) => self.bench_row(row),
                     Some(Screen::KeyMap) => self.key_row(row),
                     Some(Screen::Equip) => {
                         if self.menus.slot.is_some() {
@@ -1825,6 +1841,9 @@ impl Stage {
                 self.change_member(1)
             }
             (Screen::Party, _) => self.party_press(tag),
+            (Screen::BenchKinds | Screen::BenchItems | Screen::Bench, _) => {
+                self.bench_press(top, tag)
+            }
             (
                 Screen::ChargenClass
                 | Screen::ChargenMain

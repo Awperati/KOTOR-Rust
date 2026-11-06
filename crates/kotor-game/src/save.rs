@@ -522,6 +522,12 @@ impl World {
             ("NaturalAC", Value::Int(o.natural_ac)),
             ("Perception", Value::Float(o.perception)),
             ("Challenge", Value::Float(o.challenge_rating)),
+            (
+                "Upgrades",
+                list_of(o.upgrades.iter(), |(slot, row)| {
+                    st(vec![("Slot", Value::Int(*slot)), ("Row", Value::Int(*row))])
+                }),
+            ),
             ("XP", Value::Int(o.xp)),
             ("Faction", Value::Int(o.faction)),
             ("Race", Value::Int(o.race)),
@@ -747,6 +753,12 @@ impl World {
             o.natural_ac = e.int("NaturalAC").unwrap_or(0) as i32;
             o.perception = e.float("Perception").unwrap_or(20.0) as f32;
             o.challenge_rating = e.float("Challenge").unwrap_or(1.0) as f32;
+            o.upgrades = e
+                .list("Upgrades")
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|x| Some((x.int("Slot")? as i32, x.int("Row")? as i32)))
+                .collect();
             o.xp = e.int("XP").unwrap_or(0) as i32;
             o.faction = e.int("Faction").unwrap_or(0) as i32;
             o.race = e.int("Race").unwrap_or(0) as i32;

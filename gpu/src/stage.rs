@@ -490,6 +490,8 @@ impl Stage {
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.main_scene_tick(dt);
         self.chargen_mist_tick(dt);
+        self.bench_tick(dt);
+        self.take_bench_request();
         self.take_party_request();
         self.notices_tick();
         if self.menu_open() && !self.container_up() {

@@ -62,7 +62,6 @@ const PRESENTATION: &[&str] = &[
     "SetPlanetSelectable",
     "SetPlanetAvailable",
     "SetLightsaberPowered",
-    "ShowUpgradeScreen",
     "OpenStore",
     "EndGame",
     "SetEncounterActive",
@@ -1221,6 +1220,11 @@ impl Host for Adapter<'_> {
             }
             // **Assumption:** until there is a screen, the members a script forces join and the screen counts as closed.
             // `k_pend_traskdl29` adds Trask this way and `k_pend_reset` carries on from there.
+            "ShowUpgradeScreen" => {
+                self.record(name, args);
+                self.world.upgrade_screen = self.world.party_screen;
+                return Ok(None);
+            }
             "ShowPartySelectionGUI" => {
                 self.record(name, args);
                 if self.world.party_screen {

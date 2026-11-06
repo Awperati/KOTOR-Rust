@@ -129,6 +129,8 @@ pub struct Object {
     pub equipped: BTreeMap<i32, ObjId>,
     /// Items: the `baseitems.2da` row.
     pub base_item: i32,
+    /// Items: the `upgrade.2da` row in each slot of the upgrade bench.
+    pub upgrades: BTreeMap<i32, i32>,
     pub xp: i32,
     /// `repute.2da` row (`FactionID`), `racialtypes.2da` row (`Race`) and `SubraceIndex`.
     pub faction: i32,
@@ -250,6 +252,7 @@ impl Object {
             droppable: false,
             stack: 1,
             plot: false,
+            upgrades: BTreeMap::new(),
             alignment: 50,
         }
     }
@@ -361,6 +364,8 @@ pub struct World {
     /// `ShowPartySelectionGUI` waits for a screen, instead of bringing the forced members straight away.
     pub party_screen: bool,
     pub party_request: Option<crate::party::PartyRequest>,
+    /// A script has asked for the upgrade bench.
+    pub upgrade_screen: bool,
     /// What has been seen of each map, by its picture: `SEEN_COLS` by `SEEN_ROWS` cells.
     pub explored: BTreeMap<String, Vec<bool>>,
     /// Rows of `tutorial.2da` that have come up in this game, and those scripts have asked for.
@@ -529,6 +534,7 @@ impl World {
             hold_levels: false,
             party_screen: false,
             party_request: None,
+            upgrade_screen: false,
             explored: BTreeMap::new(),
             tutorial_seen: BTreeSet::new(),
             tutorial_requests: Vec::new(),
