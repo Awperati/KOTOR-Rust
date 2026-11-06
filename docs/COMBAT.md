@@ -54,3 +54,10 @@ All sizes below are my assumptions, not measured from the game.
 
 Bug 32 (the dark Jedi fight): nothing hangs. Before `end_door16` is opened the Jedi and the Apprentice swap blows at 1 hit point each, because scripts hold them (`k_pend_cut19`, `k_pend_cut20`), so the fight looks endless. Opening the door runs `end_cut04`, a scripted 38 s sequence: pause 6.7 s, release of the Jedi's hit point at 17.8 s, the Apprentice dies at 21 s, the Jedi at 23 s, then waits and camera holds to 38 s. It needs no click (`the_jedi_duel_ends_without_any_click`). A fixed bound on the duel changed nothing, so I took it out.
 Frames: `docs/shots/combat` at 720p and 2160p, made by `gpu/examples/combat_shots.rs`.
+
+## Immunity and weapon sounds (GAPS row 9 leftovers, bug 33)
+
+- `EffectImmunity(type)` stops the effects that `IMMUNITY_TYPE_*` (from the install's `nwscript.nss`) names: stun, paralysis, sleep, confusion, fear, entangle, knockdown, death, poison, movement slow and the stat decreases. **Assumed:** droid stun counts as stun, horror as fear, choke as paralysis, a push as knockdown. `GetIsLinkImmune` is true when the target is immune to the effect or any linked one. Test: `tests/damage_types.rs`.
+- Melee swing and blow sounds use the item's `weaponmattype` in `baseitems.2da` as the `weaponsounds.2da` row. A stun baton was playing a blade (label guess), a long sword a small blade. Test: `gpu/tests/stage.rs`. Not known: what bug 33 meant for blasters. Their sounds are read from `ammunitiontypes.2da` and were not changed.
+- Live fight, `gpu/examples/resist_shots.rs`: a blaster rifle against a plain soldier did 4.9 a hit over 12 hits, against one with 75% blaster immunity 1.6 over 7.
+
