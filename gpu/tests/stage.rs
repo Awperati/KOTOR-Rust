@@ -12,6 +12,47 @@ fn stage() -> Option<Stage> {
     Some(Stage::open("end_m01aa", true).unwrap())
 }
 
+#[test]
+fn a_race_draws_from_its_camera_and_the_space_key_shifts() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open("tar_m03mg", true).unwrap();
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    // The lights take 5 s, with the clock and the meter of the camera's model in a frame's scene.
+    for _ in 0..(5.2 / DT) as usize {
+        s.update(DT);
+    }
+    assert_eq!(s.game.world.global_numbers["MIN_RACE_GEAR"], 0);
+    let (scene, camera, figure) = s.frame_scene();
+    assert!(!figure, "the rooms are there too");
+    assert!(scene.meshes.iter().any(|m| m
+        .texture
+        .as_deref()
+        .is_some_and(|t| t.eq_ignore_ascii_case("LMG_Numbers"))));
+    // Behind the bike, and looking along the track.
+    assert!(
+        camera.eye[1] < 0.0 && camera.target[1] > camera.eye[1],
+        "{camera:?}"
+    );
+    assert!(s.overlay().is_none(), "no HUD over the race's own");
+    s.space_key();
+    for _ in 0..30 {
+        s.update(DT);
+    }
+    assert_eq!(s.game.world.global_numbers["MIN_RACE_GEAR"], 1);
+    let game = s.game.world.race.as_ref().unwrap();
+    assert!(game.speed > 10.0, "{}", game.speed);
+    // Rightward keys take it right.
+    s.steer = (0.0, 1.0, false);
+    for _ in 0..30 {
+        s.update(DT);
+    }
+    let x = s.game.world.race.as_ref().unwrap().position()[0];
+    assert!(x > 100.5, "{x}");
+}
+
 /// Finish whatever conversation is on, taking the first reply.
 fn play_out(s: &mut Stage, cues: &mut Vec<Cue>) {
     for _ in 0..6000 {

@@ -326,6 +326,8 @@ pub struct World {
     pub npc_slots: HashMap<i32, ObjId>,
     /// A module change requested by a door or trigger: (module, waypoint tag). Carried out by `step`.
     pub transition_request: Option<(String, String)>,
+    /// The swoop race, in a module that holds one.
+    pub race: Option<crate::swoop::Race>,
     pub(crate) inv_cursor: HashMap<ObjId, usize>,
     /// Effects created so far; a handle is the index plus one (0 is the invalid effect).
     pub effects: Vec<EffectRec>,
@@ -545,6 +547,7 @@ impl World {
             party: Vec::new(),
             npc_slots: HashMap::new(),
             transition_request: None,
+            race: None,
             inv_cursor: HashMap::new(),
             effects: Vec::new(),
             effect_cursor: HashMap::new(),
@@ -954,6 +957,7 @@ impl World {
             }
         }
         let are = Gff::parse(&self.inst.read(&area_name, ResType::ARE)?)?;
+        self.load_race(&are, &area_name)?;
         let area = self.add(Kind::Area, &area_name);
         self.area = area;
         let area_label = are

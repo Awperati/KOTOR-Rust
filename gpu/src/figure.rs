@@ -248,6 +248,9 @@ impl Stage {
         if let Some((scene, camera)) = self.main_scene_now() {
             return (scene, camera, true);
         }
+        if let Some((scene, camera)) = self.race_scene() {
+            return (scene, camera, false);
+        }
         if let Some((scene, camera)) = self
             .chargen_scene()
             .or_else(|| self.bench_scene())

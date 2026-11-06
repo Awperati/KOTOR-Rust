@@ -17,6 +17,8 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
+#[path = "racescreen.rs"]
+mod racescreen;
 pub use menus::{about_words, default_saves_dir, default_settings_file, Settings};
 
 type Mat = [[f32; 4]; 4];
@@ -548,6 +550,7 @@ impl Stage {
             return std::mem::take(&mut self.cues);
         }
         self.turret_tick(dt);
+        self.race_input();
         let (ahead, right, walk) = self.steer;
         let (cos, sin) = (self.yaw.cos(), self.yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
@@ -1806,6 +1809,14 @@ impl Stage {
             }
             return;
         }
+        // A race has its clock and meter on its camera's model.
+        if self.game.world.in_race() {
+            if self.overlay.take().is_some() {
+                self.overlay_key.clear();
+                self.overlay_version += 1;
+            }
+            return;
+        }
         self.refresh_game_overlay();
     }
 
@@ -1984,8 +1995,13 @@ impl Stage {
         let w = &self.game.world;
         let here = self.pc_position();
         let view = w.dialogue_view();
+        let race = w.race.as_ref().map_or("-".to_string(), |g| {
+            let at = g.position();
+            let gear = w.global_numbers.get("MIN_RACE_GEAR").copied().unwrap_or(-6);
+            format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
+        });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} race={race} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

@@ -74,6 +74,75 @@ fn a_thing_with_no_floor_under_it_can_be_used_from_beside_it() {
 }
 
 #[test]
+fn every_minigame_in_the_install_reads_whole() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    for (module, area, kind, enemies, obstacles) in [
+        ("tar_m03mg", "m03mg", 1, 29, 22),
+        ("manm26mg", "m26mg", 1, -1, -1),
+        ("tat_m17mg", "m17mg", 1, -1, -1),
+        ("m12ab", "m12ab", 2, -1, -1),
+    ] {
+        inst.load_module(module).unwrap();
+        let are =
+            kotor_gff::Gff::parse(&inst.read(area, kotor_core::ResType::ARE).unwrap()).unwrap();
+        let file = kotor_game::MiniGameFile::of_area(&are).unwrap();
+        assert_eq!(file.kind, kind, "{module}");
+        assert!(!file.player.track.is_empty(), "{module}");
+        assert!(!file.player.models.is_empty(), "{module}");
+        if enemies >= 0 {
+            assert_eq!(file.enemies.len(), enemies as usize, "{module}");
+            assert_eq!(file.obstacles.len(), obstacles as usize, "{module}");
+        }
+    }
+}
+
+#[test]
+fn the_swoop_race_runs_on_its_scripts_to_the_finish() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    w.transition("tar_m03mg", "").unwrap();
+    let game = w.race.as_ref().unwrap();
+    assert_eq!(game.riders.len(), 29);
+    assert_eq!(game.obstacles.len(), 22);
+    // The layout's track, and its hook.
+    assert_eq!(game.position(), [100.0, 0.0, 2.0]);
+    let mut g = kotor_game::Game::new(w);
+    let mut p = kotor_game::Autopilot::new();
+    p.run_steps(&mut g, 60);
+    assert_eq!(
+        g.world.race.as_ref().unwrap().speed,
+        0.0,
+        "the lights are on"
+    );
+    let mut fastest = 0.0f32;
+    for _ in 0..60 * 120 {
+        p.run_steps(&mut g, 1);
+        if g.world.module != "tar_m03mg" {
+            break;
+        }
+        fastest = fastest.max(g.world.race.as_ref().unwrap().speed);
+    }
+    let w = &g.world;
+    assert!(w.errors.is_empty(), "{:?}", w.errors);
+    assert_eq!(w.module, "tar_m03af");
+    assert!(!w.in_race());
+    assert_eq!(w.global_booleans.get("TAR_SWOOP_RUN"), Some(&true));
+    // The reference video's rider took 23.63 s, shifting late and missing pads.
+    let seconds = w.global_numbers["TAR_SWOOP_SEC"] + 60 * w.global_numbers["TAR_SWOOP_MIN"];
+    assert!((18..=30).contains(&seconds), "{seconds} s");
+    assert!(fastest > 210.0, "{fastest}");
+}
+
+#[test]
 fn someone_beside_a_table_can_still_walk_away() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

@@ -1,6 +1,8 @@
 # Minigames: a brief for the job
 
-**The turret is built:** `crates/kotor-game/src/minigame.rs` and `gpu/src/turretscreen.rs`, live in `drive_turret.ps1`, compared with the video at 19,533 s. The rest of this page is the swoop race, `Type` 1, which is not. The swoop race stops the Taris story for anyone, as `tar_m03af`'s `k_ptar_swooprun` leads to `tar_m03mg` and I found no other way on. See `docs/GAPS.md`, number 1.
+**The turret is built:** `crates/kotor-game/src/minigame.rs` and `gpu/src/turretscreen.rs`, live in `drive_turret.ps1`, compared with the video at 19,533 s.
+
+**Taris's swoop race runs and can be played:** `crates/kotor-game/src/swoop.rs` and `gpu/src/racescreen.rs`, live in `drive_race.ps1`. Space shifts, A and D steer. Manaan's and Tatooine's are the same kind and have not been run. See `docs/GAPS.md`, number 1.
 
 ## What exists in the install
 
@@ -37,17 +39,38 @@ From `MiniGame` in the `.are`, as read from `m12ab` and `m26mg`:
 | Health | `GetHitPoints`, `SetMaxHitPoints`, `GetIsInvulnerable`, `StartInvulnerability`, `AdjustFollowerHitPoints` |
 | Sound and camera | `SetSoundVolume`, `GetCameraFarClip`, `SetSpeedBlurEffect`, `PlayAnimation` |
 
-Taris's story reads `TAR_SWOOP_ACCEL` around the race, in `k_ptar_swooprun`. How a race result gets back to the story is not read yet.
+Taris's story reads `TAR_SWOOP_ACCEL` around the race, in `k_ptar_swooprun`. A race's result goes back in `TAR_SWOOP_MIN`, `TAR_SWOOP_SEC` and `TAR_SWOOP_MSEC`, and `TAR_SWOOP_RUN` is set. `heartbeat` compares the time with `TAR_SWOOP_*_BEAT`.
 
-## Suggested order
+## How the race works, as read and measured
 
-1. Parse the `MiniGame` struct whole, into `kotor-game`, with a test over all four.
-2. A headless race: the player along its `Track`, obstacles by their models, a finish time, with no drawing. The pilot can then pass through it, which opens `tar_m08aa` and the way off Taris for testing.
-3. Draw it in `gpu`: the track model, a chase camera from those clip and angle numbers, speed blur.
-4. The turret, `Type` 2, with the mouse axes and gun banks.
+Its layout has the track and each pad and buoy, under `trackcount` and `obstaclecount`. The track is `m03mg_TR01` at x 95, whose `modelhook` starts at x 5, height 2, and whose `track` animation runs 4,980 units in 48 s. The bike's speed is that animation's rate, with 100 as its own rate from `MovementPerSec`.
 
-The pilot needs step 2 only. Everything past the race is unreached until then.
+`onfire` holds the gears. Each shift asks for the speed at which the next one starts. `acc` is `TAR_SWOOP_ACCEL` over 10, or 1 at 0.
+
+| Shift to gear | Allowed above | Lowest speed | Highest | Acceleration |
+|---|---|---|---|---|
+| 1 | Go | 35 | 70 | 20 x acc |
+| 2 | 60 | 60 | 120 | 8 x acc |
+| 3 | 100 | 100 | 190 | 6 x acc |
+| 4 | 150 | 150 | 225 | 3 x acc |
+| 5 | 210 | 210 | 420 | 2 x acc |
+
+A pad: speed x 1.05 and acceleration x 1.1, unless in gear 5 or the bike is briefly invulnerable. A buoy: speed x 0.7, unless not yet moving. It finishes past y 3,800.
+
+What the reference video shows, from its timer and meter, 14,681 to 14,705 s:
+
+- The rider finishes in 23.63 s and shifts at about 3.8, 6.6, 10.6 and 16.2 s, with the meter full.
+- The meter shows the script's `meter` number plus 2 chevrons, up to the red `Sp` at 9. Against `s / 60 x 8` in gear 1 at 20 a second it agrees at every reading from 0.42 s to 3.62 s.
+- **A shift does not lift the bike to its lowest speed.** The meter starts from empty at 0 s, with a lowest speed of 35. That number only stops a bump taking it lower.
+- Speeds read off the meter over the race, added up, make 3,663. With the track's 1.0375 units for each point of speed that is 3,800, the finish.
+
+**Assumed, not measured:** the box a bike touches, how it steers across the track, and how a speed above the highest falls.
+
+## What is left of the race
+
+1. Its sounds and speed blur. The floor and the bike are brighter than the video's.
+2. Run Manaan's and Tatooine's.
 
 ## What I do not know
 
-How the game scores a race, what `DOF` means, and what `Bump_Plane` numbers mean. `Type` 1 as a swoop and `Type` 2 as a turret come from one area each and the models' names.
+What `DOF` means, and what `Bump_Plane` numbers mean. `Type` 1 as a swoop and `Type` 2 as a turret come from one area each and the models' names.

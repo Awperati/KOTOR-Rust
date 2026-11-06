@@ -211,6 +211,9 @@ impl Host for Adapter<'_> {
         if let Some(t) = self.world.trace.as_mut() {
             t.push(format!("{name}({args:?}) caller #{caller}"));
         }
+        if self.world.in_race() && name.starts_with("SWMG_") {
+            return Ok(self.world.swmg_race(name, caller, args));
+        }
         Ok(match name {
             // ---- numbers and strings
             "Random" => {
@@ -1412,6 +1415,11 @@ impl Host for Adapter<'_> {
                 Some(Value::Int(-1))
             }
             // The game clock is not modelled: a fixed time of day.
+            "GetTimeHour" | "GetTimeMinute" | "GetTimeSecond" | "GetTimeMillisecond"
+                if self.world.in_race() =>
+            {
+                self.world.race_clock(name).map(Value::Int)
+            }
             "GetTimeHour" | "GetTimeMinute" | "GetTimeSecond" | "GetTimeMillisecond" => {
                 self.default_hit(name);
                 Some(Value::Int(if name == "GetTimeHour" { 13 } else { 0 }))

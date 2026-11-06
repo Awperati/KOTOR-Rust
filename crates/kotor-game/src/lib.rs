@@ -29,6 +29,7 @@ mod rules;
 mod save;
 mod sheet;
 mod store;
+mod swoop;
 mod tutorial;
 mod workbench;
 mod world;
@@ -68,5 +69,9 @@ pub use rules::{save_passes, skill_passes, Check, LevelUp, Save};
 pub use save::{read_save_info, SaveInfo, SAVE_VERSION};
 pub use sheet::{CannotUse, Sheet};
 pub use store::{CannotTrade, StoreLine, StoreOpen};
+pub use swoop::{
+    FollowerFile, GunBankFile, HitBox, MiniGameFile, Obstacle, ObstacleFile, PlayerExtras, Race,
+    Rider,
+};
 pub use workbench::BenchKind;
 pub use world::{Action, Delayed, DoorState, EffectRec, Kind, ObjId, Object, World};

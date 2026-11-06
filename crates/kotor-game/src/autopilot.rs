@@ -227,6 +227,50 @@ impl Default for Autopilot {
     }
 }
 
+/// A race: shift when the meter is full, as the reference video's rider does, over the pads and round the buoys. A gear
+/// allows it lower, but pays less for each second in the next.
+fn drive_race(w: &mut World) {
+    const STEP: f32 = 1.0 / 60.0;
+    const SHIFT_ABOVE: [f32; 5] = [-1.0, 67.5, 105.0, 156.0, 217.5];
+    let gear = w.global_numbers.get("MIN_RACE_GEAR").copied().unwrap_or(-6);
+    let Some(game) = w.race.as_mut() else {
+        return;
+    };
+    game.fire = usize::try_from(gear)
+        .ok()
+        .and_then(|g| SHIFT_ABOVE.get(g))
+        .is_some_and(|above| game.speed > *above);
+    let at = game.position();
+    let ahead = game.speed * 1.2 + 10.0;
+    let radius = game.file.player.radius;
+    let buoy = game
+        .obstacles
+        .iter()
+        .map(|o| o.hit_box)
+        .filter(|b| b.centre[1] + b.half[1] + radius > at[1] && b.centre[1] - at[1] < ahead)
+        .find(|b| (b.centre[0] - at[0]).abs() < b.half[0] + radius + 2.0);
+    let pad = game
+        .riders
+        .iter()
+        .filter(|r| r.trigger && r.fell_at.is_none())
+        .map(|r| r.hit_box)
+        .filter(|b| b.centre[1] > at[1] && b.centre[1] - at[1] < ahead * 1.5)
+        .min_by(|a, b| a.centre[1].total_cmp(&b.centre[1]));
+    let middle = game.origin[0];
+    let wanted = match (buoy, pad) {
+        // Away from it, on the side with the more room.
+        (Some(b), _) => {
+            let room = b.half[0] + radius + 3.0;
+            b.centre[0] + if b.centre[0] > middle { -room } else { room }
+        }
+        (None, Some(p)) => p.centre[0],
+        (None, None) => at[0],
+    };
+    let speed_wanted = ((wanted - at[0]) * 3.0).clamp(-60.0, 60.0);
+    let push = game.lateral_accel.max(1.0) * STEP;
+    game.steer = ((speed_wanted - game.across_speed) / push).clamp(-1.0, 1.0);
+}
+
 impl Autopilot {
     pub fn new() -> Autopilot {
         Autopilot {
@@ -314,6 +358,10 @@ impl Autopilot {
             return;
         }
         let w = &mut g.world;
+        if w.in_race() {
+            drive_race(w);
+            return;
+        }
         self.spend_what_levels_give(w);
         // Two modules with only each other to go to would hold it for good: `tar_m04aa` and `tar_m05aa` did.
         if self.time - self.new_module_at > NEW_MODULE_SECONDS {

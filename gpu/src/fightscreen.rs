@@ -287,6 +287,9 @@ impl Stage {
     /// Space: goes on with a line or a container, or else pauses. It never pauses in a conversation, nor just after
     /// one: a player going through its lines presses once more than there are.
     pub fn space_key(&mut self) {
+        if !self.menu_open() && self.race_fire() {
+            return;
+        }
         let w = &self.game.world;
         if self.menu_open() || w.in_dialogue() || w.opened.is_some() {
             self.continue_line();

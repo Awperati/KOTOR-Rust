@@ -7,14 +7,27 @@ pub struct Room {
     pub position: [f32; 3],
 }
 
-/// An area layout: where each room model sits. Other sections (door hooks,
-/// tracks, obstacles) are kept as raw line counts only for now.
+/// An area layout: where each room model sits, and each track and obstacle of a minigame. Door hooks are a count.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
     pub rooms: Vec<Room>,
     pub door_hooks: usize,
     pub tracks: usize,
     pub obstacles: usize,
+    pub track_places: Vec<Room>,
+    pub obstacle_places: Vec<Room>,
+}
+
+fn place(line: Option<&str>) -> Result<Room> {
+    let line = line.ok_or_else(|| Error::format("layout ends early"))?;
+    let p: Vec<&str> = line.split_whitespace().collect();
+    let model = p
+        .first()
+        .ok_or_else(|| Error::format("empty layout line"))?;
+    Ok(Room {
+        model: model.to_ascii_lowercase(),
+        position: floats(&p[1..])?,
+    })
 }
 
 fn floats(parts: &[&str]) -> Result<[f32; 3]> {
@@ -41,15 +54,7 @@ pub fn parse_lyt(data: &[u8]) -> Result<Layout> {
         match parts[0].to_ascii_lowercase().as_str() {
             "roomcount" => {
                 for _ in 0..count(&parts)? {
-                    let l = lines
-                        .next()
-                        .ok_or_else(|| Error::format("layout ends in rooms"))?;
-                    let p: Vec<&str> = l.split_whitespace().collect();
-                    let model = p.first().ok_or_else(|| Error::format("empty room line"))?;
-                    lay.rooms.push(Room {
-                        model: model.to_ascii_lowercase(),
-                        position: floats(&p[1..])?,
-                    });
+                    lay.rooms.push(place(lines.next())?);
                 }
             }
             "doorhookcount" => {
@@ -61,13 +66,13 @@ pub fn parse_lyt(data: &[u8]) -> Result<Layout> {
             "trackcount" => {
                 lay.tracks = count(&parts)?;
                 for _ in 0..lay.tracks {
-                    lines.next();
+                    lay.track_places.push(place(lines.next())?);
                 }
             }
             "obstaclecount" => {
                 lay.obstacles = count(&parts)?;
                 for _ in 0..lay.obstacles {
-                    lines.next();
+                    lay.obstacle_places.push(place(lines.next())?);
                 }
             }
             _ => {}

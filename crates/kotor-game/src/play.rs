@@ -598,6 +598,7 @@ impl World {
     pub fn step(&mut self, dt: f32) {
         self.tick(dt);
         self.update_minigame(dt);
+        self.update_race(dt);
         self.resume_conversation();
         self.update_doors(dt);
         let before = self.pc_mover.pos;
