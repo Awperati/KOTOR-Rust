@@ -6,6 +6,27 @@ It is 1920x1080 at 30 frames a second, not 4K despite its name, and 76,684 s lon
 
 Rules: the video and its frames stay out of git and out of the install. Frames are cached in `cache/ref`, which git ignores. Only written measurements come here. Drive E: reports "Full Repair Needed" and the owner said to leave it alone, so frames come from short seeks, each read once.
 
+## Chapters
+
+Read by eye from contact sheets of one frame every 5 minutes, so each time is good to about 5 minutes. The planets' order is this player's. `cache/ref/m60` holds a frame for every minute, named by the second.
+
+| From (s) | From (h:mm) | Where |
+|---|---|---|
+| 0 | 0:00 | Logo and opening |
+| 300 | 0:05 | Endar Spire |
+| 1,500 | 0:25 | Taris |
+| 12,000 | 3:20 | Taris, Sith base |
+| 14,700 | 4:05 | Taris, swoop race |
+| 18,000 | 5:00 | Leaving Taris |
+| 19,800 | 5:30 | Dantooine |
+| 31,200 | 8:40 | Tatooine |
+| 41,100 | 11:25 | Kashyyyk |
+| 46,800 | 13:00 | Manaan |
+| 57,900 | 16:05 | Leviathan |
+| 61,800 | 17:10 | Korriban |
+| 70,200 | 19:30 | Unknown World |
+| 73,800 | 20:30 | Star Forge, to the end |
+
 ## Measured
 
 | What | Value | Time in video | Method | Margin |
