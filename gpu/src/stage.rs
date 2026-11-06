@@ -44,6 +44,8 @@ const DOOR_CAMERA_MARGIN: f32 = 1.2;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
 /// combat reads.
 const ARMOUR_SLOT: i32 = 1;
+/// A fixed conversation camera nearer than this to the speaker is not used.
+const TOO_CLOSE_METRES: f32 = 1.2;
 const CLOTHES_LETTER: char = 'B';
 const RIGHT_HAND_SLOT: i32 = 4;
 const LEFT_HAND_SLOT: i32 = 5;
@@ -1004,6 +1006,23 @@ impl Stage {
             && self.beat_time >= said
     }
 
+    /// Whether a fixed camera stands closer to whoever owns the conversation than `TOO_CLOSE_METRES`. Carth's on the
+    /// Endar Spire (camera 2 of `end_m01ab`, 1.03 m away, 0.3 m from the console he stands behind) shows a ceiling and
+    /// the top of his head: the shot is replaced by `speaker_camera`.
+    ///
+    /// **Assumed:** that the original does not use such a tight shot, or shows the console differently (its near plane
+    /// is not known). The video has no frame of this talk to compare.
+    fn too_close_to_speaker(&self, c: &Camera) -> bool {
+        let w = &self.game.world;
+        w.dialogue_owner()
+            .filter(|o| *o != w.pc)
+            .and_then(|o| w.object(o))
+            .is_some_and(|o| {
+                o.kind == Kind::Creature
+                    && (o.position[0] - c.eye[0]).hypot(o.position[1] - c.eye[1]) < TOO_CLOSE_METRES
+            })
+    }
+
     /// A close shot of whoever owns the conversation while the line is said, then of the player while the replies wait.
     /// The reference video cuts like this, see `docs/REFERENCE.md`.
     ///
@@ -1137,6 +1156,7 @@ impl Stage {
     pub fn camera(&self) -> Camera {
         if let Some(c) = self
             .beat_camera()
+            .filter(|c| !self.too_close_to_speaker(c))
             .or_else(|| self.speaker_camera())
             .or_else(|| self.turret_camera())
         {
@@ -1887,11 +1907,18 @@ impl Stage {
             return turret;
         }
         let here = self.pc_position();
+        // A shot of someone far from the player (Carth on the comm) is a view from beside them.
+        let eye = self.camera().eye;
+        let speaker = self.game.world.dialogue_owner();
         for pose in self.game.poses() {
             match pose.kind {
                 Kind::Creature => {
-                    let (dx, dy) = (pose.position[0] - here[0], pose.position[1] - here[1]);
-                    if (dx * dx + dy * dy).sqrt() > DRAW_RANGE {
+                    let from = |at: [f32; 3]| {
+                        let (dx, dy) = (pose.position[0] - at[0], pose.position[1] - at[1]);
+                        (dx * dx + dy * dy).sqrt()
+                    };
+                    if from(here) > DRAW_RANGE && from(eye) > DRAW_RANGE && speaker != Some(pose.id)
+                    {
                         continue;
                     }
                     let Some(rig) = self.rig_of(pose.id) else {

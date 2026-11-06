@@ -2197,11 +2197,18 @@ impl Host for Adapter<'_> {
             // **Assumption:** a second for one with no duration; clip lengths are not known here.
             "ActionPlayAnimation" => {
                 self.record(name, args);
-                self.world.queue(caller, Action::Recorded(name.to_string()));
-                let seconds = float(args, 2);
+                let (animation, seconds) = (int(args, 0).unwrap_or(0), float(args, 2));
+                self.world
+                    .queue(caller, Action::Animate { animation, seconds });
+                // **Assumption:** a fire-and-forget clip (100 to 120) lasts a second and a half, a looping one a second.
+                let fallback = if (100..200).contains(&animation) {
+                    1.5
+                } else {
+                    1.0
+                };
                 self.world.queue(
                     caller,
-                    Action::Wait(if seconds > 0.0 { seconds } else { 1.0 }),
+                    Action::Wait(if seconds > 0.0 { seconds } else { fallback }),
                 );
                 None
             }

@@ -997,3 +997,60 @@ fn a_cutscene_advances_by_itself_when_its_clip_ends() {
         assert!((g - e).abs() < 0.15, "{gaps:?}");
     }
 }
+
+/// Item 40 of the owner's list of 6 Nov: Carth on the comm was shown as a ceiling and the top of his head over a console,
+/// because the module's own camera stands 1 m from him and he was not drawn so far from the player. He is now drawn and
+/// framed. With `FRAME_OUT` set to a path, the frame is written there as a PNG, and `FRAME_SIZE` (like 3840x2160) sizes it.
+#[test]
+fn carth_on_the_comm_is_in_frame() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open("end_m01ab", true).unwrap();
+    for f in 0..200 {
+        s.update(DT);
+        if !(s.game.world.in_dialogue() && f > 40) {
+            continue;
+        }
+        let w = &s.game.world;
+        let owner = w.object(w.dialogue_owner().unwrap()).unwrap();
+        assert_eq!(owner.tag, "Carth");
+        let owner_at = owner.position;
+        let cam = s.camera();
+        let from = (owner_at[0] - cam.eye[0]).hypot(owner_at[1] - cam.eye[1]);
+        assert!(from > 1.2, "the camera is {from} m from him");
+        // His head is in the view: ahead of the camera and not above or below the middle of it.
+        let (ahead, up) = (
+            (owner_at[0] - cam.eye[0]) * (cam.target[0] - cam.eye[0])
+                + (owner_at[1] - cam.eye[1]) * (cam.target[1] - cam.eye[1]),
+            (owner_at[2] + 1.6 - cam.eye[2]).atan2(from).to_degrees(),
+        );
+        assert!(ahead > 0.0 && up.abs() < 20.0, "{ahead} {up}");
+        let scene = s.dynamic_scene();
+        let drawn = scene.meshes.iter().any(|m| {
+            m.positions
+                .iter()
+                .any(|p| (p[0] - owner_at[0]).hypot(p[1] - owner_at[1]) < 0.6)
+        });
+        assert!(drawn, "Carth is drawn though he is far from the player");
+        if let Ok(path) = std::env::var("FRAME_OUT") {
+            let size = std::env::var("FRAME_SIZE").unwrap_or("1280x720".into());
+            let (w, h) = size.split_once('x').unwrap();
+            let (w, h) = (w.parse().unwrap(), h.parse().unwrap());
+            s.set_view((w, h));
+            s.update(DT);
+            let mut gpu = GpuRenderer::new(w, h).unwrap();
+            let still = s.static_scene().clone();
+            gpu.set_static_scene(&still, &mut |n| s.texture(n));
+            let moving = s.dynamic_scene();
+            let cam = s.camera();
+            let mut img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+            if let Some(o) = s.overlay() {
+                composite(&mut img, o);
+            }
+            std::fs::write(path, kotor_image::to_png(&img)).unwrap();
+        }
+        return;
+    }
+    panic!("no conversation began");
+}

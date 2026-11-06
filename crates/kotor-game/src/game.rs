@@ -22,6 +22,61 @@ pub struct Fade {
     pub weight: f32,
 }
 
+/// The clip an `ANIMATION_` constant of `nwscript.nss` asks for, and whether it loops. Those without a clip here are left out.
+///
+/// **Assumed:** the clip each constant stands for, from the constants' names and the clips the supermodels carry
+/// (`kotor-tool anims S_Male02`). `ANIMATION_LOOPING_WELD` (25) is a droid's own clip.
+fn script_clip(animation: i32) -> Option<(&'static str, bool)> {
+    Some(match animation {
+        0 => ("pause1", true),
+        1 => ("pause2", true),
+        2 => ("listen", true),
+        3 => ("meditate", true),
+        4 => ("kneel", true),
+        5 => ("tlknorm", true),
+        6 => ("tlkplead", true),
+        7 => ("tlkforce", true),
+        8 => ("tlklaugh", true),
+        9 => ("tlksad", true),
+        10 => ("getfromgnd", true),
+        11 => ("getfromtbl", true),
+        12 => ("pausetrd", true),
+        13 => ("pausepsn", true),
+        14 => ("flirt", true),
+        15 => ("usecomplp", true),
+        16 => ("dance", true),
+        17 => ("dance1", true),
+        18 => ("horror", true),
+        21 => ("spasm", true),
+        22 => ("sleep", true),
+        23 => ("prone", true),
+        24 => ("pause3", true),
+        25 => ("weld", true),
+        26 => ("dead", true),
+        27 => ("talkinj", true),
+        28 => ("listeninj", true),
+        29 => ("treatinjlp", true),
+        30 => ("dead1", true),
+        100 => ("hturnl", false),
+        101 => ("hturnr", false),
+        102 => ("pause2", false),
+        103 => ("pausetrd", false),
+        104 => ("salute", false),
+        105 => ("bow", false),
+        106 => ("greeting", false),
+        107 => ("taunt", false),
+        108..=110 => ("victory", false),
+        112 => ("inject", false),
+        113 => ("usecomp", false),
+        114 => ("persuade", false),
+        115 => ("activate", false),
+        116 => ("choke", true),
+        117 | 118 => ("throwsab", false),
+        120 => ("treatinj", false),
+        _ => return None,
+    })
+}
+
 /// How long one clip takes to give way to the next, for walking, running and standing.
 ///
 /// **Assumed:** the game's value. The owner saw no smoothing at all; a fifth of a second is a short, common blend.
@@ -50,6 +105,8 @@ pub struct Game {
     before_step: HashMap<ObjId, [f32; 3]>,
     /// Clips playing once over everything else but death, the one playing first: name and seconds left.
     once: HashMap<ObjId, Vec<(&'static str, f32)>>,
+    /// The looping clip a script put a creature in, until it moves.
+    scripted: HashMap<ObjId, &'static str>,
     /// Until what step a creature that fought keeps its combat stance.
     ready_until: HashMap<ObjId, u64>,
     log_seen: usize,
@@ -97,6 +154,7 @@ impl Game {
             before_step: HashMap::new(),
             once: HashMap::new(),
             ready_until: HashMap::new(),
+            scripted: HashMap::new(),
             log_seen: 0,
             names: HashMap::new(),
             headings: HashMap::new(),
@@ -148,6 +206,18 @@ impl Game {
         for (id, spell) in std::mem::take(&mut self.world.casts) {
             self.play_cast(id, spell);
         }
+        for (id, animation, seconds) in std::mem::take(&mut self.world.animations) {
+            match script_clip(animation) {
+                Some((name, true)) => {
+                    self.scripted.insert(id, name);
+                }
+                Some((name, false)) => {
+                    self.scripted.remove(&id);
+                    self.play_once(id, name, if seconds > 0.0 { seconds } else { 1.5 });
+                }
+                None => {}
+            }
+        }
         let pc = self.world.pc;
         let ids: Vec<ObjId> = self
             .world
@@ -175,6 +245,9 @@ impl Game {
                     ran = d / self.dt > 2.5;
                     self.headings.insert(id, dy.atan2(dx));
                 }
+            }
+            if moved {
+                self.scripted.remove(&id);
             }
             let dt = self.dt;
             let once = self.once.get_mut(&id).and_then(|q| {
@@ -210,7 +283,11 @@ impl Game {
             } else if moved || (id == pc && (walking || self.world.pc_walking())) {
                 "walk"
             } else {
-                ready.unwrap_or("pause1")
+                self.scripted
+                    .get(&id)
+                    .copied()
+                    .or(ready)
+                    .unwrap_or("pause1")
             };
             let dt = self.dt;
             let c = self.clips.entry(id).or_insert(Clip {

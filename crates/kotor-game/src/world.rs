@@ -46,6 +46,11 @@ pub enum Action {
     },
     /// Accepted and recorded, no effect on the headless world (animations, movement, ...).
     Recorded(String),
+    /// Play one of `nwscript.nss`'s `ANIMATION_` constants (`ActionPlayAnimation`): for `seconds`, or as its clip lasts.
+    Animate {
+        animation: i32,
+        seconds: f32,
+    },
     OpenDoor(ObjId),
     CloseDoor(ObjId),
     SetLocked(ObjId, bool),
@@ -449,6 +454,8 @@ pub struct World {
     pub(crate) force_regen: f32,
     /// Who has just cast a power, for the animation.
     pub(crate) casts: Vec<(ObjId, i32)>,
+    /// Animations scripts asked creatures for since the last step: who, which `ANIMATION_` constant, for how long.
+    pub(crate) animations: Vec<(ObjId, i32, f32)>,
     /// The shop that is open, and what never runs out in any shop.
     pub store: Option<crate::store::StoreOpen>,
     pub(crate) store_infinite: BTreeSet<ObjId>,
@@ -581,6 +588,7 @@ impl World {
             early_force: false,
             force_regen: 0.0,
             casts: Vec::new(),
+            animations: Vec::new(),
             store: None,
             store_infinite: BTreeSet::new(),
             encounters: Vec::new(),
@@ -1248,6 +1256,11 @@ impl World {
                     self.events
                         .push(format!("{} cannot cast {spell}: {e}", self.describe(id)));
                 }
+            }
+            Action::Animate { animation, seconds } => {
+                self.animations.push((id, animation, seconds));
+                self.events
+                    .push(format!("{}: ActionPlayAnimation", self.describe(id)));
             }
             Action::Recorded(what) => {
                 match what.as_str() {

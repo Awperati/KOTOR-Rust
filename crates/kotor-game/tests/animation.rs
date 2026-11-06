@@ -134,3 +134,16 @@ fn a_change_of_clip_fades_over_a_fifth_of_a_second() {
     assert!(f.weight > 0.9, "{f:?}");
     assert!(gone.is_some(), "the fade ends");
 }
+
+/// A script's `ActionPlayAnimation` shows: the Endar Spire's welding droids loop their `ANIMATION_LOOPING_WELD` (25).
+#[test]
+fn a_scripts_animation_plays() {
+    let Some(mut g) = game() else { return };
+    let droids = g.world.by_tag("end_weld");
+    assert!(!droids.is_empty(), "a welding droid");
+    for _ in 0..240 {
+        g.step_once();
+    }
+    let names: Vec<_> = droids.iter().map(|d| g.clip(*d).map(|c| c.name)).collect();
+    assert!(names.contains(&Some("weld")), "{names:?}");
+}
