@@ -145,15 +145,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.hover(p, size);
     shot(&mut gpu, &mut s, "inventory", &out);
     s.open_equip();
-    click(&mut s, "LB_ITEMS", Some(0));
-    click(&mut s, "LB_ITEMS", Some(1));
+    for slot in ["BTN_INV_BODY", "BTN_INV_WEAP_R"] {
+        click(&mut s, slot, None);
+        click(&mut s, "LB_ITEMS", Some(1));
+        click(&mut s, "BTN_EQUIP", None);
+    }
     s.set_view(size);
-    let p = s.menu_pixel("BTN_INV_BODY", None, size).unwrap();
+    let p = s.menu_pixel("BTN_INV_WEAP_R", None, size).unwrap();
     s.hover(p, size);
     shot(&mut gpu, &mut s, "equip", &out);
-    let p = s.menu_pixel("LB_ITEMS", Some(0), size).unwrap();
+    click(&mut s, "BTN_INV_WEAP_R", None);
+    s.set_view(size);
+    let p = s.menu_pixel("LB_ITEMS", Some(2), size).unwrap();
     s.hover(p, size);
     shot(&mut gpu, &mut s, "equip_item", &out);
+    s.escape();
     s.open_character();
     shot(&mut gpu, &mut s, "character", &out);
     s.escape();

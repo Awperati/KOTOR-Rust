@@ -240,6 +240,13 @@ Key $KEY_U[0] $KEY_U[1]
 $s = WaitFor "menu" "equip"
 Report "U opens the equipment" ($s.menu -eq "equip") "menu=$($s.menu)"
 Shot "live_equip"
+Press 207 182 64 64    # BTN_INV_BODY
+[void](State)
+Shot "live_equip_slot"
+Key $ESC[0] $ESC[1]
+[void](State)
+$s = State
+Report "Esc leaves a slot's list first" ($s.menu -eq "equip") "menu=$($s.menu)"
 Key $KEY_C[0] $KEY_C[1]
 $s = WaitFor "menu" "character"
 Report "C opens the character" ($s.menu -eq "character") "menu=$($s.menu)"

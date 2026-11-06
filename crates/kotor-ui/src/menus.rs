@@ -397,6 +397,9 @@ impl Ui<'_> {
         let Some(c) = gui.find(tag) else {
             return self.menu_point(view.top.as_ref()?, tag, row);
         };
+        if view.is_hidden(tag) {
+            return None;
+        }
         let r = match row {
             Some(i) => {
                 let first = view.lists.get(tag).map_or(0, |l| l.1);

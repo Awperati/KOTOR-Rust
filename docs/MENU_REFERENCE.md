@@ -43,13 +43,13 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Pause menu, right side | empty | the words for Load, Save and Exit under the cursor, from the talk table |
 | Container title | the object's name | "Container Inventory" |
 | `fnt_console` at 4K | letters run together | the stock font: its upscaled picture was the cause |
+| Choosing equipment | a click wore at once, a click on a worn slot took off | a click on a slot lists it, `inone` and None first, `(Equipped)` marked, words on the left, OK and Cancel. The owner chose this |
 
 ## Differences left
 | What | Theirs | Ours | Why left |
 |---|---|---|---|
-| Text size | pixel-sized, about 12 pixels high at 1080p | scales with the window, about 27 pixels | Theirs would be too small to read at 4K. The owner may want otherwise |
+| Text size | pixel-sized, about 12 pixels high at 1080p | scales with the window, about 27 pixels | Theirs would be too small to read at 4K. The owner chose to keep ours |
 | List rows | about 13 layout units high, a small icon, no border until chosen | the file's 50, with a border and a large icon | The rows follow `PROTOITEM`, and their height depends on text size |
-| Choosing equipment | click a slot, then a list starting with None and "(Equipped)" marks, words on the left, OK and Cancel | a click wears at once, a click on a worn slot takes off | The first job's words asked for this. Say if the game's flow is wanted |
 | HUD size | pixel-sized, so smaller at 1080p | scales with the window | as text size |
 | Bottom bar in a conversation | about 12% of the height | about 22% | our larger text needs the room |
 | Map | a picture of the area, top left | a frame and an arrow | no map built |

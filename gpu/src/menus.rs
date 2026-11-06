@@ -89,6 +89,12 @@ const EQUIP_SLOTS: [(&str, &str, i32, &str); 9] = [
     ("BTN_INV_HANDS", "LBL_INV_HANDS", SLOT_HANDS, "Hands"),
 ];
 const STR_CANNOT_EQUIP: u32 = 38450;
+const STR_NONE: u32 = 363;
+const STR_EQUIPPED: u32 = 32346;
+const STR_OK: u32 = 1580;
+const STR_CANCEL: u32 = 1581;
+/// The picture of the row that leaves a slot empty, seen in the reference video at 3:36.
+const NONE_PICTURE: &str = "inone";
 
 /// A screen. The last one on the stack has the input; closing it shows the one under it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -252,12 +258,15 @@ pub(super) struct Menus {
     delete_armed: Option<PathBuf>,
     /// The name being typed.
     name: String,
-    /// The equipment slot chosen: the list shows what fits it.
+    /// The equipment slot clicked: its list is up to choose from, with OK and Cancel.
     slot: Option<i32>,
-    /// The item whose words are on show, and the slot under the cursor.
+    /// The row chosen in that list.
+    chosen: Option<usize>,
+    /// The item whose words are on show.
     about: Option<ObjId>,
+    /// The last slot under the cursor: the list shows what fits it.
     hover_slot: Option<i32>,
-    /// The last item clicked could not go on.
+    /// The item chosen could not go on.
     refused: bool,
     settings: Settings,
     /// Where the settings are kept; `None` keeps them in memory, as in tests.
@@ -291,6 +300,11 @@ fn list_saves(dir: &Path) -> Vec<SaveFile> {
         .collect();
     found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.path.cmp(&b.1.path)));
     found.into_iter().map(|f| f.1).collect()
+}
+
+/// What the player wears in a slot.
+fn worn_in(w: &kotor_game::World, slot: i32) -> Option<ObjId> {
+    w.object(w.pc).and_then(|o| o.equipped.get(&slot).copied())
 }
 
 fn played(seconds: f32) -> String {
@@ -508,18 +522,55 @@ impl Stage {
         match top {
             Some(Screen::Container) => w.container_items().into_iter().map(|i| i.0).collect(),
             Some(Screen::Inventory) => carried,
-            Some(Screen::Equip) => {
-                let slot = self.menus.slot;
-                carried
-                    .into_iter()
-                    .filter(|i| {
-                        let mask = w.slots_of(*i);
-                        slot.map_or(mask != 0, |s| mask & (1 << s) != 0)
-                    })
-                    .collect()
-            }
             _ => Vec::new(),
         }
+    }
+
+    /// What a slot can hold, as the equipment list has it: nothing, what is worn, then what is carried that fits.
+    fn equip_choices(&mut self, slot: i32) -> Vec<Option<ObjId>> {
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        let mut choices = vec![None];
+        choices.extend(worn_in(w, slot).map(Some));
+        for item in w.carried(pc) {
+            if w.slots_of(item) & (1 << slot) != 0 {
+                choices.push(Some(item));
+            }
+        }
+        choices
+    }
+
+    fn equip_rows(&mut self, slot: i32) -> Vec<Row> {
+        let pc = self.game.world.pc;
+        let none = self.ui.strref(STR_NONE);
+        let equipped = self.ui.strref(STR_EQUIPPED);
+        let worn = worn_in(&self.game.world, slot);
+        let picking = self.menus.slot.is_some();
+        let chosen = self.menus.chosen;
+        self.equip_choices(slot)
+            .into_iter()
+            .enumerate()
+            .map(|(n, choice)| {
+                let view = choice.and_then(|i| self.game.world.item_view(i));
+                let mut row = match view {
+                    Some(v) => {
+                        let dim = self.game.world.can_wear(pc, v.id).is_err();
+                        let mut row = self.item_row(&v, dim);
+                        if choice == worn {
+                            row.text = format!("{} ({equipped})", row.text);
+                        }
+                        row
+                    }
+                    None => Row {
+                        text: none.clone(),
+                        icon: Some(NONE_PICTURE.to_string()),
+                        ..Row::default()
+                    },
+                };
+                row.selected = picking && chosen == Some(n);
+                row
+            })
+            .collect()
     }
 
     fn item_rows(&mut self) -> Vec<Row> {
@@ -577,24 +628,31 @@ impl Stage {
             "LB_DESCRIPTION",
             about.map_or(String::new(), |a| a.description),
         );
-        if self.menus.refused {
-            v.message = self.ui.strref(STR_CANNOT_EQUIP);
-        }
         v
     }
 
-    /// `equip.gui`. Party switching is not built and a click on an item wears it at once, so the buttons for those
-    /// are hidden.
+    /// `equip.gui`, as the reference video has it at 7:05 and 3:41. The list shows what fits the last slot under the
+    /// cursor, to look at only. A click on a slot lists it to choose from: the words take the place of the slots, and
+    /// OK and Cancel are at the foot. Party switching is not built, so its buttons are hidden.
     fn equip_view(&mut self) -> MenuView {
         let mut v = MenuView::new("equip");
-        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2", "BTN_EQUIP"]);
-        let rows = self.item_rows();
+        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2"]);
+        let picking = self.menus.slot;
+        match picking {
+            Some(_) => {
+                let (ok, cancel) = (self.ui.strref(STR_OK), self.ui.strref(STR_CANCEL));
+                v.text("BTN_EQUIP", ok);
+                v.text("BTN_BACK", cancel);
+            }
+            None => v.hide(&["BTN_EQUIP"]),
+        }
+        let shown_slot = picking.or(self.menus.hover_slot);
+        let rows = shown_slot.map_or(Vec::new(), |s| self.equip_rows(s));
         v.lists
             .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
         v.fill("LBL_PORTRAIT", self.portrait());
         v.text("LBL_VITALITY", self.vitality());
         let pc = self.game.world.pc;
-        let shown_slot = self.menus.hover_slot.or(self.menus.slot);
         for (button, label, slot, name) in EQUIP_SLOTS {
             if shown_slot == Some(slot) {
                 v.text("LBL_SLOTNAME", name);
@@ -613,10 +671,7 @@ impl Stage {
             v.text("LBL_SLOTNAME", "");
         }
         let select = self.ui.strref(STR_SELECT_ITEM);
-        v.text(
-            "LBL_SELECTTITLE",
-            self.menus.slot.map_or(String::new(), |_| select),
-        );
+        v.text("LBL_SELECTTITLE", picking.map_or(String::new(), |_| select));
         let w = &mut self.game.world;
         v.text("LBL_DEF", w.defense_of(pc).to_string());
         for (slot, attack, to_hit) in [
@@ -631,13 +686,16 @@ impl Stage {
                 None => v.hide(&[attack, to_hit]),
             }
         }
-        // An item under the cursor shows its words where the portrait and the slots are, as the panel's own place for
-        // them lies over those. **Assumed:** the game keeps them apart in some such way.
-        let about = self.menus.about.and_then(|i| self.game.world.item_view(i));
         v.hide(&["LBL_CANTEQUIP"]);
-        match about {
-            Some(a) => {
-                v.text("LB_DESC", a.description);
+        match picking {
+            Some(slot) => {
+                let chosen = self
+                    .menus
+                    .chosen
+                    .and_then(|n| self.equip_choices(slot).get(n).copied().flatten());
+                let shown = self.menus.about.or(chosen);
+                let about = shown.and_then(|i| self.game.world.item_view(i));
+                v.text("LB_DESC", about.map_or(String::new(), |a| a.description));
                 v.font("LB_DESC", SMALL_FONT);
                 v.hide(&[
                     "LBL_PORT_BORD",
@@ -910,10 +968,8 @@ impl Stage {
         self.menus.stack.pop();
         self.menus.stack.push(screen);
         self.menus.first = 0;
-        self.menus.slot = None;
-        self.menus.about = None;
+        self.leave_slot();
         self.menus.hover_slot = None;
-        self.menus.refused = false;
     }
 
     /// A click on one of the HUD's buttons: the screen it opens. `BTN_ACTION0` is the stage's.
@@ -957,15 +1013,13 @@ impl Stage {
             self.menus.stack.pop();
             self.menus.stack.push(screen);
             self.menus.first = 0;
-            self.menus.slot = None;
-            self.menus.about = None;
+            self.leave_slot();
             self.menus.hover_slot = None;
-            self.menus.refused = false;
             self.menus.hover = None;
         }
     }
 
-    /// A click on an item: wear it, in the chosen slot if one is chosen. Anything else just shows its words.
+    /// A click on an item: from a container it comes to the player. In the inventory it just shows its words.
     fn use_listed_item(&mut self, row: usize) {
         let Some(item) = self.listed_items().get(row).copied() else {
             return;
@@ -977,36 +1031,52 @@ impl Stage {
             return;
         }
         self.menus.about = Some(item);
-        let pc = self.game.world.pc;
-        let slot = self.menus.slot;
-        match self.game.world.equip(pc, item, slot) {
-            Ok(_) => {
-                // The cursor stays on the row, which now holds the next item.
-                self.menus.about = None;
-                self.menus.refused = false;
-                self.menus.slot = None;
-                self.menus.first = 0;
+    }
+
+    /// A click on a slot: its list comes up to choose from, with what it holds chosen.
+    fn choose_for_slot(&mut self, slot: i32) {
+        let worn = worn_in(&self.game.world, slot);
+        self.menus.slot = Some(slot);
+        self.menus.chosen = Some(worn.is_some() as usize);
+        self.menus.about = None;
+        self.menus.refused = false;
+        self.menus.first = 0;
+    }
+
+    /// Back from a slot's list, or off the screen: nothing more is chosen.
+    fn leave_slot(&mut self) {
+        self.menus.slot = None;
+        self.menus.chosen = None;
+        self.menus.about = None;
+        self.menus.refused = false;
+        self.menus.first = 0;
+    }
+
+    /// OK on a slot's list: what is chosen goes on and the slots come back. Refused, the list stays up and says why.
+    fn accept_slot(&mut self) {
+        let Some(slot) = self.menus.slot else { return };
+        let choice = self
+            .menus
+            .chosen
+            .and_then(|n| self.equip_choices(slot).get(n).copied());
+        let Some(choice) = choice else { return };
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        let done = match choice {
+            None => {
+                w.unequip(pc, slot);
+                Ok(())
             }
-            Err(CannotEquip::NotWearable) => {}
+            Some(item) if Some(item) == worn_in(w, slot) => Ok(()),
+            Some(item) => w.equip(pc, item, Some(slot)).map(|_| ()),
+        };
+        match done {
+            Ok(()) => self.leave_slot(),
             Err(CannotEquip::BothHandsFull) => {
-                self.menus.refused = false;
                 self.menus.message = "A weapon in the right hand takes both hands.".to_string();
             }
             Err(_) => self.menus.refused = true,
         }
-    }
-
-    /// A click on a slot: take off what is there. An empty slot shows what fits it.
-    fn use_slot(&mut self, slot: i32) {
-        let pc = self.game.world.pc;
-        self.menus.refused = false;
-        self.menus.first = 0;
-        if self.game.world.unequip(pc, slot) {
-            self.menus.slot = None;
-        } else {
-            self.menus.slot = (self.menus.slot != Some(slot)).then_some(slot);
-        }
-        self.menus.about = None;
     }
 
     fn menu_layout_point(&self, pixel: (f32, f32), size: (u32, u32)) -> (f32, f32) {
@@ -1021,18 +1091,32 @@ impl Stage {
         let Some(view) = self.menu_view() else { return };
         let (x, y) = self.menu_layout_point(pixel, size);
         self.menus.hover = self.ui.menu_hit(&view, x, y);
-        self.menus.hover_slot = match &self.menus.hover {
-            Some(Hit::Button(t)) => EQUIP_SLOTS.iter().find(|s| s.0 == t).map(|s| s.2),
-            _ => None,
-        };
-        if let Some(Hit::Row(_, row)) = self.menus.hover {
+        if self.top() == Some(Screen::Equip) {
+            self.equip_hover();
+        } else if let Some(Hit::Row(_, row)) = self.menus.hover {
             if let Some(item) = self.listed_items().get(row).copied() {
                 self.menus.about = Some(item);
-                self.menus.refused = false;
             }
-        } else if self.top() == Some(Screen::Equip) {
-            self.menus.about = None;
         }
+    }
+
+    /// A slot under the cursor stays the one listed. A row of a slot's list shows its words.
+    fn equip_hover(&mut self) {
+        let hover = self.menus.hover.clone();
+        if let Some(Hit::Button(tag)) = &hover {
+            if let Some(s) = EQUIP_SLOTS.iter().find(|s| s.0 == tag) {
+                if self.menus.hover_slot != Some(s.2) {
+                    self.menus.hover_slot = Some(s.2);
+                    self.menus.first = 0;
+                }
+            }
+        }
+        self.menus.about = match (hover, self.menus.slot) {
+            (Some(Hit::Row(_, row)), Some(slot)) => {
+                self.equip_choices(slot).get(row).copied().flatten()
+            }
+            _ => None,
+        };
     }
 
     /// A left click on a screen.
@@ -1051,8 +1135,12 @@ impl Stage {
             Some(Hit::Row(_, row)) => {
                 self.menus.delete_armed = None;
                 match self.top() {
-                    Some(Screen::Inventory | Screen::Equip | Screen::Container) => {
-                        self.use_listed_item(row)
+                    Some(Screen::Inventory | Screen::Container) => self.use_listed_item(row),
+                    Some(Screen::Equip) => {
+                        if self.menus.slot.is_some() {
+                            self.menus.chosen = Some(row);
+                            self.menus.refused = false;
+                        }
                     }
                     _ => self.menus.selected = Some(row),
                 }
@@ -1158,12 +1246,17 @@ impl Stage {
                 self.menus.stack.pop();
             }
             (Screen::Inventory, "BTN_USEITEM") => self.use_about_item(),
-            (Screen::Inventory | Screen::Character, "BTN_EXIT") | (Screen::Equip, "BTN_BACK") => {
+            (Screen::Inventory | Screen::Character, "BTN_EXIT") => {
+                self.menus.stack.pop();
+            }
+            (Screen::Equip, "BTN_EQUIP") => self.accept_slot(),
+            (Screen::Equip, "BTN_BACK") if self.menus.slot.is_some() => self.leave_slot(),
+            (Screen::Equip, "BTN_BACK") => {
                 self.menus.stack.pop();
             }
             (Screen::Equip, _) => {
                 if let Some(s) = EQUIP_SLOTS.iter().find(|s| s.0 == tag) {
-                    self.use_slot(s.2);
+                    self.choose_for_slot(s.2);
                 }
             }
             _ => {}
@@ -1177,6 +1270,7 @@ impl Stage {
             Some(Screen::Container) => self.game.world.close_container(),
             Some(Screen::Saves(mode)) => self.save_or_load(mode),
             Some(Screen::Name) => self.write_save(),
+            Some(Screen::Equip) => self.accept_slot(),
             _ => {}
         }
     }
@@ -1197,6 +1291,10 @@ impl Stage {
         match self.top() {
             Some(Screen::Main) => {}
             Some(Screen::Container) => self.game.world.close_container(),
+            Some(Screen::Equip) if self.menus.slot.is_some() => {
+                self.leave_slot();
+                self.menus.message.clear();
+            }
             Some(_) => {
                 self.menus.stack.pop();
                 self.menus.message.clear();

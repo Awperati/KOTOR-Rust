@@ -36,14 +36,12 @@ fn the_main_menu_starts_a_game_and_exit_quits() {
     s.hover(new_game, SIZE);
     s.update(DT);
     assert_ne!(s.overlay().unwrap().rgba, o.rgba, "the button lights up");
-    assert!(s.menu_pixel("BTN_WARP", None, SIZE).is_some());
+    assert!(s.menu_pixel("BTN_WARP", None, SIZE).is_none());
     s.hover((1.0, 1.0), SIZE);
     s.update(DT);
     assert_eq!(s.overlay().unwrap().rgba, o.rgba, "and goes out again");
 
     // Hidden buttons do not take clicks.
-    let warp = s.menu_pixel("BTN_WARP", None, SIZE).unwrap();
-    s.click(warp, SIZE);
     assert_eq!(s.menu_name(), "main");
     // Esc does not leave the main menu, and keys for the game do nothing on it.
     s.escape();
@@ -314,7 +312,7 @@ fn a_conversation_cannot_be_saved_and_a_save_goes_only_to_its_folder() {
 }
 
 #[test]
-fn the_inventory_lists_what_is_carried_and_a_click_wears_it() {
+fn the_inventory_lists_what_is_carried_and_a_click_shows_its_words() {
     let Some((mut s, _)) = in_game("inventory") else {
         return;
     };
@@ -336,18 +334,11 @@ fn the_inventory_lists_what_is_carried_and_a_click_wears_it() {
     s.hover(row, SIZE);
     s.update(DT);
     assert_ne!(s.overlay().unwrap().rgba, before.rgba);
-    // A medpack is not worn: a click leaves it in the bag.
+    // A click leaves everything in the bag: wearing is the equipment screen's.
     s.click(row, SIZE);
-    assert_eq!(s.game.world.carried(pc), vec![armour, medpack]);
-    // Armour goes on, and defense changes on the screen.
-    let bare = s.game.world.defense_of(pc);
     click_row(&mut s, "LB_ITEMS", 0);
-    assert_eq!(s.game.world.carried(pc), vec![medpack]);
-    assert_eq!(
-        s.game.world.object(pc).unwrap().equipped.get(&1),
-        Some(&armour)
-    );
-    assert!(s.game.world.defense_of(pc) > bare);
+    assert_eq!(s.game.world.carried(pc), vec![armour, medpack]);
+    assert!(s.game.world.object(pc).unwrap().equipped.is_empty());
     s.update(DT);
     // I, Esc and the button each close it.
     s.open_inventory();
@@ -371,54 +362,110 @@ fn the_inventory_lists_what_is_carried_and_a_click_wears_it() {
 }
 
 #[test]
-fn the_equipment_screen_wears_takes_off_and_filters_by_slot() {
+fn a_slot_lists_none_then_what_fits_and_ok_or_cancel_decide() {
     let Some((mut s, _)) = in_game("equip") else {
         return;
     };
     let pc = s.game.world.pc;
+    let worn = |s: &Stage, slot: i32| {
+        s.game
+            .world
+            .object(s.game.world.pc)
+            .unwrap()
+            .equipped
+            .get(&slot)
+            .copied()
+    };
+    let mut items = Vec::new();
     for t in ["g_a_class4001", "g_w_blstrpstl001", "g_i_medeqpmnt01"] {
         let i = s.game.world.spawn_item(t);
         s.game.world.carry(pc, i);
+        items.push(i);
     }
+    let (armour, pistol) = (items[0], items[1]);
     s.open_equip();
+    assert!(
+        s.menu_pixel("BTN_EQUIP", None, SIZE).is_none(),
+        "no OK until a slot is clicked"
+    );
     let empty = frame(&mut s);
-    // Only what can be worn is listed. A click on it wears it, and the slot's picture changes.
-    click_row(&mut s, "LB_ITEMS", 0);
-    assert_eq!(s.game.world.carried(pc).len(), 2);
-    assert!(s.game.world.object(pc).unwrap().equipped.contains_key(&1));
-    assert_ne!(frame(&mut s), empty);
-    click_row(&mut s, "LB_ITEMS", 0);
-    assert!(s.game.world.object(pc).unwrap().equipped.contains_key(&4));
-    assert!(
-        s.menu_pixel("LB_ITEMS", Some(0), SIZE).is_some(),
-        "the row of the medpack is not there, but its place is"
-    );
-    let left = s.game.world.carried(pc);
-    click_row(&mut s, "LB_ITEMS", 0);
-    assert_eq!(s.game.world.carried(pc), left, "no such row to click");
 
-    // A click on a worn slot takes it off.
-    press(&mut s, "BTN_INV_BODY");
-    assert!(!s.game.world.object(pc).unwrap().equipped.contains_key(&1));
-    // A click on an empty slot lists only what fits it.
-    press(&mut s, "BTN_INV_HEAD");
-    click_row(&mut s, "LB_ITEMS", 0);
-    assert!(
-        !s.game.world.object(pc).unwrap().equipped.contains_key(&1),
-        "armour is not listed for the head"
-    );
-    press(&mut s, "BTN_INV_HEAD");
-    press(&mut s, "BTN_INV_BODY");
-    click_row(&mut s, "LB_ITEMS", 0);
-    assert!(s.game.world.object(pc).unwrap().equipped.contains_key(&1));
+    // A slot under the cursor lists what fits it, and the list stays when the cursor leaves it. Its rows do nothing.
+    let body = s.menu_pixel("BTN_INV_BODY", None, SIZE).unwrap();
+    s.hover(body, SIZE);
+    s.hover((1.0, 1.0), SIZE);
+    let listed = frame(&mut s);
+    assert!(listed != empty);
+    click_row(&mut s, "LB_ITEMS", 1);
+    assert_eq!(worn(&s, 1), None);
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) == listed, "the list is still the body's");
 
-    // Without the feat an item stays off, and the screen says so.
-    let refused = frame(&mut s);
+    // A click on the slot: the slots go, OK and Cancel come. Choosing a row wears nothing yet.
     press(&mut s, "BTN_INV_BODY");
-    s.game.world.object_mut(pc).unwrap().feats.clear();
+    assert!(s.menu_pixel("BTN_INV_BODY", None, SIZE).is_none());
+    assert!(s.menu_pixel("BTN_EQUIP", None, SIZE).is_some());
+    assert!(frame(&mut s) != listed);
+    // Hidden buttons do not take clicks: where the slot was, nothing happens.
+    s.click(body, SIZE);
+    assert!(s.menu_pixel("BTN_EQUIP", None, SIZE).is_some());
+    click_row(&mut s, "LB_ITEMS", 1);
+    assert_eq!(worn(&s, 1), None);
+    // Cancel leaves it off, and the slots come back.
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "equip");
+    assert_eq!(worn(&s, 1), None);
+    assert!(s.menu_pixel("BTN_INV_BODY", None, SIZE).is_some());
+    // So does Esc, once, and it stays on the screen.
+    press(&mut s, "BTN_INV_BODY");
+    s.escape();
+    assert_eq!(s.menu_name(), "equip");
+    assert!(s.menu_pixel("BTN_INV_BODY", None, SIZE).is_some());
+
+    // OK wears it, and the slot's picture and the defense change.
+    let bare = s.game.world.defense_of(pc);
+    press(&mut s, "BTN_INV_BODY");
+    click_row(&mut s, "LB_ITEMS", 1);
+    press(&mut s, "BTN_EQUIP");
+    assert_eq!(worn(&s, 1), Some(armour));
+    assert!(s.game.world.carried(pc).iter().all(|i| *i != armour));
+    assert!(s.game.world.defense_of(pc) > bare);
+    assert!(s.menu_pixel("BTN_EQUIP", None, SIZE).is_none());
+    assert!(frame(&mut s) != empty);
+    // Its row now comes first after None, and OK on it changes nothing.
+    press(&mut s, "BTN_INV_BODY");
+    click_row(&mut s, "LB_ITEMS", 1);
+    press(&mut s, "BTN_EQUIP");
+    assert_eq!(worn(&s, 1), Some(armour));
+    // None takes it off.
+    press(&mut s, "BTN_INV_BODY");
     click_row(&mut s, "LB_ITEMS", 0);
-    assert!(!s.game.world.object(pc).unwrap().equipped.contains_key(&1));
-    assert_ne!(frame(&mut s), refused);
+    press(&mut s, "BTN_EQUIP");
+    assert_eq!(worn(&s, 1), None);
+    assert!(s.game.world.carried(pc).contains(&armour));
+
+    // A head's list has None only: a click past it chooses nothing, and OK leaves things as they are.
+    press(&mut s, "BTN_INV_HEAD");
+    click_row(&mut s, "LB_ITEMS", 1);
+    press(&mut s, "BTN_EQUIP");
+    assert_eq!(worn(&s, 0), None);
+    assert!(s.game.world.carried(pc).contains(&armour));
+
+    // Without the feat an item stays off, the list stays up, and the screen says so.
+    press(&mut s, "BTN_INV_WEAP_R");
+    click_row(&mut s, "LB_ITEMS", 1);
+    press(&mut s, "BTN_EQUIP");
+    assert_eq!(worn(&s, 4), Some(pistol));
+    press(&mut s, "BTN_INV_BODY");
+    let feats = std::mem::take(&mut s.game.world.object_mut(pc).unwrap().feats);
+    click_row(&mut s, "LB_ITEMS", 1);
+    let before = frame(&mut s);
+    press(&mut s, "BTN_EQUIP");
+    assert_eq!(worn(&s, 1), None);
+    assert!(s.menu_pixel("BTN_EQUIP", None, SIZE).is_some());
+    assert!(frame(&mut s) != before);
+    s.game.world.object_mut(pc).unwrap().feats = feats;
+    s.escape();
 
     press(&mut s, "BTN_BACK");
     assert_eq!(s.menu_name(), "-");
