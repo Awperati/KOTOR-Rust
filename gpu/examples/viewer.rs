@@ -230,6 +230,9 @@ impl App {
             self.pilot_seen = p.log.len();
         }
         self.sound.pump();
+        if let Some(on) = self.stage.take_wanted_vsync() {
+            st.presenter.set_vsync(&st.gpu, on);
+        }
         if let Some((w, h)) = self.stage.take_wanted_size() {
             let _ = st.window.request_inner_size(PhysicalSize::new(w, h));
         }

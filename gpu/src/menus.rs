@@ -155,6 +155,8 @@ pub(super) enum Screen {
     /// `optfeedback.gui` and `optautopause.gui`.
     Feedback,
     AutoPause,
+    /// `optgraphicsadv.gui`.
+    GraphicsAdvanced,
     /// `optkeymapping.gui` and `optmouse.gui`.
     KeyMap,
     Mouse,
@@ -199,6 +201,8 @@ pub struct Settings {
     pub mouse_sensitivity: f32,
     /// The left button looks, and the right one clicks.
     pub reverse_buttons: bool,
+    /// A frame waits for the screen.
+    pub vsync: bool,
 }
 
 impl Default for Settings {
@@ -226,6 +230,7 @@ impl Default for Settings {
             pause_target: false,
             mouse_sensitivity: 0.5,
             reverse_buttons: false,
+            vsync: true,
         }
     }
 }
@@ -236,7 +241,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -257,7 +262,8 @@ impl Settings {
             self.pause_action,
             self.pause_target,
             self.mouse_sensitivity,
-            self.reverse_buttons
+            self.reverse_buttons,
+            self.vsync
         )
     }
 
@@ -291,6 +297,7 @@ impl Settings {
                 "pause_target" => s.pause_target = v == "true",
                 "mouse_sensitivity" => s.mouse_sensitivity = level(v, s.mouse_sensitivity),
                 "reverse_buttons" => s.reverse_buttons = v == "true",
+                "vsync" => s.vsync = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -350,6 +357,7 @@ impl Screen {
             Screen::Tutorial => "tutorial",
             Screen::Feedback => "feedback",
             Screen::AutoPause => "autopause",
+            Screen::GraphicsAdvanced => "graphics_advanced",
             Screen::KeyMap => "keymap",
             Screen::Mouse => "mouse",
         }
@@ -421,6 +429,11 @@ pub(super) struct Menus {
     fight: fightscreen::Fight,
     /// The words of the option the cursor last rested on.
     option_words: Option<u32>,
+    /// Why that option is greyed.
+    option_reason: Option<&'static str>,
+    /// V-Sync when its page opened, and what it should become.
+    vsync_before: bool,
+    wanted_vsync: Option<bool>,
     /// The icons flashing on the HUD and when they stop, and what they were last compared with.
     notices: Vec<(&'static str, f32)>,
     had: Option<notices::Had>,
@@ -605,6 +618,7 @@ impl Stage {
             Screen::Map => self.map_view(),
             Screen::Feedback => self.feedback_view(),
             Screen::AutoPause => self.autopause_view(),
+            Screen::GraphicsAdvanced => self.graphics_advanced_view(),
             Screen::KeyMap => self.key_map_view(),
             Screen::Mouse => self.mouse_view(),
         }
@@ -987,6 +1001,7 @@ impl Stage {
             self.menus.settings = Settings::from_text(&text);
             self.menus.keys.read(&text);
         }
+        self.menus.wanted_vsync = Some(self.menus.settings.vsync);
         self.menus.settings_file = Some(path);
         self.settings_changed();
         self.menus.wanted_size = self.menus.settings.size;
@@ -1082,11 +1097,11 @@ impl Stage {
         v
     }
 
-    /// `optgraphics.gui`. The renderer has no shadows or grass, and no advanced settings.
+    /// `optgraphics.gui`. The renderer has no shadows or grass: their words say so.
     fn graphics_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optgraphics");
-        v.hide(&["LB_DESC"]);
-        v.inert(&["CB_SHADOWS", "CB_GRASS", "BTN_ADVANCED"]);
+        self.graphics_words(&mut v);
+        v.inert(&["CB_SHADOWS", "CB_GRASS"]);
         let s = self.menus.settings;
         v.value("SLI_GAMMA", (s.brightness * 100.0) as i32, 100);
         if let Some((w, h)) = s.size {
@@ -1555,6 +1570,8 @@ impl Stage {
                 self.menus.settings.brightness = Settings::default().brightness;
                 self.settings_changed();
             }
+            (Screen::Graphics, "BTN_ADVANCED") => self.open_graphics_advanced(),
+            (Screen::GraphicsAdvanced, _) => self.graphics_advanced_press(tag),
             (Screen::Graphics, "BTN_RESOLUTION") => {
                 let at = SIZES
                     .iter()

@@ -44,6 +44,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Container title | the object's name | "Container Inventory" |
 | `fnt_console` at 4K | letters run together | the stock font: its upscaled picture was the cause |
 | What has not been seen of a map | all of it showed | a grid, as at 1:25:00 and 3:50:35: spacing and colours measured from those two frames, so close, not exact. Seen is a circle 14 of the picture's pixels round the player, with a soft edge |
+| Advanced Graphics | a greyed button | the stock page with V-Sync working. The other boxes stay greyed and say why, since each needs the renderer. Not seen in the video. Frames: `opt_graphics_reason`, `opt_graphics_advanced` |
 | Key Mapping and Mouse Settings | greyed buttons | the stock pages. Keys start as the first keys here, the button called Original gives the table's, and only what is built is listed: see `gpu/src/keyscreen.rs`. Not seen in the video, so not compared. Tested in code; a changed key was not pressed live |
 | Feedback and Auto-Pause pages | greyed buttons | the stock pages, with the talk table's words beside them. Not seen in the video, so not compared. Not clicked live |
 | Auto Level Up, Combat Movement | greyed boxes | working. Not clicked live |

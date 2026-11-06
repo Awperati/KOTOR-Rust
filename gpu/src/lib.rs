@@ -1088,6 +1088,17 @@ impl Presenter {
     }
 
     /// The window changed size.
+    /// Whether a frame waits for the screen.
+    pub fn set_vsync(&self, gpu: &GpuRenderer, on: bool) {
+        let mut c = self.config.borrow_mut();
+        c.present_mode = if on {
+            wgpu::PresentMode::Fifo
+        } else {
+            wgpu::PresentMode::AutoNoVsync
+        };
+        self.surface.configure(&gpu.device, &c);
+    }
+
     pub fn resize(&self, gpu: &GpuRenderer, size: (u32, u32)) {
         if size.0 == 0 || size.1 == 0 {
             return;

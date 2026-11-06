@@ -1718,6 +1718,57 @@ fn mouse_sensitivity_turns_the_camera_faster_and_buttons_can_swap() {
     assert!(turn(&mut s) > normal);
 }
 
+#[test]
+fn vsync_is_the_advanced_graphics_box_that_works_and_the_rest_say_why_not() {
+    let Some((mut s, dir)) = in_game("vsync") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    assert_eq!(
+        s.take_wanted_vsync(),
+        Some(true),
+        "the saved choice goes to the window"
+    );
+    s.escape();
+    press(&mut s, "BTN_GRAPHICS");
+
+    // A greyed box does nothing, and its words say why.
+    let plain = frame(&mut s);
+    let shadows = s.menu_pixel("CB_SHADOWS", None, SIZE).unwrap();
+    s.hover(shadows, SIZE);
+    assert!(frame(&mut s) != plain);
+    s.click(shadows, SIZE);
+    assert_eq!(s.menu_name(), "graphics");
+
+    // V-Sync goes to the window, and OK keeps it.
+    press(&mut s, "BTN_ADVANCED");
+    assert_eq!(s.menu_name(), "graphics_advanced");
+    assert!(s.menu_pixel("BTN_ANTIALIASLEFT", None, SIZE).is_none());
+    press(&mut s, "CB_VSYNC");
+    assert!(!s.settings().vsync);
+    assert_eq!(s.take_wanted_vsync(), Some(false));
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("vsync=false"));
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "graphics");
+    assert!(!s.settings().vsync);
+
+    // Cancel puts back what the page found.
+    press(&mut s, "BTN_ADVANCED");
+    press(&mut s, "CB_VSYNC");
+    assert!(s.settings().vsync);
+    s.take_wanted_vsync();
+    press(&mut s, "BTN_CANCEL");
+    assert!(!s.settings().vsync);
+    assert_eq!(s.take_wanted_vsync(), Some(false));
+    // Default is on.
+    press(&mut s, "BTN_ADVANCED");
+    press(&mut s, "BTN_DEFAULT");
+    assert!(s.settings().vsync);
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);

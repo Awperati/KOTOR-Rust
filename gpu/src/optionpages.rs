@@ -25,6 +25,43 @@ const AUTOPAUSE: [(&str, u32); 6] = [
 /// Words for the boxes on the Gameplay page that do something new.
 const GAMEPLAY_WORDS: [(&str, u32); 2] = [("CB_LEVELUP", 42266), ("CB_DISABLEMOVE", 42484)];
 
+/// Graphics boxes: the talk table's words, and why a greyed one is greyed. These need work in the renderer: this one has
+/// one sample a pixel, no mipmaps, no shadow pass, no grass and no frame effects.
+const GRAPHICS_WORDS: [(&str, u32, Option<&str>); 8] = [
+    (
+        "CB_SHADOWS",
+        47951,
+        Some("Not built: no shadows are drawn yet."),
+    ),
+    ("CB_GRASS", 47955, Some("Not built: no grass is drawn yet.")),
+    (
+        "BTN_TEXQUAL",
+        47965,
+        Some("Not built: every texture is used whole."),
+    ),
+    (
+        "BTN_ANTIALIAS",
+        47971,
+        Some("Not built: one sample a pixel."),
+    ),
+    (
+        "BTN_ANISOTROPY",
+        47961,
+        Some("Not built: textures have no mipmaps yet."),
+    ),
+    (
+        "CB_FRAMEBUFF",
+        47957,
+        Some("Not built: no frame effects are drawn yet."),
+    ),
+    (
+        "CB_SOFTSHADOWS",
+        47953,
+        Some("Not built: no shadows are drawn yet."),
+    ),
+    ("CB_VSYNC", 47969, None),
+];
+
 fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
     Some(match row {
         0 => &mut s.hide_unequippable,
@@ -53,6 +90,10 @@ impl Stage {
         match self.menus.option_words {
             Some(words) => {
                 let text = self.ui.strref(words);
+                let text = match self.menus.option_reason {
+                    Some(why) => format!("{why}\n\n{text}"),
+                    None => text,
+                };
                 v.text(list, text);
             }
             None => v.hide(&[list]),
@@ -61,6 +102,65 @@ impl Stage {
 
     pub(super) fn gameplay_words(&mut self, v: &mut MenuView) {
         self.option_words(v, "LB_DESC");
+    }
+
+    pub(super) fn graphics_words(&mut self, v: &mut MenuView) {
+        self.option_words(v, "LB_DESC");
+    }
+
+    /// `optgraphicsadv.gui`. V-Sync is the one box the renderer can honour now.
+    pub(super) fn graphics_advanced_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("optgraphicsadv");
+        v.inert(&[
+            "BTN_TEXQUAL",
+            "BTN_ANTIALIAS",
+            "BTN_ANISOTROPY",
+            "CB_FRAMEBUFF",
+            "CB_SOFTSHADOWS",
+        ]);
+        v.hide(&[
+            "BTN_TEXQUALLEFT",
+            "BTN_TEXQUALRIGHT",
+            "BTN_ANTIALIASLEFT",
+            "BTN_ANTIALIASRIGHT",
+            "BTN_ANISOTROPYLEFT",
+            "BTN_ANISOTROPYRIGHT",
+        ]);
+        v.value("CB_VSYNC", self.menus.settings.vsync as i32, 1);
+        self.option_words(&mut v, "LB_DESC");
+        v
+    }
+
+    pub(super) fn graphics_advanced_press(&mut self, tag: &str) {
+        let s = &mut self.menus.settings;
+        match tag {
+            "CB_VSYNC" => s.vsync = !s.vsync,
+            "BTN_DEFAULT" => s.vsync = Settings::default().vsync,
+            "BTN_BACK" => {
+                self.menus.option_words = None;
+                self.menus.stack.pop();
+                return;
+            }
+            "BTN_CANCEL" => {
+                s.vsync = self.menus.vsync_before;
+                self.menus.option_words = None;
+                self.menus.stack.pop();
+            }
+            _ => return,
+        }
+        self.menus.wanted_vsync = Some(self.menus.settings.vsync);
+        self.settings_changed();
+    }
+
+    /// What V-Sync should become, once.
+    pub fn take_wanted_vsync(&mut self) -> Option<bool> {
+        self.menus.wanted_vsync.take()
+    }
+
+    pub(super) fn open_graphics_advanced(&mut self) {
+        self.menus.vsync_before = self.menus.settings.vsync;
+        self.menus.option_words = None;
+        self.menus.stack.push(Screen::GraphicsAdvanced);
     }
 
     pub(super) fn feedback_view(&mut self) -> MenuView {
@@ -94,6 +194,15 @@ impl Stage {
 
     /// The cursor moved over an option page: what is under it says its words.
     pub(super) fn option_hover(&mut self, screen: Screen) {
+        if let (Screen::Graphics | Screen::GraphicsAdvanced, Some(Hit::Button(tag))) =
+            (screen, &self.menus.hover)
+        {
+            if let Some((_, words, why)) = GRAPHICS_WORDS.iter().find(|g| g.0 == tag) {
+                self.menus.option_words = Some(*words);
+                self.menus.option_reason = *why;
+            }
+            return;
+        }
         let words = match (screen, &self.menus.hover) {
             (Screen::Feedback, Some(Hit::Row(_, row))) => FEEDBACK.get(*row).map(|f| f.1),
             (Screen::AutoPause, Some(Hit::Button(tag))) => {
@@ -106,6 +215,7 @@ impl Stage {
         };
         if words.is_some() {
             self.menus.option_words = words;
+            self.menus.option_reason = None;
         }
     }
 

@@ -64,6 +64,10 @@ The camera starts 3.3 m behind and 1.7 m above the player, and comes closer wher
 ## Interface on a wide screen
 GUI files lay out 640x480. The interface is drawn 480 units high and as wide as the window's shape makes it, then stretched over the whole window. **Assumed, not compared with the game:** the left of the HUD stays, the party and map keep their distance from the right edge, the action slot and notice icons stay centred, and the dialogue box is a bar from edge to edge.
 
+## Graphics
+Advanced Options has V-Sync, which the window obeys at once and the settings file keeps. Shadows, Grass, Texture Quality, Anti-Aliasing, Anisotropy, Frame Buffer Effects and Soft Shadows are greyed, and under the cursor each says why with the game's words below: the renderer has one sample a pixel, no mipmaps, no shadow pass, no grass and no frame effects. They are work for the renderer.
+
+
 ## Keys and mouse
 From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A click on a row waits for a key; Esc gives up, a key in use swaps with the other action, OK keeps it in the settings file, and Cancel or Esc puts back what the page found. Default gives back the keys at the top of this file; then the same button, called Original, gives the game's own from `keymap.2da` (P character, L quests, Z and C to strafe, A and D to turn, R to use). Esc, Enter, the digits and Shift stay as they are. Mouse Settings has the camera's speed, where a half is the speed it always had, and swaps the buttons, on the screens too. New: O opens the options, and F disengages.
 

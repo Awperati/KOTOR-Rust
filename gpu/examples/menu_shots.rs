@@ -218,6 +218,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     click(&mut s, "BTN_BACK", None);
     s.escape();
 
+    // The Graphics page's own, with the words for what is greyed.
+    s.escape();
+    click(&mut s, "BTN_GRAPHICS", None);
+    s.set_view(size);
+    let p = s.menu_pixel("CB_SHADOWS", None, size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "opt_graphics_reason", &out);
+    click(&mut s, "BTN_ADVANCED", None);
+    s.set_view(size);
+    let p = s.menu_pixel("CB_VSYNC", None, size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "opt_graphics_advanced", &out);
+    click(&mut s, "BTN_CANCEL", None);
+    click(&mut s, "BTN_BACK", None);
+    s.escape();
+
     // The Gameplay page's own pages.
     s.escape();
     click(&mut s, "BTN_GAMEPLAY", None);

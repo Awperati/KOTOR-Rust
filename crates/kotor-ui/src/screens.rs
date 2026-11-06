@@ -227,6 +227,7 @@ impl<'a> Ui<'a> {
             "map",
             "optkeymapping",
             "optmouse",
+            "optgraphicsadv",
             "optfeedback",
             "optautopause",
             "maincg",
