@@ -227,6 +227,8 @@ impl Program {
                         break;
                     }
                     Op::Retn => break,
+                    // What a `DelayCommand` or `AssignCommand` will run follows, past a jump over it.
+                    Op::StoreState { .. } => todo.push(i + 2),
                     _ => {}
                 }
                 i += 1;

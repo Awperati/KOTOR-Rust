@@ -150,6 +150,9 @@ pub struct Autopilot {
     gear_wait: f32,
     ways_retried: bool,
     new_module_at: f32,
+    party_filled: bool,
+    /// Where each module's ways out go, as far as it has seen.
+    links: BTreeMap<String, BTreeSet<String>>,
     /// The things that took it to another module, by module and tag, and where to.
     exits: BTreeMap<(String, String), String>,
     /// Nothing more to try.
@@ -211,6 +214,8 @@ impl Autopilot {
             gear_wait: 0.0,
             ways_retried: false,
             new_module_at: 0.0,
+            party_filled: false,
+            links: BTreeMap::new(),
             exits: BTreeMap::new(),
             finished: false,
             read_lines: false,
@@ -313,6 +318,7 @@ impl Autopilot {
             self.converse(w, dt);
             return;
         }
+        self.fill_the_party(w);
         if !self.immortal {
             self.look_after_itself(w, dt);
         }
@@ -334,6 +340,37 @@ impl Autopilot {
                 self.choose_goal(g);
             }
         }
+    }
+
+    /// Take along whoever is on offer, as a person would at the party screen. Lowest slot first: the first to join.
+    /// Once a visit: `k_ptar_duelring` takes people out of the party for a while and puts them back itself.
+    fn fill_the_party(&mut self, w: &mut World) {
+        if self.party_filled || w.party.len() >= crate::party::PARTY_SIZE {
+            return;
+        }
+        self.party_filled = true;
+        // Whoever leads has a slot too, and is not in `party`.
+        let mut slots = w.party_slots();
+        let leading: Vec<i32> = w
+            .npc_slots
+            .iter()
+            .filter(|(_, id)| **id == w.pc)
+            .map(|(s, _)| *s)
+            .collect();
+        let free: Vec<i32> = w
+            .available
+            .keys()
+            .copied()
+            .filter(|s| !slots.contains(s) && !leading.contains(s) && !w.set_aside.contains(s))
+            .take(crate::party::PARTY_SIZE - w.party.len())
+            .collect();
+        if free.is_empty() {
+            return;
+        }
+        slots.extend(leading);
+        slots.extend(free);
+        self.log.push(format!("party is now slots {slots:?}"));
+        w.choose_party(&slots, "");
     }
 
     /// Take each level as the Auto Level Up button does, and spend what is unspent.
@@ -413,19 +450,33 @@ impl Autopilot {
         if self.gear_wait <= 0.0 {
             self.gear_wait = GEAR_SECONDS;
             self.gear_up(w);
+            // The first feat on offer, with each attack: a person with a good one would.
+            if matches!(self.goal, Some(Goal::Fight(_))) && w.combat_queue.is_empty() {
+                let pc = w.pc;
+                if let Some(c) = w.combat_feats(pc).first() {
+                    w.combat_queue.push_back(c.action);
+                }
+            }
         }
         let pc = w.pc;
-        let hurt = w.object(pc).is_some_and(|o| !o.down && o.hp * 2 < o.max_hp);
-        if !hurt || self.medpack_wait > 0.0 {
+        // Whoever is worst off, party included. The party has one bag.
+        let hurt = std::iter::once(pc)
+            .chain(w.party.iter().copied())
+            .filter(|id| {
+                w.object(*id)
+                    .is_some_and(|o| !o.dead && !o.down && o.hp * 2 < o.max_hp)
+            })
+            .min_by_key(|id| w.object(*id).map_or(0, |o| o.hp));
+        let Some(who) = hurt.filter(|_| self.medpack_wait <= 0.0) else {
             return;
-        }
+        };
         let pack = w.carried(pc).into_iter().find(|i| {
             w.object(*i)
                 .is_some_and(|o| o.template.starts_with("g_i_medeqpmnt"))
         });
         if let Some(pack) = pack {
             self.medpack_wait = MEDPACK_SECONDS;
-            if w.use_item(pc, pack).is_ok() {
+            if w.use_item(who, pack).is_ok() {
                 if let Some(f) = self.fight.as_mut() {
                     f.medpacks += 1;
                 }
@@ -555,6 +606,7 @@ impl Autopilot {
             self.lock_tries.clear();
             self.second_looks = SECOND_LOOKS;
             self.ways_retried = false;
+            self.party_filled = false;
             self.module_time = 0.0;
             self.still = 0.0;
         }
@@ -899,6 +951,12 @@ impl Autopilot {
 
     fn choose_goal(&mut self, g: &mut Game) {
         let w = &mut g.world;
+        // Someone else had a try at a door. The story is the main character's: `k_ptar_duelring` empties the party by
+        // counting those beside the leader, and never ends if the main character is one of them.
+        let hero = w.hero;
+        if w.pc != hero && w.object(hero).is_some_and(|o| !o.dead && !o.down) {
+            w.switch_leader(hero);
+        }
         let pc = w.pc;
         let here = w.object(pc).map_or([0.0; 3], |o| o.position);
         // 1. Whoever is close and hostile.
@@ -959,12 +1017,19 @@ impl Autopilot {
                     Some((o.id, o.kind, o.position, to.clone()))
                 }),
         );
-        // Where it has been least first: the Sith commander's building is a way out it would otherwise never take, and
-        // the lower city has two doors it would go back and forth through for good.
+        self.links
+            .entry(self.module.clone())
+            .or_default()
+            .extend(ways.iter().map(|w| w.3.clone()));
+        let hops = self.hops_to_somewhere_new();
+        // Nearest to somewhere it has not been, then where it has been least: the Sith commander's building is a way out it
+        // would otherwise never take, and the lower city has two doors it would go back and forth through for good.
         ways.sort_by(|a, b| {
             let visits = |m: &String| self.modules.iter().filter(|v| *v == m).count();
-            visits(&a.3)
-                .cmp(&visits(&b.3))
+            let hop = |m: &String| hops.get(m).copied().unwrap_or(u32::MAX);
+            hop(&a.3)
+                .cmp(&hop(&b.3))
+                .then(visits(&a.3).cmp(&visits(&b.3)))
                 .then(dist2d(a.2, here).total_cmp(&dist2d(b.2, here)))
         });
         let mut no_way_out = None;
@@ -1024,6 +1089,25 @@ impl Autopilot {
             );
         }
         self.give_up(w);
+    }
+
+    /// How many ways out each module it knows of is from one it has not been to.
+    fn hops_to_somewhere_new(&self) -> BTreeMap<String, u32> {
+        let mut hops: BTreeMap<String, u32> = self
+            .links
+            .values()
+            .flatten()
+            .filter(|m| !self.modules.contains(m))
+            .map(|m| (m.clone(), 0))
+            .collect();
+        for n in 1..=self.links.len() as u32 {
+            for (from, to) in &self.links {
+                if !hops.contains_key(from) && to.iter().any(|m| hops.get(m) == Some(&(n - 1))) {
+                    hops.insert(from.clone(), n);
+                }
+            }
+        }
+        hops
     }
 
     fn give_up(&mut self, w: &mut World) {

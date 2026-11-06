@@ -60,35 +60,35 @@ Most to least blocking, all absent unless stated:
 ## How far the autopilot gets
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 80000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 19,805 game seconds in 49 wall seconds, 150 kills, experience 11,251, level 5, 2,079 door tries, 102 items, 17,756 lines. It ends when no new module has come for 8,000 s. Script errors: 1. The 225 `locked` stalls are doors it tried and gave up on.
+Last run: 14,860 game seconds in 46 wall seconds, 123 kills, experience 9,455, level 4, 5,558 door tries, 95 items, 5,454 lines. It ends when no new module has come for 8,000 s. Script errors: 1. The 692 `locked` stalls are doors it tried and gave up on.
 
 | Module | First entered, game s | Visits |
 |---|---|---|
 | `end_m01aa`, Endar Spire | 0 | 1 |
-| `end_m01ab`, its second half | 260 | 1 |
-| `STUNT_00`, cutscene | 426 | 1 |
-| `tar_m02af`, upper city start | 426 | 7 |
-| `tar_m02aa`, upper city | 453 | 9 |
-| `tar_m02ac` | 521 | 10 |
-| `tar_m02ae`, cantina and duel ring | 767 | 6 |
-| `tar_m02ab` | 1,042 | 12 |
-| `tar_m03aa`, lower city | 1,249 | 16 |
-| `tar_m03ab` | 1,435 | 3 |
-| `tar_m03ae` | 1,793 | 3 |
-| `tar_m11aa`, hidden Bek base | 2,031 | 3 |
-| `tar_m04aa`, undercity | 2,458 | 7 |
-| `tar_m03ad` | 2,940 | 3 |
-| `tar_m09aa`, Sith base | 3,445 | 11 |
-| `tar_m02ad` | 4,075 | 6 |
-| `tar_m09ab`, Sith base, governor | 7,697 | 8 |
-| `tar_m10aa`, Black Vulkar base | 9,727 | 8 |
-| `tar_m05ab`, sewers | 10,486 | 6 |
-| `tar_m10ac` | 11,029 | 5 |
-| `tar_m05aa`, sewers | 11,805 | 8 |
+| `end_m01ab`, its second half | 253 | 1 |
+| `STUNT_00`, cutscene | 396 | 1 |
+| `tar_m02af`, upper city start | 396 | 1 |
+| `tar_m02aa`, upper city | 423 | 1 |
+| `tar_m02ac` | 487 | 2 |
+| `tar_m02ae`, cantina and duel ring | 696 | 1 |
+| `tar_m02ab` | 982 | 5 |
+| `tar_m03aa`, lower city | 1,229 | 30 |
+| `tar_m03ab` | 1,403 | 1 |
+| `tar_m03ae` | 1,758 | 1 |
+| `tar_m11aa`, hidden Bek base | 2,000 | 23 |
+| `tar_m04aa`, undercity | 2,501 | 2 |
+| `tar_m03ad` | 2,979 | 1 |
+| `tar_m10aa`, Black Vulkar base | 3,376 | 3 |
+| `tar_m05ab`, sewers | 3,980 | 2 |
+| `tar_m10ac` | 4,468 | 1 |
+| `tar_m05aa`, sewers | 4,959 | 1 |
+| `tar_m09aa`, Sith base | 5,574 | 3 |
+| `tar_m02ad` | 6,264 | 1 |
+| `tar_m09ab`, Sith base, governor | 6,860 | 1 |
 
 That is 20 of the 97 named modules in the install, not counting `STUNT_` ones, and 18 of Taris's 23. Being in a module does not mean its story is done.
 
-**Quests:** 17 of the 101 in `global.jrl` were started, and 4 completed: `end_attack`, `tar_infectedoutcasts`, `tar_rakghoulserum`, `tar_rancor`. Still open with the state reached: `tar_bastsearch` 40, `tar_diabounty` 40, `tar_duelring` 30, `k_swg_carthtalk` 10, `tar_bendakbounty` 10, `tar_largobounty` 10, `k_pazaak` 1, `k_rapidtransit` 1, `tar_matrik` 1, `tar_planetinfo` 1, `tar_rukilapprentice` 1, `tar_selvenbounty` 1, `tar_vulkarbase` 1.
+**Quests:** 15 of the 101 in `global.jrl` were started, and 2 completed: `end_attack`, `tar_rancor`. Still open with the state reached: `tar_bastsearch` 35, `k_swg_carthtalk` 10, `tar_duelring` 10, `tar_largobounty` 10, `tar_rakghoulserum` 2, `k_rapidtransit` 1, `tar_bendakbounty` 1, `tar_diabounty` 1, `tar_matrik` 1, `tar_planetinfo` 1, `tar_rukilapprentice` 1, `tar_selvenbounty` 1, `tar_vulkarbase` 1.
 
 **No module holds it now. What it cannot reach:** every way left is story, a talk or a door it cannot open.
 
@@ -100,7 +100,7 @@ That is 20 of the 97 named modules in the install, not counting `STUNT_` ones, a
 | `tar_m10ab` | I found no link or script naming it. | I do not know. |
 | `ebo_m12aa`, the way off Taris | `k_ptar_goebhawk` in `tar_m02aa` | Not reached. Not read further. |
 
-The pilot takes the way out it has used least, so it finds things by itself. I do not know that this is the intended order of the story.
+The pilot takes the way out nearest to a module it has not seen, then the one it has used least, so it finds things by itself. It takes along whoever is on offer. I do not know that this is the intended order of the story.
 
 Read, and not faults:
 - **Long fights.** `tar05_stampy` has 90 hit points and defense 26, and a hero at +7 hits only on 19 or 20. `tar10_thermturret` went 37 hits in 72 blows over three turrets. The other long fights came from two faults, fixed below. Fights that used to stand idle were scripts ending the attack with `CancelCombat`. The pilot now attacks again, as a person would.
@@ -130,12 +130,17 @@ Fixed on the way, earliest first, each with a test:
 20. **Talks did not move quests.** Their state is in `QuestEntry`, and the code read `PlotIndex`, which is nearly always -1. Only scripts moved quests before this.
 21. **The pilot took a reply a real player dies of.** `k_ptar_killpc` sets the plot guard at `tar03_underdoor`, who hits at +21, on the player. It now avoids a reply that can turn someone who cannot be hurt. **That this rule covers all such replies is an assumption.** It takes one only when nothing else is on offer.
 22. **`ActionUnlockObject` and `ActionLockObject` did nothing.** So the guard could not let anyone by, and the undercity's inside was out of reach. **That they always work, with no skill check, is an assumption.**
+23. **The pilot never took Carth along.** Nothing in a run with no party screen brought him. It now fills the party once a visit, leaving out those a script took aside: the duel ring empties the party and puts it back, and a second Carth made `k_ptar_duelring` loop to the step limit.
 
 ## A pilot that can die
 
-`AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, takes a medpack below half its hit points at most once a round, and a party that is down ends the run. A leader knocked out hands over to someone standing. Each fight is logged as `FIGHT won` or `FIGHT lost`.
+`AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, and gives whoever is worst off a medpack below half their hit points, at most one every 3 s. It uses the first feat on offer with each attack. A party that is down ends the run. A leader knocked out hands over to someone standing, and takes the lead back when up. Each fight is logged as `FIGHT won` or `FIGHT lost`.
 
-Last run: 23 fights won, 1 lost, 1,262 game seconds. 13 in `end_m01aa`, 3 in `end_m01ab`, 4 in `tar_m02ac`, 1 in `tar_m02ae`, 3 in `tar_m03aa`. It looks round before it talks and takes `[`skill`]` replies first, so in `end_m01ab` it finds the spikes and overloads the panel, which kills the last room's troopers and opens the door. That is what the reference video's player does at about 781 s. **It dies in `tar_m03aa`** at 1,258 s, level 2 with 24 hit points, to `tar03_vulkcut2` in 3 s. The last blow was a critical for 24.
+Last run: **it never died.** It reached the same 21 modules by 7,186 game seconds, all by 15,186 s, at level 5, with 140 fights won and 12 not. No fight wiped the party. It stopped because nothing new came for 8,000 s. The medpack count matters less than this: the main character was knocked out 217 times, Mission 9 and Carth 4, and everyone stands up with 1 hit point when the fight ends. So it survives on that rule, which is `update_knockouts`, and on Carth and Mission. **Standing up at 1 hit point is an assumption.** If the game is harsher, this result is too kind.
+
+The 12 not won: 4 to `tar09_wardrd`, 2 to `g_sithcomm02`, 1 each to `tar04_rakghoulr`, `VulkarPool`, `SithPatrol091`, `SithTech2`, `tar09_sithbarracks` and `tar05_stampy`. Most started at 1 hit point, straight after getting back up. Balance reading: fights are survivable with a party, and the pilot picks them with no rest. Missing rule to check first: how the game stands people up.
+
+Not done, since nothing needed them: it does not retreat. It cannot throw grenades, because the engine has no grenades yet.
 
 Balance still cannot be judged. Only medpacks and a new level heal. The video shows no healing over 30 s out of combat, but it does not rule out a rest button. The player's feats are the class's recommended ones, not what the video's player chose.
 

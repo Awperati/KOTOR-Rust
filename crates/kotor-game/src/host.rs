@@ -1739,6 +1739,7 @@ impl Host for Adapter<'_> {
             }
             "AddPartyMember" => {
                 let (slot, id) = (int(args, 0)?, self.obj(caller, args, 1));
+                self.world.set_aside.remove(&slot);
                 if self.valid(id) && !self.world.party.contains(&id) && id != self.world.pc {
                     self.world.party.push(id);
                     self.world.npc_slots.insert(slot, id);
@@ -1751,6 +1752,7 @@ impl Host for Adapter<'_> {
             }
             "RemovePartyMember" => {
                 let slot = int(args, 0)?;
+                self.world.set_aside.insert(slot);
                 if let Some(id) = self.world.npc_slots.remove(&slot) {
                     self.world.party.retain(|p| *p != id);
                     if let Some(o) = self.world.object_mut(id) {

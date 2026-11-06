@@ -73,6 +73,24 @@ fn log_of(w: &mut World, calls: &[(&str, Vec<Vec<u8>>)]) -> Vec<String> {
 }
 
 #[test]
+fn set_party_leader_gives_the_main_character_the_lead_back() {
+    let Some(mut w) = world() else { return };
+    let main = w.pc;
+    let friend = w
+        .objects
+        .values()
+        .find(|o| o.kind == kotor_game::Kind::Creature && o.id != main)
+        .unwrap()
+        .id;
+    w.party.push(friend);
+    w.npc_slots.insert(2, friend);
+    assert!(w.switch_leader(friend));
+    let p = program(&w, &[("SetPartyLeader", vec![ci(-1)])]);
+    w.run_program(&p, friend).unwrap();
+    assert_eq!(w.pc, main);
+}
+
+#[test]
 fn a_door_asked_by_script_unlocks_itself() {
     let Some(mut w) = world() else { return };
     let door = w

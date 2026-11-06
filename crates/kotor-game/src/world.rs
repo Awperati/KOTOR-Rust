@@ -323,6 +323,8 @@ pub struct World {
     pub locations: Vec<([f32; 3], f32)>,
     /// Creatures offered to the party by `AddAvailableNPCByTemplate`, by slot.
     pub available: BTreeMap<i32, String>,
+    /// Slots a script took out of the party and has yet to put back. Their creature is still somewhere, as with the duel ring.
+    pub set_aside: BTreeSet<i32>,
     /// Who left the last trigger, who last opened a door, who last used a placeable.
     pub exiting: ObjId,
     pub last_opened_by: ObjId,
@@ -504,6 +506,7 @@ impl World {
             effect_cursor: HashMap::new(),
             locations: Vec::new(),
             available: BTreeMap::new(),
+            set_aside: BTreeSet::new(),
             exiting: OBJECT_INVALID,
             last_opened_by: OBJECT_INVALID,
             last_used_by: OBJECT_INVALID,

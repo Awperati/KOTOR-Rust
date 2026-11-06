@@ -149,6 +149,30 @@ fn the_reply_that_sets_an_unhurtable_guard_on_the_player_is_known() {
 }
 
 #[test]
+fn the_pilot_takes_along_who_is_on_offer_and_leads_itself() {
+    let Some(mut w) = world() else {
+        return;
+    };
+    w.load_module("tar_m02aa").unwrap();
+    w.enter_area();
+    w.available.insert(2, "p_carth".to_string());
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    p.run_steps(&mut g, 60);
+    assert_eq!(g.world.party_slots(), [2]);
+    let carth = g.world.npc_slots[&2];
+    assert!(g.world.switch_leader(carth));
+    for _ in 0..30 {
+        p.run_steps(&mut g, 60);
+        if g.world.pc == g.world.hero {
+            break;
+        }
+    }
+    assert_eq!(g.world.pc, g.world.hero);
+    assert_eq!(g.world.party, [carth], "one Carth, not a second");
+}
+
+#[test]
 fn a_foe_with_something_to_say_is_still_fought() {
     let Some(mut w) = world() else {
         return;
