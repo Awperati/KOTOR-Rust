@@ -1000,7 +1000,36 @@ pub struct Presenter {
     pipeline: wgpu::RenderPipeline,
     overlay_pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
-    overlay: std::cell::RefCell<Option<wgpu::BindGroup>>,
+    overlay: std::cell::RefCell<Option<OverlayPicture>>,
+}
+
+/// The picture over the scene, kept on the GPU. It changes many times a second in a fight, and most of it stays as it was.
+struct OverlayPicture {
+    texture: wgpu::Texture,
+    bind: wgpu::BindGroup,
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+/// The smallest box, `[left, top, width, height]` in pixels, that holds every pixel that differs between two pictures of
+/// `width` pixels across.
+fn changed_box(old: &[u8], new: &[u8], width: u32) -> Option<[u32; 4]> {
+    let row = width as usize * 4;
+    let rows = old.chunks_exact(row).zip(new.chunks_exact(row)).enumerate();
+    let (mut top, mut bottom, mut left, mut right) = (u32::MAX, 0, u32::MAX, 0);
+    for (y, (a, b)) in rows {
+        if a == b {
+            continue;
+        }
+        let first = a.iter().zip(b).position(|(p, q)| p != q).unwrap_or(0);
+        let last = a.iter().zip(b).rposition(|(p, q)| p != q).unwrap_or(0);
+        top = top.min(y as u32);
+        bottom = y as u32;
+        left = left.min(first as u32 / 4);
+        right = right.max(last as u32 / 4);
+    }
+    (top != u32::MAX).then(|| [left, top, right - left + 1, bottom - top + 1])
 }
 
 impl Presenter {
@@ -1122,11 +1151,72 @@ impl Presenter {
 
     /// Replace the premultiplied picture stretched over the whole scene, or remove it.
     pub fn set_overlay(&self, gpu: &GpuRenderer, img: Option<&Image>) {
-        let bind = img.map(|i| {
-            let t = upload_image(&gpu.device, &gpu.queue, i);
-            self.bind(gpu, &t.view)
+        let mut slot = self.overlay.borrow_mut();
+        let Some(img) = img else {
+            *slot = None;
+            return;
+        };
+        if let Some(o) = slot
+            .as_mut()
+            .filter(|o| o.width == img.width && o.height == img.height)
+        {
+            if let Some([left, top, width, height]) = changed_box(&o.pixels, &img.rgba, img.width) {
+                let row = img.width as usize * 4;
+                let start = top as usize * row + left as usize * 4;
+                gpu.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &o.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d {
+                            x: left,
+                            y: top,
+                            z: 0,
+                        },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &img.rgba[start..],
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(img.width * 4),
+                        rows_per_image: None,
+                    },
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                o.pixels.clone_from(&img.rgba);
+            }
+            return;
+        }
+        let texture = gpu.device.create_texture_with_data(
+            &gpu.queue,
+            &wgpu::TextureDescriptor {
+                label: Some("overlay"),
+                size: wgpu::Extent3d {
+                    width: img.width,
+                    height: img.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            &img.rgba,
+        );
+        let bind = self.bind(gpu, &texture.create_view(&Default::default()));
+        *slot = Some(OverlayPicture {
+            texture,
+            bind,
+            width: img.width,
+            height: img.height,
+            pixels: img.rgba.clone(),
         });
-        *self.overlay.borrow_mut() = bind;
     }
 
     /// The window changed size.
@@ -1182,7 +1272,7 @@ impl Presenter {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind, &[]);
             pass.draw(0..3, 0..1);
-            if let Some(o) = self.overlay.borrow().as_ref() {
+            if let Some(o) = self.overlay.borrow().as_ref().map(|o| &o.bind) {
                 pass.set_pipeline(&self.overlay_pipeline);
                 pass.set_bind_group(0, o, &[]);
                 pass.draw(0..3, 0..1);
@@ -1191,5 +1281,23 @@ impl Presenter {
         gpu.queue.submit([enc.finish()]);
         frame.present();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod overlay_tests {
+    use super::changed_box;
+
+    #[test]
+    fn only_the_part_of_the_overlay_that_changed_goes_up() {
+        let old = vec![0u8; 4 * 4 * 3];
+        assert_eq!(changed_box(&old, &old, 4), None);
+        let mut new = old.clone();
+        // Row 1, pixel 2, its alpha.
+        new[(4 + 2) * 4 + 3] = 9;
+        assert_eq!(changed_box(&old, &new, 4), Some([2, 1, 1, 1]));
+        // And row 2, pixel 0.
+        new[8 * 4] = 7;
+        assert_eq!(changed_box(&old, &new, 4), Some([0, 1, 3, 2]));
     }
 }

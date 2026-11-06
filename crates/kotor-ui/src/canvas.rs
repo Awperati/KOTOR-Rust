@@ -1,6 +1,9 @@
 //! A software canvas: RGBA pixels with alpha-blended rectangles and image blits.
 
 use kotor_image::Image;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct Canvas {
@@ -21,6 +24,50 @@ pub struct Orient {
     pub turns: u8,
     pub flip_x: bool,
     pub flip_y: bool,
+}
+
+/// A picture smoothly scaled to the pixels it covers, kept for next time. The HUD and the menus redraw whole every time
+/// anything on them changes, and smooth scaling a window's worth of panels took 60 ms a time at 3840x2160.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct ScaledKey {
+    bytes: usize,
+    width: u32,
+    content: u64,
+    region: [i32; 4],
+    size: [i32; 2],
+    tint: [u32; 3],
+    alpha: u32,
+    orient: (u8, bool, bool),
+}
+
+/// What is kept is let go all at once past this many pixels: a quarter of a gigabyte.
+const SCALED_MOST_PIXELS: usize = 64 << 20;
+
+#[derive(Default)]
+struct ScaledCache {
+    pictures: HashMap<ScaledKey, Rc<Vec<[u8; 4]>>>,
+    pixels: usize,
+}
+
+thread_local! {
+    static SCALED: RefCell<ScaledCache> = RefCell::default();
+}
+
+/// What a picture holds, as a number. By content and not by address, since a picture dropped and another loaded can have the
+/// same one, as the slots' icons did. A large picture is taken in every sixteenth word, a font's once for each letter.
+fn content_of(img: &Image) -> u64 {
+    const WHOLE_UP_TO: usize = 256 << 10;
+    let step = if img.rgba.len() <= WHOLE_UP_TO { 1 } else { 16 };
+    img.rgba
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .step_by(step)
+        .fold(0xcbf2_9ce4_8422_2325, |h: u64, w| {
+            (h ^ u64::from_le_bytes(*w))
+                .wrapping_mul(0x0000_0100_0000_01b3)
+                .rotate_left(23)
+        })
 }
 
 /// A smooth sample of `region` at fractions `u`, `v` of it, staying inside it so that a font's cells do not bleed.
@@ -51,6 +98,96 @@ fn bilinear(img: &Image, region: [i32; 4], u: f32, v: f32) -> [f32; 4] {
         let top = a[k] + (b[k] - a[k]) * tx;
         let bottom = c[k] + (d[k] - c[k]) * tx;
         out[k] = top + (bottom - top) * ty;
+    }
+    out
+}
+
+/// `region` of `img` smoothly scaled to `size`, as blendable pixels, from what is kept if it can be.
+fn scaled_picture(
+    img: &Image,
+    region: [i32; 4],
+    size: [i32; 2],
+    tint: [f32; 3],
+    alpha: f32,
+    orient: Orient,
+) -> Rc<Vec<[u8; 4]>> {
+    let key = ScaledKey {
+        bytes: img.rgba.len(),
+        width: img.width,
+        content: content_of(img),
+        region,
+        size,
+        tint: tint.map(f32::to_bits),
+        alpha: alpha.to_bits(),
+        orient: (orient.turns, orient.flip_x, orient.flip_y),
+    };
+    SCALED.with_borrow_mut(|cache| {
+        if let Some(found) = cache.pictures.get(&key) {
+            return found.clone();
+        }
+        let made = Rc::new(scale_picture(img, region, size, tint, alpha, orient));
+        if cache.pixels + made.len() > SCALED_MOST_PIXELS {
+            *cache = ScaledCache::default();
+        }
+        cache.pixels += made.len();
+        cache.pictures.insert(key, made.clone());
+        made
+    })
+}
+
+fn scale_picture(
+    img: &Image,
+    region: [i32; 4],
+    [dw, dh]: [i32; 2],
+    tint: [f32; 3],
+    alpha: f32,
+    orient: Orient,
+) -> Vec<[u8; 4]> {
+    // Shrinking a large picture: average a few samples per pixel.
+    let samples = if dw * 4 < region[2] * 3 || dh * 4 < region[3] * 3 {
+        2
+    } else {
+        1
+    };
+    let mut out = Vec::with_capacity((dw * dh) as usize);
+    for oy in 0..dh {
+        for ox in 0..dw {
+            let mut acc = [0.0f32; 4];
+            for sy in 0..samples {
+                for sx in 0..samples {
+                    let (mut u, mut v) = (
+                        (ox as f32 + (sx as f32 + 0.5) / samples as f32) / dw as f32,
+                        (oy as f32 + (sy as f32 + 0.5) / samples as f32) / dh as f32,
+                    );
+                    if orient.flip_x {
+                        u = 1.0 - u;
+                    }
+                    if orient.flip_y {
+                        v = 1.0 - v;
+                    }
+                    for _ in 0..orient.turns % 4 {
+                        (u, v) = (v, 1.0 - u);
+                    }
+                    let p = bilinear(img, region, u, v);
+                    let a = p[3] / 255.0;
+                    acc[0] += p[0] * a;
+                    acc[1] += p[1] * a;
+                    acc[2] += p[2] * a;
+                    acc[3] += a;
+                }
+            }
+            out.push(if acc[3] > 0.0 {
+                let n = (samples * samples) as f32;
+                [
+                    (acc[0] / acc[3] * tint[0]).min(255.0) as u8,
+                    (acc[1] / acc[3] * tint[1]).min(255.0) as u8,
+                    (acc[2] / acc[3] * tint[2]).min(255.0) as u8,
+                    (acc[3] / n * 255.0 * alpha).min(255.0) as u8,
+                ]
+            } else {
+                [0; 4]
+            });
+        }
     }
     out
 }
@@ -158,55 +295,17 @@ impl Canvas {
         if dw <= 0 || dh <= 0 || region[2] <= 0 || region[3] <= 0 {
             return;
         }
-        let smooth = self.scale != 1.0 || self.scale_x != 1.0;
-        // Shrinking a large picture: average a few samples per pixel.
-        let samples = if dw * 4 < region[2] * 3 || dh * 4 < region[3] * 3 {
-            2
-        } else {
-            1
-        };
+        if self.scale != 1.0 || self.scale_x != 1.0 {
+            let scaled = scaled_picture(img, region, [dw, dh], tint, alpha, orient);
+            for oy in 0..dh {
+                for ox in 0..dw {
+                    self.blend(dx + ox, dy + oy, scaled[(oy * dw + ox) as usize]);
+                }
+            }
+            return;
+        }
         for oy in 0..dh {
             for ox in 0..dw {
-                if smooth {
-                    let mut acc = [0.0f32; 4];
-                    for sy in 0..samples {
-                        for sx in 0..samples {
-                            let (mut u, mut v) = (
-                                (ox as f32 + (sx as f32 + 0.5) / samples as f32) / dw as f32,
-                                (oy as f32 + (sy as f32 + 0.5) / samples as f32) / dh as f32,
-                            );
-                            if orient.flip_x {
-                                u = 1.0 - u;
-                            }
-                            if orient.flip_y {
-                                v = 1.0 - v;
-                            }
-                            for _ in 0..orient.turns % 4 {
-                                (u, v) = (v, 1.0 - u);
-                            }
-                            let p = bilinear(img, region, u, v);
-                            let a = p[3] / 255.0;
-                            acc[0] += p[0] * a;
-                            acc[1] += p[1] * a;
-                            acc[2] += p[2] * a;
-                            acc[3] += a;
-                        }
-                    }
-                    if acc[3] > 0.0 {
-                        let n = (samples * samples) as f32;
-                        self.blend(
-                            dx + ox,
-                            dy + oy,
-                            [
-                                (acc[0] / acc[3] * tint[0]).min(255.0) as u8,
-                                (acc[1] / acc[3] * tint[1]).min(255.0) as u8,
-                                (acc[2] / acc[3] * tint[2]).min(255.0) as u8,
-                                (acc[3] / n * 255.0 * alpha).min(255.0) as u8,
-                            ],
-                        );
-                    }
-                    continue;
-                }
                 // Position inside the destination rectangle as a fraction, then undo the orientation.
                 let (mut u, mut v) = ((ox as f32 + 0.5) / dw as f32, (oy as f32 + 0.5) / dh as f32);
                 if orient.flip_x {
@@ -292,5 +391,40 @@ impl Canvas {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod scaled_tests {
+    use super::*;
+
+    #[test]
+    fn a_scaled_picture_kept_for_next_time_draws_the_same_and_follows_a_change() {
+        let mut img = Image {
+            width: 2,
+            height: 2,
+            rgba: vec![
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 128,
+            ],
+        };
+        let draw = |img: &Image, tint: [f32; 3]| {
+            let mut c = Canvas::scaled_layout((40, 40), 2.0);
+            c.draw_image(
+                img,
+                [0, 0, 2, 2],
+                [0, 0, 20, 20],
+                tint,
+                1.0,
+                Orient::default(),
+            );
+            c.rgba
+        };
+        let first = draw(&img, [1.0; 3]);
+        assert_eq!(first, draw(&img, [1.0; 3]));
+        assert_ne!(first, draw(&img, [0.5; 3]), "another tint");
+        // The same allocation with other pixels, as a picture freed and made again would be.
+        img.rgba[0] = 0;
+        img.rgba[1] = 255;
+        assert_ne!(first, draw(&img, [1.0; 3]));
     }
 }

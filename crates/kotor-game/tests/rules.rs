@@ -74,6 +74,43 @@ fn a_thing_with_no_floor_under_it_can_be_used_from_beside_it() {
 }
 
 #[test]
+fn a_creature_is_drawn_between_the_steps_it_moved_in() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    let pc = w.pc;
+    let mut g = kotor_game::Game::new(w);
+    let dt = g.dt;
+    g.step_once();
+    let was = g.world.object(pc).unwrap().position;
+    // A step in which it moved a little, then half of the next.
+    let moved = [was[0] + 0.5, was[1], was[2]];
+    g.world.pc_mover.pos = moved;
+    g.step_once();
+    let now = g.world.object(pc).unwrap().position;
+    assert_ne!(now, was);
+    g.steps_due(dt / 2.0, 1.0);
+    let drawn = g.drawn_position(pc).unwrap();
+    assert!(
+        (drawn[0] - (was[0] + now[0]) / 2.0).abs() < 0.01,
+        "{was:?} {drawn:?} {now:?}"
+    );
+    assert_eq!(
+        g.poses().iter().find(|p| p.id == pc).unwrap().position,
+        drawn
+    );
+    // A teleport is not drawn on its way.
+    g.world.pc_mover.pos = [was[0] + 40.0, was[1], was[2]];
+    g.step_once();
+    let far = g.world.object(pc).unwrap().position;
+    assert_eq!(g.drawn_position(pc).unwrap(), far);
+}
+
+#[test]
 fn every_minigame_in_the_install_reads_whole() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

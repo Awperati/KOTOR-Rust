@@ -23,6 +23,10 @@ pub use menus::{about_words, default_saves_dir, default_settings_file, Settings}
 
 type Mat = [[f32; 4]; 4];
 
+/// A sound from a place is heard whole this near the player, and not at all this far (metres). **Assumed:** a duel 43 m from
+/// where a new game starts played at full strength for good. The video has none of it there.
+const HEARD_WHOLE: f32 = 8.0;
+const HEARD_AT_MOST: f32 = 32.0;
 /// Creatures farther than this from the player are not drawn (metres).
 const DRAW_RANGE: f32 = 45.0;
 /// Animation ids from here index a stunt model's animations (see `kotor_game::cutscene`).
@@ -51,6 +55,8 @@ pub enum Cue {
     Music(PathBuf),
     /// A short sound, as the bytes of its file.
     Effect(Vec<u8>),
+    /// A short sound from somewhere off, and how much of it reaches the player, 0 to 1.
+    FaintEffect(Vec<u8>, f32),
     /// The player's levels for music, voice and effects, 0 to 1.
     Levels(f32, f32, f32),
     StopMusic,
@@ -212,6 +218,15 @@ fn action_icon(action: &str) -> &'static str {
         "Open" | "Close" => "i_opendoor",
         _ => "i_openplace",
     }
+}
+
+fn dist(a: [f32; 3], b: [f32; 3]) -> f32 {
+    (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f32>().sqrt()
+}
+
+/// How much of a sound this far from the player reaches it, 0 to 1.
+fn heard_share(metres: f32) -> f32 {
+    ((HEARD_AT_MOST - metres) / (HEARD_AT_MOST - HEARD_WHOLE)).clamp(0.0, 1.0)
 }
 
 fn load_model(inst: &mut Install, name: &str) -> Option<Model> {
@@ -759,7 +774,13 @@ impl Stage {
             }
         }
         if let Some(s) = sound {
-            self.effect(&s);
+            match caster
+                .and_then(|id| self.game.world.object(id))
+                .map(|o| o.position)
+            {
+                Some(at) => self.effect_from(&s, at),
+                None => self.effect(&s),
+            }
         }
     }
 
@@ -954,7 +975,11 @@ impl Stage {
         {
             return c;
         }
-        let p = self.pc_position();
+        // Where it is drawn, or the player shakes against the room.
+        let p = self
+            .game
+            .drawn_position(self.game.world.pc)
+            .unwrap_or([0.0; 3]);
         let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
         let (flat, up) = (self.pitch.cos(), self.pitch.sin());
@@ -1302,6 +1327,21 @@ impl Stage {
         }
     }
 
+    /// A sound from a place: the farther from the player, the less of it.
+    fn effect_from(&mut self, name: &str, at: [f32; 3]) {
+        let gain = heard_share(dist(self.pc_position(), at));
+        if gain <= 0.0 {
+            return;
+        }
+        if let Ok(bytes) = self.inst.read(name, ResType::WAV) {
+            self.cues.push(if gain < 1.0 {
+                Cue::FaintEffect(bytes, gain)
+            } else {
+                Cue::Effect(bytes)
+            });
+        }
+    }
+
     /// Sounds and bolts of what happened since the last frame: attacks, doors and the player's steps. Sound names come
     /// from `ammunitiontypes.2da`, `weaponsounds.2da`, `placeableobjsnds.2da` and `footstepsounds.2da`.
     ///
@@ -1314,20 +1354,20 @@ impl Stage {
         for l in new {
             self.attack_effects(l.attacker, l.target, l.outcome != kotor_game::Outcome::Miss);
         }
-        let doors: Vec<(ObjId, bool, String)> = self
+        let doors: Vec<(ObjId, bool, String, [f32; 3])> = self
             .game
             .world
             .objects
             .values()
             .filter(|o| o.kind == Kind::Door)
-            .map(|o| (o.id, o.open, o.template.clone()))
+            .map(|o| (o.id, o.open, o.template.clone(), o.position))
             .collect();
-        for (id, open, template) in doors {
+        for (id, open, template, at) in doors {
             let was = self.door_seen.insert(id, open);
             if was.is_some_and(|w| w != open) {
                 let column = if open { "opened" } else { "closed" };
                 if let Some(sound) = self.door_sound(&template, column) {
-                    self.effect(&sound);
+                    self.effect_from(&sound, at);
                 }
             }
         }
@@ -1418,11 +1458,11 @@ impl Stage {
             self.effects
                 .fire(muzzle, [to[0], to[1], to[2] + 1.15], &bolt, color);
             if let Some(s) = shot {
-                self.effect(&s);
+                self.effect_from(&s, from);
             }
             if hit {
                 if let Some(s) = impact {
-                    self.effect(&s);
+                    self.effect_from(&s, to);
                 }
             }
             return;
@@ -1457,11 +1497,11 @@ impl Stage {
         let swing = get("swingshort0");
         let blow = get(if armoured { "armor0" } else { "leather0" });
         if let Some(s) = swing {
-            self.effect(&s);
+            self.effect_from(&s, from);
         }
         if hit {
             if let Some(s) = blow {
-                self.effect(&s);
+                self.effect_from(&s, to);
             }
         }
     }

@@ -94,6 +94,16 @@ impl Sound {
                     }
                 }
             }
+            Cue::FaintEffect(bytes, gain) => {
+                if let (Some(o), Ok(mut a)) = (&mut self.out, decode_any(&bytes)) {
+                    for sample in &mut a.samples {
+                        *sample = (*sample as f32 * gain) as i16;
+                    }
+                    if let Err(e) = o.play_effect(&a) {
+                        eprintln!("sound: {e}");
+                    }
+                }
+            }
             Cue::Levels(music, voice, effects) => {
                 if let Some(o) = &mut self.out {
                     o.set_levels(music, voice, effects);

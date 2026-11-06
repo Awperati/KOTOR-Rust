@@ -30,6 +30,8 @@ pub struct Game {
     accumulator: f32,
     clips: HashMap<ObjId, Clip>,
     last_pos: HashMap<ObjId, [f32; 3]>,
+    /// Where each creature was before the last step, to draw it between steps.
+    before_step: HashMap<ObjId, [f32; 3]>,
     /// A clip playing once over everything else but death: name and seconds left.
     once: HashMap<ObjId, (&'static str, f32)>,
     log_seen: usize,
@@ -67,6 +69,7 @@ impl Game {
             accumulator: 0.0,
             clips: HashMap::new(),
             last_pos: HashMap::new(),
+            before_step: HashMap::new(),
             once: HashMap::new(),
             log_seen: 0,
             names: HashMap::new(),
@@ -102,6 +105,14 @@ impl Game {
 
     /// One fixed step. All game time passes here, however fast the caller goes.
     pub fn step_once(&mut self) {
+        self.before_step.clear();
+        self.before_step.extend(
+            self.world
+                .objects
+                .values()
+                .filter(|o| o.kind == Kind::Creature)
+                .map(|o| (o.id, o.position)),
+        );
         self.face_speaker();
         let walking = self.world.pc_walking();
         self.world.step(self.dt);
@@ -290,6 +301,21 @@ impl Game {
     }
 
     /// Draw requests for every placed object that has a body: position, facing and clip.
+    /// Where to draw a creature: between where the last step found it and where it left it, by how much of the next step
+    /// has passed. The game moves 60 times a second and a screen does not, and with nothing between them everything that
+    /// moves shakes. A jump of over a metre is a teleport, and is not drawn on its way.
+    pub fn drawn_position(&self, id: ObjId) -> Option<[f32; 3]> {
+        let now = self.world.objects.get(&id)?.position;
+        let Some(was) = self.before_step.get(&id) else {
+            return Some(now);
+        };
+        if (now[0] - was[0]).hypot(now[1] - was[1]) > 1.0 {
+            return Some(now);
+        }
+        let share = (self.accumulator / self.dt).clamp(0.0, 1.0);
+        Some([0, 1, 2].map(|i| was[i] + (now[i] - was[i]) * share))
+    }
+
     pub fn poses(&self) -> Vec<Pose> {
         self.world
             .objects
@@ -298,7 +324,7 @@ impl Game {
             .map(|o| Pose {
                 id: o.id,
                 kind: o.kind,
-                position: o.position,
+                position: self.drawn_position(o.id).unwrap_or(o.position),
                 heading: if o.id == self.world.pc {
                     self.world.pc_mover.heading
                 } else {
@@ -326,7 +352,10 @@ impl Game {
                             time: t,
                         },
                     }),
-                    _ => self.clips.get(&o.id).cloned(),
+                    _ => self.clips.get(&o.id).cloned().map(|c| Clip {
+                        time: c.time + self.accumulator.max(0.0),
+                        ..c
+                    }),
                 },
             })
             .collect()

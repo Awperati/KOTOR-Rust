@@ -53,6 +53,28 @@ fn a_race_draws_from_its_camera_and_the_space_key_shifts() {
     assert!(x > 100.5, "{x}");
 }
 
+#[test]
+fn a_duel_in_another_room_cannot_be_heard_from_where_a_new_game_starts() {
+    let Some(mut s) = stage() else {
+        return;
+    };
+    s.enable_tutorials(false);
+    let mut heard = 0;
+    for _ in 0..(16.0 / DT) as usize {
+        s.number_key(1);
+        s.continue_line();
+        for c in s.update(DT) {
+            if s.game.world.combat.log.len() > 1
+                && matches!(c, Cue::Effect(_) | Cue::FaintEffect(..))
+            {
+                heard += 1;
+            }
+        }
+    }
+    assert!(s.game.world.combat.log.len() >= 3, "the duel goes on");
+    assert_eq!(heard, 0);
+}
+
 /// Finish whatever conversation is on, taking the first reply.
 fn play_out(s: &mut Stage, cues: &mut Vec<Cue>) {
     for _ in 0..6000 {
@@ -667,14 +689,16 @@ fn the_area_smokes_and_fights_make_sounds_and_bolts() {
         .collect();
     s.update(DT);
     s.update(DT);
+    // From beside each: a door far off is not heard, and not every door has a sound.
+    let mut heard = false;
     for door in doors {
+        let at = s.game.world.object(door).unwrap().position;
+        s.game.world.pc_mover.pos = at;
+        s.update(DT);
         s.game.world.open_door(door);
+        heard |= s.update(DT).iter().any(|c| matches!(c, Cue::Effect(_)));
     }
-    let got = s.update(DT);
-    assert!(
-        got.iter().any(|c| matches!(c, Cue::Effect(_))),
-        "the door sounds"
-    );
+    assert!(heard, "the door sounds");
 }
 
 #[test]
