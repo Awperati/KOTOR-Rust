@@ -14,6 +14,7 @@ Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fet
   transition to `end_m01ab`, party following, collision, and a whole headless battle run by the game's own AI scripts.
 - **Rules from the 2DAs**: d20 combat with rounds, saves, skills, feats, level-up, kill XP, knock-outs, 42 Force powers through their real impact scripts with timed
   effects, character creation, save/load round-trip, cutscene timeline, WAV/ADPCM decoding, GUI/font layout and a software-rendered dialogue box and HUD.
+- **Movement**: Modern (momentum, gravity, a sprint at 1.25 times the run, a roll) or Classic, by a setting: `docs/PLAY.md`.
 - **Pictures**: software renderer for areas, characters with skinning and animation, walk sheets (`docs/RENDER.md`).
 
 ## What is guessed (documented where each is used)

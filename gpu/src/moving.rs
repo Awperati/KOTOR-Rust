@@ -24,10 +24,11 @@ const FOV_KICK: f32 = 6.0;
 const FOV_RATE: f32 = 5.0;
 /// From this speed the view begins to widen, metres per second.
 const FOV_FROM: f32 = 2.0;
-/// The body turns over around this height, metres.
-const TUCK_HEIGHT: f32 = 0.55;
+/// The body turns over around its middle, this high when it stands, metres. Pressed down around it to the same share, the
+/// head never reaches further from the middle than the feet do, so a turned body stays out of the floor.
+const TUCK_HEIGHT: f32 = 0.9;
 /// How far a roll presses the body down at its middle, and a landing at its start.
-const ROLL_SQUASH: f32 = 0.35;
+const ROLL_SQUASH: f32 = 0.55;
 const LAND_SQUASH: f32 = 0.22;
 /// A stock effect model of the game.
 const DUST: &str = "fx_step_dust";
@@ -182,9 +183,7 @@ impl Stage {
         }
         let body = &w.pc_body;
         let (over, squash) = if body.rolling() {
-            let p = body.roll_progress(&w.tuning);
-            let eased = p * p * (3.0 - 2.0 * p);
-            (eased * TAU, ROLL_SQUASH * (p * TAU / 2.0).sin())
+            roll_pose(body.roll_progress(&w.tuning))
         } else if body.landing() {
             (0.0, LAND_SQUASH * body.land_dip())
         } else {
@@ -194,7 +193,13 @@ impl Stage {
     }
 }
 
-/// Around the hips of a body at `at` facing `heading`: `over` radians over the shoulder, and pressed down by `squash`.
+/// How far a roll has turned the body over and pressed it down, `p` of the way through it.
+fn roll_pose(p: f32) -> (f32, f32) {
+    let eased = p * p * (3.0 - 2.0 * p);
+    (eased * TAU, ROLL_SQUASH * (p * TAU / 2.0).sin())
+}
+
+/// Around the middle of a body at `at` facing `heading`: `over` radians over the shoulder, and pressed down by `squash`.
 fn tilt_matrix(at: [f32; 3], heading: f32, over: f32, squash: f32) -> Mat {
     // Models face +y at rest.
     let angle = heading - std::f32::consts::FRAC_PI_2;
@@ -253,6 +258,20 @@ mod tests {
         assert!((head[0] - heading.cos()).abs() < 1e-4, "{head:?}");
         assert!((head[1] - heading.sin()).abs() < 1e-4, "{head:?}");
         assert!((head[2] - TUCK_HEIGHT).abs() < 1e-4, "{head:?}");
+    }
+
+    #[test]
+    fn a_turned_body_stays_out_of_the_floor_all_through_a_roll() {
+        let at = [2.0, -1.0, 3.0];
+        for k in 0..=100 {
+            let (over, squash) = roll_pose(k as f32 / 100.0);
+            let m = tilt_matrix(at, 0.4, over, squash);
+            // Along the body, from the feet to the top of a 1.8 m head.
+            for h in 0..=18 {
+                let z = apply(&m, [at[0], at[1], at[2] + h as f32 * 0.1])[2];
+                assert!(z >= at[2] - 1e-3, "{z} at {k}% and height {h}");
+            }
+        }
     }
 
     #[test]

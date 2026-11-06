@@ -12,9 +12,10 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 
 | Input | What it does |
 |---|---|
-| W A S D | run in that direction, relative to the camera; Shift walks |
+| W A S D | run in that direction, relative to the camera; Shift walks. While the look button is held, the keys keep the direction they had |
+| Left Ctrl | roll, in Modern movement (Key Mapping has it, under Roll) |
 | Right button drag, or the arrow keys | turn the camera round the player |
-| Left click on the floor | run there |
+| Left click on the floor | run there, unless Click to walk is off in Feedback |
 | Left click on a creature, door or placeable | run up and talk, open or use; an enemy is attacked |
 | E | use the nearest thing within 2.5 m |
 | Left click on a reply, or 1-9 | take that reply, or take an item from a container or a body |
@@ -28,6 +29,8 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | C | character |
 
 Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG`, `--xp N`, `--pilot-until W`, `--autopilot` (a scripted player takes the controls and prints what stalls) and `--speed N` (`docs/FASTTEST.md`).
+
+`scripts/drive_move.ps1 -Shots folder -Log file [-Size 3840x2160]` walks, sprints, rolls and falls off a Dantooine cliff in the running window, and prints PASS or FAIL for the speeds and heights it records.
 
 `scripts/drive_window.ps1` plays the running window with messages posted to its own handle only, with no global input and no focus change, and prints PASS or FAIL for replies, the footlocker, WASD and click-to-walk.
 
@@ -193,3 +196,22 @@ One gate run lost 62 scripts in a row as "not found" in `every_endar_spire_scrip
 ## Not done
 - More than one action slot on the HUD (the first shows the target's action), the map picture, and notices.
 - Force powers' projectiles, and `Explosion` bursts timed to a model's own detonate key.
+
+## Movement: Modern or Classic
+
+Options, Feedback, has the row. Modern is the default, and Classic is the walk as the game has it. It is one setting in the settings file, for every game on this machine.
+
+| | Classic | Modern |
+|---|---|---|
+| WASD and clicks | 5.4 m/s from the first frame | 6.75 m/s, 1.25 times that, reached in about a quarter of a second |
+| Letting go | stops at once | stops in about 0.18 s, over about 0.6 m |
+| Height | on the floor every step | follows slopes and stairs smoothly; off a ledge it falls at 17.7 m/s2 and lands |
+| Roll | none | Left Ctrl: 3.2 m in 0.55 s, not in a conversation, a minigame or a race |
+| Camera | fixed to the player | its focus lags a little, and the view is 6 degrees wider at a sprint |
+| Party | runs at 5.4 m/s | up to 7.4 m/s when behind |
+
+5.4 m/s is measured: `runrate` of `creaturespeed.2da`, and `rundist` 3.96 m over the 0.733 s run cycle. **Everything else is a feel choice, not data:** see the top of `crates/kotor-game/src/movement.rs` and `gpu/src/moving.rs`. **Assumed:** WASD is the sprint, with no key of its own, and Shift still walks. A roll gives no protection: combat is d20 rounds, and their rules are unchanged. A fall does no damage. There is no jump.
+
+The supermodels have no roll, dive, jump or landing clip, so the whole body is turned over and pressed down around its middle, in the `getfromgnd` crouch. Dust is the game's `fx_step_dust`.
+
+A floor can end over a lower one, with a gap where the cliff is. The player falls there when the drop is at most 6 m and no wall face stands at chest height in the first 1.2 m. **A railing that is only in the room's model does not stop it.** `cargo run --release -p kotor-render --example ledges` lists the drops it finds.

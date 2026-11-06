@@ -15,8 +15,8 @@ function Up($k) { $up = [long]0xC0000001 -bor ([long]$k[1] -shl 16); [void][Drv]
 function Open($name, $extra) {
   $script:stateFile = "$scratch\kotor_move_$name.out"
   Remove-Item $script:stateFile -ErrorAction SilentlyContinue
-  $args = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","danm14aa","--skip-menu","--state-log","--size",$Size,"--frames","100000") + $extra
-  $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList $args -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_move_$name.err" -PassThru -NoNewWindow
+  $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","danm14aa","--skip-menu","--state-log","--size",$Size,"--frames","100000") + $extra
+  $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList $argv -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_move_$name.err" -PassThru -NoNewWindow
   for ($i = 0; $i -lt 600 -and $script:v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $script:v.Refresh() }
   $script:h = $script:v.MainWindowHandle; [Drv]::NeverActive($script:h)
   WaitLog
@@ -31,7 +31,7 @@ function Open($name, $extra) {
 function Close { Stop-Process -Id $script:v.Id -Force -ErrorAction SilentlyContinue }
 # Every state line from a size of the log on, as numbers.
 function Samples($from) {
-  $text = [IO.File]::ReadAllText($script:stateFile)
+  $f = New-Object IO.FileStream($script:stateFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite); $r = New-Object IO.StreamReader($f); $text = $r.ReadToEnd(); $r.Close()
   foreach ($line in ($text.Substring($from) -split "`n")) {
     if ($line -notlike "state *") { continue }
     $o = @{}
@@ -52,8 +52,8 @@ function Measured($a, $b) { [Math]::Sqrt(($b.x - $a.x) * ($b.x - $a.x) + ($b.y -
 if ($Log) { Remove-Item $Log -ErrorAction SilentlyContinue }
 $tag = $Size -replace 'x.*', ''
 
-# The run: at full speed, then a stop, a walk and a roll, along the run-up to the ledge and away from it.
-$s = Open "run" @("--place", "290.0,120.0,7.30,4.320")
+# The run: at full speed, then a stop, a walk and a roll, over 20 m of clear floor from the spawn.
+$s = Open "run" @("--place", "165.17,136.66,1.85,1.767")
 Report "In the module" ($s.module -eq "danm14aa") "module=$($s.module) pc=$($s.pc) z=$($s.pcz)"
 $m = Mark
 Down $W; Start-Sleep -Milliseconds 1100
@@ -117,5 +117,13 @@ if ($air.Count -ge 3) {
 }
 FocusReport
 Close
+# The roll at a tenth of the speed, for pictures through it.
+if ($Shots) {
+  $s = Open "slow" @("--place", "165.17,136.66,1.85,1.767", "--speed", "0.1")
+  Key $CTRL[0] $CTRL[1] 30
+  for ($i = 1; $i -le 5; $i++) { Start-Sleep -Milliseconds 900; [Drv]::Save($h, "$Shots\move_roll_step$($i)_$tag.png") }
+  FocusReport
+  Close
+}
 "gate: $(if ($script:failed) { 'FAILED ' + $script:failed } else { 'all PASS' })"
 exit $script:failed
