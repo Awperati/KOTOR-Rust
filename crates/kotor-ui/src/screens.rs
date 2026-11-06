@@ -41,7 +41,26 @@ pub struct Ui<'a> {
     tlk: Option<Option<kotor_tables::Tlk>>,
     target_at: Option<(i32, i32)>,
     minimap: Option<MiniMap>,
+    combat: CombatHud,
 }
+
+/// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CombatHud {
+    /// The panel with the action queue and Disengage is up, and the line at the top says so.
+    pub engaged: bool,
+    pub message: String,
+    /// The pictures of what is queued, what is happening now first.
+    pub queue: Vec<String>,
+    /// The target is an enemy: its bar is red, and this picture is in the first slot under it.
+    pub attack: Option<String>,
+}
+
+/// What a fight's text and bar are drawn in.
+const COMBAT_RED: [f32; 3] = [1.0, 0.16, 0.1];
+const HOSTILE_SLOT: &str = "lbl_miscroll_h";
+/// What stays in the middle of a wide window, as the video has it.
+const HUD_CENTRED: [&str; 4] = ["LBL_COMBATBG", "LBL_QUEUE", "BTN_CLEAR", "LBL_CMBT"];
 
 /// The small map on the HUD.
 #[derive(Clone, Debug, PartialEq)]
@@ -112,6 +131,7 @@ impl<'a> Ui<'a> {
             tlk: None,
             target_at: None,
             minimap: None,
+            combat: CombatHud::default(),
         }
     }
 
@@ -441,7 +461,16 @@ impl<'a> Ui<'a> {
                         r[3],
                     ]
                 };
-                if let Some(img) = self.texture(&fill.fill).cloned() {
+                // A colour of its own: the video's enemy bar, for which I found no picture.
+                if let Some([red, green, blue]) = patch.color {
+                    let c = [
+                        (red * 255.0) as u8,
+                        (green * 255.0) as u8,
+                        (blue * 255.0) as u8,
+                        255,
+                    ];
+                    cv.fill_rect(dst[0], dst[1], dst[2], dst[3], c);
+                } else if let Some(img) = self.texture(&fill.fill).cloned() {
                     let full = [0, 0, img.width as i32, img.height as i32];
                     cv.draw_image(&img, full, dst, fill.color, 1.0, Orient::default());
                 }
@@ -457,7 +486,8 @@ impl<'a> Ui<'a> {
                 _ => t.text.clone(),
             });
             if !text.is_empty() {
-                self.draw_text(cv, &t.font, &text, r, t.alignment, t.color);
+                let color = patch.color.unwrap_or(t.color);
+                self.draw_text(cv, &t.font, &text, r, t.alignment, color);
             }
         }
         // **Assumption:** the first control in the list is the topmost, so draw from the last to the first
@@ -748,6 +778,7 @@ impl<'a> Ui<'a> {
         if self.minimap.is_some() {
             hide(&mut patches, "LBL_ARROW".to_string());
         }
+        self.patch_combat(&mut patches);
         // File order: later controls lie on top, as in the menus.
         for c in gui.panel.children.iter().filter(|c| c.kind != 9) {
             self.draw_control(&mut cv, c, (0, 0), &patches);
@@ -794,6 +825,66 @@ impl<'a> Ui<'a> {
         }
     }
 
+    /// Bring up what the HUD hides until there is a fight.
+    fn patch_combat(&self, patches: &mut HashMap<String, Patch>) {
+        let combat = &self.combat;
+        let mut show = |tag: String| patches.entry(tag).or_default().hidden = false;
+        if combat.engaged {
+            for tag in [
+                "LBL_COMBATBG2",
+                "LBL_COMBATBG3",
+                "LBL_COMBATBG1",
+                "LBL_CMBTMSGBG",
+                "LBL_CMBTMODEMSG",
+                "BTN_CLEARALL",
+                "BTN_CLEARONE",
+                "BTN_CLEARONE2",
+            ] {
+                show(tag.to_string());
+            }
+            for n in 0..combat.queue.len().min(4) {
+                show(format!("LBL_QUEUE{n}"));
+            }
+        }
+        let bar = combat.attack.is_some() && self.target_at.is_some();
+        if bar {
+            for tag in [
+                "BTN_TARGET0",
+                "BTN_TARGETUP0",
+                "BTN_TARGETDOWN0",
+                "LBL_TARGET0",
+                "BTN_TARGET1",
+                "BTN_TARGET2",
+            ] {
+                show(tag.to_string());
+            }
+        }
+        if combat.engaged {
+            let line = patches.entry("LBL_CMBTMODEMSG".to_string()).or_default();
+            line.text = Some(combat.message.clone());
+            line.color = Some(COMBAT_RED);
+            for (n, icon) in combat.queue.iter().take(4).enumerate() {
+                patches.entry(format!("LBL_QUEUE{n}")).or_default().fill = Some(icon.clone());
+            }
+        }
+        if bar {
+            patches.entry("LBL_TARGET0".to_string()).or_default().fill = combat.attack.clone();
+            for n in 0..3 {
+                patches.entry(format!("BTN_TARGET{n}")).or_default().fill =
+                    Some(HOSTILE_SLOT.to_string());
+            }
+        }
+        if combat.attack.is_some() {
+            patches.entry("LBL_NAME".to_string()).or_default().color = Some(COMBAT_RED);
+            patches.entry("PB_HEALTH".to_string()).or_default().color = Some(COMBAT_RED);
+        }
+    }
+
+    /// What the HUD shows of a fight.
+    pub fn set_combat(&mut self, combat: CombatHud) {
+        self.combat = combat;
+    }
+
     /// The small map on the HUD, if the area has one.
     pub fn set_minimap(&mut self, map: Option<MiniMap>) {
         self.minimap = map;
@@ -808,10 +899,15 @@ impl<'a> Ui<'a> {
     pub fn hud_hit(&mut self, x: f32, y: f32) -> Option<String> {
         let mut gui = self.gui(HUD_GUI)?;
         place_hud(&mut gui.panel, self.width, self.target_at);
+        let shown = |tag: &str| match tag {
+            "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
+            "BTN_TARGET0" => self.combat.attack.is_some() && self.target_at.is_some(),
+            _ => true,
+        };
         gui.panel
             .children
             .iter()
-            .filter(|c| HUD_BUTTONS.contains(&c.tag.as_str()))
+            .filter(|c| HUD_BUTTONS.contains(&c.tag.as_str()) && shown(&c.tag))
             .find(|c| {
                 let e = &c.extent;
                 x >= e.left as f32
@@ -1027,7 +1123,7 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
-const HUD_BUTTONS: [&str; 10] = [
+const HUD_BUTTONS: [&str; 14] = [
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -1036,6 +1132,10 @@ const HUD_BUTTONS: [&str; 10] = [
     "BTN_JOU",
     "BTN_MAP",
     "BTN_MINIMAP",
+    "BTN_CLEARALL",
+    "BTN_CLEARONE",
+    "BTN_CLEARONE2",
+    "BTN_TARGET0",
     "BTN_OPT",
     "BTN_ACTION0",
 ];
@@ -1047,9 +1147,12 @@ fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>) {
     let k = SCREEN.1 as f32 / HUD_FILE_SIZE.1 as f32;
     let scale = |v: i32| (v as f32 * k).round() as i32;
     for c in &mut panel.children {
+        let centred = HUD_CENTRED.iter().any(|p| c.tag.starts_with(p));
         let e = &mut c.extent;
         let right = e.left + e.width / 2 >= HUD_FILE_SIZE.0 / 2;
-        e.left = if right {
+        e.left = if centred {
+            scale(e.left) + (width as i32 - SCREEN.0 as i32) / 2
+        } else if right {
             width as i32 - scale(HUD_FILE_SIZE.0 - e.left)
         } else {
             scale(e.left)
@@ -1067,6 +1170,15 @@ fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>) {
         };
         c.extent.left = x - c.extent.width / 2;
         c.extent.top = y + down;
+    }
+    // The slots under the bar are placed from its left and its top in the file.
+    let bar = panel.children.iter().find(|c| c.tag == "LBL_NAMEBG");
+    let bar = bar.map_or(0, |c| c.extent.width);
+    for c in &mut panel.children {
+        if c.tag.starts_with("BTN_TARGET") || c.tag.starts_with("LBL_TARGET") {
+            c.extent.left += x - bar / 2;
+            c.extent.top += y;
+        }
     }
 }
 

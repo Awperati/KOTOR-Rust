@@ -1022,7 +1022,7 @@ impl Stage {
             pixel.1 * 480.0 / size.1.max(1) as f32,
         );
         if let Some(tag) = self.ui.hud_hit(x, y) {
-            if tag == "BTN_ACTION0" {
+            if tag == "BTN_ACTION0" || tag == "BTN_TARGET0" {
                 if let Some(id) = self.target() {
                     self.use_thing(id);
                 }
@@ -1608,6 +1608,7 @@ impl Stage {
         let target_at = self.target_on_screen();
         self.ui.set_target_at(target_at);
         let minimap = self.minimap_view();
+        let combat = self.combat_view(target.as_ref().map(|t| t.3));
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -1615,7 +1616,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}",
+                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}",
                 self.module,
                 party
                     .iter()
@@ -1635,6 +1636,8 @@ impl Stage {
         }
         self.overlay_key = key;
         self.ui.set_minimap(minimap);
+        let engaged = combat.engaged;
+        self.ui.set_combat(combat);
         self.overlay = match view {
             // A wordless beat: the scene alone.
             Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
@@ -1655,7 +1658,10 @@ impl Stage {
         // What is on screen in words, as far as the menu buttons leave room.
         let label = self.label();
         let short = label.split(" | ").take(3).collect::<Vec<_>>().join(" | ");
-        self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &short));
+        // In a fight that place has the line about combat mode.
+        if !engaged {
+            self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &short));
+        }
         self.apply_brightness();
         self.overlay_version += 1;
     }

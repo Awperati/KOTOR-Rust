@@ -152,7 +152,7 @@ impl Stage {
     }
 
     /// The party cannot change in a fight.
-    fn party_blocked(&self) -> bool {
+    pub(super) fn party_blocked(&self) -> bool {
         let w = &self.game.world;
         let party = |id: &u32| *id == w.pc || w.party.contains(id);
         w.combat.target.iter().any(|(a, t)| party(a) || party(t))

@@ -1171,6 +1171,39 @@ fn the_map_shows_the_area_the_party_and_its_notes() {
     assert_eq!(s.menu_name(), "-");
 }
 
+#[test]
+fn a_fight_brings_up_its_panel_and_the_target_slot_attacks() {
+    let Some((mut s, _)) = in_game("combat") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 0.1, p[1], p[2]]);
+    s.update(DT);
+    // Not an enemy yet: no red bar, no slot, no panel. A click where they would be walks.
+    let friendly = frame(&mut s);
+    assert!(!s.state_line().contains("target=-"), "{}", s.state_line());
+    s.game.world.object_mut(foe).unwrap().faction = 1;
+    let hostile = frame(&mut s);
+    assert!(hostile != friendly, "the bar turns red and the slots come");
+
+    // The slot under the bar attacks, and the panel comes up with Disengage.
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    s.click(slot, SIZE);
+    assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
+    let engaged = frame(&mut s);
+    assert!(engaged != hostile);
+    let middle = s.hud_pixel("BTN_CLEARALL", SIZE).unwrap();
+    assert!(middle.1 > SIZE.1 as f32 * 0.8, "{middle:?}");
+
+    // Disengage stops it.
+    s.click(middle, SIZE);
+    assert_eq!(s.game.world.combat.target.get(&pc), None);
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);

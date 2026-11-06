@@ -7,7 +7,7 @@ use kotor_game::{
     SLOT_HANDS, SLOT_HEAD, SLOT_IMPLANT, SLOT_LEFT_ARM, SLOT_LEFT_HAND, SLOT_RIGHT_ARM,
     SLOT_RIGHT_HAND,
 };
-use kotor_ui::{Hit, MenuView, Row};
+use kotor_ui::{CombatHud, Hit, MenuView, Row};
 use std::path::{Path, PathBuf};
 
 #[path = "levelup.rs"]
@@ -57,6 +57,8 @@ const QUEST_SORTS: [u32; 4] = [32173, 32174, 32175, 32176];
 const STR_SORT: u32 = 42566;
 const STR_ACTIVE_QUESTS: u32 = 32178;
 const STR_COMPLETED_QUESTS: u32 = 32177;
+const STR_COMBAT_MODE: u32 = 48208;
+const ATTACK_PICTURE: &str = "i_attack";
 const STR_CONTAINER: u32 = 393;
 const STR_SELECT_ITEM: u32 = 38154;
 /// What the pause menu's right side says under the cursor: the buttons the talk table has words for.
@@ -1098,8 +1100,36 @@ impl Stage {
             "BTN_CHAR" => self.open_character(),
             "BTN_JOU" => self.open_journal(),
             "BTN_MAP" | "BTN_MINIMAP" => self.open_map(),
+            "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "BTN_OPT" => self.escape(),
             _ => {}
+        }
+    }
+
+    /// The Disengage button: the leader stops attacking.
+    fn disengage(&mut self) {
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        w.stop_attacking(pc);
+        if let Some(o) = w.object_mut(pc) {
+            o.actions.clear();
+        }
+    }
+
+    /// What the HUD shows of a fight: `action` is what the target offers.
+    pub(super) fn combat_view(&mut self, action: Option<&str>) -> CombatHud {
+        let w = &self.game.world;
+        let attacking = w.combat.target.contains_key(&w.pc);
+        let queue = if attacking {
+            vec![ATTACK_PICTURE.to_string()]
+        } else {
+            Vec::new()
+        };
+        CombatHud {
+            engaged: self.party_blocked(),
+            message: self.ui.strref(STR_COMBAT_MODE),
+            queue,
+            attack: (action == Some("Attack")).then(|| ATTACK_PICTURE.to_string()),
         }
     }
 

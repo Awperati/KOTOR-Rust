@@ -220,6 +220,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "party", &out);
     s.escape();
 
+    // A fight: the panel at the foot, the red bar and the first slot under it.
+    let at = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 0.3, at[1], at[2]]);
+    if let Some(o) = s.game.world.object_mut(foe) {
+        o.faction = 1;
+    }
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "combat_target", &out);
+    s.game.world.combat.target.insert(pc, foe);
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "combat_engaged", &out);
+    s.game.world.combat.target.clear();
+    s.game.world.objects.remove(&foe);
+    s.update(0.05);
+
     // A body that left something, as a list, then with treasure.
     let at = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
     let foe = s

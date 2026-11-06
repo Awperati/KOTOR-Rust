@@ -44,6 +44,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Container title | the object's name | "Container Inventory" |
 | `fnt_console` at 4K | letters run together | the stock font: its upscaled picture was the cause |
 | What has not been seen of a map | all of it showed | a grid, as at 1:25:00 and 3:50:35: spacing and colours measured from those two frames, so close, not exact. Seen is a circle 14 of the picture's pixels round the player, with a soft edge |
+| Combat HUD | none | as at 5:50 and 6:05: the panel at the foot with the action under way and Disengage, the red line at the top, the enemy's bar red, slots under it. The first slot and Disengage were clicked in a test, not in the live window: the driver cannot start a fight. Frames: `combat_target`, `combat_engaged` |
 | Small map on the HUD | a frame and a still arrow | the map round the player, 120 of the picture's pixels, with `mm_barrow` turning, compared with 3:46. A click opens the map. Which way the arrow's picture points is read from the frame `hud_minimap` |
 | Choosing equipment | a click wore at once, a click on a worn slot took off | a click on a slot lists it, `inone` and None first, `(Equipped)` marked, words on the left, OK and Cancel. The owner chose this |
 
@@ -66,7 +67,9 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Party portrait on sheets | a small portrait to change member, bottom left | none | party switching not built |
 | Tutorial pop-ups | a black box with words and OK over any screen, from 3:16 | none | not built |
 | Notices | XP and journal icons at the top left | none | not built |
-| Combat HUD | icons over the target, a queue at the bottom | none | not built |
+| Combat target slots | three: attack, feats, powers, with arrows to go through them; the slot under the cursor is yellow, and its words float by it | the attack in the first, empty others, no words | feats in a fight and powers from the HUD are not in the rules yet |
+| Combat floats | damage and XP over the target | none | not built |
+| Enemy sighted | a box at the top right, and the game pauses | none | automatic pause is not built |
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Sounds | clicks and hovers | none in menus | not compared: I looked at frames only |
 | Transitions | not compared | none | I looked at frames only, one every 5 seconds |
