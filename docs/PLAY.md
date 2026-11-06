@@ -101,12 +101,16 @@ Feats and powers are chains of up to three pictures, each with an arrow to what 
 ## Journal
 J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `World::journal` with their names and the words of their state from `global.jrl`, with the planet first as the file has one. One button swaps active and completed quests, and one goes through the four orders. Scripts and conversations both set a state, and a save keeps the order. Quest items are not built, so their button is greyed. Experience for a quest's state, the file's `XP_Percentage`, is not paid here. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/journal.rs`.
 
+## Pause
+Space or the HUD's hourglass pauses and goes on, outside conversations and with no container open. The camera still turns. Things pause the game by themselves as the Auto-Pause page says: a new enemy seen, a party member down, a change of target, the end of a round, the action menu. A box at the top right says why. A conversation lifts a pause. `--no-auto-pause` turns those off for a run, and `--autopilot` has none.
+
+
 ## Fights
 An enemy under the cursor has a red bar and three slots: the attack, a feat and a Force power. The arrows go through what each has, and a click attacks with it next. Feats are Power Attack, Power Blast, Critical Strike, Sniper Shot, Flurry and Rapid Shot, at the strongest level known and for the weapon held. The numbers are the talk table's words for each. Blows show over the target, with Floating Numbers on. Disengage stops attacking.
 
 
 ## Feedback and Auto-Pause
-From the pause menu or the main menu's Options. Feedback has Hide Unequippable, Tutorial Popups, Subtitles, Mini Map and Floating Numbers. Auto-Pause has End of Combat Round, Enemy Sighted, Party Member Down, Action Menu Used and New Target Selected; Mine Sighted is greyed, as there are no mines. Auto Level Up on the Gameplay page takes the player's levels as they come, and with Combat Movement off the keys and the floor do not move the player in a fight. Enemy Sighted and Party Member Down start ticked: **assumed**. All of it is kept in the settings file.
+From the pause menu or the main menu's Options. Feedback has Hide Unequippable, Tutorial Popups, Subtitles, Mini Map and Floating Numbers. Auto-Pause has End of Combat Round, Enemy Sighted, Party Member Down, Action Menu Used and New Target Selected; Mine Sighted is greyed, as there are no mines. See Pause. Auto Level Up on the Gameplay page takes the player's levels as they come, and with Combat Movement off the keys and the floor do not move the player in a fight. Enemy Sighted and Party Member Down start ticked: **assumed**. All of it is kept in the settings file.
 
 
 ## Pop-ups and notices

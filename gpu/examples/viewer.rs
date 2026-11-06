@@ -304,7 +304,8 @@ impl App {
                 self.turning = if pressed { -TURN_SPEED } else { 0.0 };
             }
             KeyCode::Escape if pressed => self.stage.escape(),
-            KeyCode::Space | KeyCode::Enter if pressed => self.stage.continue_line(),
+            KeyCode::Space if pressed => self.stage.space_key(),
+            KeyCode::Enter if pressed => self.stage.continue_line(),
             _ if pressed && digit > 0 => self.stage.number_key(digit),
             _ => {}
         }
@@ -451,6 +452,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stage.no_hd();
     }
     stage.enable_tutorials(!flag("--no-tutorials") && !flag("--autopilot"));
+    stage.enable_auto_pause(!flag("--no-auto-pause") && !flag("--autopilot"));
     if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }

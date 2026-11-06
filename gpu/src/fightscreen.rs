@@ -6,6 +6,14 @@ use kotor_game::{CombatChoice, Kind, ObjId};
 use kotor_ui::Float;
 
 const STR_MISS: u32 = 42134;
+/// The video's box: "ENEMY SIGHTED!", then how to go on.
+const STR_ENEMY_SIGHTED: u32 = 48212;
+const STR_ROUND: u32 = 42395;
+const STR_PARTY_DOWN: u32 = 42397;
+const STR_ACTION_MENU: u32 = 48415;
+const STR_TARGET_CHANGED: u32 = 42481;
+/// Words the talk table fills in for the key, as the viewer has it.
+const PAUSE_KEY: &str = "Space";
 const MOST_QUEUED: usize = 4;
 const FLOAT_SECONDS: f32 = 1.5;
 const FLOAT_RISE: f32 = 40.0;
@@ -35,6 +43,11 @@ pub(super) struct Fight {
     /// How much of the fight's log and the player's experience has been shown.
     log_seen: usize,
     xp_seen: Option<i32>,
+    /// What has already paused the game: enemies seen, the last round, who was down and the last target.
+    sighted: std::collections::BTreeSet<ObjId>,
+    round: u32,
+    down: std::collections::BTreeSet<ObjId>,
+    target: Option<ObjId>,
 }
 
 /// Which of the two choosing slots a tag is.
@@ -104,8 +117,114 @@ impl Stage {
         true
     }
 
+    /// Things pause the game by themselves, as the Auto-Pause page says. Off unless asked for, like the pop-ups.
+    pub fn enable_auto_pause(&mut self, on: bool) {
+        self.menus.auto_pause_on = on;
+    }
+
+    /// The game is paused. For tests and the driver.
+    pub fn paused(&self) -> bool {
+        self.menus.paused
+    }
+
+    /// Space: goes on with a line or a container, or else pauses.
+    pub fn space_key(&mut self) {
+        let w = &self.game.world;
+        if self.menu_open() || w.in_dialogue() || w.opened.is_some() {
+            self.continue_line();
+        } else {
+            self.toggle_pause();
+        }
+    }
+
+    /// The pause key, or the hourglass on the HUD.
+    pub fn toggle_pause(&mut self) {
+        if self.started && !self.menu_open() && !self.game.world.in_dialogue() {
+            self.menus.paused = !self.menus.paused;
+            self.menus.pause_note.clear();
+        }
+    }
+
+    /// Pause with a title over how to go on.
+    fn pause_for(&mut self, title: u32) {
+        let line = self.ui.strref(STR_ENEMY_SIGHTED);
+        let go_on = line
+            .lines()
+            .nth(1)
+            .unwrap_or("")
+            .replace("<Pause>", PAUSE_KEY);
+        let title = if title == STR_ENEMY_SIGHTED {
+            line.lines().next().unwrap_or("").to_string()
+        } else {
+            self.ui.strref(title)
+        };
+        self.menus.paused = true;
+        self.menus.pause_note = format!("{title}\n{go_on}");
+    }
+
+    /// See what should pause the game. Returns whether it is paused now.
+    pub(in crate::stage) fn pause_tick(&mut self) -> bool {
+        if self.game.world.in_dialogue() {
+            self.menus.paused = false;
+            return false;
+        }
+        if self.menus.auto_pause_on {
+            self.auto_pause();
+        }
+        self.menus.paused
+    }
+
+    fn auto_pause(&mut self) {
+        let s = self.menus.settings;
+        let w = &self.game.world;
+        let pc = w.pc;
+        let enemies: Vec<ObjId> = w
+            .combat
+            .perceived
+            .iter()
+            .filter(|(watcher, _)| *watcher == pc || w.party.contains(watcher))
+            .map(|(_, seen)| *seen)
+            .filter(|id| w.object(*id).is_some_and(|o| !o.dead) && w.reputation(pc, *id) <= 10)
+            .collect();
+        let fresh = enemies
+            .iter()
+            .any(|e| !self.menus.fight.sighted.contains(e));
+        let down: std::collections::BTreeSet<ObjId> = std::iter::once(pc)
+            .chain(w.party.iter().copied())
+            .filter(|id| w.object(*id).is_some_and(|o| o.down || o.dead))
+            .collect();
+        let new_down = down.iter().any(|d| !self.menus.fight.down.contains(d));
+        let round = w.combat.round;
+        let round_over = round != self.menus.fight.round && self.party_blocked();
+        let target = w.combat.target.get(&pc).copied();
+        let old_target = self.menus.fight.target;
+        let retarget = target.is_some() && old_target.is_some() && target != old_target;
+
+        self.menus.fight.sighted.extend(enemies);
+        self.menus.fight.down = down;
+        self.menus.fight.round = round;
+        self.menus.fight.target = target;
+        if fresh && s.pause_enemy {
+            self.pause_for(STR_ENEMY_SIGHTED);
+        } else if new_down && s.pause_party {
+            self.pause_for(STR_PARTY_DOWN);
+        } else if retarget && s.pause_target {
+            self.pause_for(STR_TARGET_CHANGED);
+        } else if round_over && s.pause_round {
+            self.pause_for(STR_ROUND);
+        }
+    }
+
+    /// Whether the game is paused, and the words to show.
+    pub(in crate::stage) fn pause_view(&self) -> (bool, String) {
+        (self.menus.paused, self.menus.pause_note.clone())
+    }
+
     /// An arrow on a slot.
     pub(super) fn turn_slot(&mut self, tag: &str) {
+        if self.menus.auto_pause_on && self.menus.settings.pause_action && self.party_blocked() {
+            self.pause_for(STR_ACTION_MENU);
+        }
         let slot = usize::from(tag.ends_with('2'));
         let count = self.slot_choices(slot).len();
         if count == 0 {

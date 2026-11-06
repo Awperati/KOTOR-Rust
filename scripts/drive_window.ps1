@@ -22,7 +22,7 @@ public static class Drv {
   }
 }
 "@
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle
@@ -78,7 +78,7 @@ function WaitLog {
     Start-Sleep -Milliseconds 20
   }
 }
-$SPACE = @(0x20, 0x39); $ONE = @(0x31, 0x02); $E = @(0x45, 0x12); $W = @(0x57, 0x11); $D = @(0x44, 0x20)
+$SPACE = @(0x20, 0x39); $RETURN = @(0x0D, 0x1C); $ONE = @(0x31, 0x02); $E = @(0x45, 0x12); $W = @(0x57, 0x11); $D = @(0x44, 0x20)
 
 # Past the opening's beats with Space, up to Trask's reply list.
 WaitLog
@@ -96,7 +96,7 @@ do { $s = State } while ([int]$s.said -le $said -and (Get-Date) -lt $until)
 Report "Reply click" ([int]$s.said -gt $said) "said $said -> $($s.said)"
 
 # Through the rest of the talk with the 1 key and Space.
-for ($i = 0; $i -lt 200 -and $s.dlg -eq "true"; $i++) { Key $ONE[0] $ONE[1]; Key $SPACE[0] $SPACE[1]; $s = State }
+for ($i = 0; $i -lt 200 -and $s.dlg -eq "true"; $i++) { Key $ONE[0] $ONE[1]; Key $RETURN[0] $RETURN[1]; $s = State }
 Report "Keys finish the talk" ($s.dlg -eq "false") "dlg=$($s.dlg) said=$($s.said)"
 
 # The footlocker beside the player: E opens it, a click takes the first item, Space closes it.
@@ -127,12 +127,26 @@ $b = State
 $moved = Moved $a $b
 Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
 
+# Space pauses out of a conversation: W does nothing until Space again.
+Key $SPACE[0] $SPACE[1]
+[void](State)
+$a = State
+Key $W[0] $W[1] 300
+$b = State
+Report "Space pauses" ((Moved $a $b) -lt 0.05) "$($a.pc) -> $($b.pc)"
+Key $SPACE[0] $SPACE[1]
+[void](State)
+$a = State
+Key $W[0] $W[1] 300
+$b = State
+Report "Space goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
+
 # A click on the floor walks there: look for one that lands.
 $ok = $false; $detail = ""
 foreach ($y in 600, 560, 520, 480, 640) {
   foreach ($x in 640, 400, 880) {
     $a = State
-    for ($k = 0; $k -lt 80 -and $a.dlg -eq "true"; $k++) { Key $ONE[0] $ONE[1]; Key $SPACE[0] $SPACE[1]; $a = State }
+    for ($k = 0; $k -lt 80 -and $a.dlg -eq "true"; $k++) { Key $ONE[0] $ONE[1]; Key $RETURN[0] $RETURN[1]; $a = State }
     Click $x $y
     Start-Sleep -Milliseconds 250
     $b = State
@@ -154,7 +168,7 @@ Get-Content "$scratch\kotor_drive.err" -Tail 4
 # window, so a control at layout (x, y) is at (2x, 1.5y).
 $savesDir = Join-Path $env:LOCALAPPDATA "kotor-rs\saves"
 $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle
@@ -189,7 +203,7 @@ Report "New Game starts it" ($s.module -eq "end_m01aa" -and $s.menu -eq "-") "me
 # Past the opening and the first talk, to where a save is allowed.
 $quiet = 0
 for ($i = 0; $i -lt 400 -and $quiet -lt 6; $i++) {
-  Key $SPACE[0] $SPACE[1]; Key $ONE[0] $ONE[1]; $s = State
+  Key $RETURN[0] $RETURN[1]; Key $ONE[0] $ONE[1]; $s = State
   if ($s.dlg -eq "false" -and [int]$s.said -gt 3) { $quiet++ } else { $quiet = 0 }
 }
 Report "Through the opening" ($quiet -ge 6) "dlg=$($s.dlg) said=$($s.said)"

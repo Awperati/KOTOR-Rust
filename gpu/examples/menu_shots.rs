@@ -291,6 +291,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.update(0.05);
     shot(&mut gpu, &mut s, "combat_slots", &out);
     s.game.world.combat.target.clear();
+    // An enemy comes into sight, and the game waits.
+    s.enable_auto_pause(true);
+    s.game.world.combat.perceived.insert((pc, foe));
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "enemy_sighted", &out);
+    s.space_key();
+    s.enable_auto_pause(false);
     s.game.world.objects.remove(&foe);
     s.update(0.05);
 

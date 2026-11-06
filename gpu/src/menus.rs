@@ -391,6 +391,10 @@ pub(super) struct Menus {
     /// Pages of tutorial pop-ups waiting, and whether they come up at all.
     tutorials: std::collections::VecDeque<u32>,
     tutorials_on: bool,
+    /// The game is paused, why, and whether things pause it by themselves.
+    paused: bool,
+    pause_note: String,
+    auto_pause_on: bool,
     /// The fight's slots and rising words.
     fight: fightscreen::Fight,
     /// The words of the option the cursor last rested on.
@@ -1200,6 +1204,7 @@ impl Stage {
             "BTN_JOU" => self.open_journal(),
             "BTN_MAP" | "BTN_MINIMAP" => self.open_map(),
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
+            "TB_PAUSE" => self.toggle_pause(),
             "BTN_TARGETUP1" | "BTN_TARGETDOWN1" | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => {
                 self.turn_slot(tag)
             }
@@ -1602,6 +1607,7 @@ impl Stage {
     }
 
     fn new_game(&mut self) {
+        self.menus.paused = false;
         let module = self.first_module.clone();
         match self.start_module(&module) {
             Ok(()) => {
@@ -1731,6 +1737,7 @@ impl Stage {
             return;
         }
         self.forget_view();
+        self.menus.paused = false;
         self.menus.map = None;
         self.menus.had = None;
         self.menus.fight = Default::default();

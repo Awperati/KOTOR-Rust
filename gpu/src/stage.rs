@@ -490,6 +490,11 @@ impl Stage {
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
         }
+        if self.pause_tick() {
+            self.update_camera(dt);
+            self.refresh_overlay();
+            return std::mem::take(&mut self.cues);
+        }
         let (ahead, right, walk) = self.steer;
         let (cos, sin) = (self.yaw.cos(), self.yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
@@ -1637,6 +1642,7 @@ impl Stage {
         let combat = self.combat_view(target.as_ref().map(|t| t.3));
         let notices = self.notices_view();
         let floats = self.floats_view();
+        let pause = self.pause_view();
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -1644,7 +1650,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}{notices:?}{floats:?}",
+                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}{notices:?}{floats:?}{pause:?}",
                 self.module,
                 party
                     .iter()
@@ -1667,6 +1673,7 @@ impl Stage {
         let engaged = combat.engaged || !notices.is_empty();
         self.ui.set_notices(notices);
         self.ui.set_floats(floats);
+        self.ui.set_pause(pause.0, pause.1);
         self.ui.set_combat(combat);
         self.overlay = match view {
             // A wordless beat: the scene alone.

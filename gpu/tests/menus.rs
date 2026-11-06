@@ -1433,6 +1433,84 @@ fn the_other_slots_queue_feats_and_powers_and_blows_show_as_numbers() {
     assert!(s.floats_shown().is_empty());
 }
 
+#[test]
+fn enemies_pause_the_game_and_space_goes_on() {
+    let Some((mut s, _)) = in_game("pause") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.update(DT);
+    // Space pauses by hand, with no box, and the hourglass does the same.
+    let time = s.game.world.time;
+    s.space_key();
+    assert!(s.paused());
+    let by_hand = frame(&mut s);
+    assert_eq!(s.game.world.time, time, "the game waits");
+    s.space_key();
+    assert!(!s.paused());
+    s.update(DT);
+    assert!(s.game.world.time > time);
+    let hourglass = s.hud_pixel("TB_PAUSE", SIZE).unwrap();
+    s.click(hourglass, SIZE);
+    assert!(s.paused());
+    s.click(hourglass, SIZE);
+    assert!(!s.paused());
+
+    // By itself only when asked: the first sight of each enemy pauses, with a box.
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 9.0, p[1], p[2]]);
+    s.game.world.object_mut(foe).unwrap().faction = 1;
+    s.game.world.combat.perceived.insert((pc, foe));
+    s.update(DT);
+    assert!(!s.paused(), "off unless asked for");
+    s.enable_auto_pause(true);
+    s.update(DT);
+    assert!(s.paused());
+    assert!(frame(&mut s) != by_hand, "the box says why");
+    s.space_key();
+    assert!(!s.paused());
+    s.update(DT);
+    assert!(!s.paused(), "the same enemy does not pause again");
+
+    // Each box of the page has its say: with Enemy Sighted off, another enemy goes by.
+    s.escape();
+    press(&mut s, "BTN_AUTOPAUSE");
+    press(&mut s, "CB_ENEMYSIGHTED");
+    press(&mut s, "CB_ENDROUND");
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+    let other = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 9.5, p[1], p[2]]);
+    s.game.world.object_mut(other).unwrap().faction = 1;
+    s.game.world.combat.perceived.insert((pc, other));
+    s.update(DT);
+    assert!(!s.paused());
+
+    // The end of a round pauses, now that it is ticked.
+    s.game.world.combat.target.insert(pc, other);
+    s.game.world.combat.round += 1;
+    s.update(DT);
+    assert!(s.paused());
+    s.space_key();
+
+    // A conversation lifts a pause.
+    s.game.world.combat.target.clear();
+    s.space_key();
+    assert!(s.paused());
+    let trask = s.game.world.by_tag("end_trask")[0];
+    s.game.world.talk_to(trask);
+    s.update(DT);
+    if s.game.world.in_dialogue() {
+        assert!(!s.paused());
+    }
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);

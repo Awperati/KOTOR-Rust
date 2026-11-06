@@ -47,6 +47,9 @@ pub struct Ui<'a> {
     /// The small map and its frame are switched off.
     minimap_off: bool,
     floats: Vec<Float>,
+    /// The game is paused, with the box at the top right if something paused it.
+    paused: bool,
+    pause_note: String,
 }
 
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
@@ -79,6 +82,8 @@ const COMBAT_RED: [f32; 3] = [1.0, 0.16, 0.1];
 const HOSTILE_SLOT: &str = "lbl_miscroll_h";
 const HOVER_SLOT: &str = "lbl_miscroll_hi";
 const FLOAT_FONT: &str = "fnt_d16x16";
+const PAUSE_MARK: [u8; 4] = [255, 255, 76, 255];
+const PAUSE_NOTE_WIDTH: i32 = 300;
 /// What stays in the middle of a wide window, as the video has it.
 const HUD_CENTRED: [&str; 4] = ["LBL_COMBATBG", "LBL_QUEUE", "BTN_CLEAR", "LBL_CMBT"];
 
@@ -155,6 +160,8 @@ impl<'a> Ui<'a> {
             notices: Vec::new(),
             minimap_off: false,
             floats: Vec::new(),
+            paused: false,
+            pause_note: String::new(),
         }
     }
 
@@ -819,6 +826,16 @@ impl<'a> Ui<'a> {
                 let e = &c.extent;
                 self.draw_minimap(&mut cv, [e.left, e.top, e.width, e.height]);
             }
+            if c.tag == "TB_PAUSE" && self.paused {
+                let [x, y, w, h] = [c.extent.left, c.extent.top, c.extent.width, c.extent.height];
+                cv.fill_rect(x, y, w, 1, PAUSE_MARK);
+                cv.fill_rect(x, y + h - 1, w, 1, PAUSE_MARK);
+                cv.fill_rect(x, y, 1, h, PAUSE_MARK);
+                cv.fill_rect(x + w - 1, y, 1, h, PAUSE_MARK);
+            }
+        }
+        if self.paused && !self.pause_note.is_empty() {
+            self.draw_pause_note(&mut cv);
         }
         for f in self.floats.clone() {
             let r = [f.x - 60, f.y, 120, 20];
@@ -944,6 +961,25 @@ impl<'a> Ui<'a> {
     /// What the HUD shows of a fight.
     pub fn set_combat(&mut self, combat: CombatHud) {
         self.combat = combat;
+    }
+
+    /// The box at the top right, under the menu buttons.
+    fn draw_pause_note(&mut self, cv: &mut Canvas) {
+        let lines: Vec<String> = self.pause_note.lines().map(str::to_string).collect();
+        let step = 16;
+        let (w, h) = (PAUSE_NOTE_WIDTH, lines.len() as i32 * step + 8);
+        let (x, y) = (self.width as i32 - w - 6, 32);
+        cv.fill_rect(x, y, w, h, [0, 0, 8, 190]);
+        for (i, line) in lines.iter().enumerate() {
+            let at = [x, y + 4 + i as i32 * step, w, step];
+            self.draw_text(cv, FLOAT_FONT, line, at, 18, [0.0, 0.65, 0.97]);
+        }
+    }
+
+    /// Whether the game is paused, and what to say about it.
+    pub fn set_pause(&mut self, paused: bool, note: String) {
+        self.paused = paused;
+        self.pause_note = note;
     }
 
     /// The words rising over people in a fight.
@@ -1203,7 +1239,7 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
-const HUD_BUTTONS: [&str; 20] = [
+const HUD_BUTTONS: [&str; 21] = [
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -1215,6 +1251,7 @@ const HUD_BUTTONS: [&str; 20] = [
     "BTN_CLEARALL",
     "BTN_CLEARONE",
     "BTN_CLEARONE2",
+    "TB_PAUSE",
     "BTN_TARGET0",
     "BTN_TARGET1",
     "BTN_TARGETUP1",
