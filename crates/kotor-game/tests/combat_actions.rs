@@ -97,6 +97,90 @@ fn flurry_makes_an_extra_attack() {
 }
 
 #[test]
+fn flurry_lowers_defense_for_the_round_and_three_seconds_more() {
+    let Some((mut w, foe)) = fight() else { return };
+    let pc = w.pc;
+    let before = w.defense_of(pc);
+    w.object_mut(pc).unwrap().feats.insert(11);
+    w.combat_queue.push_back(CombatAction::Feat(11));
+    let mut seen = false;
+    w.attack(pc, foe);
+    for _ in 0..200 {
+        w.step(0.05);
+        if w.defense_of(pc) == before - 4 {
+            seen = true;
+            break;
+        }
+    }
+    assert!(seen, "the penalty the words name");
+    w.stop_attacking(pc);
+    for _ in 0..200 {
+        w.step(0.05);
+    }
+    assert_eq!(w.defense_of(pc), before, "and it goes");
+    // The stronger feats cost less.
+    w.object_mut(pc).unwrap().feats.insert(53);
+    w.combat_queue.push_back(CombatAction::Feat(53));
+    w.attack(pc, foe);
+    let mut least = before;
+    for _ in 0..200 {
+        w.step(0.05);
+        least = least.min(w.defense_of(pc));
+    }
+    assert!(least >= before - 3, "{least} from {before}");
+}
+
+#[test]
+fn a_critical_strike_can_stun_and_the_stun_ends() {
+    let Some((mut w, foe)) = fight() else { return };
+    let pc = w.pc;
+    w.object_mut(pc).unwrap().feats.insert(8);
+    // Easy to hit, and it fails most saves.
+    let o = w.object_mut(foe).unwrap();
+    o.natural_ac = -50;
+    o.abilities = [10, 10, 1, 10, 10, 10];
+    let o = w.object_mut(pc).unwrap();
+    o.abilities[0] = 30;
+    o.level = 20;
+    w.attack(pc, foe);
+    let mut stunned = false;
+    for _ in 0..3000 {
+        if w.combat_queue.is_empty() {
+            w.combat_queue.push_back(CombatAction::Feat(8));
+        }
+        w.object_mut(foe).unwrap().hp = 900;
+        w.step(0.05);
+        if w.is_disabled(foe) {
+            stunned = true;
+            break;
+        }
+    }
+    assert!(stunned, "the words say a failed save stuns");
+    // Six seconds, with nothing more hitting it.
+    w.stop_attacking(pc);
+    w.combat_queue.clear();
+    for _ in 0..125 {
+        w.step(0.05);
+    }
+    assert!(!w.is_disabled(foe));
+}
+
+#[test]
+fn a_plain_attack_stuns_nobody() {
+    let Some((mut w, foe)) = fight() else { return };
+    let pc = w.pc;
+    let o = w.object_mut(foe).unwrap();
+    o.natural_ac = -50;
+    o.abilities = [10, 10, 1, 10, 10, 10];
+    w.attack(pc, foe);
+    for _ in 0..400 {
+        w.object_mut(foe).unwrap().hp = 900;
+        w.step(0.05);
+        assert!(!w.is_disabled(foe));
+    }
+}
+
+#[test]
 fn a_known_hostile_power_is_offered_and_cast_in_place_of_an_attack() {
     let Some((mut w, foe)) = fight() else { return };
     let pc = w.pc;

@@ -74,7 +74,6 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Tutorial pop-ups over the game | the HUD stays under the box | the HUD goes while it is up | the box is drawn as a screen |
 | Tutorial pop-up words | at 5:50 the words differ from the talk table's row 21 and 34 | the talk table's | where theirs come from not found |
 | Notice timing | not measured | 6 s, assumed | the video's are short and I sampled every 5 s |
-| Combat feats | a stun on a critical, a Defense penalty for Flurry and Rapid Shot, as their words say | not applied | the attack's changes are built, these two are not |
 | Target slot words | also "Activate Left Action : 1" by the slot | the name on the bar only | that line is about keys, which are not built |
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Sounds | clicks and hovers | none in menus | not compared: I looked at frames only |

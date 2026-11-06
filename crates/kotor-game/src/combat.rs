@@ -334,6 +334,20 @@ impl World {
             }
             _ => Default::default(),
         };
+        if boost.defense > 0 {
+            let mut lower = crate::world::EffectRec::new("EffectACDecrease");
+            lower.nums = vec![boost.defense as f32];
+            self.effects.push(lower);
+            let handle = self.effects.len() as u32;
+            let seconds = ROUND_SECONDS + crate::combat_actions::DEFENSE_SECONDS;
+            self.apply_effect(
+                attacker,
+                attacker,
+                handle,
+                crate::force::DURATION_TEMPORARY,
+                seconds,
+            );
+        }
         self.resolve_with(attacker, target, boost);
         if boost.extra_attack && self.objects.get(&target).is_some_and(|t| !t.dead) {
             self.resolve_with(attacker, target, boost);
@@ -364,6 +378,26 @@ impl World {
             }
         }
         let fell = self.hurt(attacker, target, dealt);
+        if let (Some(ability), true, false) = (boost.stun_ability, outcome != Outcome::Miss, fell) {
+            let level = self.objects.get(&attacker).map_or(1, |o| o.level);
+            let dc = level + ability_mod(self.ability_score(attacker, ability));
+            if !self
+                .saving_throw(target, crate::rules::Save::Fortitude, dc)
+                .passed
+            {
+                self.effects
+                    .push(crate::world::EffectRec::new("EffectStunned"));
+                let handle = self.effects.len() as u32;
+                let seconds = crate::combat_actions::STUN_SECONDS;
+                self.apply_effect(
+                    attacker,
+                    target,
+                    handle,
+                    crate::force::DURATION_TEMPORARY,
+                    seconds,
+                );
+            }
+        }
         let hp_after = self.objects.get(&target).map_or(0, |t| t.hp);
         self.combat.log.push(AttackLog {
             round: self.combat.round,

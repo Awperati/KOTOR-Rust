@@ -1,8 +1,8 @@
 //! What the player can queue in a fight: the feats that change the next attack and the Force powers that hurt. The
 //! numbers are the talk table's own words for each feat.
 //!
-//! **Not built:** the stun on a critical from Critical Strike and Sniper Shot, and the Defense penalty of Flurry and Rapid
-//! Shot. Their other effects are here. **Assumed:** a power is for an enemy when `spells.2da` fills its `forcehostile`.
+//! **Assumed:** a power is for an enemy when `spells.2da` fills its `forcehostile`; "while using this feat" in Flurry's
+//! words is the combat round.
 
 use crate::world::{ObjId, World};
 
@@ -29,7 +29,17 @@ pub(crate) struct FeatBoost {
     pub damage: i32,
     pub threat: i32,
     pub extra_attack: bool,
+    /// A hit stuns for `STUN_SECONDS` unless the target saves against the level plus this ability's modifier.
+    pub stun_ability: Option<usize>,
+    /// Off Defense while the feat is used and for `DEFENSE_SECONDS` afterwards.
+    pub defense: i32,
 }
+
+/// Places in `abilities`, as the feats' words name them.
+const STRENGTH: usize = 0;
+const INTELLIGENCE: usize = 3;
+pub(crate) const STUN_SECONDS: f32 = 6.0;
+pub(crate) const DEFENSE_SECONDS: f32 = 3.0;
 
 const fn hard(ranged: bool, damage: i32) -> FeatBoost {
     FeatBoost {
@@ -38,6 +48,8 @@ const fn hard(ranged: bool, damage: i32) -> FeatBoost {
         damage,
         threat: 1,
         extra_attack: false,
+        stun_ability: None,
+        defense: 0,
     }
 }
 
@@ -48,6 +60,8 @@ const fn keen(ranged: bool, threat: i32) -> FeatBoost {
         damage: 0,
         threat,
         extra_attack: false,
+        stun_ability: Some(if ranged { INTELLIGENCE } else { STRENGTH }),
+        defense: 0,
     }
 }
 
@@ -58,6 +72,8 @@ const fn quick(ranged: bool, to_hit: i32) -> FeatBoost {
         damage: 0,
         threat: 1,
         extra_attack: true,
+        stun_ability: None,
+        defense: -to_hit,
     }
 }
 
