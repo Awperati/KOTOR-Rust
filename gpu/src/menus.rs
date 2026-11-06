@@ -250,6 +250,8 @@ pub struct Settings {
     pub conventional_underwear: bool,
     /// Early Force sensitivity, for new games. A game keeps what it began with, in its save.
     pub early_force: bool,
+    /// A cutscene line moves on by itself when its voice ends; off, it waits for a click or Space.
+    pub auto_advance: bool,
     pub minimap: bool,
     pub floating_numbers: bool,
     /// What pauses the game by itself.
@@ -292,6 +294,7 @@ impl Default for Settings {
             subtitles: true,
             conventional_underwear: true,
             early_force: true,
+            auto_advance: true,
             minimap: true,
             floating_numbers: true,
             pause_round: false,
@@ -316,7 +319,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -341,6 +344,7 @@ impl Settings {
             self.vsync,
             self.conventional_underwear,
             self.early_force,
+            self.auto_advance,
             self.noto_font,
             self.glow_boxes,
             self.movement_modern,
@@ -373,6 +377,7 @@ impl Settings {
                 "subtitles" => s.subtitles = v == "true",
                 "conventional_underwear" => s.conventional_underwear = v == "true",
                 "early_force" => s.early_force = v == "true",
+                "auto_advance" => s.auto_advance = v == "true",
                 "minimap" => s.minimap = v == "true",
                 "floating_numbers" => s.floating_numbers = v == "true",
                 "pause_round" => s.pause_round = v == "true",

@@ -1054,3 +1054,27 @@ fn carth_on_the_comm_is_in_frame() {
     }
     panic!("no conversation began");
 }
+
+/// With "Auto-advance dialogue" off a cutscene line waits for a click or Space, and then moves on.
+#[test]
+fn a_cutscene_waits_for_a_click_when_auto_advance_is_off() {
+    let Some(mut s) = stage() else { return };
+    let file = std::env::temp_dir().join(format!("kotor_auto_advance_{}.txt", std::process::id()));
+    std::fs::write(&file, "auto_advance=false\n").unwrap();
+    s.use_settings_file(file.clone());
+    assert!(!s.settings().auto_advance);
+    for _ in 0..(12.0 / DT) as usize {
+        s.update(DT);
+    }
+    let held = s.game.world.dialogue_serial();
+    assert!(held.is_some(), "the opening is still on its first line");
+    assert_eq!(held, Some(1));
+    s.continue_line();
+    s.update(DT);
+    assert_eq!(
+        s.game.world.dialogue_serial(),
+        Some(2),
+        "a click moves it on"
+    );
+    let _ = std::fs::remove_file(file);
+}

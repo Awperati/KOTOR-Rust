@@ -926,10 +926,9 @@ impl Stage {
             }
             let seconds = self.beat.as_ref().map_or(1.5, |b| b.length + b.hold);
             // A node whose only replies say nothing is a cutscene's: it moves on by itself, when its voice-over ends.
-            self.line_left = replies
-                .iter()
-                .all(|r| r.trim().is_empty())
-                .then_some(seconds);
+            self.line_left = (self.settings().auto_advance
+                && replies.iter().all(|r| r.trim().is_empty()))
+            .then_some(seconds);
         } else {
             self.beat_time += dt;
         }

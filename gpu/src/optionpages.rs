@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 6] = [
+const STYLE_ROWS: [(&str, &str, &str); 7] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -44,6 +44,11 @@ const STYLE_ROWS: [(&str, &str, &str); 6] = [
         "Click to walk: On",
         "Click to walk: Off",
         "A click on the floor walks there. Off: only the keys move the player, and clicks still use what is under them.",
+    ),
+    (
+        "Auto-advance dialogue: On",
+        "Auto-advance dialogue: Off",
+        "Cutscene lines move on when their voice ends, or after a few seconds with none. Off, they wait for a click or Space.",
     ),
 ];
 /// A box on the Auto-Pause page, and its words.
@@ -108,6 +113,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         8 => &mut s.early_force,
         9 => &mut s.movement_modern,
         10 => &mut s.click_to_walk,
+        11 => &mut s.auto_advance,
         _ => return None,
     })
 }
