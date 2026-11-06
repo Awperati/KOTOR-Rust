@@ -38,3 +38,7 @@ powershell -File scripts/check.ps1     # fmt, clippy -D warnings, all tests
 ```
 
 Tests that read the game skip themselves when it is missing. The full run takes about 40 seconds.
+
+## Credits
+
+- **Dubird**, "New undies for female Exile" (2007), the blue two-piece textures `pfbama01`, `pfbamB01`, `pfbamc01` and `pfbamd01`. They are read at run time from a folder on the player's own computer (`KOTOR_MODS_DIR`, or `Blue Undies-3-1` beside the projects), and are not part of this repository or any build. Their readme asks that they be shared only with it, and that credit be given.

@@ -490,3 +490,15 @@ fn a_module_left_behind_survives_a_save_and_load() {
         kill_leave_and_return(true).unwrap();
     }
 }
+
+#[test]
+fn a_players_underwear_is_saved_with_the_character() {
+    let Some(mut w) = world() else { return };
+    let hero = w.pc;
+    assert_eq!(w.object(hero).unwrap().underwear, "", "the standard paint");
+    w.set_player_underwear("Blue Undies-3-1");
+    let bytes = w.save_bytes("underwear").unwrap();
+    let mut back = fresh();
+    back.load_save(&bytes).unwrap();
+    assert_eq!(back.object(back.hero).unwrap().underwear, "Blue Undies-3-1");
+}

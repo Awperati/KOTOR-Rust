@@ -178,6 +178,9 @@ pub struct Object {
     pub head: i32,
     pub gender: i32,
     pub portrait: String,
+    /// Which underwear a bare body wears: the id of a variant (`kotor_render::underwear::list_underwear_variants`), empty for
+    /// the standard paint. A player's choice in character creation, saved with the character.
+    pub underwear: String,
     /// Items: the creature that carries it leaves it behind when it dies (`Dropable` in the UTC's lists).
     pub droppable: bool,
     /// Items: how many are stacked. Everything: the plot flag (cannot be hurt) and the good-evil value (0-100).
@@ -262,6 +265,7 @@ impl Object {
             head: 0,
             gender: 0,
             portrait: String::new(),
+            underwear: String::new(),
             droppable: false,
             stack: 1,
             plot: false,

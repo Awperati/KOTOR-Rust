@@ -784,7 +784,8 @@ impl Stage {
         for (nth, ((appearance, _), at)) in figures.iter().zip(places).enumerate() {
             if let Some(rig) = self.clothed_rig(*appearance) {
                 let clip = self.idling(nth);
-                self.add_creature(&mut scene, &rig, &[], &clip, at, FACING_CAMERA);
+                let wear = self.preview_underwear.clone();
+                self.add_creature(&mut scene, &rig, &[], &clip, at, FACING_CAMERA, &wear);
             }
         }
         (scene, camera)
@@ -853,7 +854,8 @@ impl Stage {
         let Some(rig) = self.clothed_rig(appearance) else {
             return (scene, default_camera());
         };
-        self.add_creature(&mut scene, &rig, &[], &None, [0.0; 3], HEAD_FACING);
+        let wear = self.preview_underwear.clone();
+        self.add_creature(&mut scene, &rig, &[], &None, [0.0; 3], HEAD_FACING, &wear);
         let top = scene
             .meshes
             .iter()

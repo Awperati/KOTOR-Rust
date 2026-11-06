@@ -29,6 +29,7 @@
 //!     --grenadier     when the first fight starts, the nearest enemy has grenades and throws them, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --appearance N  the player has this row of `appearance.2da` when a game starts, for a test driver
+//!     --underwear ID  the player wears this underwear variant (a folder under the mods folder), for a test driver
 //!     --original-underwear  the game's own underwear style, whatever Settings says, for a test driver
 //!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
 //!                     gives a level (`level`), for a test driver
@@ -165,6 +166,7 @@ struct App {
     place: Option<[f32; 4]>,
     xp: Option<i32>,
     appearance: Option<i32>,
+    underwear: Option<String>,
     power: Option<i32>,
     give: Option<String>,
     gold: Option<i32>,
@@ -323,6 +325,9 @@ impl App {
                     o.max_force = o.max_force.max(DRIVER_FORCE);
                     o.force = o.max_force;
                 }
+            }
+            if let Some(id) = self.underwear.take() {
+                self.stage.game.world.set_player_underwear(&id);
             }
             if let Some(row) = self.appearance.take() {
                 let w = &mut self.stage.game.world;
@@ -755,6 +760,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
         xp: opt("--xp").and_then(|n| n.parse().ok()),
         appearance: opt("--appearance").and_then(|n| n.parse().ok()),
+        underwear: opt("--underwear"),
         power: opt("--power").and_then(|n| n.parse().ok()),
         give: opt("--give"),
         gold: opt("--gold").and_then(|n| n.parse().ok()),

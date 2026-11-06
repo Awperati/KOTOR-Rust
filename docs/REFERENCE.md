@@ -125,6 +125,10 @@ What changed in our skin code from that and the owner's frame `44-neck-seam.png`
 2. Cloth left on the sheet from 96 % of the torso's height up is the old top's collar, not the bra. It is cleared (`NECK_CLOTH`). That took away the black and grey slivers at the collar on rows 91 and 107.
 3. Not fixed: a darker band on the body just under the neck on the brown skins (82 against 93 of 255 on row 107). It is not the shape shading of the fill, which I switched off there to test.
 
+### Blue Undies (Dubird, 2007), tried 7 Nov 2026
+
+Its `pfbama01`, `pfbamB01`, `pfbamc01` (512 x 512) are for the sequel's `pfbam` and are read from a local folder, never kept in the repository. Put on this game's medium body, the sheet's bra lands out of place: a flat band across the ribs, the cups missing and a skin patch at the breastbone (frame `docs/shots/blue_bra_zoom.png`, kept local). The small and large bodies have other vertex counts (706 and 755 against 836 for the torso), so their sheets differ again. The setting "Blue underwear (mod)" is therefore off by default until the sheet is mapped onto this body's layout, or our bra is recoloured from the mod's blues.
+
 ## What the video cannot tell
 
 - A woman's body or neck in close-up: its hero is a man. Whether the owner's neck frame matches the original is still open.

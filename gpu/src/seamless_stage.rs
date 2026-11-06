@@ -250,7 +250,7 @@ impl Stage {
         let mut scene = Scene::default();
         if let Some(f) = figure {
             if let Some(rig) = self.rig_for(f.appearance, &f.template, f.armour.clone()) {
-                self.add_creature(&mut scene, &rig, &[], &None, f.at, f.heading);
+                self.add_creature(&mut scene, &rig, &[], &None, f.at, f.heading, "");
             }
         }
         if let Some((template, pos)) = door {

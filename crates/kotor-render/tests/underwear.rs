@@ -321,3 +321,42 @@ fn the_neck_is_lit_like_the_body_where_they_meet() {
 fn dist2(a: &[f32; 3], b: &[f32; 3]) -> f32 {
     (0..3).map(|k| (a[k] - b[k]).powi(2)).sum()
 }
+
+/// A modder's underwear sheets, read from a local folder when it is there: only the middle body's three skins have one.
+#[test]
+fn the_variants_are_the_standard_paint_and_each_mod_folder() {
+    let list = underwear::list_underwear_variants();
+    assert_eq!(list[0].id, "", "the standard paint comes first");
+    assert!(list[0].fits);
+    for v in &list[1..] {
+        assert!(!v.id.is_empty() && !v.fits, "{v:?}");
+        assert!(underwear::variant_dir(&v.id).is_some(), "{v:?}");
+    }
+    // Only the middle body's three skins have a sheet, and no name leaves the mods folder.
+    if let Some(v) = list.get(1) {
+        for (name, has) in [
+            ("pfbama01", true),
+            ("pfbamb03", true),
+            ("pfbam01", true),
+            ("pfbasa01", false),
+            ("pfbal01", false),
+            ("pmbam01", false),
+        ] {
+            assert_eq!(
+                underwear::variant_body_texture(&v.id, name).is_some(),
+                has,
+                "{name}"
+            );
+        }
+        assert!(underwear::variant_body_for_head(&v.id, "pfha01").is_some());
+        assert!(underwear::variant_body_for_head(&v.id, "pmha01").is_none());
+    }
+    assert!(underwear::variant_dir("..").is_none());
+    assert!(underwear::variant_dir("a/b").is_none());
+    assert_eq!(underwear::variant_texture_name("pfbam01", ""), "pfbam01");
+    assert_eq!(
+        underwear::split_variant("pfbam01@Blue"),
+        ("pfbam01", "Blue")
+    );
+    assert_eq!(underwear::split_variant("pfbam01"), ("pfbam01", ""));
+}

@@ -122,6 +122,14 @@ pub struct CharacterSpec {
 }
 
 impl World {
+    /// The player's underwear: the id of a variant, empty for the standard paint. Chosen in character creation.
+    pub fn set_player_underwear(&mut self, id: &str) {
+        let pc = self.pc;
+        if let Some(o) = self.objects.get_mut(&pc) {
+            o.underwear = id.to_string();
+        }
+    }
+
     /// The class's recommended scores (`classes.2da` `str`..`cha`).
     pub fn recommended_abilities(&mut self, class: i32) -> Option<[i32; 6]> {
         let t = self.table("classes")?;

@@ -1132,3 +1132,54 @@ fn a_stun_baton_sounds_unarmed_and_a_long_sword_sounds_like_a_large_blade() {
         );
     }
 }
+
+/// A player's chosen underwear is drawn: the bare body and the head go by the variant's name, and the body's sheet is the
+/// variant's. The standard paint keeps its names.
+#[test]
+fn a_chosen_underwear_is_what_the_hero_wears() {
+    let Some(mut s) = stage() else { return };
+    let Some(variant) = kotor_render::underwear::list_underwear_variants()
+        .into_iter()
+        .nth(1)
+    else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.game.world.object_mut(pc).unwrap().appearance = 92;
+    s.game.world.set_player_underwear("");
+    s.update(DT);
+    let plain: Vec<String> = s
+        .dynamic_scene()
+        .meshes
+        .iter()
+        .filter_map(|m| m.texture.clone())
+        .collect();
+    assert!(plain.iter().all(|t| !t.contains('@')), "{plain:?}");
+    s.game.world.set_player_underwear(&variant.id);
+    // As the opening conversation has it too.
+    for f in 0..200 {
+        s.update(DT);
+        if s.game.world.in_dialogue() && f > 40 {
+            break;
+        }
+    }
+    let worn: Vec<String> = s
+        .dynamic_scene()
+        .meshes
+        .iter()
+        .filter_map(|m| m.texture.clone())
+        .collect();
+    let body = worn
+        .iter()
+        .find(|t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfbam"))
+        .unwrap_or_else(|| panic!("no body in the variant: {worn:?}"))
+        .clone();
+    let sheet = s.texture(&body).unwrap();
+    let standard = s.texture(body.split('@').next().unwrap()).unwrap();
+    assert_ne!(sheet.rgba, standard.rgba, "{body} is the variant's sheet");
+    assert!(
+        worn.iter()
+            .any(|t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfh")),
+        "{worn:?}"
+    );
+}

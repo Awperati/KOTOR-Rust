@@ -1694,7 +1694,13 @@ pub fn close_neck_gap(m: &mut Model, head: &str) {
 
 /// The tone of a woman's skin in a picture of the middle body: her upper arms.
 fn woman_tone(inst: &mut Install, texture: &str) -> Option<[f32; 3]> {
-    let pixels = work_size(&load_texture(inst, texture)?);
+    let picture = load_texture(inst, texture)?;
+    woman_tone_of(inst, &picture)
+}
+
+/// The same, of a picture given: a mod's, say.
+pub fn woman_tone_of(inst: &mut Install, picture: &Image) -> Option<[f32; 3]> {
+    let pixels = work_size(picture);
     let mdl = inst.read(MIDDLE_BODY, ResType::MDL).ok()?;
     let mdx = inst.read(MIDDLE_BODY, ResType::MDX).unwrap_or_default();
     let m = kotor_model::parse_model(&mdl, &mdx).ok()?;
@@ -1970,4 +1976,128 @@ pub fn blend_neck_normals(scene: &mut crate::scene::Scene, head: &str, up: [f32;
             }
         }
     }
+}
+
+/// One underwear a player may choose: the standard paint (id empty) or a modder's sheets in a folder of the owner's disk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnderwearVariant {
+    /// What is saved with the character: the folder's name, empty for the standard paint.
+    pub id: String,
+    /// What the list shows.
+    pub name: String,
+    /// Whether its sheets fit this game's bodies. A sheet for the sequel's layout does not, and is marked "needs fix".
+    pub fits: bool,
+    /// Why not, or what it covers.
+    pub note: String,
+}
+
+/// The folder that holds modders' folders: `KOTOR_MODS_ROOT` if set, else `Mods` beside the project. Read at run time, from the
+/// owner's disk, and never kept in the repository or the build.
+pub fn mods_root() -> std::path::PathBuf {
+    std::env::var_os("KOTOR_MODS_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Users\User\Projects\Mods"))
+}
+
+/// The sheet of a skin family of the middle body in a folder: `a` Asian, `b` Black, none Caucasian. Names are matched without
+/// case. Only files directly in the folder count: a mod with a mesh of its own keeps its sheets elsewhere.
+fn sheet_file(dir: &std::path::Path, family: char) -> Option<std::path::PathBuf> {
+    let want = match family {
+        'a' => "pfbama01.tga",
+        'b' => "pfbamb01.tga",
+        _ => "pfbamc01.tga",
+    };
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.eq_ignore_ascii_case(want))
+        })
+}
+
+/// The choices for a player's underwear: the standard paint first, then a variant for each folder under [`mods_root`] that
+/// holds a sheet of the middle body. A new folder is a new choice, with no change to the program.
+pub fn list_underwear_variants() -> Vec<UnderwearVariant> {
+    let mut out = vec![UnderwearVariant {
+        id: String::new(),
+        name: "Standard".to_string(),
+        fits: true,
+        note: "Our own paint, for every body and skin".to_string(),
+    }];
+    let Ok(read) = std::fs::read_dir(mods_root()) else {
+        return out;
+    };
+    let mut found: Vec<UnderwearVariant> = read
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter(|e| ['a', 'b', 'c'].iter().any(|f| sheet_file(&e.path(), *f).is_some()))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .map(|name| UnderwearVariant {
+            id: name.clone(),
+            name,
+            fits: false,
+            note: "Needs fix: its sheet is for the sequel's body, and the bra lands out of place on this one. Middle body only."
+                .to_string(),
+        })
+        .collect();
+    found.sort_by_key(|a| a.name.to_lowercase());
+    out.extend(found);
+    out
+}
+
+/// The folder of a variant, none for the standard paint or a folder that is gone.
+pub fn variant_dir(id: &str) -> Option<std::path::PathBuf> {
+    if id.is_empty() || id.contains(['/', '\\']) || id.contains("..") {
+        return None;
+    }
+    let dir = mods_root().join(id);
+    dir.is_dir().then_some(dir)
+}
+
+/// A body texture of the middle body's three skins as a variant paints it, if it has one. Only the middle body: the small and
+/// large bodies have other layouts of the sheet.
+pub fn variant_body_texture(id: &str, name: &str) -> Option<Image> {
+    let dir = variant_dir(id)?;
+    if body_of_texture(name)? != "pfbam" {
+        return None;
+    }
+    let n = name.to_ascii_lowercase();
+    let family = n
+        .strip_prefix("pfbam")?
+        .chars()
+        .next()
+        .filter(|c| "ab".contains(*c))
+        .unwrap_or('c');
+    let bytes = std::fs::read(sheet_file(&dir, family)?).ok()?;
+    kotor_image::parse_tga(&bytes).ok()
+}
+
+/// The variant's picture of the body a head goes with, for the tone its neck fades to.
+pub fn variant_body_for_head(id: &str, head: &str) -> Option<Image> {
+    variant_body_texture(id, &head_family(head)?)
+}
+
+impl NeckPlan {
+    /// The same plan for a body of another tone, such as a mod's.
+    pub fn with_tone(mut self, tone: [f32; 3]) -> NeckPlan {
+        self.tone = tone;
+        self
+    }
+}
+
+/// The name a texture goes by when a creature wears a variant: `pfbama01@Blue Undies-3-1`. The standard paint keeps its name.
+pub fn variant_texture_name(texture: &str, id: &str) -> String {
+    if id.is_empty() {
+        texture.to_string()
+    } else {
+        format!("{texture}@{id}")
+    }
+}
+
+/// A texture's own name and its variant, from a name made by [`variant_texture_name`].
+pub fn split_variant(name: &str) -> (&str, &str) {
+    name.split_once('@').unwrap_or((name, ""))
 }

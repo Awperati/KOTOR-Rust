@@ -319,6 +319,8 @@ pub struct Stage {
     hd3d: Option<PathBuf>,
     /// "Underwear style: Conventional". See `kotor_render::underwear`.
     conventional_underwear: bool,
+    /// The underwear the character creation screen's figures wear: a variant's id, empty for the standard paint.
+    preview_underwear: String,
     underwear_plans: HashMap<String, Option<kotor_render::underwear::Plan>>,
     neck_plans: HashMap<String, Option<kotor_render::underwear::NeckPlan>>,
     baseitems: Option<TwoDa>,
@@ -460,6 +462,7 @@ impl Stage {
                 .and_then(|d| d.parent().map(|p| p.join("hd3d")))
                 .filter(|d| d.is_dir()),
             conventional_underwear: true,
+            preview_underwear: String::new(),
             underwear_plans: HashMap::new(),
             neck_plans: HashMap::new(),
             held: HashMap::new(),
@@ -1495,15 +1498,34 @@ impl Stage {
         if self.conventional_underwear != on {
             self.conventional_underwear = on;
             self.textures.retain(|name, _| {
+                let name = kotor_render::underwear::split_variant(name).0;
                 kotor_render::underwear::body_of_texture(name).is_none()
                     && !kotor_render::underwear::is_hero_head(name)
             });
+            self.neck_plans.clear();
             self.rigs.clear();
             self.static_version += 1;
         }
     }
 
+    /// What to add to the names of a figure's body and head textures so it wears an underwear variant: nothing for the
+    /// standard paint, else `@` and the variant's id. The character creation screen's figure uses it for its preview.
+    pub fn figure_underwear_suffix(id: &str) -> String {
+        if id.is_empty() {
+            String::new()
+        } else {
+            format!("@{id}")
+        }
+    }
+
+    /// The underwear the character creation screen's figures wear while a choice is being looked at: a variant's id, or empty.
+    pub fn set_preview_underwear(&mut self, id: &str) {
+        self.preview_underwear = id.to_string();
+    }
+
     pub fn texture(&mut self, name: &str) -> Option<Image> {
+        let (plain, variant) = kotor_render::underwear::split_variant(name);
+        let (plain, variant) = (plain.to_string(), variant.to_string());
         let inst = &mut self.inst;
         let hd = self.hd3d.clone();
         let conventional = self.conventional_underwear;
@@ -1512,6 +1534,11 @@ impl Stage {
         self.textures
             .entry(name.to_string())
             .or_insert_with(|| {
+                let name = plain.as_str();
+                // A player's chosen underwear, when its folder has a sheet for this body, stands in for our paint.
+                if let Some(sheet) = kotor_render::underwear::variant_body_texture(&variant, name) {
+                    return Some(sheet);
+                }
                 let mut img = hd
                     .and_then(|d| upscaled(&d, name))
                     .or_else(|| kotor_render::load_texture(inst, name))?;
@@ -1526,8 +1553,18 @@ impl Stage {
                 }
                 if conventional && kotor_render::underwear::is_hero_head(name) {
                     let plan = necks
-                        .entry(name.to_ascii_lowercase())
-                        .or_insert_with(|| kotor_render::underwear::neck_plan_for(inst, name));
+                        .entry(format!("{}@{variant}", name.to_ascii_lowercase()))
+                        .or_insert_with(|| {
+                            let plan = kotor_render::underwear::neck_plan_for(inst, name)?;
+                            // A neck fades to the tone of the body it goes with: the variant's, when that is worn.
+                            let tone =
+                                kotor_render::underwear::variant_body_for_head(&variant, name)
+                                    .and_then(|b| kotor_render::underwear::woman_tone_of(inst, &b));
+                            Some(match tone {
+                                Some(t) => plan.with_tone(t),
+                                None => plan,
+                            })
+                        });
                     if let Some(plan) = plan {
                         plan.apply(&mut img);
                     }
@@ -1967,17 +2004,25 @@ impl Stage {
                         continue;
                     };
                     let hands = self.hands(pose.id);
+                    let underwear = self
+                        .game
+                        .world
+                        .object(pose.id)
+                        .map(|o| o.underwear.clone())
+                        .unwrap_or_default();
                     if let Some(p) = self.stunt_pose(pose.id) {
                         // A stunt is in world space, like the camera beside it.
                         if let Ok(mut body) = rig.posed(Some(&p)) {
                             for (node, item) in &hands {
                                 rig.attach(&mut body, Some(&p), node, item);
                             }
+                            wear_underwear(&mut body, 0, &underwear);
                             scene.append_transformed(&body, &placement([0.0; 3], 0.0));
                         }
                         continue;
                     }
                     let clip = self.dialogue_clip(pose.id).or_else(|| pose.clip.clone());
+                    let start = scene.meshes.len();
                     if self.add_bent_body(
                         &mut scene,
                         pose.id,
@@ -1987,9 +2032,18 @@ impl Stage {
                         pose.position,
                         pose.heading,
                     ) {
+                        wear_underwear(&mut scene, start, &underwear);
                         continue;
                     }
-                    self.add_creature(&mut scene, &rig, &hands, &clip, pose.position, pose.heading);
+                    self.add_creature(
+                        &mut scene,
+                        &rig,
+                        &hands,
+                        &clip,
+                        pose.position,
+                        pose.heading,
+                        &underwear,
+                    );
                 }
                 Kind::Placeable => {
                     let Some(body) = self.chest_body(pose.id) else {
@@ -2030,6 +2084,7 @@ impl Stage {
         scene
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add_creature(
         &self,
         scene: &mut Scene,
@@ -2038,6 +2093,7 @@ impl Stage {
         clip: &Option<Clip>,
         at: [f32; 3],
         heading: f32,
+        underwear: &str,
     ) {
         // Models face +y at rest; turn so +y points along the heading.
         let angle = heading - std::f32::consts::FRAC_PI_2;
@@ -2071,6 +2127,8 @@ impl Stage {
         for (node, item) in hands {
             rig.attach(&mut body, pose.as_ref(), node, item);
         }
+        // A player's choice of underwear: the bare body and the head's neck go by another name, which `texture` knows.
+        wear_underwear(&mut body, 0, underwear);
         let xf = if flat {
             placement_flat(at, angle)
         } else {
@@ -2500,5 +2558,22 @@ impl Stage {
             return Some(s);
         }
         None
+    }
+}
+
+/// A creature in a player's chosen underwear: from mesh `from` on, the bare body and the head's neck go by another name, which
+/// `Stage::texture` knows. The standard paint keeps its names.
+fn wear_underwear(scene: &mut Scene, from: usize, underwear: &str) {
+    if underwear.is_empty() {
+        return;
+    }
+    for m in scene.meshes.iter_mut().skip(from) {
+        if let Some(t) = &m.texture {
+            if kotor_render::underwear::body_of_texture(t).is_some()
+                || kotor_render::underwear::is_hero_head(t)
+            {
+                m.texture = Some(kotor_render::underwear::variant_texture_name(t, underwear));
+            }
+        }
     }
 }
