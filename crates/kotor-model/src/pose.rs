@@ -112,6 +112,28 @@ impl Controller {
         };
         Some(slerp(key(lo)?, key(hi)?, f))
     }
+
+    /// Linear interpolation of a one-value controller (alpha).
+    pub fn sample_scalar(&self, t: f32) -> Option<f32> {
+        let (lo, hi, f) = self.bracket(t)?;
+        let (a, b) = (*self.row(lo)?.first()?, *self.row(hi)?.first()?);
+        Some(a + (b - a) * f)
+    }
+}
+
+/// Controller 132: how much of a node's mesh shows. A panel's screen and the plate that covers it are two meshes in
+/// one plane, and this says which of them is there.
+const ALPHA: u32 = 132;
+
+impl Node {
+    /// What the model file gives as this node's alpha, 1 if it gives none.
+    pub fn rest_alpha(&self) -> f32 {
+        self.controllers
+            .iter()
+            .find(|c| c.kind == ALPHA)
+            .and_then(|c| c.sample_scalar(0.0))
+            .unwrap_or(1.0)
+    }
 }
 
 /// Position and orientation of one node at a point in time.
@@ -120,6 +142,8 @@ pub struct NodePose {
     pub position: [f32; 3],
     /// `[w, x, y, z]`.
     pub orientation: [f32; 4],
+    /// `None` when the animation leaves the node's alpha alone.
+    pub alpha: Option<f32>,
 }
 
 /// A node's lower-case name, its world transform and its parent's.
@@ -141,6 +165,10 @@ pub fn blend(from: &Pose, to: &Pose, weight_to: f32) -> Pose {
                     position: [0, 1, 2]
                         .map(|i| a.position[i] + (b.position[i] - a.position[i]) * w),
                     orientation: slerp(a.orientation, b.orientation, w),
+                    alpha: match (a.alpha, b.alpha) {
+                        (Some(x), Some(y)) => Some(x + (y - x) * w),
+                        (x, y) => y.or(x),
+                    },
                 },
             );
         } else {
@@ -181,6 +209,11 @@ impl Animation {
                     NodePose {
                         position,
                         orientation,
+                        alpha: n
+                            .controllers
+                            .iter()
+                            .find(|c| c.kind == ALPHA)
+                            .and_then(|c| c.sample_scalar(t)),
                     },
                 );
             }
@@ -224,6 +257,7 @@ impl Model {
                 NodePose {
                     position: n.position,
                     orientation: n.orientation,
+                    alpha: None,
                 },
             );
         });
@@ -249,15 +283,19 @@ impl Model {
         out
     }
 
-    /// Every node that carries a render-flagged mesh, with its world matrix under `pose`.
+    /// Every node that carries a render-flagged mesh and has some alpha under `pose`, with its world matrix.
     pub fn mesh_nodes(&self, pose: Option<&Pose>) -> Vec<(&Node, [[f32; 4]; 4])> {
         fn go<'a>(n: &'a Node, parent: &Mat, pose: Option<&Pose>, out: &mut Vec<(&'a Node, Mat)>) {
-            let (p, o) = match pose.and_then(|p| p.get(&n.name.to_ascii_lowercase())) {
+            let posed = pose.and_then(|p| p.get(&n.name.to_ascii_lowercase()));
+            let (p, o) = match posed {
                 Some(np) => (np.position, np.orientation),
                 None => (n.position, n.orientation),
             };
             let m = mul(parent, &matrix(p, o));
-            if n.mesh.as_ref().is_some_and(|m| m.render) {
+            let alpha = posed
+                .and_then(|np| np.alpha)
+                .unwrap_or_else(|| n.rest_alpha());
+            if alpha > 0.0 && n.mesh.as_ref().is_some_and(|m| m.render) {
                 out.push((n, m));
             }
             for c in &n.children {
@@ -319,6 +357,7 @@ mod tests {
         let at = |x: f32| NodePose {
             position: [x, 0.0, 0.0],
             orientation: id,
+            alpha: None,
         };
         let (a, b) = (
             Pose::from([("n".to_string(), at(0.0)), ("only_a".to_string(), at(5.0))]),
@@ -328,6 +367,83 @@ mod tests {
         assert_eq!(blend(&a, &b, 0.5)["n"].position[0], 1.0);
         assert_eq!(blend(&a, &b, 1.0)["n"].position[0], 2.0);
         assert!(blend(&a, &b, 0.5).contains_key("only_a"));
+    }
+
+    #[test]
+    fn a_mesh_shows_by_its_own_alpha_until_an_animation_sets_another() {
+        let alpha = |values: Vec<f32>| Controller {
+            kind: ALPHA,
+            columns: 1,
+            times: (0..values.len()).map(|i| i as f32).collect(),
+            values,
+        };
+        let id = [1.0, 0.0, 0.0, 0.0];
+        let node = |name: &str, controllers: Vec<Controller>, children: Vec<Node>| Node {
+            name: name.to_string(),
+            index: 0,
+            number: 0,
+            flags: 0,
+            position: [0.0; 3],
+            orientation: id,
+            controllers,
+            mesh: Some(crate::Mesh {
+                render: true,
+                ..crate::Mesh::default()
+            }),
+            light: None,
+            emitter: None,
+            children,
+        };
+        let animation = |root: Node| Animation {
+            name: String::new(),
+            length: 1.0,
+            transition: 0.0,
+            root_name: String::new(),
+            events: vec![],
+            root,
+        };
+        let model = Model {
+            name: String::new(),
+            classification: 0,
+            supermodel: None,
+            bbox: [[0.0; 3]; 2],
+            radius: 0.0,
+            anim_scale: 1.0,
+            node_count: 3,
+            root: node(
+                "root",
+                vec![],
+                vec![
+                    node("screen", vec![alpha(vec![1.0])], vec![]),
+                    node("plate", vec![alpha(vec![0.0])], vec![]),
+                ],
+            ),
+            animations: vec![],
+        };
+        let shown = |pose: Option<&Pose>| {
+            let mut names: Vec<String> = model
+                .mesh_nodes(pose)
+                .iter()
+                .map(|(n, _)| n.name.clone())
+                .collect();
+            names.sort();
+            names.join(" ")
+        };
+        assert_eq!(shown(None), "root screen");
+        // The animation that switches the panel off swaps the two.
+        let off = animation(node(
+            "root",
+            vec![],
+            vec![
+                node("screen", vec![alpha(vec![1.0, 0.0])], vec![]),
+                node("plate", vec![alpha(vec![0.0, 1.0])], vec![]),
+            ],
+        ));
+        assert_eq!(shown(Some(&off.sample(&model, 0.0))), "root screen");
+        assert_eq!(shown(Some(&off.sample(&model, 1.0))), "plate root");
+        // One that does not key alpha leaves it as the file has it.
+        let idle = animation(node("root", vec![], vec![node("plate", vec![], vec![])]));
+        assert_eq!(shown(Some(&idle.sample(&model, 0.0))), "root screen");
     }
 
     #[test]

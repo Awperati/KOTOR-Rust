@@ -140,6 +140,24 @@ fn endar_spire_doors_and_placeables_are_placed() {
     );
 }
 
+/// The Arena Monitors of the Taris cantina: the plate over the screen has alpha 0 and lies in the screen's plane. Drawn
+/// anyway, it fought the screen for the same pixels and cut it along the diagonal.
+#[test]
+fn the_plate_over_a_computer_panel_is_not_drawn_while_the_screen_is_on() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let mdl = inst.read("plc_comppnl2", kotor_core::ResType::MDL).unwrap();
+    let mdx = inst.read("plc_comppnl2", kotor_core::ResType::MDX).unwrap();
+    let model = kotor_model::parse_model(&mdl, &mdx).unwrap();
+    let mut scene = kotor_render::Scene::default();
+    scene.add_model(&model, [0.0; 3]);
+    let names: Vec<&str> = scene.meshes.iter().map(|m| m.name.as_str()).collect();
+    assert!(names.contains(&"Object28"), "the screen: {names:?}");
+    assert!(!names.contains(&"Object57"), "the plate: {names:?}");
+}
+
 #[test]
 fn creature_texture_follows_appearance_row_and_variation() {
     use kotor_render::load_creature;

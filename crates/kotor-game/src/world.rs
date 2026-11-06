@@ -1506,7 +1506,6 @@ impl World {
         }
     }
 
-    /// Run the area's `OnEnter` script with the player as the entering object, as when a module is entered.
     /// Whether scripts no longer find this body. The game fades a corpse away and leaves its things behind in a bag, while
     /// here the remains stay to be looted. `k_ptar_tarisover` lets the party leave Taris only once `GetObjectByTag` no longer
     /// finds Calo Nord. **Assumed:** how long that takes. A save keeps no time of death, so a body in one is gone.
@@ -1521,6 +1520,7 @@ impl World {
                 .is_none_or(|t| self.time - t >= BODY_FADES_AFTER)
     }
 
+    /// Run the area's `OnEnter` script with the player as the entering object, as when a module is entered.
     pub fn enter_area(&mut self) {
         let waiting: Vec<ObjId> = self
             .objects
