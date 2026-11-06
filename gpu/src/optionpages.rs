@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 4] = [
+const STYLE_ROWS: [(&str, &str, &str); 6] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -34,6 +34,16 @@ const STYLE_ROWS: [(&str, &str, &str); 4] = [
         "Early Force sensitivity: On",
         "Early Force sensitivity: Off (original)",
         "The main character feels the Force from the first room, or from Dantooine as the game has it. For new games only: a game keeps what it started with.",
+    ),
+    (
+        "Movement: Modern",
+        "Movement: Classic",
+        "Modern: momentum, gravity, a sprint a quarter faster and a roll on its key. Classic: the walk as the game has it.",
+    ),
+    (
+        "Click to walk: On",
+        "Click to walk: Off",
+        "A click on the floor walks there. Off: only the keys move the player, and clicks still use what is under them.",
     ),
 ];
 /// A box on the Auto-Pause page, and its words.
@@ -96,6 +106,8 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         6 => &mut s.glow_boxes,
         7 => &mut s.conventional_underwear,
         8 => &mut s.early_force,
+        9 => &mut s.movement_modern,
+        10 => &mut s.click_to_walk,
         _ => return None,
     })
 }
@@ -211,7 +223,7 @@ impl Stage {
                 ..Row::default()
             });
         }
-        // Nine rows, and six fit: the wheel brings up the rest.
+        // Eleven rows, and six fit: the wheel brings up the rest.
         v.lists
             .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
         self.option_words(&mut v, "LB_DESC");

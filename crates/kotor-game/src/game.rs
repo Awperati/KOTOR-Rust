@@ -163,8 +163,12 @@ impl Game {
                 .target
                 .contains_key(&id)
                 .then(|| self.style_clip(id, Move::Ready));
+            let rolling = id == pc && self.world.pc_body.rolling();
             let want = if down {
                 "die"
+            } else if rolling {
+                // No roll in the supermodels: this crouch is the nearest, and the window turns the body over.
+                "getfromgnd"
             } else if let Some(o) = once {
                 o
             } else if ran {
@@ -179,7 +183,14 @@ impl Game {
                 time: (id % 7) as f32 * 0.37,
             });
             if c.name == want {
-                c.time += self.dt;
+                // A sprint plays the run faster, so the feet keep to the floor: `rundist` is 3.96 m a cycle.
+                let modern = self.world.movement == crate::movement::MovementMode::Modern;
+                let rate = if modern && id == pc && want == "run" {
+                    (self.world.pc_body.speed() / crate::RUN_SPEED).clamp(0.5, 1.3)
+                } else {
+                    1.0
+                };
+                c.time += self.dt * rate;
             } else {
                 *c = Clip {
                     name: want,

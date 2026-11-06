@@ -22,6 +22,7 @@ mod journal;
 mod keymap;
 mod levelup;
 mod minigame;
+mod movement;
 mod party;
 mod pazaak;
 mod play;
@@ -60,6 +61,9 @@ pub use items::{
 pub use journal::Quest;
 pub use levelup::Choice;
 pub use minigame::{Bullet, Follower, GunBank, MiniGame, PlayedAnimation};
+pub use movement::{
+    Body, Events, Gait, Ground, Input, MovementMode, Tuning, RUN, SPRINT, SPRINT_RATIO,
+};
 pub use party::{BenchedMember, PartyRequest, PARTY_SIZE};
 pub use pazaak::{PazaakCard, PazaakGame, PazaakMove, PazaakSide, PazaakView};
 pub use play::{

@@ -13,6 +13,7 @@
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
+//!     --place X,Y,Z,H start at this spot facing this many radians, with the camera behind, when a game starts, for a test driver
 //!     --no-chargen    New Game starts at once, with the preset character
 //!     --no-early-force New games play by the game's own rules, whatever Settings says
 //!     --early-force   With --autopilot, new games have the early Force rule too, for a test driver
@@ -33,7 +34,7 @@
 //!                     gives a level (`level`), for a test driver
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
 //!
-//! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
+//! W A S D: run, relative to the camera (Shift walks). Left Ctrl: roll, in Modern movement. Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
 //! Tab: the next party member takes over. Space: end a line, or close a container. Wheel: zoom. Esc: back out of a screen,
 //! or pause. I: inventory. U: equipment. C: character.
@@ -161,6 +162,7 @@ struct App {
     max_steps: Option<u64>,
     /// What a test driver asked for once a game has started, from the menu or at once.
     near: Option<String>,
+    place: Option<[f32; 4]>,
     xp: Option<i32>,
     appearance: Option<i32>,
     power: Option<i32>,
@@ -264,6 +266,9 @@ impl App {
                     eprintln!("no floor beside {tag}");
                 }
             }
+            if let Some([x, y, z, heading]) = self.place.take() {
+                self.stage.place_player([x, y, z], heading);
+            }
             if let Some(gold) = self.gold.take() {
                 self.stage.game.world.gold += gold;
             }
@@ -345,6 +350,7 @@ impl App {
             }
         }
         self.stage.turn = self.turning;
+        self.stage.set_looking(self.looking);
         if self.turret_cursor != self.stage.turret_on() {
             self.turret_cursor = !self.turret_cursor;
             self.turret_cursor_known = false;
@@ -485,6 +491,7 @@ impl App {
                         "Pause" => self.stage.space_key(),
                         "CancelCombat" => self.stage.hud_disengage(),
                         "SoloMode" => self.stage.solo_key(),
+                        "Roll" => self.stage.roll_key(),
                         _ => {}
                     }
                 }
@@ -725,6 +732,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|n| n.parse::<u64>().ok())
             .map(|s| s * 60),
         near: opt("--near"),
+        place: opt("--place").and_then(|p| {
+            let n: Vec<f32> = p.split(',').filter_map(|v| v.parse().ok()).collect();
+            <[f32; 4]>::try_from(n).ok()
+        }),
         xp: opt("--xp").and_then(|n| n.parse().ok()),
         appearance: opt("--appearance").and_then(|n| n.parse().ok()),
         power: opt("--power").and_then(|n| n.parse().ok()),

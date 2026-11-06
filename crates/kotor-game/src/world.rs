@@ -422,6 +422,18 @@ pub struct World {
     pub bench: BTreeMap<i32, crate::party::BenchedMember>,
     /// The direction the player is being steered this step, and whether at a run.
     pub steer: Option<([f32; 2], bool)>,
+    /// Modern or Classic movement for the player. Headless games stay Classic: the settings choose in a window.
+    pub movement: crate::movement::MovementMode,
+    /// The player's body in Modern movement, and where it last put the player.
+    pub pc_body: crate::movement::Body,
+    pub(crate) body_mark: [f32; 3],
+    pub tuning: crate::movement::Tuning,
+    /// The roll key was pressed.
+    pub roll_request: bool,
+    /// What the body did since the window last asked, for the dust and the sound.
+    pub body_cues: crate::movement::Events,
+    /// Speed along a click's route in Modern movement.
+    pub(crate) route_speed: f32,
     /// The game's difficulty: a row of `difficultyopt.2da`, 0 easy, 1 normal, 2 difficult.
     pub difficulty: i32,
     /// The container the player has open.
@@ -623,6 +635,13 @@ impl World {
             journal_order: Vec::new(),
             journal_file: None,
             steer: None,
+            movement: crate::movement::MovementMode::Classic,
+            pc_body: crate::movement::Body::new([0.0; 3], 0.0),
+            body_mark: [0.0; 3],
+            tuning: crate::movement::Tuning::default(),
+            roll_request: false,
+            body_cues: crate::movement::Events::default(),
+            route_speed: 0.0,
             difficulty: 1,
             opened: None,
             last_disturbed_by: OBJECT_INVALID,

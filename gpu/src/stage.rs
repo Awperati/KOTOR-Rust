@@ -4,7 +4,7 @@
 
 use kotor_archive::Install;
 use kotor_core::ResType;
-use kotor_game::{pixel_ray, Beat, CameraShot, Clip, Game, Kind, ObjId, World};
+use kotor_game::{pixel_ray, Beat, CameraShot, Clip, Game, Kind, MovementMode, ObjId, World};
 use kotor_gff::{Gff, Value};
 use kotor_image::Image;
 use kotor_model::{parse_model, Model};
@@ -17,6 +17,8 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
+#[path = "moving.rs"]
+mod moving;
 #[path = "racescreen.rs"]
 mod racescreen;
 #[path = "roomshell.rs"]
@@ -290,6 +292,13 @@ pub struct Stage {
     pub pitch: f32,
     /// WASD this frame: forward and rightward, each -1, 0 or 1, and whether to walk instead of run.
     pub steer: (f32, f32, bool),
+    /// While the look button is held: the direction the keys keep.
+    steer_yaw: Option<f32>,
+    /// How far behind the player the camera's focus is, and the height it was last at.
+    camera_lag: [f32; 3],
+    camera_z: Option<f32>,
+    /// Degrees added to the field of view at speed.
+    fov_extra: f32,
     hover_reply: usize,
     hover_target: Option<ObjId>,
     ui_width: u32,
@@ -408,6 +417,10 @@ impl Stage {
             turn: 0.0,
             pitch: ((CAMERA_ABOVE - CAMERA_LOOKS_AT) / CAMERA_BEHIND).atan(),
             steer: (0.0, 0.0, false),
+            steer_yaw: None,
+            camera_lag: [0.0; 3],
+            camera_z: None,
+            fov_extra: 0.0,
             hover_reply: 0,
             hover_target: None,
             ui_width: 853,
@@ -574,6 +587,7 @@ impl Stage {
             return std::mem::take(&mut self.cues);
         }
         if self.pause_tick() {
+            self.game.world.roll_request = false;
             self.update_camera(dt);
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
@@ -581,12 +595,19 @@ impl Stage {
         self.turret_tick(dt);
         self.race_input();
         let (ahead, right, walk) = self.steer;
-        let (cos, sin) = (self.yaw.cos(), self.yaw.sin());
+        let steer_yaw = self.steer_yaw.unwrap_or(self.yaw);
+        let (cos, sin) = (steer_yaw.cos(), steer_yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
         let len = dir[0].hypot(dir[1]);
         let held = !self.settings().combat_movement && self.party_blocked();
         self.game.world.steer = (len > 0.01 && !held && self.game.world.minigame.is_none())
             .then(|| ([dir[0] / len, dir[1] / len], !walk));
+        // A scripted player keeps the walk its timings were measured on.
+        self.game.world.movement = if self.settings().movement_modern && self.pilot.is_none() {
+            MovementMode::Modern
+        } else {
+            MovementMode::Classic
+        };
         let speed = self.speed;
         if let Some(p) = self.pilot.as_mut() {
             // A scripted player opens no screens: levels and forced party members come straight away.
@@ -616,6 +637,7 @@ impl Stage {
         let eye = self.camera().eye;
         self.effects.update(dt_game, eye);
         self.update_line(dt_game);
+        self.movement_tick(dt);
         self.update_camera(dt);
         self.refresh_overlay();
         std::mem::take(&mut self.cues)
@@ -986,6 +1008,8 @@ impl Stage {
             Some(o) if o.id != w.pc => {
                 Some((o.position[1] - here[1]).atan2(o.position[0] - here[0]))
             }
+            // Not while the mouse is looking: it decides where the camera goes.
+            _ if self.steer_yaw.is_some() => None,
             _ => w.pc_walking().then_some(w.pc_mover.heading),
         };
         if let Some(a) = wanted {
@@ -1014,6 +1038,7 @@ impl Stage {
             .game
             .drawn_position(self.game.world.pc)
             .unwrap_or([0.0; 3]);
+        let p = self.lagged(p);
         let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
         let (flat, up) = (self.pitch.cos(), self.pitch.sin());
@@ -1059,7 +1084,7 @@ impl Stage {
                 p[2] + CAMERA_LOOKS_AT + up * d,
             ],
             target,
-            fov: CAMERA_FOV,
+            fov: CAMERA_FOV + self.fov_extra,
         }
     }
 
@@ -1201,7 +1226,10 @@ impl Stage {
             self.use_thing(id);
             return;
         }
-        if let Some(p) = self.floor_under_ray(o, d) {
+        if let Some(p) = self
+            .floor_under_ray(o, d)
+            .filter(|_| self.settings().click_to_walk)
+        {
             if self.settings().combat_movement || !self.party_blocked() {
                 // A click on the floor ends a fight, or the chase would hold the player where it can still reach its target.
                 let pc = self.game.world.pc;
@@ -1771,6 +1799,19 @@ impl Stage {
                         }
                         continue;
                     }
+                    if let Some(tilt) = self.body_tilt(pose.id, pose.position, pose.heading) {
+                        let mut alone = Scene::default();
+                        self.add_creature(
+                            &mut alone,
+                            &rig,
+                            &hands,
+                            &pose.clip,
+                            pose.position,
+                            pose.heading,
+                        );
+                        scene.append_transformed(&alone, &tilt);
+                        continue;
+                    }
                     self.add_creature(
                         &mut scene,
                         &rig,
@@ -2086,7 +2127,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} foe={foe} race={race} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} steps={} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
@@ -2110,6 +2151,12 @@ impl Stage {
             w.combat.log.iter().filter(|a| a.attacker == w.pc).count(),
             w.combat_queue.len(),
             self.ui_width,
+            w.pc_mover.pos[2],
+            w.pc_body.speed(),
+            !w.pc_body.grounded,
+            w.pc_body.rolling(),
+            self.camera().fov,
+            self.game.steps,
             self.target_view().map_or("-".to_string(), |t| t.0.replace(' ', "_")),
         )
     }

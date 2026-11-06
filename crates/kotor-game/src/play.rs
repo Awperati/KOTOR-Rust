@@ -2,6 +2,7 @@
 //! transitions and the per-step update.
 
 use crate::follow::{dist2d, slide_around, trim_route};
+use crate::movement::{Body, Ground, Input, MovementMode};
 use crate::world::{DoorState, Kind, ObjId, Object, World};
 use kotor_core::{Error, ResType, Result};
 use kotor_script::OBJECT_INVALID;
@@ -32,6 +33,21 @@ pub const RUN_SPEED: f32 = 5.4;
 const STEER_CLEARANCE: f32 = 0.3;
 /// Radians a second: the reference video's hero turns 180 degrees in 5 frames, see `docs/REFERENCE.md`.
 const STEER_TURN_RATE: f32 = 18.8;
+
+/// The walkmesh, as the Modern body asks it.
+struct NavGround<'a>(&'a NavMesh);
+
+impl Ground for NavGround<'_> {
+    fn floor(&self, x: f32, y: f32, max_z: f32) -> Option<f32> {
+        self.0.walkable_at(x, y, max_z)
+    }
+    fn blocked(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        self.0.crosses_block(a, b)
+    }
+    fn wall(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        self.0.sight_blocked(a, b)
+    }
+}
 
 /// Ray from a camera through a pixel: `(origin, unit direction)`. The camera looks from `eye` to `target`
 /// with Z up and a vertical field of view of `fov_deg`; `(px, py)` is measured from the top-left.
@@ -615,6 +631,16 @@ impl World {
         self.resume_conversation();
         self.update_doors(dt);
         let before = self.pc_mover.pos;
+        let modern = self.movement == MovementMode::Modern && self.nav.is_some();
+        if modern {
+            self.sync_body();
+        }
+        let roll = std::mem::take(&mut self.roll_request) && modern && self.may_roll();
+        if roll {
+            self.pc_mover.stop();
+            self.pending = None;
+            self.close_container();
+        }
         let status = match (
             self.nav.as_ref(),
             self.steer.filter(|_| self.conv.is_none()),
@@ -623,8 +649,15 @@ impl World {
                 self.pc_mover.stop();
                 self.pending = None;
                 self.close_container();
-                self.steer_pc(dir, run, dt);
+                if modern {
+                    self.step_body(Some(dir), !run, roll, dt);
+                } else {
+                    self.steer_pc(dir, run, dt);
+                }
                 MoveStatus::Idle
+            }
+            (Some(_), None) if modern && self.pc_mover.has_route() && self.conv.is_none() => {
+                self.step_route(dt)
             }
             // A conversation holds the walk: the panel in `end_m01ab` was reached during a talk and could not start its own.
             (Some(nav), None) if self.pc_mover.has_route() && self.conv.is_none() => {
@@ -636,9 +669,17 @@ impl World {
                 };
                 self.pc_mover.step(nav, &params, dt)
             }
-            _ => MoveStatus::Idle,
+            _ => {
+                if modern {
+                    self.step_body(None, false, roll, dt);
+                }
+                MoveStatus::Idle
+            }
         };
         let held_up = self.collide_pc(before, dt);
+        if modern {
+            self.settle_body();
+        }
         let pc = self.pc;
         if let Some(p) = self.objects.get_mut(&pc) {
             p.position = self.pc_mover.pos;
@@ -661,6 +702,89 @@ impl World {
                 self.errors.push(format!("transition to {module}: {e}"));
             }
         }
+    }
+
+    /// Someone else moved the player (a door, a script, a new area, a loaded game): the body starts again from there.
+    fn sync_body(&mut self) {
+        if self.pc_mover.pos != self.body_mark {
+            self.pc_body = Body::new(self.pc_mover.pos, self.pc_mover.heading);
+            self.route_speed = 0.0;
+        }
+        // A conversation turns the player to the speaker.
+        self.pc_body.heading = self.pc_mover.heading;
+    }
+
+    /// The player may roll: on its feet, out of conversations and minigames.
+    fn may_roll(&self) -> bool {
+        self.conv.is_none()
+            && self.minigame.is_none()
+            && self.race.is_none()
+            && self
+                .objects
+                .get(&self.pc)
+                .is_some_and(|o| !o.dead && !o.down)
+    }
+
+    fn step_body(&mut self, dir: Option<[f32; 2]>, walk: bool, roll: bool, dt: f32) {
+        let Some(nav) = self.nav.as_ref() else {
+            return;
+        };
+        let input = Input { dir, walk, roll };
+        let ev = self.pc_body.step(input, &NavGround(nav), &self.tuning, dt);
+        self.body_cues.merge(ev);
+        self.pc_mover.pos = self.pc_body.pos;
+        self.pc_mover.heading = self.pc_body.heading;
+    }
+
+    /// Along a click's route: speeding up from a stand and slowing down to stop where it ends.
+    fn step_route(&mut self, dt: f32) -> MoveStatus {
+        let t = self.tuning;
+        let brake = (2.0 * t.decel * self.pc_mover.remaining()).sqrt();
+        let want = t.sprint.min(brake);
+        self.route_speed = if want > self.route_speed {
+            (self.route_speed + t.accel * dt).min(want)
+        } else {
+            want
+        };
+        let params = MoveParams {
+            // Never so slow near the end that it creeps.
+            speed: self.route_speed.max(1.0),
+            turn_rate: STEER_TURN_RATE,
+            ..self.move_params
+        };
+        let Some(nav) = self.nav.as_ref() else {
+            return MoveStatus::Idle;
+        };
+        let status = self.pc_mover.step(nav, &params, dt);
+        let p = self.pc_mover.pos;
+        let ev =
+            self.pc_body
+                .carried_to([p[0], p[1]], self.pc_mover.heading, &NavGround(nav), &t, dt);
+        self.body_cues.merge(ev);
+        self.pc_mover.pos[2] = self.pc_body.pos[2];
+        if status == MoveStatus::Arrived {
+            self.route_speed = 0.0;
+            self.pc_body.vel = [0.0; 2];
+        }
+        status
+    }
+
+    /// Others may have pushed the player aside: the body keeps its own height, and goes where the player is.
+    fn settle_body(&mut self) {
+        self.pc_body.pos[0] = self.pc_mover.pos[0];
+        self.pc_body.pos[1] = self.pc_mover.pos[1];
+        self.pc_mover.pos[2] = self.pc_body.pos[2];
+        self.body_mark = self.pc_mover.pos;
+    }
+
+    /// How fast a party member goes to catch up. In Modern movement the player is faster than a run: the further
+    /// behind they are, the closer to a little over its speed. **Assumed:** 10% over, reached 4 m past where they set off.
+    pub(crate) fn follow_speed(&self, behind: f32) -> f32 {
+        if self.movement == MovementMode::Classic {
+            return RUN_SPEED;
+        }
+        let share = ((behind - crate::follow::FOLLOW_START) / 4.0).clamp(0.0, 1.0);
+        RUN_SPEED + (self.tuning.sprint * 1.1 - RUN_SPEED) * share
     }
 
     /// Move the player along `dir` (a unit vector), sliding along walls and closed doors, and turn to face it.

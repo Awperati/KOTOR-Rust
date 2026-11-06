@@ -268,6 +268,10 @@ pub struct Settings {
     pub noto_font: bool,
     /// Text boxes black with a glowing edge, not the stock look.
     pub glow_boxes: bool,
+    /// Modern movement: momentum, gravity, a faster sprint and a roll. Off is the game's own walk.
+    pub movement_modern: bool,
+    /// A click on the floor walks there.
+    pub click_to_walk: bool,
 }
 
 impl Default for Settings {
@@ -300,6 +304,8 @@ impl Default for Settings {
             vsync: true,
             noto_font: true,
             glow_boxes: true,
+            movement_modern: true,
+            click_to_walk: true,
         }
     }
 }
@@ -310,7 +316,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nnoto_font={}\nglow_boxes={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -336,7 +342,9 @@ impl Settings {
             self.conventional_underwear,
             self.early_force,
             self.noto_font,
-            self.glow_boxes
+            self.glow_boxes,
+            self.movement_modern,
+            self.click_to_walk
         )
     }
 
@@ -354,6 +362,8 @@ impl Settings {
                 "effects" => s.effects = level(v, s.effects),
                 "brightness" => s.brightness = level(v, s.brightness),
                 "invert_camera" => s.invert_camera = v == "true",
+                "movement_modern" => s.movement_modern = v == "true",
+                "click_to_walk" => s.click_to_walk = v == "true",
                 "autosave" => s.autosave = v == "true",
                 "difficulty" => s.difficulty = v.parse().unwrap_or(1).clamp(0, 2),
                 "tutorials" => s.tutorials = v == "true",
@@ -1192,7 +1202,7 @@ impl Stage {
     }
 
     /// What follows from a change of settings: the sound, the rules and the picture.
-    fn settings_changed(&mut self) {
+    pub(super) fn settings_changed(&mut self) {
         let s = self.menus.settings;
         self.cues.push(Cue::Levels(s.music, s.voice, s.effects));
         self.apply_difficulty();

@@ -159,6 +159,7 @@ impl World {
             let m = movers.entry(id).or_insert_with(|| Mover::new(old, 0.0));
             m.pos = old;
             let d = dist2d(old, pc_pos);
+            let follow_speed = self.follow_speed(d);
             if d <= FOLLOW_STOP {
                 m.stop();
             } else if d > FOLLOW_START && (replan || !m.has_route()) {
@@ -174,7 +175,7 @@ impl World {
             if m.has_route() {
                 // The party keeps up with a running player.
                 let params = kotor_walkmesh::MoveParams {
-                    speed: crate::RUN_SPEED,
+                    speed: follow_speed,
                     ..self.move_params
                 };
                 m.step(nav, &params, dt);

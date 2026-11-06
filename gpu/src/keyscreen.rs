@@ -11,14 +11,17 @@ use super::{Screen, Stage};
 use kotor_ui::{MenuView, Row};
 use std::collections::BTreeMap;
 
+/// The roll is not in the game, so it has no words in the talk table.
+const NOT_IN_TALK_TABLE: u32 = 0;
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 19] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 20] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
     ("MoveRight", 48031, 0, "KeyD"),
     ("TurnLeft", 48319, 0, "ArrowLeft"),
     ("TurnRight", 48321, 0, "ArrowRight"),
+    ("Roll", NOT_IN_TALK_TABLE, 0, "ControlLeft"),
     ("Use", 48313, 1, "KeyE"),
     ("ChangeLeader", 48033, 1, "Tab"),
     ("Equip", 48037, 1, "KeyU"),
@@ -186,7 +189,11 @@ impl Stage {
         let capture = self.menus.key_capture;
         let mut rows = Vec::new();
         for (action, words) in self.page_actions() {
-            let name = self.ui.strref(words);
+            let name = if words == NOT_IN_TALK_TABLE {
+                action.to_string()
+            } else {
+                self.ui.strref(words)
+            };
             let key = self.menus.keys.0.get(action).cloned().unwrap_or_default();
             let waiting = capture == Some(action);
             let shown = if waiting { "..." } else { pretty(&key) };
