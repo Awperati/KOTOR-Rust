@@ -512,10 +512,17 @@ impl World {
     /// being attacked by them.
     pub(crate) fn fight_is_over(&self) -> bool {
         let mine = |id: &ObjId| *id == self.pc || self.party.contains(id);
-        !self.combat.target.iter().any(|(a, t)| {
-            let alive = |id: &ObjId| self.objects.get(id).is_some_and(|o| !o.dead && !o.down);
-            alive(a) && alive(t) && (mine(a) != mine(t))
-        })
+        let alive = |id: &ObjId| self.objects.get(id).is_some_and(|o| !o.dead && !o.down);
+        // **Assumption:** a fight lasts while an enemy still notices someone who stands, as well as while blows are aimed.
+        // Without this a knocked-out hero stood up the moment the foe's aim was cleared, to be hit again (GAPS row 5).
+        !self
+            .combat
+            .target
+            .iter()
+            .any(|(a, t)| alive(a) && alive(t) && (mine(a) != mine(t)))
+            && !self.combat.perceived.iter().any(|(a, b)| {
+                !mine(a) && mine(b) && alive(a) && alive(b) && self.reputation(*a, *b) <= 10
+            })
     }
 
     /// Stand knocked-out party members up with 1 hit point once the fight is over; flag the game over when the whole

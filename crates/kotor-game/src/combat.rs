@@ -284,12 +284,26 @@ impl World {
     /// Start attacking `target` (what `ActionAttack` does).
     pub fn attack(&mut self, attacker: ObjId, target: ObjId) {
         if attacker != target
-            && self.objects.get(&target).is_some_and(|t| !t.dead)
-            && self.objects.get(&attacker).is_some_and(|a| !a.dead)
+            && self
+                .objects
+                .get(&target)
+                .is_some_and(|t| !t.dead && !t.down)
+            && self
+                .objects
+                .get(&attacker)
+                .is_some_and(|a| !a.dead && !a.down)
+            && !(self.on_player_side(attacker) && self.on_player_side(target))
         {
             self.combat.target.insert(attacker, target);
             self.combat.last_hostile.insert(attacker, target);
         }
+    }
+
+    /// The player or one of the party: they never turn on each other (bug 21, Trask shooting the player).
+    fn on_player_side(&self, id: ObjId) -> bool {
+        id == self.pc
+            || self.party.contains(&id)
+            || self.objects.get(&id).is_some_and(|o| o.party_member)
     }
 
     /// Stop attacking (what `ClearAllActions` and `CancelCombat` do).
@@ -728,13 +742,33 @@ impl World {
         }
     }
 
+    /// Party members who have no target join the leader's: they fight what the player fights (bug 21).
+    ///
+    /// **Assumption:** the game's party AI style "follow" does this. Members with a target of their own keep it.
+    fn assist_leader(&mut self) {
+        let Some(foe) = self.combat.target.get(&self.pc).copied() else {
+            return;
+        };
+        if self.reputation(self.pc, foe) > 10 {
+            return;
+        }
+        for id in self.party.clone() {
+            if !self.combat.target.contains_key(&id) {
+                self.attack(id, foe);
+            }
+        }
+    }
+
     fn run_round(&mut self) {
+        self.assist_leader();
         let pairs: Vec<(ObjId, ObjId)> = self.combat.target.iter().map(|(a, t)| (*a, *t)).collect();
         // A power takes up the round too, and the AI picks its next move when a round ends. Without this a Jedi who casts
         // never acts again, and the duel in `end_cut04` never finishes.
         let mut involved: BTreeSet<ObjId> = std::mem::take(&mut self.combat.casters);
         for (a, t) in pairs {
-            let alive = |w: &World, id: ObjId| w.objects.get(&id).is_some_and(|o| !o.dead);
+            // Someone knocked out is out of the fight as the dead are: a downed hero was hit over and over, then stood up to be hit again.
+            let alive =
+                |w: &World, id: ObjId| w.objects.get(&id).is_some_and(|o| !o.dead && !o.down);
             if !alive(self, a) || !alive(self, t) {
                 self.combat.target.remove(&a);
                 continue;

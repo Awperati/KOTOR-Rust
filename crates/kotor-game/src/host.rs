@@ -300,7 +300,7 @@ impl Host for Adapter<'_> {
             "GetIsDead" => b(self
                 .world
                 .object(self.obj(caller, args, 0))
-                .is_some_and(|o| o.dead)),
+                .is_some_and(|o| o.dead || o.down)),
             "IsObjectPartyMember" => b(self
                 .world
                 .object(self.obj(caller, args, 0))
