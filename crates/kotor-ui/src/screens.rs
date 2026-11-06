@@ -53,6 +53,9 @@ pub struct Ui<'a> {
     guis: HashMap<String, Option<Gui>>,
     /// The talk table, read the first time a control needs it.
     tlk: Option<Option<kotor_tables::Tlk>>,
+    /// The second game's, and its files, for the few things that come from it.
+    second_tlk: Option<Option<kotor_tables::Tlk>>,
+    second_install: Option<Option<Install>>,
     target_at: Option<(i32, i32)>,
     minimap: Option<MiniMap>,
     combat: CombatHud,
@@ -209,6 +212,8 @@ impl<'a> Ui<'a> {
             fonts: HashMap::new(),
             guis: HashMap::new(),
             tlk: None,
+            second_tlk: None,
+            second_install: None,
             target_at: None,
             minimap: None,
             combat: CombatHud::default(),
@@ -412,13 +417,27 @@ impl<'a> Ui<'a> {
         if !self.textures.contains_key(&key) {
             let mut img = self
                 .hd_picture(&key)
-                .or_else(|| load_texture(self.inst, &key));
+                .or_else(|| load_texture(self.inst, &key))
+                .or_else(|| self.second_game_icon(&key));
             if let (Some(i), true) = (img.as_mut(), additive(self.inst, &key)) {
                 brightness_to_alpha(i);
             }
             self.textures.insert(key.clone(), img.map(Rc::new));
         }
         self.textures[&key].as_deref()
+    }
+
+    /// A feat's picture the first game has not got: the second game's, in its own folder.
+    fn second_game_icon(&mut self, name: &str) -> Option<Image> {
+        if !name.starts_with("if_") {
+            return None;
+        }
+        let inst = self.second_install.get_or_insert_with(|| {
+            let mut inst = Install::open(kotor_core::second_game_dir()?).ok()?;
+            inst.load_texture_packs().ok()?;
+            Some(inst)
+        });
+        load_texture(inst.as_mut()?, name)
     }
 
     /// A picture, to draw with while other things are asked of this.
@@ -507,6 +526,17 @@ impl<'a> Ui<'a> {
 
     /// Text from the talk table, `dialog.tlk` beside the game's data files.
     pub fn strref(&mut self, strref: u32) -> String {
+        if let Some(theirs) = strref.checked_sub(kotor_core::SECOND_GAME_STRREF) {
+            return self
+                .second_tlk
+                .get_or_insert_with(|| {
+                    let dir = kotor_core::second_game_dir()?;
+                    kotor_tables::Tlk::parse(&std::fs::read(dir.join("dialog.tlk")).ok()?).ok()
+                })
+                .as_ref()
+                .and_then(|t| t.get(theirs))
+                .unwrap_or_default();
+        }
         let dir = self.inst.dir().to_path_buf();
         self.tlk
             .get_or_insert_with(|| {

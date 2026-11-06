@@ -19,6 +19,7 @@ mod gear;
 mod host;
 mod items;
 mod journal;
+mod k2feats;
 mod keymap;
 mod levelup;
 mod minigame;

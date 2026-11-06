@@ -206,8 +206,13 @@ impl World {
     pub fn attack_bonus_of(&mut self, id: ObjId, slot: i32) -> i32 {
         let ranged = self.hand_weapon(id, slot).is_some_and(|w| w.ranged);
         let ability = if ranged { DEX } else { STR };
+        let mut score = self.ability_score(id, ability);
+        if self.has_finesse(id, slot) {
+            score = score.max(self.ability_score(id, DEX));
+        }
         self.base_attack_of(id)
-            + ability_mod(self.ability_score(id, ability))
+            + ability_mod(score)
+            + self.superior_focus_bonus(id, slot)
             + self.gear_attack(id, slot)
             + self.weapon_focus_bonus(id, slot)
             + self.effect_sum(id, "EffectAttackIncrease", None)
@@ -238,7 +243,7 @@ impl World {
         self.gear_damage(id, slot).0
             + self.weapon_spec_bonus(id, slot)
             + if ranged {
-                0
+                self.precise_shot_damage(id)
             } else {
                 ability_mod(self.ability_score(id, STR))
             }
@@ -462,7 +467,9 @@ impl World {
         boost: crate::combat_actions::FeatBoost,
     ) {
         let weapon = self.weapon_of(attacker);
-        let bonus = self.attack_bonus_of(attacker, 4) + boost.to_hit;
+        let bonus = self.attack_bonus_of(attacker, 4)
+            + boost.to_hit
+            + self.close_combat_bonus(attacker, target);
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
         let threat = weapon.threat * boost.threat.max(1) * self.threat_factor(attacker, 4);

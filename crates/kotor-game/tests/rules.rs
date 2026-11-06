@@ -807,3 +807,86 @@ fn the_party_heals_its_constitution_modifier_every_seven_seconds() {
         "not past the most they can have"
     );
 }
+
+#[test]
+fn the_feats_the_second_game_rebuilt_do_what_their_words_say() {
+    let Some(mut w) = world() else { return };
+    let Some(rows) = w.ported_feat_rows() else {
+        return;
+    };
+    let pc = w.pc;
+    let row = |n: i32| rows.start + n;
+    let blaster = w.spawn_item("g_w_blstrpstl001");
+    w.object_mut(pc).unwrap().equipped.insert(4, blaster);
+    // Precise Shot: +1, +2, +4, +6, +8 to what a ranged weapon does.
+    let plain = w.damage_range_of(pc, 4).unwrap();
+    for (n, more) in [1, 2, 4, 6, 8].into_iter().enumerate() {
+        w.object_mut(pc).unwrap().feats.insert(row(n as i32));
+        let now = w.damage_range_of(pc, 4).unwrap();
+        assert_eq!(now, (plain.0 + more, plain.1 + more), "Precise Shot {n}");
+    }
+    // Close Combat is for a target at short range, and is not on the sheet's figure.
+    let here = w.object(pc).unwrap().position;
+    let (far, near) = (
+        w.spawn_item("g_w_blstrpstl001"),
+        w.spawn_item("g_w_blstrpstl001"),
+    );
+    w.object_mut(far).unwrap().position = [here[0] + 20.0, here[1], here[2]];
+    w.object_mut(near).unwrap().position = [here[0] + 2.0, here[1], here[2]];
+    w.object_mut(pc).unwrap().feats.insert(row(5));
+    assert_eq!(w.close_combat_for_test(pc, near), 1);
+    assert_eq!(w.close_combat_for_test(pc, far), 0);
+    w.object_mut(pc).unwrap().feats.insert(row(6));
+    assert_eq!(w.close_combat_for_test(pc, near), 2);
+    // Finesse: the better of Strength and Dexterity, and only with the kind it names.
+    let saber = w.spawn_item("g_w_lghtsbr01");
+    w.object_mut(pc).unwrap().equipped.insert(4, saber);
+    w.object_mut(pc).unwrap().abilities[0] = 10;
+    w.object_mut(pc).unwrap().abilities[1] = 18;
+    let strength_only = w.attack_bonus_of(pc, 4);
+    w.object_mut(pc).unwrap().feats.insert(row(8));
+    assert_eq!(
+        w.attack_bonus_of(pc, 4),
+        strength_only,
+        "Finesse: Melee is not for a lightsaber"
+    );
+    w.object_mut(pc).unwrap().feats.insert(row(7));
+    assert_eq!(w.attack_bonus_of(pc, 4), strength_only + 4);
+    // Superior Weapon Focus: +1, +2, +3 with a lightsaber.
+    for n in 0..3 {
+        w.object_mut(pc).unwrap().feats.insert(row(9 + n));
+        assert_eq!(w.attack_bonus_of(pc, 4), strength_only + 4 + n + 1);
+    }
+}
+
+#[test]
+fn the_second_games_feats_are_offered_to_the_classes_their_rules_name() {
+    let Some(mut w) = world() else { return };
+    let Some(rows) = w.ported_feat_rows() else {
+        return;
+    };
+    let pc = w.pc;
+    let row = |n: i32| rows.start + n;
+    {
+        let o = w.object_mut(pc).unwrap();
+        o.class = 0;
+        o.level = 3;
+        o.feats.clear();
+    }
+    // A level short, then there; and the next needs the one before.
+    assert!(!w.can_take_feat(pc, row(0), 1));
+    w.object_mut(pc).unwrap().level = 4;
+    assert!(w.can_take_feat(pc, row(0), 1));
+    w.object_mut(pc).unwrap().level = 20;
+    assert!(!w.can_take_feat(pc, row(1), 1));
+    w.object_mut(pc).unwrap().feats.insert(row(0));
+    assert!(w.can_take_feat(pc, row(1), 1));
+    // Only a Jedi has lightsaber feats.
+    assert!(!w.can_take_feat(pc, row(7), 1));
+    assert!(!w.can_take_feat(pc, row(9), 1));
+    // They are on the page with the rest, with their own names and pictures.
+    let page: Vec<_> = w.feat_choices(pc).into_iter().flatten().collect();
+    let found = page.iter().find(|c| c.id == row(0)).expect("on the page");
+    assert!(found.name >= kotor_core::SECOND_GAME_STRREF);
+    assert!(found.icon.starts_with("if_"));
+}

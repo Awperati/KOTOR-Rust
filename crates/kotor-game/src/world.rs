@@ -502,6 +502,8 @@ pub struct World {
     /// What is left of each `GetFirstObjectInShape` walk, by size and mask.
     pub(crate) shape_walks: HashMap<(u32, i32), std::collections::VecDeque<ObjId>>,
     tables: HashMap<String, Option<Rc<TwoDa>>>,
+    /// The first row of `feat.2da` that came from the second game.
+    pub(crate) second_game_feats: Option<usize>,
     /// What the item screens read from UTI files, by template.
     pub(crate) item_templates: HashMap<String, Rc<crate::items::ItemTemplate>>,
 }
@@ -701,6 +703,7 @@ impl World {
             effect_spell: HashMap::new(),
             shape_walks: HashMap::new(),
             tables: HashMap::new(),
+            second_game_feats: None,
             item_templates: HashMap::new(),
         };
         let table =
@@ -728,7 +731,12 @@ impl World {
                 .read(&key, ResType::TWODA)
                 .ok()
                 .and_then(|b| TwoDa::parse(&b).ok())
-                .map(Rc::new);
+                .map(|mut t| {
+                    if key == "feat" {
+                        self.second_game_feats = crate::k2feats::add_second_game_feats(&mut t);
+                    }
+                    Rc::new(t)
+                });
             self.tables.insert(key.clone(), t);
         }
         self.tables[&key].clone()
