@@ -139,7 +139,10 @@ fn a_game_saved_before_seamless_areas_loads_and_a_party_of_four_walks_into_the_c
     assert_eq!(menus, 0, "no menu or loading screen");
     // The crossing is the one place the position changes space; every other frame moved the leader a few centimetres.
     assert!(jumps <= 1, "{jumps} frames moved the leader by a metre");
-    pass_lines(&mut s, 300);
+    // Through, so the key comes up: in Modern the keys go straight down the room with the camera, and a player still holding
+    // forward is 20 m on before the last of the party has got round the others at the door, which takes up to 9 s.
+    s.steer = (0.0, 0.0, false);
+    pass_lines(&mut s, 600);
     assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
     let lead = s.game.world.objects[&s.game.world.pc].position;
     for id in &s.game.world.party {

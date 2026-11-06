@@ -375,6 +375,7 @@ impl Stage {
         match &crossed {
             Some(c) => {
                 self.yaw = wrap(self.yaw + c.moved.yaw);
+                self.steer_yaw = wrap(self.steer_yaw + c.moved.yaw);
                 let old = std::mem::take(&mut self.seam.base);
                 self.seam
                     .cache

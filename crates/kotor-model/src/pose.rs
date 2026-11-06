@@ -122,6 +122,9 @@ pub struct NodePose {
     pub orientation: [f32; 4],
 }
 
+/// A node's lower-case name, its world transform and its parent's.
+pub type JointFrame = (String, [[f32; 4]; 4], [[f32; 4]; 4]);
+
 /// Per-node pose keyed by lower-case node name.
 pub type Pose = HashMap<String, NodePose>;
 
@@ -228,8 +231,8 @@ impl Model {
     }
 
     /// Lower-case name, world transform and parent's world transform of every node, applying `pose` overrides.
-    pub fn joint_frames(&self, pose: Option<&Pose>) -> Vec<(String, [[f32; 4]; 4], [[f32; 4]; 4])> {
-        fn go(n: &Node, parent: &Mat, pose: Option<&Pose>, out: &mut Vec<(String, Mat, Mat)>) {
+    pub fn joint_frames(&self, pose: Option<&Pose>) -> Vec<JointFrame> {
+        fn go(n: &Node, parent: &Mat, pose: Option<&Pose>, out: &mut Vec<JointFrame>) {
             let name = n.name.to_ascii_lowercase();
             let (p, o) = match pose.and_then(|p| p.get(&name)) {
                 Some(np) => (np.position, np.orientation),

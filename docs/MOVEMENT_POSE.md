@@ -12,7 +12,7 @@ The roll and the landing have no animation in the game's files, so they are buil
 2. In the game press **F8**. "Poses reloaded" rises over the player, unless floating numbers are off in the options.
 3. Press the roll key (Left Ctrl unless you changed it), or fall off something for the landing.
 
-Modern movement must be on: Options, Feedback, "Movement: Modern". To see a move slowly, start the game with `--speed 0.1`. F8 is not on the keymap screen.
+Modern movement must be on: Options, Gameplay, "Movement: Modern". To see a move slowly, start the game with `--speed 0.1`. F8 is not on the keymap screen.
 
 ## What is in the file
 

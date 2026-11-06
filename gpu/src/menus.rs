@@ -1201,6 +1201,11 @@ impl Stage {
         self.menus.settings
     }
 
+    /// Modern or Classic movement for this run, without touching the settings file. For a test driver.
+    pub fn set_movement_modern(&mut self, modern: bool) {
+        self.menus.settings.movement_modern = modern;
+    }
+
     /// Read the player's settings from their file, and keep them there from now on.
     pub fn use_saved_settings(&mut self) {
         if let Some(path) = default_settings_file() {
@@ -1320,8 +1325,16 @@ impl Stage {
     fn gameplay_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optgameplay");
         self.gameplay_words(&mut v);
-        v.inert(&["CB_REVERSE"]);
         let s = self.menus.settings;
+        v.value(optionpages::MOVEMENT_BOX, s.movement_modern as i32, 1);
+        v.text(
+            optionpages::MOVEMENT_BOX,
+            if s.movement_modern {
+                optionpages::MOVEMENT_MODERN
+            } else {
+                optionpages::MOVEMENT_CLASSIC
+            },
+        );
         v.value("CB_LEVELUP", s.auto_level as i32, 1);
         v.value("CB_DISABLEMOVE", s.combat_movement as i32, 1);
         v.value("CB_INVERTCAM", s.invert_camera as i32, 1);
@@ -1901,6 +1914,10 @@ impl Stage {
             (Screen::Gameplay, "BTN_MOUSE") => self.menus.stack.push(Screen::Mouse),
             (Screen::KeyMap, _) => self.key_map_press(tag),
             (Screen::Mouse, _) => self.mouse_press(tag),
+            (Screen::Gameplay, optionpages::MOVEMENT_BOX) => {
+                self.menus.settings.movement_modern = !self.menus.settings.movement_modern;
+                self.settings_changed();
+            }
             (Screen::Gameplay, "CB_LEVELUP") => {
                 self.menus.settings.auto_level = !self.menus.settings.auto_level;
                 self.settings_changed();

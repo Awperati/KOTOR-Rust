@@ -236,7 +236,7 @@ impl Rig {
     }
 
     /// Each node of the body in `pose`: its lower-case name, its transform and its parent's.
-    pub fn joint_frames(&self, pose: Option<&kotor_model::Pose>) -> Vec<(String, Mat, Mat)> {
+    pub fn joint_frames(&self, pose: Option<&kotor_model::Pose>) -> Vec<kotor_model::JointFrame> {
         self.body.joint_frames(pose)
     }
 

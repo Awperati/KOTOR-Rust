@@ -15,12 +15,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+#[path = "bodypose.rs"]
+mod bodypose;
 #[path = "deathscreen.rs"]
 mod deathscreen;
 #[path = "menus.rs"]
 mod menus;
-#[path = "bodypose.rs"]
-mod bodypose;
 #[path = "moving.rs"]
 mod moving;
 #[path = "racescreen.rs"]
@@ -335,8 +335,10 @@ pub struct Stage {
     pub pitch: f32,
     /// WASD this frame: forward and rightward, each -1, 0 or 1, and whether to walk instead of run.
     pub steer: (f32, f32, bool),
-    /// While the look button is held: the direction the keys keep.
-    steer_yaw: Option<f32>,
+    /// The way the movement keys point: the camera's, a moment behind it in Modern.
+    steer_yaw: f32,
+    /// The look button is held.
+    looking: bool,
     /// How far behind the player the camera's focus is, and the height it was last at.
     camera_lag: [f32; 3],
     /// The roll's and the landing's poses.
@@ -468,7 +470,8 @@ impl Stage {
             turn: 0.0,
             pitch: ((CAMERA_ABOVE - CAMERA_LOOKS_AT) / CAMERA_BEHIND).atan(),
             steer: (0.0, 0.0, false),
-            steer_yaw: None,
+            steer_yaw: 0.0,
+            looking: false,
             camera_lag: [0.0; 3],
             body_poses: moving::BodyPoses::default(),
             camera_z: None,
@@ -675,7 +678,7 @@ impl Stage {
         self.turret_tick(dt);
         self.race_input();
         let (ahead, right, walk) = self.steer;
-        let steer_yaw = self.steer_yaw.unwrap_or(self.yaw);
+        let steer_yaw = self.keys_yaw(dt);
         let (cos, sin) = (steer_yaw.cos(), steer_yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
         let len = dir[0].hypot(dir[1]);
@@ -1162,8 +1165,9 @@ impl Stage {
             Some(o) if o.id != w.pc => {
                 Some((o.position[1] - here[1]).atan2(o.position[0] - here[0]))
             }
-            // Not while the mouse is looking: it decides where the camera goes.
-            _ if self.steer_yaw.is_some() => None,
+            // Not while the mouse is looking: it decides where the camera goes. In Modern the keys go by the camera,
+            // so a camera that followed them would turn a strafe into a circle.
+            _ if self.looking || (w.movement == MovementMode::Modern && w.steer.is_some()) => None,
             _ => w.pc_walking().then_some(w.pc_mover.heading),
         };
         if let Some(a) = wanted {
@@ -2308,7 +2312,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} steps={} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} yaw={:.3} heading={:.3} steps={} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
@@ -2337,6 +2341,8 @@ impl Stage {
             !w.pc_body.grounded,
             w.pc_body.rolling(),
             self.camera().fov,
+            self.yaw,
+            w.pc_mover.heading,
             self.game.steps,
             self.target_view().map_or("-".to_string(), |t| t.0.replace(' ', "_")),
         )

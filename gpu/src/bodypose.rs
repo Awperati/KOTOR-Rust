@@ -176,11 +176,7 @@ impl PoseFile {
                         let v = number(value, line)?;
                         file.centre_height = within(v, 0.3, 1.5, "centre_height", line)?;
                     }
-                    _ => {
-                        return Err(format!(
-                            "line {line}: \"{name}\" must come after a [key], or is not a name I know"
-                        ))
-                    }
+                    _ => return Err(format!("line {line}: \"{name}\" must come after a [key]")),
                 }
                 continue;
             };
@@ -291,13 +287,17 @@ mod tests {
         for text in [DEFAULT_ROLL, DEFAULT_LANDING] {
             let f = PoseFile::parse(text).unwrap();
             let s = f.sample(0.5);
-            for (l, r) in JOINTS.iter().filter(|j| j.side == Side::Left).filter_map(|j| {
-                let right = format!("r{}", &j.name[1..]);
-                JOINTS
-                    .iter()
-                    .find(|o| o.name == right)
-                    .map(|o| (j.name, o.name))
-            }) {
+            for (l, r) in JOINTS
+                .iter()
+                .filter(|j| j.side == Side::Left)
+                .filter_map(|j| {
+                    let right = format!("r{}", &j.name[1..]);
+                    JOINTS
+                        .iter()
+                        .find(|o| o.name == right)
+                        .map(|o| (j.name, o.name))
+                })
+            {
                 assert_eq!(angle(&s, l), angle(&s, r), "{l} and {r}");
             }
         }
@@ -317,7 +317,8 @@ mod tests {
 
     #[test]
     fn before_the_first_key_and_after_the_last_it_holds() {
-        let f = PoseFile::parse("[key]\nat = 0.4\ntuck = 0.5\n[key]\nat = 0.6\ntuck = 1\n").unwrap();
+        let f =
+            PoseFile::parse("[key]\nat = 0.4\ntuck = 0.5\n[key]\nat = 0.6\ntuck = 1\n").unwrap();
         assert_eq!(f.sample(0.1).tuck, 0.5);
         assert_eq!(f.sample(0.9).tuck, 1.0);
     }

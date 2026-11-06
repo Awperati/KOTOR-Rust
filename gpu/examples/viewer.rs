@@ -677,6 +677,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Stage::menu(&module, original)?
     };
+    if flag("--classic-movement") {
+        stage.set_movement_modern(false);
+    }
     if let Some(folder) = opt("--pose-folder") {
         stage.use_pose_folder(folder.into());
     }

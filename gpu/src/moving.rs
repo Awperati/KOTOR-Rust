@@ -34,6 +34,8 @@ const FOV_FROM: f32 = 2.0;
 /// A body in a tight tuck turns around this point of its standing pose, metres forward and up from the feet.
 const TUCK_FORWARD: f32 = 0.15;
 const TUCK_UP: f32 = 1.15;
+/// How quickly the keys' direction catches up with a turning camera in Modern, seconds: nine tenths of the way in 2.3 of these.
+const STEER_SECONDS: f32 = 0.1;
 /// A stock effect model of the game.
 const DUST: &str = "fx_step_dust";
 /// Slower landings make no sound.
@@ -227,15 +229,24 @@ impl Stage {
         )
     }
 
-    /// The look button is held or let go. While it is held the keys keep the direction they had: looking round does not
-    /// steer. With no key down, they take whatever direction the look ends on.
+    /// The look button is held or let go.
     pub fn set_looking(&mut self, looking: bool) {
+        self.looking = looking;
+    }
+
+    /// Which way the movement keys point now: the way the camera looks, read every frame and never kept from the moment a
+    /// key went down. In Classic exactly that. In Modern it follows the camera over a moment, so a held key's path curves.
+    pub(super) fn keys_yaw(&mut self, dt: f32) -> f32 {
         let (ahead, right, _) = self.steer;
-        self.steer_yaw = match (looking, self.steer_yaw) {
-            (false, _) => None,
-            (true, Some(y)) if ahead != 0.0 || right != 0.0 => Some(y),
-            (true, _) => Some(self.yaw),
-        };
+        let held = ahead != 0.0 || right != 0.0;
+        if !held || !self.settings().movement_modern || self.pilot.is_some() {
+            self.steer_yaw = self.yaw;
+        } else {
+            let tau = std::f32::consts::TAU;
+            let off = (self.yaw - self.steer_yaw + tau * 1.5).rem_euclid(tau) - tau / 2.0;
+            self.steer_yaw += off * (1.0 - (-dt / STEER_SECONDS).exp());
+        }
+        self.steer_yaw
     }
 
     /// Put the player on a spot facing `heading`, with the camera behind it, for a test driver.
@@ -508,10 +519,7 @@ fn turn_joints(pose: &mut Pose, rig: &Rig, angles: &[[f32; 3]]) {
                 unit([a[0] - b[0], a[1] - b[1], a[2] - b[2]])
             })
             .unwrap_or([0.0, 0.0, 1.0]);
-        let bend = about(
-            into_frame(parent, [1.0, 0.0, 0.0]),
-            joint.flex * angle[0],
-        );
+        let bend = about(into_frame(parent, [1.0, 0.0, 0.0]), joint.flex * angle[0]);
         let out = about(into_frame(parent, [0.0, 1.0, 0.0]), side * angle[1]);
         let twist = about(into_frame(parent, up), side * angle[2]);
         node.orientation = quat_times(bend, quat_times(out, quat_times(twist, node.orientation)));
@@ -563,7 +571,13 @@ mod tests {
         let roll = default_roll();
         let tuck = roll.sample(1.0).tuck;
         assert_eq!(tuck, 0.0);
-        let m = tilt_matrix(at, 0.7, smooth(1.0) * TAU * roll.turns, tuck, roll.centre_height);
+        let m = tilt_matrix(
+            at,
+            0.7,
+            smooth(1.0) * TAU * roll.turns,
+            tuck,
+            roll.centre_height,
+        );
         let p = [3.0, -2.0, 2.8];
         assert!(near(apply(&m, p), p), "{:?}", apply(&m, p));
     }
@@ -604,7 +618,10 @@ mod tests {
             [0.0, 0.0, 0.0, 1.0],
         ];
         assert_eq!(into_frame(&flipped, [1.0, 0.0, 0.0]), [-1.0, 0.0, 0.0]);
-        assert_eq!(into_frame(&shift([1.0, 2.0, 3.0]), [1.0, 0.0, 0.0]), [1.0, 0.0, 0.0]);
+        assert_eq!(
+            into_frame(&shift([1.0, 2.0, 3.0]), [1.0, 0.0, 0.0]),
+            [1.0, 0.0, 0.0]
+        );
     }
 
     #[test]
@@ -614,16 +631,31 @@ mod tests {
         let name = "bad_roll.txt";
         std::fs::write(dir.join(name), "[key]\nat = 0\nlthigh_g = 999\n").unwrap();
         let mut problems = Vec::new();
-        let f = read_pose(&dir, name, bodypose::DEFAULT_ROLL, default_roll, &mut problems);
+        let f = read_pose(
+            &dir,
+            name,
+            bodypose::DEFAULT_ROLL,
+            default_roll,
+            &mut problems,
+        );
         assert_eq!(f.turns, 1.0);
         assert_eq!(problems.len(), 1, "{problems:?}");
         assert!(problems[0].contains("line 3"), "{problems:?}");
         // One that is missing is written for editing, and is no mistake.
         problems.clear();
         let fresh = "fresh_roll.txt";
-        read_pose(&dir, fresh, bodypose::DEFAULT_ROLL, default_roll, &mut problems);
+        read_pose(
+            &dir,
+            fresh,
+            bodypose::DEFAULT_ROLL,
+            default_roll,
+            &mut problems,
+        );
         assert!(problems.is_empty());
-        assert_eq!(std::fs::read_to_string(dir.join(fresh)).unwrap(), bodypose::DEFAULT_ROLL);
+        assert_eq!(
+            std::fs::read_to_string(dir.join(fresh)).unwrap(),
+            bodypose::DEFAULT_ROLL
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

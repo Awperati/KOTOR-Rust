@@ -721,6 +721,15 @@ fn the_option_pages_change_what_they_say_and_keep_it() {
     press(&mut s, "CB_INVERTCAM");
     s.update(DT);
     assert_ne!(s.overlay().unwrap().rgba, ticked.rgba, "the box is ticked");
+    // The movement box: Modern to begin with, kept in the file, and back again.
+    assert!(s.settings().movement_modern);
+    press(&mut s, "CB_REVERSE");
+    assert!(!s.settings().movement_modern);
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("movement_modern=false"));
+    press(&mut s, "CB_REVERSE");
+    assert!(s.settings().movement_modern);
     press(&mut s, "BTN_BACK");
     press(&mut s, "BTN_BACK");
     assert_eq!(s.menu_name(), "main");
@@ -3984,7 +3993,7 @@ fn the_seamless_areas_row_flips_and_turns_the_joining_off() {
     for _ in 0..10 {
         s.menu_wheel(-1.0);
     }
-    click_row(&mut s, "LB_OPTIONS", 12);
+    click_row(&mut s, "LB_OPTIONS", 11);
     assert!(!s.settings().seamless_areas);
     assert!(std::fs::read_to_string(&file)
         .unwrap()
@@ -4002,7 +4011,7 @@ fn the_seamless_areas_row_flips_and_turns_the_joining_off() {
     for _ in 0..10 {
         s.menu_wheel(-1.0);
     }
-    click_row(&mut s, "LB_OPTIONS", 12);
+    click_row(&mut s, "LB_OPTIONS", 11);
     assert!(s.settings().seamless_areas);
     press(&mut s, "BTN_BACK");
     press(&mut s, "BTN_EXIT");

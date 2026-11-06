@@ -90,7 +90,7 @@ Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game 
 
 | Page | Works | Greyed or left out, because nothing behind it is built |
 |---|---|---|
-| Gameplay | difficulty, `CB_INVERTCAM` (tilts the camera the other way), Autosave (writes `autosave.sav` on each change of module, off by default) | Auto Level Up, mini-game axis, Combat Movement, Key Mapping, Mouse Settings |
+| Gameplay | difficulty, `CB_INVERTCAM` (tilts the camera the other way), Autosave (writes `autosave.sav` on each change of module, off by default) | Auto Level Up, Movement, Combat Movement, Key Mapping, Mouse Settings |
 | Graphics | Brightness, Screen Resolution (goes through 1280x720, 1920x1080, 2560x1440, 3840x2160) | Shadows, Grass, Advanced Options |
 | Sound | music, voice and effects levels | Movie Volume and Advanced Options, left out |
 
@@ -200,15 +200,18 @@ One gate run lost 62 scripts in a row as "not found" in `every_endar_spire_scrip
 
 ## Movement: Modern or Classic
 
-Options, Feedback, has the row. Modern is the default, and Classic is the walk as the game has it. It is one setting in the settings file, for every game on this machine.
+Options, Gameplay, has the box: ticked is Modern, the default, and not ticked is Classic, the walk as the game has it. It takes hold at once. It is one setting in the settings file, for every game on this machine. It takes the place of the game's Reverse Minigame Y Axis box, which did nothing here.
+
+In both, a held movement key goes where the camera looks now, read every frame, and looking round moves nobody by itself.
 
 | | Classic | Modern |
 |---|---|---|
+| A held key as the camera turns | goes the new way at once | curves to it: nine tenths of the way in about 0.23 s |
 | WASD and clicks | 5.4 m/s from the first frame | 6.75 m/s, 1.25 times that, reached in about a quarter of a second |
 | Letting go | stops at once | stops in about 0.18 s, over about 0.6 m |
 | Height | on the floor every step | follows slopes and stairs smoothly; off a ledge it falls at 17.7 m/s2 and lands |
 | Roll | none | Left Ctrl: 3.2 m in 0.55 s, not in a conversation, a minigame or a race |
-| Camera | fixed to the player | its focus lags a little, and the view is 6 degrees wider at a sprint |
+| Camera | fixed to the player; swings round behind a walk | its focus lags a little, and the view is 6 degrees wider at a sprint; only a click's walk swings it |
 | Party | runs at 5.4 m/s | up to 7.4 m/s when behind |
 
 5.4 m/s is measured: `runrate` of `creaturespeed.2da`, and `rundist` 3.96 m over the 0.733 s run cycle. **Everything else is a feel choice, not data:** see the top of `crates/kotor-game/src/movement.rs` and `gpu/src/moving.rs`. **Assumed:** WASD is the sprint, with no key of its own, and Shift still walks. A roll gives no protection: combat is d20 rounds, and their rules are unchanged. A fall does no damage. There is no jump.

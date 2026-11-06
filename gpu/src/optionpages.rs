@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 9] = [
+const STYLE_ROWS: [(&str, &str, &str); 8] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -34,11 +34,6 @@ const STYLE_ROWS: [(&str, &str, &str); 9] = [
         "Early Force sensitivity: On",
         "Early Force sensitivity: Off (original)",
         "The main character feels the Force from the first room, or from Dantooine as the game has it. For new games only: a game keeps what it started with.",
-    ),
-    (
-        "Movement: Modern",
-        "Movement: Classic",
-        "Modern: momentum, gravity, a sprint a quarter faster and a roll on its key. Classic: the walk as the game has it.",
     ),
     (
         "Click to walk: On",
@@ -70,6 +65,12 @@ const AUTOPAUSE: [(&str, u32); 6] = [
     ("CB_ACTIONMENU", 48416),
     ("CB_TRIGGERS", 48214),
 ];
+/// The box on the Gameplay page that picks the movement, and what it says. It takes the place of the game's Reverse
+/// Minigame Y Axis, which was greyed: the page has no room of its own for another.
+pub(super) const MOVEMENT_BOX: &str = "CB_REVERSE";
+pub(super) const MOVEMENT_MODERN: &str = "Movement: Modern";
+pub(super) const MOVEMENT_CLASSIC: &str = "Movement: Classic";
+const MOVEMENT_WORDS: &str = "Ticked, Modern: the keys go where the camera looks, with momentum, gravity, a sprint a quarter faster and a roll on its key. Not ticked, Classic: the walk as the game has it.";
 /// Words for the boxes on the Gameplay page that do something new.
 const GAMEPLAY_WORDS: [(&str, u32); 2] = [("CB_LEVELUP", 42266), ("CB_DISABLEMOVE", 42484)];
 
@@ -121,11 +122,10 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         6 => &mut s.glow_boxes,
         7 => &mut s.conventional_underwear,
         8 => &mut s.early_force,
-        9 => &mut s.movement_modern,
-        10 => &mut s.click_to_walk,
-        11 => &mut s.auto_advance,
-        12 => &mut s.seamless_areas,
-        13 => &mut s.australian_english,
+        9 => &mut s.click_to_walk,
+        10 => &mut s.auto_advance,
+        11 => &mut s.seamless_areas,
+        12 => &mut s.australian_english,
         _ => return None,
     })
 }
@@ -284,6 +284,11 @@ impl Stage {
         if words.is_some() {
             self.menus.option_words = words;
             self.menus.option_reason = None;
+        }
+        if matches!((screen, &self.menus.hover), (Screen::Gameplay, Some(Hit::Button(tag))) if tag == MOVEMENT_BOX)
+        {
+            self.menus.option_words = None;
+            self.menus.option_reason = Some(MOVEMENT_WORDS);
         }
         if let (Screen::Feedback, Some(Hit::Row(_, row))) = (screen, &self.menus.hover) {
             if let Some((_, _, words)) = row
