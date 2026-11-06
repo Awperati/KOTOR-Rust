@@ -393,7 +393,8 @@ impl Ui<'_> {
             (false, None) => t.color,
         };
         let font = patch.font.as_deref().unwrap_or(&t.font);
-        self.draw_text(cv, font, &text, r, t.alignment, color);
+        let words = [r[0] + patch.inset, r[1], r[2] - patch.inset * 2, r[3]];
+        self.draw_text(cv, font, &text, words, t.alignment, color);
     }
 
     /// Where a needle goes beside a tall scale, as `docs/MENU_REFERENCE.md` has it: small, along the scale's own picture from

@@ -638,8 +638,7 @@ impl<'a> Ui<'a> {
             });
             if !text.is_empty() {
                 let color = patch.color.unwrap_or(t.color);
-                let words = [r[0] + patch.inset, r[1], r[2] - patch.inset * 2, r[3]];
-                self.draw_text(cv, &t.font, &text, words, t.alignment, color);
+                self.draw_text(cv, &t.font, &text, r, t.alignment, color);
             }
         }
         // **Assumption:** the first control in the list is the topmost, so draw from the last to the first
