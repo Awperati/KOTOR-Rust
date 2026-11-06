@@ -165,6 +165,16 @@ impl World {
         left * (100 - immune.clamp(0, 100)) / 100
     }
 
+    /// Whether the creature has been knocked off its feet and lies there: a push or a knockdown is on it.
+    pub fn is_knocked_down(&self, id: ObjId) -> bool {
+        self.objects.get(&id).is_some_and(|o| {
+            o.effects
+                .iter()
+                .filter_map(|h| self.effects.get(h.wrapping_sub(1) as usize))
+                .any(|e| matches!(e.name.as_str(), "EffectForcePushed" | "EffectKnockdown"))
+        })
+    }
+
     /// Whether an active effect stops the creature acting.
     pub fn is_disabled(&self, id: ObjId) -> bool {
         self.objects.get(&id).is_some_and(|o| {

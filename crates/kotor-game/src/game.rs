@@ -105,6 +105,8 @@ pub struct Game {
     before_step: HashMap<ObjId, [f32; 3]>,
     /// Clips playing once over everything else but death, the one playing first: name and seconds left.
     once: HashMap<ObjId, Vec<(&'static str, f32)>>,
+    /// Who lay knocked down on the last step: when it ends, they get up.
+    knocked: std::collections::HashSet<ObjId>,
     /// The looping clip a script put a creature in, until it moves.
     scripted: HashMap<ObjId, &'static str>,
     /// Until what step a creature that fought keeps its combat stance.
@@ -120,6 +122,8 @@ pub struct Game {
 
 /// Attack and flinch clips last 1.47 to 1.5 s and dodges 0.3 to 0.43 s in the humanoid supermodels (measured).
 const COMBAT_CLIP_SECONDS: f32 = 1.5;
+/// How long the `getupdead` clip plays when a push or knockdown ends. **Assumed**, not read from the model.
+const GET_UP_SECONDS: f32 = 2.0;
 const DODGE_CLIP_SECONDS: f32 = 0.43;
 /// How long a creature that took part in a fight keeps its combat stance after its last blow. A round is 3 s.
 ///
@@ -153,6 +157,7 @@ impl Game {
             last_pos: HashMap::new(),
             before_step: HashMap::new(),
             once: HashMap::new(),
+            knocked: Default::default(),
             ready_until: HashMap::new(),
             scripted: HashMap::new(),
             log_seen: 0,
@@ -230,10 +235,17 @@ impl Game {
         for id in ids {
             // Whoever moved this step walks; a walk cycle lasts one second, which is also what `walkdist` (metres per
             // cycle) at 1.6 m/s assumes. A jump of more than a metre is a teleport, not a step.
+            // A creature a push or knockdown has thrown lies as a body does, and gets up when it ends (bug 36).
+            let knocked = self.world.is_knocked_down(id);
             let (pos, down) = {
                 let o = &self.world.objects[&id];
-                (o.position, o.dead || o.down)
+                (o.position, o.dead || o.down || knocked)
             };
+            if knocked {
+                self.knocked.insert(id);
+            } else if self.knocked.remove(&id) && !down {
+                self.play_once(id, "getupdead", GET_UP_SECONDS);
+            }
             let mut moved = false;
             let mut ran = false;
             if let Some(l) = self.last_pos.insert(id, pos) {

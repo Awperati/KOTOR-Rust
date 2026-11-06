@@ -1,7 +1,7 @@
 //! Force Push throws its target back and leaves it down for a few seconds.
 
 use kotor_archive::Install;
-use kotor_game::{EffectRec, World, DURATION_TEMPORARY};
+use kotor_game::{EffectRec, Game, World, DURATION_TEMPORARY};
 
 #[test]
 fn a_pushed_creature_slides_away_and_cannot_act_for_a_while() {
@@ -34,4 +34,48 @@ fn a_pushed_creature_slides_away_and_cannot_act_for_a_while() {
         w.step(0.05);
     }
     assert!(!w.is_disabled(foe));
+}
+
+/// What the creature is shown doing: a pushed one lies down as a body does and gets up when the push is over.
+#[test]
+fn a_pushed_creature_is_drawn_lying_down_and_then_getting_up() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut base = Install::open(dir).unwrap();
+    base.set_prefer_rim(true);
+    let mut w = World::new(base).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    let spec = w.recommended_character("Player", 0, 1).unwrap();
+    w.create_character(&spec).unwrap();
+    let pc = w.pc;
+    let p = w.object(pc).unwrap().position;
+    let foe = w.spawn_creature("n_calonord", [p[0] + 0.8, p[1], p[2]]);
+    let mut g = Game::new(w);
+    let clip = |g: &Game| {
+        g.poses()
+            .iter()
+            .find(|q| q.id == foe)
+            .and_then(|q| q.clip.as_ref().map(|c| c.name))
+    };
+    g.step_once();
+    assert_ne!(clip(&g), Some("die"));
+    g.world.effects.push(EffectRec::new("EffectForcePushed"));
+    let handle = g.world.effects.len() as u32;
+    g.world
+        .apply_effect(pc, foe, handle, DURATION_TEMPORARY, 0.1);
+    for _ in 0..60 {
+        g.step_once();
+    }
+    assert_eq!(clip(&g), Some("die"), "down for the push's three seconds");
+    // The push lasts 3 s: after it the creature gets up, then stands.
+    for _ in 0..(2.2 * 60.0) as usize {
+        g.step_once();
+    }
+    assert_eq!(clip(&g), Some("getupdead"));
+    for _ in 0..(2.5 * 60.0) as usize {
+        g.step_once();
+    }
+    assert_ne!(clip(&g), Some("getupdead"));
+    assert_ne!(clip(&g), Some("die"));
 }
