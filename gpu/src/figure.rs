@@ -1,10 +1,16 @@
 //! The 3D figure on the character sheet and the level-up panel, as the reference video has it at 1:23:50: the screen
 //! leaves a hole in its picture, and behind it the renderer draws the leader alone, with a camera that puts them in the
-//! hole. **Assumed:** a figure about 1.9 m high. **Not built:** the glowing backdrop, for which I found no picture, so the
-//! renderer's dark clear colour shows behind them, and turning the figure. The party screen has one too, as at 3:12:00, of
-//! whoever is chosen: with nothing in their hands, as the video has them, and from their creature file if they are not here.
+//! hole. **Assumed:** a figure about 1.9 m high. **Not built:** turning the figure. The party screen has one too, as at
+//! 3:12:00, of whoever is chosen: with nothing in their hands, as the video has them, and from their creature file if they
+//! are not here.
+//!
+//! The mist behind them is the emitters of `charmain_light.mdl`, as making a character has `cgmain_light.mdl`. The install
+//! has no dark model, so a dark figure's mist is the same mist with its blue and red swapped: the owner's words are blue for
+//! the light side and red for the dark. **Assumed:** where that starts, `MIST_BLUE_FROM` and `MIST_RED_FROM`: the video has
+//! clean blue at about 65, and a dark player is not in the frames I looked at.
 
 use super::{Screen, Stage};
+use crate::effects::Effects;
 use kotor_core::ResType;
 use kotor_game::SLOT_BODY;
 use kotor_gff::Gff;
@@ -21,6 +27,14 @@ const FIGURE_HEIGHT: f32 = 1.9;
 /// A little air over the head and under the feet.
 const FIGURE_MARGIN: f32 = 1.15;
 const FIGURE_FOV: f32 = 30.0;
+const SHEET_MIST: &str = "charmain_light";
+const LEVEL_MIST: &str = "cgmain_light";
+/// Seconds of mist made at once when a screen opens, so that it is there already.
+const MIST_START: f32 = 6.0;
+const MIST_STEP: f32 = 1.0 / 30.0;
+const MIST_BLUE_FROM: i32 = 60;
+const MIST_RED_FROM: i32 = 40;
+const ALIGNMENT_NEUTRAL: i32 = 50;
 
 impl Stage {
     fn figure_hole(&self) -> Option<[f32; 4]> {
@@ -56,6 +70,76 @@ impl Stage {
             ],
             fov: FIGURE_FOV,
         })
+    }
+
+    /// The alignment of whoever a figure screen shows.
+    fn figure_alignment(&mut self) -> i32 {
+        let w = &self.game.world;
+        let pc = w.object(w.pc).map_or(ALIGNMENT_NEUTRAL, |o| o.alignment);
+        let slot = match self.top() {
+            Some(Screen::Party) => self.party_figure_slot(),
+            _ => None,
+        };
+        let Some(slot) = slot else { return pc };
+        let w = &self.game.world;
+        let here = w.npc_slots.get(&slot).and_then(|id| w.object(*id));
+        if let Some(o) = here {
+            return o.alignment;
+        }
+        if let Some(b) = w.bench.get(&slot) {
+            return b.alignment;
+        }
+        let Some(template) = w.available.get(&slot).cloned() else {
+            return ALIGNMENT_NEUTRAL;
+        };
+        self.inst
+            .read(&template, CREATURE_FILE)
+            .ok()
+            .and_then(|bytes| Gff::parse(&bytes).ok())
+            .and_then(|file| file.root.int("GoodEvil"))
+            .map_or(ALIGNMENT_NEUTRAL, |n| n as i32)
+    }
+
+    /// The mist goes on while a figure is up, and starts over for another screen or alignment.
+    pub(in crate::stage) fn figure_mist_tick(&mut self, dt: f32) {
+        let (Some(top), Some(camera)) = (self.top(), self.figure_camera()) else {
+            self.menus.figure_mist = None;
+            return;
+        };
+        let alignment = self.figure_alignment();
+        let same = |m: &(Screen, i32, Effects)| m.0 == top && m.1 == alignment;
+        if !self.menus.figure_mist.as_ref().is_some_and(same) {
+            let name = if top == Screen::LevelUp {
+                LEVEL_MIST
+            } else {
+                SHEET_MIST
+            };
+            let mut mist = Effects::default();
+            let w = &self.game.world;
+            let at = w.object(w.pc).map_or([0.0; 3], |o| o.position);
+            let (sin, cos) = w.pc_mover.heading.sin_cos();
+            if let Some(model) = self.model(name) {
+                // The model's camera looks along -x, and this one looks back along the way the figure faces.
+                mist.load_model(
+                    &model,
+                    &[
+                        [cos, -sin, 0.0, at[0]],
+                        [sin, cos, 0.0, at[1]],
+                        [0.0, 0.0, 1.0, at[2]],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ],
+                );
+            }
+            let span = (MIST_BLUE_FROM - MIST_RED_FROM) as f32;
+            mist.redden(((MIST_BLUE_FROM - alignment) as f32 / span).clamp(0.0, 1.0));
+            for _ in 0..(MIST_START / MIST_STEP) as usize {
+                mist.update(MIST_STEP, camera.eye);
+            }
+            self.menus.figure_mist = Some((top, alignment, mist));
+        }
+        if let Some((_, _, mist)) = self.menus.figure_mist.as_mut() {
+            mist.update(dt, camera.eye);
+        }
     }
 
     /// Who a party slot offers, from the creature file: what they wear is what they were left with, or else the file's.
@@ -138,7 +222,14 @@ impl Stage {
         if let Some(mist) = self.chargen_particles() {
             return mist;
         }
-        if self.figure_camera().is_some() || !self.in_game() {
+        if let Some(camera) = self.figure_camera() {
+            return self
+                .menus
+                .figure_mist
+                .as_ref()
+                .map_or(Vec::new(), |m| m.2.batches(&camera));
+        }
+        if !self.in_game() {
             return Vec::new();
         }
         self.particles()

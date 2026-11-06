@@ -16,6 +16,7 @@
 //!     --no-chargen    New Game starts at once, with the preset character
 //!     --no-early-force New games play by the game's own rules, whatever Settings says
 //!     --power N       give the player this power of `spells.2da` and the Force for it when a game starts, for a test driver
+//!     --give NAME     give the player this item when a game starts, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
 //!                     gives a level (`level`), for a test driver
@@ -141,6 +142,7 @@ struct App {
     near: Option<String>,
     xp: Option<i32>,
     power: Option<i32>,
+    give: Option<String>,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -231,6 +233,11 @@ impl App {
                     eprintln!("no floor beside {tag}");
                 }
             }
+            if let Some(template) = self.give.take() {
+                let w = &mut self.stage.game.world;
+                let (pc, item) = (w.pc, w.spawn_item(&template));
+                w.carry(pc, item);
+            }
             if let Some(power) = self.power.take() {
                 let w = &mut self.stage.game.world;
                 let pc = w.pc;
@@ -247,9 +254,12 @@ impl App {
             }
         }
         if let Some(until) = &self.pilot_until {
-            if self.stage.pilot_arrived(until == "level") {
+            if self.stage.pilot_arrived() {
                 self.stage.take_over_from_pilot(self.auto_pause);
                 self.stage.keep_player_standing(until == "level");
+                if until == "level" {
+                    self.stage.one_kill_short_of_a_level();
+                }
                 self.pilot_until = None;
             }
         }
@@ -594,6 +604,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         near: opt("--near"),
         xp: opt("--xp").and_then(|n| n.parse().ok()),
         power: opt("--power").and_then(|n| n.parse().ok()),
+        give: opt("--give"),
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,

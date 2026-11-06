@@ -1,9 +1,9 @@
-# A level earned in the running window: the pilot plays until one kill short of it, and the player makes that kill.
+# A level earned in the running window: the pilot plays to a fight, one kill short of a level, and the player makes that kill.
 # Like drive_window.ps1 it posts messages to the viewer's own handle only, and holds only at 1x: see docs/FASTTEST.md.
 param([string]$Shots)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
-# There is no --xp: all the experience comes from kills and scripts. The pilot's player is far along for its level, so it
-# is kept standing. It writes no saves.
+# What the pilot earns on the way changes with what it meets, so the hand-over tops it up to one kill short: the kill's pay
+# and all that comes after are real. The player is far along for their level, so they are kept standing. It writes no saves.
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_level.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--autopilot","--pilot-until","level","--frames","2000000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_level.err" -PassThru -NoNewWindow

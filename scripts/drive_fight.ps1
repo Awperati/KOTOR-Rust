@@ -1,11 +1,11 @@
-# One fight in the running window: an enemy sighted, the pause, the attack slot, the feat slot, floats and the HUD.
+# One fight in the running window: an enemy sighted, the pause, the three slots, floats and the HUD.
 # Like drive_window.ps1 it posts messages to the viewer's own handle only, and holds only at 1x: see docs/FASTTEST.md.
 param([string]$Shots)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 # The pilot plays up to the first fight at its own speed and hands over when an enemy is seen. It writes no saves.
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_fight.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--power","23","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--power","23","--give","g_w_fraggren01","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
@@ -44,11 +44,11 @@ $s = FindFoe
 Report "The cursor finds them" ($s.target -like "Sith*" -and $s.slot1 -ne "-") "foe=$($s.foe) target=$($s.target) slot0=$($s.slot0) slot1=$($s.slot1)"
 Shot "fight_target"
 
-# The first slot attacks, and the Disengage button leaves it. All of this in the pause, so that the Sith is still there.
+# The left slot attacks, and the Disengage button leaves it. All of this in the pause, so that the Sith is still there.
 ClickSlot $s "slot0"
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ($s.engaged -ne "true" -and (Get-Date) -lt $until)
-Report "The first slot attacks" ($s.engaged -eq "true") "engaged=$($s.engaged) target=$($s.target)"
+Report "The left slot attacks" ($s.engaged -eq "true") "engaged=$($s.engaged) target=$($s.target)"
 Shot "fight_attack_slot"
 $p = ToPixel $s $s.disengage
 Click $p[0] $p[1]
@@ -59,23 +59,34 @@ Shot "fight_disengage_button"
 $s = FindFoe
 Report "The cursor finds them again" ($s.target -like "Sith*") "foe=$($s.foe) target=$($s.target)"
 
-# The second slot: its name under the cursor, and a click queues the feat and starts the attack.
-HoverLayout $s $s.slot1
+# The left slot's arrow goes to a feat: its name under the cursor, and a click queues it and starts the attack.
+ClickSlot $s "down0"
+[void](State)
+$s = State
+HoverLayout $s $s.slot0
 [void](State)
 Shot "fight_slot_hover"
 $s = State
-ClickSlot $s "slot1"
+ClickSlot $s "slot0"
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ([int]$s.queue -eq 0 -and $s.engaged -ne "true" -and (Get-Date) -lt $until)
-Report "The feat slot queues it" ([int]$s.queue -gt 0 -or $s.engaged -eq "true") "queue=$($s.queue) engaged=$($s.engaged) target=$($s.target)"
-# The third slot: the power given for this run.
+Report "The left slot queues the feat" ([int]$s.queue -gt 0 -or $s.engaged -eq "true") "queue=$($s.queue) engaged=$($s.engaged) target=$($s.target)"
+# The middle slot: the power given for this run.
 $queued = [int]$s.queue
 $s = State
-ClickSlot $s "slot2"
+ClickSlot $s "slot1"
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ([int]$s.queue -le $queued -and (Get-Date) -lt $until)
-Report "The power slot queues it" ([int]$s.queue -gt $queued) "queue $queued -> $($s.queue) slot2=$($s.slot2)"
+Report "The middle slot queues the power" ([int]$s.queue -gt $queued) "queue $queued -> $($s.queue) slot1=$($s.slot1)"
 Shot "fight_queued"
+# The right slot: the grenade given for this run goes at once.
+$s = State
+$carried = [int]$s.inv
+ClickSlot $s "slot2"
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ([int]$s.inv -ge $carried -and (Get-Date) -lt $until)
+Report "The right slot throws the grenade" ([int]$s.inv -lt $carried) "inv $carried -> $($s.inv) slot2=$($s.slot2)"
+Shot "fight_thrown"
 Key $SPACE[0] $SPACE[1]
 $s = WaitFor "paused" "false"
 Report "Space goes on" ($s.paused -eq "false") "paused=$($s.paused)"

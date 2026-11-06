@@ -14,12 +14,12 @@ use std::collections::HashMap;
 
 /// The layout space of every GUI file.
 pub const SCREEN: (u32, u32) = (640, 480);
-/// Where the line naming the module starts, in layout units.
-const CAPTION_X: i32 = 112;
 /// The black bars of a conversation, as the game has them: `docs/MENU_REFERENCE.md`.
 const LETTERBOX_TOP: i32 = 60;
 /// Noto Sans's size for a stock font of a line height: its letters and their gaps then fill the line as the stock's do.
 const NOTO_EM_OF_LINE: f32 = 0.72;
+/// What a slot does and what the cursor is on: the HUD's text boxes.
+const HUD_TEXT_BOXES: [&str; 2] = ["LBL_NAMEBG", "LBL_ACTIONDESCBG"];
 /// How many words that do not fit are kept for whoever asks.
 const MOST_TOO_BIG: usize = 64;
 /// The words of a conversation, as the reference video has them at 2:30: the file's are white.
@@ -75,10 +75,10 @@ pub struct CombatHud {
     pub message: String,
     /// The pictures of what is queued, what is happening now first.
     pub queue: Vec<String>,
-    /// The target is an enemy: its bar is red, and this picture is in the first slot under it.
+    /// The target is an enemy: its bar is red, with slots under it.
     pub attack: Option<String>,
-    /// The pictures of the other two slots, what each shows now, and whether it has more to go through.
-    pub slots: [Option<(String, bool)>; 2],
+    /// The picture each slot shows now, and whether it has more to go through.
+    pub slots: [Option<(String, bool)>; 3],
     /// The slot under the cursor, and what it does, for the name bar.
     pub hover: Option<(usize, String)>,
 }
@@ -602,7 +602,9 @@ impl<'a> Ui<'a> {
             }
             return;
         }
-        if c.kind != 11 {
+        if self.glow_on && HUD_TEXT_BOXES.contains(&c.tag.as_str()) {
+            crate::glow::boxed(cv, r);
+        } else if c.kind != 11 {
             self.draw_border(cv, &c.border, r, patch.fill.as_deref());
         }
         if let Some(t) = &c.text {
@@ -808,29 +810,6 @@ impl<'a> Ui<'a> {
         Some(Canvas::scaled_layout(self.pixels, self.scale).into_image())
     }
 
-    /// Write one line of text at the top left of `img`, on a dark strip.
-    pub fn caption(&mut self, img: Image, text: &str) -> Option<Image> {
-        self.measure_for_hud();
-        let font = self.font("fnt_console")?.clone();
-        let mut cv = Canvas {
-            width: img.width,
-            height: img.height,
-            scale: self.scale,
-            scale_x: self.scale,
-            rgba: img.rgba,
-        };
-        // To the right of the map.
-        cv.fill_rect(
-            CAPTION_X,
-            0,
-            font.measure(text) + 8,
-            font.line_height + 4,
-            [0, 0, 0, 170],
-        );
-        font.draw_line(&mut cv, CAPTION_X + 4, 2, text, [0.8, 0.9, 1.0]);
-        Some(cv.into_image())
-    }
-
     /// The main HUD (`maininterface.gui`) with up to three party members' portraits and bars.
     /// Controls the screen does not use right now (level-up badges, the action queue, the target bar) are hidden.
     pub fn hud(&mut self, party: &[HudMember], target: Option<(&str, i32, i32)>) -> Option<Image> {
@@ -1028,13 +1007,11 @@ impl<'a> Ui<'a> {
             }
         }
         if bar {
-            patches.entry("LBL_TARGET0".to_string()).or_default().fill = combat.attack.clone();
             for n in 0..3 {
                 patches.entry(format!("BTN_TARGET{n}")).or_default().fill =
                     Some(HOSTILE_SLOT.to_string());
             }
             for (n, slot) in combat.slots.iter().enumerate() {
-                let n = n + 1;
                 if let Some((icon, more)) = slot {
                     let picture = patches.entry(format!("LBL_TARGET{n}")).or_default();
                     picture.hidden = false;
@@ -1118,12 +1095,14 @@ impl<'a> Ui<'a> {
         place_hud(&mut gui.panel, self.width, self.target_at);
         let shown = |tag: &str| match tag {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
-            "BTN_TARGET0" => self.combat.attack.is_some() && self.target_at.is_some(),
+            "BTN_TARGET0" | "BTN_TARGETUP0" | "BTN_TARGETDOWN0" => {
+                self.combat.attack.is_some() && self.target_at.is_some()
+            }
             "BTN_TARGET1" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1" => {
-                self.combat.slots[0].is_some() && self.target_at.is_some()
+                self.combat.slots[1].is_some() && self.target_at.is_some()
             }
             "BTN_TARGET2" | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => {
-                self.combat.slots[1].is_some() && self.target_at.is_some()
+                self.combat.slots[2].is_some() && self.target_at.is_some()
             }
             "BTN_MINIMAP" => !self.minimap_off,
             "BTN_CHAR2" => self.hud_party >= 2,
@@ -1351,7 +1330,7 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
-const HUD_BUTTONS: [&str; 23] = [
+const HUD_BUTTONS: [&str; 25] = [
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -1367,6 +1346,8 @@ const HUD_BUTTONS: [&str; 23] = [
     "BTN_CHAR2",
     "BTN_CHAR3",
     "BTN_TARGET0",
+    "BTN_TARGETUP0",
+    "BTN_TARGETDOWN0",
     "BTN_TARGET1",
     "BTN_TARGETUP1",
     "BTN_TARGETDOWN1",

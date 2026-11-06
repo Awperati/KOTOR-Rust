@@ -1,8 +1,11 @@
-//! The second and third slots under an enemy's bar, what they have queued, and the words that rise over a fight, as the
-//! reference video has them at 6:05. **Assumed:** words last `FLOAT_SECONDS` and rise `FLOAT_RISE`: not measured.
+//! The three slots under an enemy's bar and the words that rise over a fight. The owner: "The whole left window has up
+//! and down arrows and that's where all the physical weapon attacks go, the middle slot is Force powers and the right
+//! slot is grenades and other throwables". The reference video agrees at 6:05: arrows on the left, with Power Attack in
+//! it. **Assumed:** words last `FLOAT_SECONDS` and rise `FLOAT_RISE`: not measured. **Assumed:** a throwable goes at once
+//! and is not queued.
 
 use super::Stage;
-use kotor_game::{CombatChoice, Kind, ObjId};
+use kotor_game::{CombatAction, CombatChoice, Kind, ObjId};
 use kotor_ui::Float;
 
 const STR_MISS: u32 = 42134;
@@ -17,14 +20,32 @@ const PAUSE_KEY: &str = "Space";
 /// How long after a conversation Space still does not pause. **Assumed:** long enough for one more press.
 const AFTER_TALK_SECONDS: f32 = 0.5;
 const MOST_QUEUED: usize = 4;
+const STR_ATTACK: u32 = 375;
+/// The rows of `baseitems.2da` of the game's grenades and its thermal detonator, read from their item files.
+const BASE_THROWN: std::ops::RangeInclusive<i32> = 25..=34;
 const FLOAT_SECONDS: f32 = 1.5;
 const FLOAT_RISE: f32 = 40.0;
 const DAMAGE_COLOR: [f32; 3] = [1.0, 0.2, 0.15];
 const MISS_COLOR: [f32; 3] = [0.8, 0.8, 0.8];
 const XP_COLOR: [f32; 3] = [0.8, 0.3, 1.0];
 
-/// What the two slots show, each with whether it has more, and the one under the cursor with its name.
-type SlotsView = ([Option<(String, bool)>; 2], Option<(usize, String)>);
+/// What the slots show, each with whether it has more, and the one under the cursor with its name.
+type SlotsView = ([Option<(String, bool)>; 3], Option<(usize, String)>);
+
+/// What one thing in a slot does.
+#[derive(Clone, Copy, PartialEq)]
+enum SlotDoes {
+    Attack,
+    Queue(CombatAction),
+    Throw(ObjId),
+}
+
+/// One thing a slot offers.
+struct SlotChoice {
+    does: SlotDoes,
+    name: String,
+    icon: String,
+}
 
 /// A word rising over someone.
 #[derive(Clone)]
@@ -37,8 +58,8 @@ struct Rising {
 
 #[derive(Default)]
 pub(super) struct Fight {
-    /// What the feats' and the powers' slots show.
-    picks: [usize; 2],
+    /// What each slot shows.
+    picks: [usize; 3],
     /// The HUD's button under the cursor.
     hover: Option<String>,
     rising: Vec<Rising>,
@@ -56,24 +77,73 @@ pub(super) struct Fight {
     unhurt: bool,
 }
 
-/// Which of the two choosing slots a tag is.
+/// Which of the slots a tag is.
 pub fn target_slot(tag: &str) -> Option<usize> {
     match tag {
-        "BTN_TARGET1" => Some(0),
-        "BTN_TARGET2" => Some(1),
+        "BTN_TARGET0" => Some(0),
+        "BTN_TARGET1" => Some(1),
+        "BTN_TARGET2" => Some(2),
         _ => None,
     }
 }
 
 impl Stage {
-    fn slot_choices(&mut self, slot: usize) -> Vec<CombatChoice> {
-        let w = &mut self.game.world;
-        let pc = w.pc;
-        if slot == 0 {
-            w.combat_feats(pc)
-        } else {
-            w.combat_powers(pc)
+    /// Left: the plain attack, then the feats. Middle: Force powers. Right: what can be thrown.
+    fn slot_choices(&mut self, slot: usize) -> Vec<SlotChoice> {
+        let pc = self.game.world.pc;
+        let queued = |ui: &mut kotor_ui::Ui, c: CombatChoice| SlotChoice {
+            does: SlotDoes::Queue(c.action),
+            name: ui.strref(c.name),
+            icon: c.icon,
+        };
+        match slot {
+            0 => {
+                let mut out = vec![SlotChoice {
+                    does: SlotDoes::Attack,
+                    name: self.ui.strref(STR_ATTACK),
+                    icon: super::ATTACK_PICTURE.to_string(),
+                }];
+                let feats = self.game.world.combat_feats(pc);
+                out.extend(feats.into_iter().map(|c| queued(&mut self.ui, c)));
+                out
+            }
+            1 => {
+                let powers = self.game.world.combat_powers(pc);
+                powers
+                    .into_iter()
+                    .map(|c| queued(&mut self.ui, c))
+                    .collect()
+            }
+            _ => self.throwables(),
         }
+    }
+
+    fn throwables(&mut self) -> Vec<SlotChoice> {
+        let w = &mut self.game.world;
+        let thrown: Vec<ObjId> = w
+            .carried(w.pc)
+            .into_iter()
+            .filter(|i| {
+                w.object(*i)
+                    .is_some_and(|o| BASE_THROWN.contains(&o.base_item))
+            })
+            .collect();
+        let views: Vec<_> = thrown.iter().filter_map(|i| w.item_view(*i)).collect();
+        // One with no power cannot be used: the flash grenade's file has none.
+        views
+            .into_iter()
+            .filter(|v| v.power.is_some())
+            .map(|v| SlotChoice {
+                does: SlotDoes::Throw(v.id),
+                icon: v
+                    .icons
+                    .iter()
+                    .find(|n| self.ui.texture(n).is_some())
+                    .cloned()
+                    .unwrap_or_default(),
+                name: v.name,
+            })
+            .collect()
     }
 
     pub(in crate::stage) fn set_hud_hover(&mut self, tag: Option<String>) {
@@ -86,16 +156,16 @@ impl Stage {
         tag.starts_with("BTN_TARGET")
     }
 
-    /// What the two slots show and the one under the cursor; what is queued goes after what is under way.
+    /// What the slots show and the one under the cursor; what is queued goes after what is under way.
     pub(super) fn slots_view(&mut self, hostile: bool, queue: &mut Vec<String>) -> SlotsView {
         let queued: Vec<_> = self.game.world.combat_queue.iter().copied().collect();
-        let mut slots = [None, None];
+        let mut slots = [None, None, None];
         let mut hover = None;
         let over = self.menus.fight.hover.clone();
         for (slot, shows) in slots.iter_mut().enumerate() {
             let choices = self.slot_choices(slot);
             for q in &queued {
-                if let Some(c) = choices.iter().find(|c| c.action == *q) {
+                if let Some(c) = choices.iter().find(|c| c.does == SlotDoes::Queue(*q)) {
                     queue.push(c.icon.clone());
                 }
             }
@@ -106,21 +176,39 @@ impl Stage {
             let shown = &choices[pick];
             *shows = Some((shown.icon.clone(), choices.len() > 1));
             if over.as_deref().and_then(target_slot) == Some(slot) {
-                hover = Some((slot + 1, self.ui.strref(shown.name)));
+                hover = Some((slot, shown.name.clone()));
             }
         }
         (slots, hover)
     }
 
-    /// A click on a slot: what it shows is done next. Returns whether anything was queued.
-    pub(in crate::stage) fn queue_slot(&mut self, slot: usize) -> bool {
+    /// A click on a slot: what it shows is done. Returns whether the player should now go for the target.
+    pub(in crate::stage) fn use_slot(&mut self, slot: usize) -> bool {
         let choices = self.slot_choices(slot);
-        if choices.is_empty() || self.game.world.combat_queue.len() >= MOST_QUEUED {
+        if choices.is_empty() {
             return false;
         }
         let pick = self.menus.fight.picks[slot] % choices.len();
-        self.game.world.combat_queue.push_back(choices[pick].action);
-        true
+        match choices[pick].does {
+            SlotDoes::Attack => true,
+            SlotDoes::Queue(action) => {
+                let w = &mut self.game.world;
+                let room = w.combat_queue.len() < MOST_QUEUED;
+                if room {
+                    w.combat_queue.push_back(action);
+                }
+                room
+            }
+            SlotDoes::Throw(item) => {
+                if let Some(foe) = self.target() {
+                    let w = &mut self.game.world;
+                    let pc = w.pc;
+                    // It can fail, as with no line to the target: the item stays, and the slot says nothing.
+                    let _ = w.use_item_on(pc, item, foe);
+                }
+                false
+            }
+        }
     }
 
     /// The nearest living enemy the leader has seen.
@@ -140,17 +228,27 @@ impl Stage {
             })
     }
 
-    /// Whether a pilot playing to reach a fight should stop now: an enemy is in sight, or with `for_level` one whose
-    /// death gives the player a level.
-    pub fn pilot_arrived(&self, for_level: bool) -> bool {
-        let w = &self.game.world;
-        if w.in_dialogue() {
-            return false;
-        }
-        let (Some(foe), Some(pc)) = (self.seen_enemy(), w.object(w.pc)) else {
-            return false;
+    /// Whether a pilot playing to reach a fight should stop now: an enemy is in sight.
+    pub fn pilot_arrived(&self) -> bool {
+        !self.game.world.in_dialogue() && self.seen_enemy().is_some()
+    }
+
+    /// The player is one kill of the enemy in sight short of a level. How much the pilot earns on the way changes with
+    /// everything it meets, so a driver cannot wait for it to come out just so.
+    pub fn one_kill_short_of_a_level(&mut self) {
+        let foe = self.seen_enemy();
+        let w = &mut self.game.world;
+        let (Some(foe), Some((xp, level))) = (foe, w.object(w.pc).map(|o| (o.xp, o.level))) else {
+            return;
         };
-        !for_level || w.level_for_xp(pc.xp + w.kill_xp(foe)) > pc.level
+        let kill = w.kill_xp(foe);
+        let mut short = xp;
+        while w.level_for_xp(short + kill) <= level {
+            short += 1;
+        }
+        if short > xp {
+            w.grant_xp(w.pc, short - xp);
+        }
     }
 
     /// The pilot stops and the player takes over at the normal speed, with levels and screens as in a played game. It
@@ -291,7 +389,12 @@ impl Stage {
         if self.menus.auto_pause_on && self.menus.settings.pause_action && self.party_blocked() {
             self.pause_for(STR_ACTION_MENU);
         }
-        let slot = usize::from(tag.ends_with('2'));
+        let slot = tag
+            .chars()
+            .last()
+            .and_then(|c| c.to_digit(10))
+            .map_or(0, |n| n as usize)
+            .min(2);
         let count = self.slot_choices(slot).len();
         if count == 0 {
             return;

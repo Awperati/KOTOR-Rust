@@ -64,7 +64,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Tutorial pop-ups | none | a box with words and OK or Continue, from `tutorial.2da`, once each, as at 3:15, 3:36 and 4:00. What sets each off is read from the table's labels. Over the game the HUD stays under the box. Frames: `tutorial_screen`, `tutorial_game`. Over a screen and over the game tested in code; not clicked live, the driver turns them off |
 | Notices | none | the HUD's own icons for quest, credits, XP from scripts, items and alignment, as at 3:46. Frame: `notices`. Not clicked live |
 | Pause | none | Space or the hourglass, which is framed in yellow; as at 5:50, an enemy first seen pauses the game with the box at the top right. The video's ring on the hourglass is a plain frame here. Frame: `enemy_sighted`. Clicked live in `scripts/drive_fight.ps1`, with the first Sith |
-| Combat slots and floats | empty | as at 6:05: feats in the second slot and hostile powers in the third, arrows through them, yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. In `drive_fight.ps1` the first slot, the feat slot's name and click, the power slot and the words rising are live; the slots' arrows are tested in code |
+| Combat slots and floats | empty | the owner's words, and the video at 6:05: left, with arrows, the plain attack and the feats; middle, hostile Force powers; right, grenades, thrown at once. Yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. In `drive_fight.ps1` the left slot and its down arrow, the middle slot, the right slot and the words rising are live; the other arrows are tested in code. The video's words under the slot, "Activate Left Action : 1", and the keys 1, 2 and 3 are not built: the words are string 48303 |
 | Combat HUD | none | as at 5:50 and 6:05: the panel at the foot with the action under way and Disengage, the red line at the top, the enemy's bar red, slots under it. Live in `drive_fight.ps1`: combat mode, the bar, the slots, the Disengage button, and F. Frames: `combat_target`, `combat_engaged` |
 | Small map on the HUD | a frame and a still arrow | the map round the player, 120 of the picture's pixels, with `mm_barrow` turning, compared with 3:46. A click opens the map. Which way the arrow's picture points is read from the frame `hud_minimap` |
 | Choosing equipment | a click wore at once, a click on a worn slot took off | a click on a slot lists it, `inone` and None first, `(Equipped)` marked, words on the left, OK and Cancel. The owner chose this |
@@ -94,6 +94,14 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Target slot words | also "Activate Left Action : 1" by the slot | the name on the bar only | that line is about keys, which are not built |
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Transitions | not compared | none | I looked at frames only, one every 5 seconds |
+
+## The mist behind a figure
+
+The character sheet and the party screen have the emitters of `charmain_light.mdl` behind the figure, as at 1:23:50 and
+3:12:00. The level-up panel has those of `cgmain_light.mdl`, as making a character does. The install has no dark model, so
+the owner's red for the dark side is the same mist with blue and red swapped. It is all blue from alignment 60 and all red
+from 40, and between them it mixes. Those two numbers are assumed: the video shows clean blue at about 65. Frames:
+`mist_light`, `mist_neutral`, `mist_dark`. On the party screen it follows whoever is chosen.
 
 ## The owner's text style
 

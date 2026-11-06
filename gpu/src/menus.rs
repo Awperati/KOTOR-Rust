@@ -525,6 +525,8 @@ pub(super) struct Menus {
     new_character: Option<kotor_game::CharacterSpec>,
     /// The mist of the screen it was made for.
     chargen_mist: Option<(Screen, crate::effects::Effects)>,
+    /// The mist behind a figure, for a screen and an alignment.
+    figure_mist: Option<(Screen, i32, crate::effects::Effects)>,
     /// The main menu's scene, once loaded, and whether it could not be.
     main_scene: Option<mainscene::MainScene>,
     main_scene_failed: bool,
@@ -667,7 +669,6 @@ impl Stage {
         if let (Screen::Pause, Some(Hit::Button(tag))) = (top, &v.hover) {
             if let Some(words) = pause_words(tag) {
                 let text = self.ui.strref(words);
-                v.patches.entry("LB_DESC".to_string()).or_default().hidden = false;
                 v.text("LB_DESC", text);
             }
         }
@@ -1442,9 +1443,8 @@ impl Stage {
             "BTN_CHAR3" => self.change_member(1),
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "TB_PAUSE" => self.toggle_pause(),
-            "BTN_TARGETUP1" | "BTN_TARGETDOWN1" | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => {
-                self.turn_slot(tag)
-            }
+            "BTN_TARGETUP0" | "BTN_TARGETDOWN0" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1"
+            | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => self.turn_slot(tag),
             "BTN_OPT" => self.escape(),
             _ => {}
         }
@@ -2227,13 +2227,21 @@ fn main_menu() -> MenuView {
 /// `optionsingame.gui`.
 fn pause_menu() -> MenuView {
     let mut v = MenuView::new("optionsingame");
-    v.hide(&["LB_DESC"]);
+    v.text("LB_DESC", about_words());
     v
 }
 
 /// `optionsmain.gui`, as the pause menu's pages from the main menu.
 fn options_menu() -> MenuView {
     let mut v = MenuView::new("optionsmain");
-    v.hide(&["LB_DESC"]);
+    v.text("LB_DESC", about_words());
     v
+}
+
+/// The build, and the notice the font's licence asks to go with it.
+pub fn about_words() -> String {
+    format!(
+        "{}\n\nText in Noto Sans. Copyright 2022 The Noto Project Authors. SIL Open Font License 1.1: scripts.sil.org/OFL",
+        crate::build_line()
+    )
 }

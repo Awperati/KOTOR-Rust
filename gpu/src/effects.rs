@@ -37,6 +37,7 @@ const SIZE_MID: u32 = 232;
 const SIZE_END: u32 = 148;
 const PERCENT_MID: u32 = 224;
 
+const RED_TAKES_GREEN: f32 = 0.85;
 /// Emitters farther than this from the camera neither run nor draw (metres).
 const RANGE: f32 = 40.0;
 const MAX_PER_SOURCE: usize = 300;
@@ -232,6 +233,19 @@ impl Effects {
                 }
                 sources.push(source_of(n, e, at, None));
             });
+        }
+    }
+
+    /// Turn the emitters' colours from blue toward red: 0 leaves them, 1 swaps the two and takes most of the green, which
+    /// with the red would make orange.
+    pub fn redden(&mut self, amount: f32) {
+        for c in self.sources.iter_mut().flat_map(|s| s.colors.iter_mut()) {
+            let [red, green, blue] = *c;
+            *c = [
+                mix(red, blue, amount),
+                green * (1.0 - RED_TAKES_GREEN * amount),
+                mix(blue, red, amount),
+            ];
         }
     }
 

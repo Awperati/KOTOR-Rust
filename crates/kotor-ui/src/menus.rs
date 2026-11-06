@@ -310,7 +310,11 @@ impl Ui<'_> {
         }
         if !view.message.is_empty() {
             let w = SCREEN.0 as i32;
-            cv.fill_rect(0, 446, w + 1, 24, [0, 0, 0, 200]);
+            if self.glowing() {
+                crate::glow::boxed(cv, [0, 446, w, 24]);
+            } else {
+                cv.fill_rect(0, 446, w + 1, 24, [0, 0, 0, 200]);
+            }
             let text = view.message.clone();
             self.draw_text(cv, "fnt_d16x16", &text, [0, 446, w, 24], 18, LIT);
         }

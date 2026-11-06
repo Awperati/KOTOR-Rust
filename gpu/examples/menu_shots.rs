@@ -216,6 +216,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.escape();
     s.open_character();
     shot(&mut gpu, &mut s, "character", &out);
+    // The mist follows the alignment.
+    let start = s.game.world.object(pc).map_or(50, |o| o.alignment);
+    for (alignment, name) in [(100, "mist_light"), (50, "mist_neutral"), (0, "mist_dark")] {
+        if let Some(o) = s.game.world.object_mut(pc) {
+            o.alignment = alignment;
+        }
+        s.update(DT);
+        shot(&mut gpu, &mut s, name, &out);
+    }
+    if let Some(o) = s.game.world.object_mut(pc) {
+        o.alignment = start;
+    }
 
     // A level, with an attribute point: level 4 is 6000 experience.
     s.game.world.grant_xp(pc, 6000);
@@ -449,7 +461,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.game.world.combat.target.insert(pc, foe);
     s.update(0.05);
     shot(&mut gpu, &mut s, "combat_engaged", &out);
-    // With feats and powers in the other slots, and a blow landing.
+    // With feats on the left, powers in the middle and a grenade on the right, and a blow landing.
+    let grenade = s.game.world.spawn_item("g_w_fraggren01");
+    s.game.world.carry(pc, grenade);
     if let Some(o) = s.game.world.object_mut(pc) {
         o.feats.extend([28, 8, 11, 30, 29, 31]);
         o.spells.extend([23, 15]);

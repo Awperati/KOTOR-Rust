@@ -1425,7 +1425,7 @@ fn the_feedback_and_autopause_pages_keep_what_they_say_and_it_takes_effect() {
 }
 
 #[test]
-fn the_other_slots_queue_feats_and_powers_and_blows_show_as_numbers() {
+fn the_slots_are_attacks_powers_and_grenades_and_blows_show_as_numbers() {
     let Some((mut s, _)) = in_game("slots") else {
         return;
     };
@@ -1442,42 +1442,52 @@ fn the_other_slots_queue_feats_and_powers_and_blows_show_as_numbers() {
     o.feats.clear();
     o.spells.clear();
     s.update(DT);
-    // No feats and no powers: only the first slot answers.
-    let slot = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
-    s.click(slot, SIZE);
-    assert!(s.game.world.combat_queue.is_empty());
-    // A click there falls on the floor, and at a run that would take the player past the foe.
-    s.game.world.pc_mover.stop();
+    // No powers and nothing to throw: the middle and the right answer nothing. A click there falls on the floor, and at
+    // a run that would take the player past the foe.
+    for tag in ["BTN_TARGET1", "BTN_TARGET2"] {
+        let slot = s.hud_pixel(tag, SIZE).unwrap();
+        s.click(slot, SIZE);
+        assert!(s.game.world.combat_queue.is_empty());
+        s.game.world.pc_mover.stop();
+    }
+    assert!(!s.game.world.combat.target.contains_key(&pc));
 
-    // With two feats, the arrows go through them.
+    // With two feats, the left arrows go from the plain attack through them.
     let o = s.game.world.object_mut(pc).unwrap();
     o.feats.extend([28, 8]);
     o.spells.insert(23);
     (o.force, o.max_force) = (50, 50);
     s.update(DT);
     let first = frame(&mut s);
-    let down = s.hud_pixel("BTN_TARGETDOWN1", SIZE).unwrap();
+    let down = s.hud_pixel("BTN_TARGETDOWN0", SIZE).unwrap();
     s.click(down, SIZE);
     assert!(
         s.game.world.combat_queue.is_empty(),
         "an arrow queues nothing"
     );
-    assert!(frame(&mut s) != first, "the next feat shows");
-    let up = s.hud_pixel("BTN_TARGETUP1", SIZE).unwrap();
+    assert!(frame(&mut s) != first, "the first feat shows");
+    let up = s.hud_pixel("BTN_TARGETUP0", SIZE).unwrap();
     s.click(up, SIZE);
+    s.click(down, SIZE);
 
     // Under the cursor, a slot says what it does. The bar follows the target on the screen, so ask where it is now.
     let shown = frame(&mut s);
-    let slot = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
     s.hover(slot, SIZE);
     assert!(frame(&mut s) != shown);
-    let slot = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
 
-    // A click queues it and attacks, and the queue shows it.
+    // A click on the left queues the feat and attacks, and the queue shows it.
     s.click(slot, SIZE);
     assert_eq!(s.game.world.combat_queue.len(), 1);
+    assert!(matches!(
+        s.game.world.combat_queue[0],
+        kotor_game::CombatAction::Feat(_)
+    ));
     assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
-    let power = s.hud_pixel("BTN_TARGET2", SIZE).unwrap();
+
+    // The middle is the Force power.
+    let power = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
     s.click(power, SIZE);
     assert_eq!(s.game.world.combat_queue.len(), 2);
     assert_eq!(
@@ -1485,17 +1495,40 @@ fn the_other_slots_queue_feats_and_powers_and_blows_show_as_numbers() {
         kotor_game::CombatAction::Power(23)
     );
 
+    // The right throws what the arrows chose, at once: nothing is queued, and one fewer is carried.
+    let frag = s.game.world.spawn_item("g_w_fraggren01");
+    let stun = s.game.world.spawn_item("g_w_stungren01");
+    s.game.world.carry(pc, frag);
+    s.game.world.carry(pc, stun);
+    frame(&mut s);
+    let order: Vec<_> = s
+        .game
+        .world
+        .carried(pc)
+        .into_iter()
+        .filter(|i| *i == frag || *i == stun)
+        .collect();
+    let down = s.hud_pixel("BTN_TARGETDOWN2", SIZE).unwrap();
+    s.click(down, SIZE);
+    let right = s.hud_pixel("BTN_TARGET2", SIZE).unwrap();
+    s.click(right, SIZE);
+    assert_eq!(s.game.world.combat_queue.len(), 2);
+    let carried = s.game.world.carried(pc);
+    assert!(
+        carried.contains(&order[0]),
+        "the arrow moved past the first"
+    );
+    assert!(!carried.contains(&order[1]), "the second was thrown");
+
     // Blows show as words over the target, and the option turns them off.
-    let log = s.game.world.combat.log.len();
-    for _ in 0..300 {
+    // Others on the ship fight too, so wait for the player's own.
+    for _ in 0..600 {
         s.update(DT);
-        if s.game.world.combat.log.len() > log {
+        if !s.floats_shown().is_empty() {
             break;
         }
     }
-    assert!(s.game.world.combat.log.len() > log);
-    s.update(DT);
-    assert!(!s.floats_shown().is_empty());
+    assert!(!s.floats_shown().is_empty(), "{}", s.state_line());
     s.escape();
     press(&mut s, "BTN_FEEDBACK");
     click_row(&mut s, "LB_OPTIONS", 4);
@@ -2572,7 +2605,7 @@ fn the_pilot_hands_a_fight_over_to_the_player() {
     s.speed = 16.0;
     let arrived = (0..3000).find(|_| {
         s.update(DT);
-        s.pilot_arrived(false)
+        s.pilot_arrived()
     });
     assert!(arrived.is_some(), "{}", s.state_line());
     s.take_over_from_pilot(true);
@@ -2587,8 +2620,22 @@ fn the_pilot_hands_a_fight_over_to_the_player() {
     s.update(DT);
     assert!(s.paused());
     assert!(s.state_line().contains("note=ENEMY"), "{}", s.state_line());
-    // For a level it waits for an enemy worth one: one Sith is far from 1000 experience.
-    assert!(!s.pilot_arrived(true));
+    // For a level, the player is put one kill of that enemy short of it.
+    let id = s.seen_enemy().unwrap();
+    let w = &s.game.world;
+    let (xp, level) = {
+        let o = w.object(w.pc).unwrap();
+        (o.xp, o.level)
+    };
+    assert!(w.level_for_xp(xp + w.kill_xp(id)) <= level);
+    s.one_kill_short_of_a_level();
+    let w = &s.game.world;
+    let short = w.object(w.pc).unwrap().xp;
+    assert!(w.level_for_xp(short) <= level, "not there yet");
+    assert!(
+        w.level_for_xp(short + w.kill_xp(id)) > level,
+        "that kill does it"
+    );
     // A driver's player can be kept standing.
     s.toggle_pause();
     let pc = s.game.world.pc;
@@ -2833,6 +2880,58 @@ fn the_screens_of_a_game_keep_their_words_inside_their_boxes() {
     press(&mut s, "BTN_JOU");
     words_too_big(&mut s, "journal", &mut found);
     assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+/// The mist's colour, over all that is drawn of it.
+fn mist_colour(s: &mut Stage) -> [f32; 3] {
+    let mut sum = [0.0; 3];
+    let mut count = 0.0;
+    for batch in s.frame_particles() {
+        for v in &batch.vertices {
+            for (total, c) in sum.iter_mut().zip(v.color) {
+                *total += c;
+            }
+            count += 1.0;
+        }
+    }
+    assert!(count > 0.0, "there is mist");
+    sum.map(|c| c / count)
+}
+
+#[test]
+fn the_mist_behind_the_figure_follows_the_alignment() {
+    let Some((mut s, _)) = in_game("figure_mist") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.open_character();
+    let at = |s: &mut Stage, alignment: i32| {
+        s.game.world.object_mut(pc).unwrap().alignment = alignment;
+        s.update(DT);
+        mist_colour(s)
+    };
+    let light = at(&mut s, 100);
+    assert!(light[2] > light[0] * 1.5, "blue: {light:?}");
+    let video = at(&mut s, 65);
+    assert!(video[2] > video[0] * 1.5, "still blue: {video:?}");
+    let neutral = at(&mut s, 50);
+    assert!(
+        (neutral[0] - neutral[2]).abs() < 0.02,
+        "between: {neutral:?}"
+    );
+    let dark = at(&mut s, 0);
+    assert!(dark[0] > dark[2] * 1.5, "red: {dark:?}");
+    // It moves.
+    let before = s.frame_particles();
+    s.update(0.2);
+    assert!(s.frame_particles() != before);
+}
+
+#[test]
+fn the_options_box_gives_the_build_and_the_fonts_notice() {
+    let words = kotor_gpu::stage::about_words();
+    assert!(words.starts_with(&kotor_gpu::build_line()), "{words}");
+    assert!(words.contains("Noto Project Authors") && words.contains("Open Font License"));
 }
 
 #[test]

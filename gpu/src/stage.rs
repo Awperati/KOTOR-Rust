@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
-pub use menus::{default_saves_dir, default_settings_file, Settings};
+pub use menus::{about_words, default_saves_dir, default_settings_file, Settings};
 
 type Mat = [[f32; 4]; 4];
 
@@ -496,6 +496,7 @@ impl Stage {
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.main_scene_tick(dt);
         self.chargen_mist_tick(dt);
+        self.figure_mist_tick(dt);
         self.bench_tick(dt);
         self.take_bench_request();
         self.take_party_request();
@@ -1070,12 +1071,12 @@ impl Stage {
         );
         if let Some(tag) = self.ui.hud_hit(x, y) {
             self.hud_click_sound(&tag);
-            if tag == "BTN_ACTION0" || tag == "BTN_TARGET0" {
+            if tag == "BTN_ACTION0" {
                 if let Some(id) = self.target() {
                     self.use_thing(id);
                 }
             } else if let Some(slot) = menus::target_slot(&tag) {
-                if self.queue_slot(slot) {
+                if self.use_slot(slot) {
                     if let Some(id) = self.target() {
                         self.use_thing(id);
                     }
@@ -1770,12 +1771,10 @@ impl Stage {
         }
         self.overlay_key = key;
         self.ui.set_minimap(minimap);
-        let engaged = combat.engaged || !notices.is_empty();
         self.ui.set_notices(notices);
         self.ui.set_floats(floats);
         self.ui.set_pause(pause.0, pause.1);
         self.ui.set_combat(combat);
-        let talking = view.is_some();
         self.overlay = match view {
             // A wordless beat: the scene alone.
             Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
@@ -1793,14 +1792,6 @@ impl Stage {
                 )
             }
         };
-        // What is on screen in words, as far as the menu buttons leave room.
-        let label = self.label();
-        let short = label.split(" | ").take(3).collect::<Vec<_>>().join(" | ");
-        // In a fight that place has the line about combat mode, and the notices are there too. In a conversation it is
-        // the bar over the scene, which has only the line being answered.
-        if !engaged && !talking {
-            self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &short));
-        }
         self.apply_brightness();
         self.overlay_version += 1;
     }
@@ -1865,9 +1856,10 @@ impl Stage {
         let layout = (self.ui_width, 480);
         let at =
             |p: Option<(f32, f32)>| p.map_or("-".to_string(), |p| format!("{:.0},{:.0}", p.0, p.1));
-        let attack_slot = at(self.hud_pixel("BTN_TARGET0", layout));
-        let feat_slot = at(self.hud_pixel("BTN_TARGET1", layout));
-        let power_slot = at(self.hud_pixel("BTN_TARGET2", layout));
+        let left_slot = at(self.hud_pixel("BTN_TARGET0", layout));
+        let left_down = at(self.hud_pixel("BTN_TARGETDOWN0", layout));
+        let middle_slot = at(self.hud_pixel("BTN_TARGET1", layout));
+        let right_slot = at(self.hud_pixel("BTN_TARGET2", layout));
         let disengage = at(self.hud_pixel("BTN_CLEARALL", layout));
         let (paused, note) = self.pause_view();
         let floats = self.floats_shown().len();
@@ -1880,7 +1872,7 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={attack_slot} slot1={feat_slot} slot2={power_slot} disengage={disengage} foe={foe} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} foe={foe} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
