@@ -31,7 +31,7 @@ power's routine trace).
 
 ## Assumed, not measured from the game (I do not know these)
 - The save and skill-check formulas above, and a natural 1/20 on saves.
-- First-level skill points x4; the first feat list is the "regular" slots and list 0 the "bonus" slots.
+- First-level skill points: half the class base plus the Intelligence modifier, x4. Later levels: half of base plus modifier. Both at least 1. A Soldier with Intelligence 12 has 8, then 1 a level: the video at 0:50 and 1:23:30. The rest of the formula is **assumed**; the first feat list is the "regular" slots and list 0 the "bonus" slots.
 - Each level's hit points are the whole die plus Constitution, measured on one sheet in `REFERENCE.md`. Force points after level 1 are half of `forcedie` + 1, which is not measured.
 - **Kill experience = challenge rating x 25: the real rule is unknown to me.**
 - Knocked-out party members stand up with 1 hit point when the fight ends; real recovery may differ.

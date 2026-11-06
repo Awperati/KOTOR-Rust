@@ -206,17 +206,20 @@ impl World {
         }
     }
 
-    /// Skill points a level gives: (class base + Intelligence modifier, at least 1), times 4 at level 1.
+    /// Skill points a level gives. **Measured from the video:** a Soldier, `skillpointbase` 2, with Intelligence 12 has 8 at
+    /// 0:50, and 1 a level at 1:23:30: 3 ranks of a cross-class skill and 4 of a class skill by level 3 is 10 points, 8 + 1 + 1.
+    /// **Assumed:** how that goes for the rest. At level 1, half the base and the modifier, times 4. After, half of the two
+    /// together, rounded down. At least 1.
     pub fn skill_points_at(&mut self, class: i32, intelligence: i32, level: i32) -> i32 {
         let base = self
             .table("classes")
             .and_then(|t| t.int(class.max(0) as usize, "skillpointbase"))
             .unwrap_or(0) as i32;
-        let per = (base + ability_mod(intelligence)).max(1);
+        let modifier = ability_mod(intelligence);
         if level <= 1 {
-            per * FIRST_LEVEL_SKILL_MULTIPLIER
+            (base / 2 + modifier).max(1) * FIRST_LEVEL_SKILL_MULTIPLIER
         } else {
-            per
+            ((base + modifier) / 2).max(1)
         }
     }
 

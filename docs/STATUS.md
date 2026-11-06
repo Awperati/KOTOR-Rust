@@ -19,7 +19,7 @@ Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fet
 ## What is guessed (documented where each is used)
 NPC turn rate; which side's door clip; creature radius 0.4 m and follow distances; combat
 (one attack per round, reach 2 m / 12 m, critical confirmation roll, no line of sight); **kill XP = challenge rating x 25, paid in full to each standing party member**; Force points per level;
-spell save DC; x4 skill points at level 1; knocked-out recovery to 1 HP; the 30-point attribute schedule (the three classes' recommended scores do cost exactly
+spell save DC; skill points as the video's Soldier has them (`docs/RULES.md`); knocked-out recovery to 1 HP; the 30-point attribute schedule (the three classes' recommended scores do cost exactly
 30, which supports it); which appearance column is which body size; cutscene lengths (animation ids from 1200 index the stunt model's animations: ids 1200-1203
 match the four animation lengths in order, ids 1219/1220 unresolved); GUI text alignment codes, control draw order, and the font fallback for `fnt_d16x16`.
 See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`. Run speed, turns, round length and door time are now measured against the reference video: `REFERENCE.md`.
@@ -36,7 +36,7 @@ See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`. Ru
 
 ## What the owner could check by playing the real game side by side
 1. **Kill XP**: the XP a first Sith soldier gives (we say challenge rating x 25; the real number decides that rule).
-2. **Level 1 numbers**: a new Soldier with the class's recommended scores: HP (we get 12), defense (12), attack bonus (+1), saves (+4/+2/+1), skill points (8), feats.
+2. **Level 1 numbers**: a new Soldier with the class's recommended scores: HP (we get 12), defense (12), attack bonus (+1), saves (+4/+2/+1), skill points (4 at Intelligence 10, the video's 8 at 12), feats.
 3. **Attribute buying**: the point cost of raising a score to 15, 16, 17, 18 (we use 2, 2, 3, 3 per step).
 4. **Run speed**: seconds from the start position to the first door (we run 5.4 m/s; door about 5.7 m away).
 5. **Opening cutscene**: its length (we get about 19 s for the path the script takes) and where the camera cuts.

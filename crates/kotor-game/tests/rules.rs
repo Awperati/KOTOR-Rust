@@ -323,9 +323,12 @@ fn class_saves_and_skill_points_come_from_the_tables() {
     assert_eq!(w.class_save(0, 1, Save::Fortitude), 2);
     assert_eq!(w.class_save(0, 2, Save::Fortitude), 3);
     // Soldier skill point base 2: level 1 is four times (2 + Int modifier), later levels once; at least 1 per level.
-    assert_eq!(w.skill_points_at(0, 10, 1), 8);
-    assert_eq!(w.skill_points_at(0, 10, 2), 2);
-    assert_eq!(w.skill_points_at(0, 14, 2), 4);
+    // The video's Soldier: Intelligence 12, 8 points and then 1 a level.
+    assert_eq!(w.skill_points_at(0, 12, 1), 8);
+    assert_eq!(w.skill_points_at(0, 12, 2), 1);
+    assert_eq!(w.skill_points_at(0, 10, 1), 4);
+    assert_eq!(w.skill_points_at(0, 14, 2), 2);
+    assert_eq!(w.skill_points_at(2, 10, 1), 16, "a Scoundrel, not 32");
     assert_eq!(w.skill_points_at(0, 3, 2), 1, "never below 1");
 }
 
@@ -432,10 +435,10 @@ fn experience_raises_levels_with_hit_points_skills_and_feats() {
         u.hp, 10,
         "the whole d10 hit die, plus a 0 Constitution modifier"
     );
-    assert_eq!(u.skill_points, 2);
+    assert_eq!(u.skill_points, 1);
     let o = w.object(pc).unwrap();
     assert_eq!((o.level, o.max_hp, o.hp), (2, 30, 30));
-    assert_eq!(o.skill_points, 2);
+    assert_eq!(o.skill_points, 1);
     // A big grant crosses several thresholds in one go and lands on the level the table says.
     w.grant_xp(pc, 100_000);
     let want = w.level_for_xp(w.object(pc).unwrap().xp);

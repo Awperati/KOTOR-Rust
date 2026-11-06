@@ -50,8 +50,8 @@ fn a_soldier_is_built_from_the_tables() {
     assert_eq!(w.base_attack_of(pc), 1);
     // Fortitude: class 2 + Constitution +2.
     assert_eq!(w.save_bonus(pc, kotor_game::Save::Fortitude), 4);
-    // Skill points: 4 x (2 + Int 0) = 8, minus the 4 spent.
-    assert_eq!((w.skill_ranks(pc, 7), o.skill_points), (4, 4));
+    // Skill points: 4 x (half of 2 + Int 0) = 4, and the 4 are spent.
+    assert_eq!((w.skill_ranks(pc, 7), o.skill_points), (4, 0));
     for f in [4, 5, 6] {
         assert!(o.feats.contains(&f), "granted feat {f}");
     }
