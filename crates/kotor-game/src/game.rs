@@ -130,7 +130,7 @@ impl Game {
                 let d = (dx * dx + dy * dy).sqrt();
                 if d > 0.002 && d < 1.0 {
                     moved = true;
-                    // A walk covers about 0.03 m in a step of a sixtieth of a second, a run about 0.07 m.
+                    // A walk covers about 0.03 m in a step of a sixtieth of a second, a run 0.09 m.
                     ran = d / self.dt > 2.5;
                     self.headings.insert(id, dy.atan2(dx));
                 }

@@ -33,7 +33,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-const TURN_SPEED: f32 = 90.0;
+/// Degrees a second. The reference video's camera turns about 85 degrees in 0.7 s, see `docs/REFERENCE.md`.
+const TURN_SPEED: f32 = 120.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Channel {

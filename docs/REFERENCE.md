@@ -33,6 +33,17 @@ Read by eye from contact sheets of one frame every 5 minutes, so each time is go
 |---|---|---|---|---|
 | What the hero wears before the footlocker | Pale short-sleeved top and shorts with orange trim, bare arms and legs. The shape is column a of `appearance.2da` | 200 s | Looked at one frame beside our render | Shape clear in the frame. Colour differs, see below |
 | What the hero wears after it | Sleeved shirt with a brown vest, column b (`Basic_Clothing`) | 230 s and 300 s | Looked at two frames | Clear in the frames. The shirt looks pale blue in the room's light |
+| Run speed | 5.8 m/s | 372.75 to 374.25 s | The door ahead grows on screen. Its width in 7 frames, 6.16 m wide in model `DOR_LHR01`, 55 degree view from `camerastyle.2da` | 0.6 m/s |
+| Hero's turn | 180 degrees in 5 frames, about 1,080 degrees a second | 303.08 to 303.22 s | Counted frames, keyboard run from a standstill | 20% |
+| Camera's turn | About 85 degrees in 0.7 s, about 120 degrees a second | 301.97 to 302.67 s | Counted frames. The angle is read from where the door ends up | 20 degrees a second |
+| Door opening | 21 frames, 0.70 s | 374.87 to 375.57 s | Counted frames of the first change to the last | 0.07 s |
+| Combat round | 3.00 s | Bar drops at 471.73, 474.73, 477.73 s | The target's red health bar, measured on each frame at 15 a second | 0.07 s |
+| Hits in that fight | 16%, 34%, 39% of the target's bar | Same | 61, 126, 145 px of a 372 px bar | About 1 point of the bar in 100 |
+| Other gaps between hits | 2.54 s, 1.27 s, 1.80 s, 2.07 s | 381.43 to 383.97, 391.53 to 392.80, 455.47 to 459.33 s | Same | 0.07 s. More than one attacker may be hitting |
+| Experience | 1,275, level 2, needing 3,000 | 657 s, the bridge | Read off the character screen | Exact |
+| The hero then | Str 16, Dex 11, Con 14, Int 12, Wis 10, Cha 13. 26/26 vitality, defense 14, saves 5, 0, 0 | 657 s | Same | Exact |
+| Dialogue cuts | 13 shots in 78.9 s, 0.9 to 11.0 s each, mean 6.1 s, black bars above and below | 1,705.2 to 1,784.1 s | Picture changes between frames at 10 a second, then one frame of each shot | 0.1 s |
+| Who has the shot | All 5 shots with replies up show the hero. 7 of the other 8 show the speaker, and 1 is wide | Same | Looked at those 13 frames | Clear in the frames. One conversation only |
 
 ## Open: the colour of that body
 
@@ -45,6 +56,32 @@ Only the bare arms, bare legs and shorts support column a. No other column of th
 ## Changed because of them
 
 - `rig_for_outfit`: with no armour a hero now wears column a, not column b.
+- `RUN_SPEED`: 3.96 m/s became 5.4 m/s. The old value is `rundist`, which is metres per run cycle. Over the 0.733 s cycle of `S_Male02` that is 5.40 m/s, and `runrate` in `creaturespeed.2da` says 5.40 too. High confidence: the video rules out 3.96.
+- `STEER_TURN_RATE`: 12 became 18.8 radians a second. Medium confidence: one turn counted.
+- `TURN_SPEED` in the viewer: 90 became 120 degrees a second. Medium confidence: one turn, and `camerastyle.2da` has 150 as `minturnrate`, whose meaning I do not know.
+- `speaker_camera`: holds the speaker while the line is said, then cuts to the player while the replies wait. Medium confidence: one conversation. Over-the-shoulder and wide shots are not copied.
+- `MoveParams::speed`: 1.6 became 1.7 m/s, from the tables and not the video. See below.
+- `award_kill`: each standing party member gets the whole kill, not a share. **Weak evidence, an assumption:** see below.
+
+## Agreed, so not changed
+
+- `ROUND_SECONDS` 3.0: the video gives 3.00. High confidence.
+- `DOOR_ANIM_SECONDS` 1.0: `opening1` of `DOR_LHR01` lasts 1.0 s and moves from 0.2 s to 1.0 s, so 0.8 s of movement against the video's 0.70 s. Its last part may be outside the frame. I took the door to be that model from its look and `end_door05`, `07` and `08`, and did not confirm its tag. Medium confidence.
+- `genericdoors.2da` row 58, `DOR_LHR02`, has animations 5 s long. It is not the door measured.
+
+## How sure each is
+
+The video's game may be modded, which I have not confirmed. Its hero's clothes do not match this install's textures. Speeds and rounds come from tables a texture mod would not touch, so a mod is less likely to change them. It carries a `LACRY` watermark.
+
+Run speed assumes the camera sits 55 degrees wide vertically. That is `camerastyle.2da`, not measured, and a widescreen patch could change it. Measuring the hero's height against the 3.2 m camera distance gives 9% more, so 5.4 sits at the low end of what the video allows. It still rules out 3.96.
+
+## Not measured
+
+- **Walk speed:** the hero runs everywhere I looked, and I timed no walker. `walkrate` is 1.70 for `NORM`. `walkdist` over the walk cycle gives 1.70 for a man (1.813 m, 1.067 s) and 1.60 for a woman (1.6 m, 1.0 s). Only 1.70 is used, for everyone.
+- **`creaturespeed.2da` per creature:** `moverate` and `WalkRate` in a creature's file can pick slower or faster rows. Everyone still uses one speed. `PLAYER` has a `walkrate` of 3.20, which I did not check against the hero.
+- **NPC turn rate:** still the assumed 4.0 radians a second.
+- **Kill experience:** the video shows one total only, so no kill can be read from it. The bridge total of 1,275 is a whole number of 25s, which a split with Trask would rarely give, and that is the only evidence for `award_kill`. I also do not know if Trask stood at those kills. Our pilot has 1,025 at the same place. It skips scripts that pay experience, such as `k_pend_chest01` and `k_pend_bridge04`, so the gap proves nothing yet.
+- **Damage numbers:** the words floating over heads are too small here, "miss" is the only one I could read. The percentages above are of the bar. The target may be `n_sithsoldier003` with 15 hit points, which would make them 2.5, 5.1, 5.8. Those are not whole numbers, so either the target or the bar reading is off.
 
 ## What the game's files say about skin
 

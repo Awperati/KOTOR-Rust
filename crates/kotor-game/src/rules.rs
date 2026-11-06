@@ -13,7 +13,7 @@
 //! costs 1 point and a cross-class rank 2, ranks capped at level + 3 (cross-class half that); the first feat list is
 //! the regular slots (`_reg`) and the zero list the bonus slots (`_bon`); hit points rise by half the hit die + 1
 //! (rounded as an average, not rolled) plus the Constitution modifier, first level by the full die; Force points
-//! likewise from `forcedie`; kill experience is `ChallengeRating` x 25, shared among the living party; a party member
+//! likewise from `forcedie`; kill experience is `ChallengeRating` x 25, paid in full to each of the living party; a party member
 //! reduced to 0 hit points is knocked out and stands up with 1 hit point when the fight is over (the player and
 //! party members never die from damage); the game is over when everyone in the party is down at once.
 
@@ -444,18 +444,15 @@ impl World {
             .collect()
     }
 
-    /// Share a kill's experience equally among the standing party; the remainder goes to the player.
+    /// Pay a kill's experience to each of the standing party. The reference video's total on the Endar Spire is only
+    /// reached with whole payments, see `docs/REFERENCE.md`.
     pub(crate) fn award_kill(&mut self, victim: ObjId) {
         let xp = self.kill_xp(victim);
-        let who = self.standing_party();
-        if xp <= 0 || who.is_empty() {
+        if xp <= 0 {
             return;
         }
-        let share = xp / who.len() as i32;
-        let extra = xp - share * who.len() as i32;
-        for (i, id) in who.into_iter().enumerate() {
-            let pay = share + if i == 0 { extra } else { 0 };
-            let ups = self.grant_xp(id, pay);
+        for id in self.standing_party() {
+            let ups = self.grant_xp(id, xp);
             for u in ups {
                 self.events
                     .push(format!("{} reaches level {}", self.describe(id), u.level));

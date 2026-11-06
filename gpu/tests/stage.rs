@@ -85,6 +85,26 @@ fn the_loop_plays_a_conversation_walks_opens_a_door_and_draws() {
         match s.game.world.dialogue_view() {
             Some((_, _, _, replies)) if !replies.is_empty() => {
                 offered = replies.len();
+                // The camera holds the speaker while the line is said, then cuts to the player for the replies.
+                let looks_at_player = |s: &Stage| {
+                    let aim = s.speaker_camera().unwrap().target;
+                    let from = |id| {
+                        let p = s.game.world.object(id).unwrap().position;
+                        (p[0] - aim[0]).hypot(p[1] - aim[1])
+                    };
+                    from(s.game.world.pc) < from(trask)
+                };
+                if !s.answering() {
+                    assert!(!looks_at_player(&s), "the speaker has the shot");
+                }
+                for _ in 0..3000 {
+                    if s.answering() {
+                        break;
+                    }
+                    cues.extend(s.update(DT));
+                }
+                assert!(s.answering(), "the line ends");
+                assert!(looks_at_player(&s), "the player has the shot");
                 let said = s.game.world.transcript.len();
                 s.number_key(offered + 1);
                 assert_eq!(s.game.world.transcript.len(), said, "no such reply");
@@ -334,7 +354,7 @@ fn wasd_runs_relative_to_the_camera_and_stops_at_walls() {
     let start = s.game.world.object(pc).unwrap().position;
     // Right of a camera looking along +x is -y.
     s.steer = (0.0, 1.0, false);
-    for _ in 0..15 {
+    for _ in 0..8 {
         s.update(DT);
     }
     assert!(!s.game.world.in_dialogue());

@@ -183,8 +183,11 @@ fn kills_pay_the_party_and_party_members_are_knocked_out_not_killed() {
         w.object(pc).unwrap().xp - xp_pc,
         w.object(trask).unwrap().xp - xp_trask,
     );
-    assert_eq!(dp + dt, worth, "the whole kill is paid out");
-    assert!(dt > 0 && dp >= dt, "split between the two standing members");
+    assert_eq!(
+        (dp, dt),
+        (worth, worth),
+        "each standing member is paid in full"
+    );
     // The party member goes down, not dead, then stands up with 1 hit point when nothing is fighting.
     w.apply_effect(foe, trask, kill, DURATION_INSTANT, 0.0);
     let t = w.object(trask).unwrap();

@@ -1,9 +1,8 @@
 //! Click-to-move: a character that turns towards the next waypoint of a route and walks it.
 //!
-//! **Assumptions, not measured from the game:** walking speed defaults to 1.6 m/s (the `walkdist` of a
-//! human body in `appearance.2da` over a one second walk cycle); the turn rate defaults to 4.0 rad/s
-//! (about 230 degrees per second); a character only walks while within 30 degrees of its target and
-//! otherwise turns on the spot. The original engine's values may differ and have not been checked.
+//! Walking speed defaults to 1.7 m/s, the `walkrate` of `creaturespeed.2da`, which is also a man's `walkdist` over his
+//! walk cycle of 1.067 s. **Assumptions, not measured from the game:** the turn rate defaults to 4.0 rad/s (about 230
+//! degrees per second); a character only walks while within 30 degrees of its target and otherwise turns on the spot.
 
 use crate::NavMesh;
 
@@ -21,7 +20,7 @@ pub struct MoveParams {
 impl Default for MoveParams {
     fn default() -> Self {
         MoveParams {
-            speed: 1.6,
+            speed: 1.7,
             turn_rate: 4.0,
             face_tolerance: 30.0f32.to_radians(),
         }

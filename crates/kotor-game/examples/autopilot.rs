@@ -62,6 +62,10 @@ fn main() {
     }
     println!("--- real time {:.1} s", started.elapsed().as_secs_f32());
     println!(
+        "--- experience {}",
+        g.world.object(g.world.pc).map_or(0, |o| o.xp)
+    );
+    println!(
         "--- routines that only answered nothing: {:?}",
         g.world.stubbed
     );

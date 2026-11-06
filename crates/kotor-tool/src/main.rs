@@ -21,6 +21,7 @@ kotor-tool <command> [args]
   tlk <strref>                 print a dialog.tlk string
   disasm <name> [module]       disassemble an NCS script (module = layer that module first)
   png <name> <out.png>         decode a TGA/TPC texture to PNG
+  anims <model>                list a model's animations: length and when it stops moving
   obj <model> <out.obj>        export a model's rest pose as OBJ
   view <area> <out.png> [--module M] [--eye x y z] [--target x y z] [--size WxH] [--fov deg]
                                software-render an area's rooms with textures and lightmaps
@@ -438,6 +439,42 @@ fn run(args: &[String]) -> Result<()> {
                 height
             );
             std::fs::write(out, kotor_image::to_png(&img))?;
+        }
+        "anims" => {
+            let name = need(args, 1)?;
+            let mut inst = open()?;
+            let mdl = inst.read(name, ResType::MDL)?;
+            let mdx = inst.read(name, ResType::MDX).unwrap_or_default();
+            let model = kotor_model::parse_model(&mdl, &mdx)?;
+            println!("super {:?} scale {}", model.supermodel, model.anim_scale);
+            for a in &model.animations {
+                // When anything in the model moves, sampled every thirtieth of a second.
+                let at = |t: f32| model.world_matrices(Some(&a.sample(&model, t)));
+                let steps = (a.length * 30.0) as usize;
+                let mut still_from = 0.0;
+                let mut moving_from = None;
+                let mut last = at(0.0);
+                for k in 1..=steps {
+                    let t = k as f32 / 30.0;
+                    let now = at(t);
+                    let moved = now
+                        .iter()
+                        .zip(&last)
+                        .any(|((_, p), (_, q))| (0..3).any(|r| (p[r][3] - q[r][3]).abs() > 0.001));
+                    if moved {
+                        moving_from.get_or_insert(t - 1.0 / 30.0);
+                        still_from = t;
+                    }
+                    last = now;
+                }
+                println!(
+                    "{} {:.3} moves from {:.3} until {:.3}",
+                    a.name,
+                    a.length,
+                    moving_from.unwrap_or(0.0),
+                    still_from
+                );
+            }
         }
         "obj" | "render" => {
             let name = need(args, 1)?;

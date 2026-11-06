@@ -12,17 +12,20 @@ use std::collections::HashSet;
 pub const DOOR_BLOCK_RADIUS: f32 = 1.1;
 /// How close the player must get before using a door, talking to a creature, or using a placeable.
 pub const DOOR_RANGE: f32 = 1.6;
-/// Seconds a door takes to open or close. Measured: `opening1` and `closing1` of door model DOR_LHR01 last 1.0 s.
+/// Seconds a door takes to open or close. Measured: `opening1` and `closing1` of door model DOR_LHR01 last 1.0 s, and
+/// the reference video agrees, see `docs/REFERENCE.md`.
 pub const DOOR_ANIM_SECONDS: f32 = 1.0;
 pub const TALK_RANGE: f32 = 1.8;
 pub const USE_RANGE: f32 = 1.6;
 /// The row of `skills.2da` for Security.
 const SKILL_SECURITY: usize = 6;
-/// Running speed: `rundist` of a human body in `appearance.2da`, per second (an assumption, as for walking).
-pub const RUN_SPEED: f32 = 3.96;
+/// Running speed: `runrate` of `creaturespeed.2da`, which is also `rundist` (3.96 m) over the 0.733 s run cycle.
+/// The reference video gives 5.8 m/s, give or take 0.6: see `docs/REFERENCE.md`.
+pub const RUN_SPEED: f32 = 5.4;
 /// When steered, the player keeps this far from the edge of the walkmesh, so that it does not stand in a wall.
 const STEER_CLEARANCE: f32 = 0.3;
-const STEER_TURN_RATE: f32 = 12.0;
+/// Radians a second: the reference video's hero turns 180 degrees in 5 frames, see `docs/REFERENCE.md`.
+const STEER_TURN_RATE: f32 = 18.8;
 
 /// Ray from a camera through a pixel: `(origin, unit direction)`. The camera looks from `eye` to `target`
 /// with Z up and a vertical field of view of `fov_deg`; `(px, py)` is measured from the top-left.

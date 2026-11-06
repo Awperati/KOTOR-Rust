@@ -805,17 +805,31 @@ impl Stage {
         }
     }
 
-    /// A close shot of whoever owns the conversation, from the player's side.
+    /// Whether the line has been said and the replies are waiting.
+    pub fn answering(&self) -> bool {
+        let said = self.beat.as_ref().map_or(0.0, |b| b.length);
+        self.game
+            .world
+            .dialogue_view()
+            .is_some_and(|(_, _, _, replies)| !replies.is_empty())
+            && self.beat_time >= said
+    }
+
+    /// A close shot of whoever owns the conversation while the line is said, then of the player while the replies wait.
+    /// The reference video cuts like this, see `docs/REFERENCE.md`.
     ///
     /// **Assumption:** this stands in for the game's dialogue camera angles, whose codes are not modelled. A script may
     /// start a talk from metres away (Trask's first talk is from 7.5 m), and this keeps the speaker in shot.
-    fn speaker_camera(&self) -> Option<Camera> {
+    pub fn speaker_camera(&self) -> Option<Camera> {
         let w = &self.game.world;
         let o = w.object(w.dialogue_owner()?)?;
         if o.kind != Kind::Creature || o.id == w.pc {
             return None;
         }
-        let (at, here) = (o.position, self.pc_position());
+        let (mut at, mut here) = (o.position, self.pc_position());
+        if self.answering() {
+            std::mem::swap(&mut at, &mut here);
+        }
         let (dx, dy) = (here[0] - at[0], here[1] - at[1]);
         let len = dx.hypot(dy).max(0.01);
         let (dx, dy) = (dx / len, dy / len);
