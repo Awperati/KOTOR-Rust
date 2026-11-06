@@ -238,7 +238,8 @@ fn the_loop_plays_a_conversation_walks_opens_a_door_and_draws() {
     s.click(px, SIZE);
     assert!(s.game.world.pc_walking(), "the click started a walk");
     let still = bytes_of(&s.dynamic_scene());
-    for _ in 0..4 {
+    // Modern movement speeds up from a stand.
+    for _ in 0..8 {
         s.update(DT);
     }
     let after = s.game.world.object(s.game.world.pc).unwrap().position;
