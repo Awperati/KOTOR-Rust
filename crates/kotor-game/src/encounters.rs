@@ -22,6 +22,10 @@ pub(crate) struct Encounter {
     pub polygon: Vec<[f32; 2]>,
     pub spawn_points: Vec<[f32; 3]>,
     pub creatures: Vec<(String, bool)>,
+    /// Challenge rating of each creature in `creatures`, by place.
+    pub ratings: Vec<f32>,
+    /// `value` of the row of `encdifficulty.2da` the encounter names: how far above the player's level it may reach.
+    pub reach: i32,
     pub count: usize,
     pub player_only: bool,
     pub at: [f32; 3],
@@ -58,21 +62,38 @@ impl World {
                 .iter()
                 .map(|p| [f("X", p), f("Y", p), f("Z", p)])
                 .collect();
-            let creatures = ute
+            let rows: Vec<&Struct> = ute
                 .root
                 .list("CreatureList")
                 .unwrap_or_default()
                 .iter()
-                .filter_map(|c| {
-                    let single = c.int("SingleSpawn").is_some_and(|v| v != 0);
-                    Some((c.str("ResRef")?.to_string(), single))
-                })
                 .collect();
+            let (mut creatures, mut ratings) = (Vec::new(), Vec::new());
+            for c in rows {
+                let Some(res) = c.str("ResRef") else { continue };
+                creatures.push((
+                    res.to_string(),
+                    c.int("SingleSpawn").is_some_and(|v| v != 0),
+                ));
+                ratings.push(c.float("CR").unwrap_or(0.0) as f32);
+            }
+            let difficulty = ute
+                .root
+                .int("DifficultyIndex")
+                .or_else(|| ute.root.int("Difficulty"))
+                .unwrap_or(2)
+                .max(0) as usize;
+            let reach = self
+                .table("encdifficulty")
+                .and_then(|t| t.int(difficulty, "value"))
+                .unwrap_or(2) as i32;
             self.encounters.push(Encounter {
                 key,
                 polygon,
                 spawn_points,
                 creatures,
+                ratings,
+                reach,
                 count: ute.root.int("RecCreatures").unwrap_or(1).max(1) as usize,
                 player_only: ute.root.int("PlayerOnly").is_some_and(|p| p != 0),
                 at,
@@ -108,10 +129,30 @@ impl World {
             .collect();
         for e in fired {
             self.spent_encounters.insert(e.key.clone());
-            let mut list: Vec<&String> =
-                e.creatures.iter().filter(|c| !c.1).map(|c| &c.0).collect();
-            list.extend(e.creatures.iter().filter(|c| c.1).map(|c| &c.0));
-            let singles = e.creatures.iter().filter(|c| c.1).count();
+            // **Assumption:** the encounter's `Difficulty` row of `encdifficulty.2da` says how many levels above the
+            // player's a creature's challenge rating may be. Those above it stay home, unless nothing else is left, and
+            // then the weakest do not (GAPS row 6).
+            let level = self.objects.get(&self.pc).map_or(1, |o| o.level) as f32;
+            let ceiling = level + e.reach as f32;
+            let weakest = e.ratings.iter().copied().fold(f32::MAX, f32::min);
+            let allowed = |n: usize| {
+                let cr = e.ratings.get(n).copied().unwrap_or(0.0);
+                cr <= ceiling || cr <= weakest
+            };
+            let mut chosen: Vec<(&String, bool)> = Vec::new();
+            for (n, c) in e.creatures.iter().enumerate() {
+                if allowed(n) {
+                    chosen.push((&c.0, c.1));
+                } else {
+                    self.events.push(format!(
+                        "encounter {} keeps {} home: rating {} over {ceiling}",
+                        e.key, c.0, e.ratings[n]
+                    ));
+                }
+            }
+            let mut list: Vec<&String> = chosen.iter().filter(|c| !c.1).map(|c| c.0).collect();
+            list.extend(chosen.iter().filter(|c| c.1).map(|c| c.0));
+            let singles = chosen.iter().filter(|c| c.1).count();
             let repeats = list.len() - singles;
             let picks: Vec<String> = (0..e.count)
                 .filter_map(|n| {
@@ -129,6 +170,7 @@ impl World {
                     e.spawn_points[n % e.spawn_points.len()]
                 };
                 let id = self.spawn(Kind::Creature, res, CREATURE_FILE, place);
+                self.encounter_creatures.insert(id);
                 self.events.push(format!(
                     "encounter {} brings out {}",
                     e.key,

@@ -553,19 +553,49 @@ impl Host for Adapter<'_> {
                 })
             }
             "GetCreatureTalentRandom" | "GetCreatureTalentBest" => {
-                // The category is ignored: the first force power it can pay for, else an invalid talent, so that a
-                // creature out of Force points goes back to its weapon.
-                let who = self.obj(caller, args, if name.ends_with("Best") { 2 } else { 1 });
+                // **Assumption:** categories 1 to 3 (harmful) want a power `spells.2da` marks for an enemy, the rest one for a
+                // friend. Best is the dearest the creature can pay for, Random any of those it can. With none it answers an
+                // invalid talent, so that a creature out of Force points goes back to its weapon.
+                let best = name.ends_with("Best");
+                let category = int(args, 0).unwrap_or(0);
+                let who = self.obj(caller, args, if best { 2 } else { 1 });
                 let (known, force) = self.world.object(who).map_or((Vec::new(), 0), |o| {
                     (o.spells.iter().copied().collect::<Vec<_>>(), o.force)
                 });
-                let first = known.into_iter().find(|s| {
-                    self.world
-                        .power_cost(who, *s)
-                        .is_some_and(|cost| cost <= force)
-                });
+                let harmful = (1..=3).contains(&category);
+                let table = self.world.table("spells");
+                let mut fits: Vec<(i32, i32)> = Vec::new();
+                for s in known {
+                    let Some(cost) = self.world.power_cost(who, s) else {
+                        continue;
+                    };
+                    let row = s.max(0) as usize;
+                    let wanted = table.as_ref().is_none_or(|t| {
+                        let (hostile, friendly) =
+                            (t.int(row, "forcehostile"), t.int(row, "forcefriendly"));
+                        if harmful {
+                            hostile.is_some()
+                        } else {
+                            friendly.is_some()
+                        }
+                    });
+                    if cost <= force && wanted {
+                        fits.push((cost, s));
+                    }
+                }
+                let pick = if best {
+                    fits.iter().max().copied()
+                } else if fits.is_empty() {
+                    None
+                } else {
+                    let n = self.world.roll(fits.len() as i32) as usize - 1;
+                    fits.get(n).copied()
+                };
                 self.default_hit(name);
-                Some(Value::Engine(3, first.map_or(0, |s| (1 << 24) | s as u32)))
+                Some(Value::Engine(
+                    3,
+                    pick.map_or(0, |(_, s)| (1 << 24) | s as u32),
+                ))
             }
             // ---- effects
             "GetFirstEffect" | "GetNextEffect" => {
@@ -1676,11 +1706,15 @@ impl Host for Adapter<'_> {
                 self.default_hit(name);
                 Some(Value::Object(OBJECT_INVALID))
             }
+            // Whether a creature came out of an encounter, and whether an effect holds it from acting.
+            "GetIsEncounterCreature" => b(self
+                .world
+                .encounter_creatures
+                .contains(&self.obj(caller, args, 0))),
+            "GetIsDebilitated" => b(self.world.is_disabled(self.obj(caller, args, 0))),
             "GetLastAttackAction"
             | "GetUserActionsPending"
-            | "GetIsDebilitated"
             | "GetPartyAIStyle"
-            | "GetIsEncounterCreature"
             | "GetSubScreenID" => {
                 self.default_hit(name);
                 Some(Value::Int(0))
