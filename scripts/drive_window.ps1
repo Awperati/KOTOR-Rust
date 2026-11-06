@@ -61,7 +61,11 @@ function Click([int]$x, [int]$y) {
   [void][Drv]::PostMessage($h, 0x201, [IntPtr]1, $l)
   [void][Drv]::PostMessage($h, 0x202, [IntPtr]0, $l)
 }
-function Report($name, $ok, $detail) { "{0,-22} {1}  {2}" -f $name, $(if ($ok) { "PASS" } else { "FAIL" }), $detail }
+$script:failed = 0
+function Report($name, $ok, $detail) {
+  if (-not $ok) { $script:failed++ }
+  "{0,-22} {1}  {2}" -f $name, $(if ($ok) { "PASS" } else { "FAIL" }), $detail
+}
 function WaitFor([string]$name, [string]$want) {
   for ($t = 0; $t -lt 100; $t++) { $s = State; if ($s[$name] -eq $want) { return $s } }
   $s
@@ -86,7 +90,9 @@ if ($Shots) { [Drv]::Save($h, "$Shots\live_replies.png") }
 # A click on the first reply row (layout y 378 of 480, in a 720 high client area).
 $said = [int]$s.said
 Click 220 578
-$s = State
+# The next line can take a few frames to be said, and a state line can be from before the click.
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ([int]$s.said -le $said -and (Get-Date) -lt $until)
 Report "Reply click" ([int]$s.said -gt $said) "said $said -> $($s.said)"
 
 # Through the rest of the talk with the 1 key and Space.
@@ -308,3 +314,6 @@ Report "Exit closes the window" $gone "exited=$gone"
 if (-not $gone) { Stop-Process -Id $v.Id -Force }
 foreach ($f in $left) { Remove-Item $f.FullName -Force }
 Get-Content "$scratch\kotor_drive2.err" -Tail 4
+# A failed check fails the script, so nothing that reads only its exit code takes it for a pass.
+if ($script:failed) { exit 1 }
+exit 0
