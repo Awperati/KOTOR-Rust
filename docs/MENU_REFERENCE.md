@@ -37,7 +37,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Target name and health | fixed at the top | a bar floating over the target |
 | Pictures with `blending additive` in their TXI | black boxes | their black is see-through. This applies to every interface picture |
 | Empty equipment slots | blank | stock pictures `ihead`, `iimplant`, `ihands`, `iforearm_l`, `iforearm_r`, `iarmor`, `iweap_l`, `iweap_r`, `ibelt` |
-| Conversation | a see-through box with the speaker's name | black bars top and bottom, no name, the line being answered in the top bar, replies in the bottom bar |
+| Conversation | a see-through box with the speaker's name | black bars top and bottom, no name, the line being answered in the top bar, replies in the bottom bar, and with no replies the line in the bottom bar, as at 25:00. All in the video's blue, with the chosen reply yellow. The window's caption is gone from the top bar |
 | Main menu | BioWare and LucasArts logos, a box round Quit | none of those |
 | Character sheet | `+4` saves, `+0` modifiers, a Force row at 0/0, a large alignment arrow and a marker | `4` saves, `0` modifiers, no Force row without Force, a small arrow, no marker |
 | Pause menu, right side | empty | the words for Load, Save and Exit under the cursor, from the talk table |
@@ -75,6 +75,8 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Text size | pixel-sized, about 12 pixels high at 1080p | scales with the window, about 27 pixels | Theirs would be too small to read at 4K. The owner chose to keep ours |
 | List rows | about 13 layout units high, a small icon, no border until chosen | the file's 50, with a border and a large icon | The rows follow `PROTOITEM`, and their height depends on text size |
 | HUD size | pixel-sized, so smaller at 1080p | scales with the window | as text size |
+| Replies' left edge | at 1.6% of the width at 2:30 | at 7.4%, the file's margin | the video may be a widescreen layout; left as the file has it |
+| First talk's camera and Trask's place | at 2:05 and 2:15 he runs in from the door to the player at the bunks, and his shot has him alone | he talks from the doorway, with the player's head filling the left of the shot. Frame: `dialogue` | the camera and scripts are the Game Builder's; reported to them, not changed here |
 | Bottom bar in a conversation | about 12% of the height | about 22% | our larger text needs the room |
 | Character screens' mist | a grey wall of mist behind the figure, and over the feet, at 0:29 | the emitters of `cgmain_light.mdl` and `cghead_light.mdl`, which make that wall, a little thinner and with nothing over the feet | the models' lights are not used |
 | Character screens' Back and Cancel | not used in the video | Back undoes the step before, Cancel goes back to Quick or Custom | my choice |

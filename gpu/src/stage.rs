@@ -1742,6 +1742,7 @@ impl Stage {
         self.ui.set_floats(floats);
         self.ui.set_pause(pause.0, pause.1);
         self.ui.set_combat(combat);
+        let talking = view.is_some();
         self.overlay = match view {
             // A wordless beat: the scene alone.
             Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
@@ -1762,8 +1763,9 @@ impl Stage {
         // What is on screen in words, as far as the menu buttons leave room.
         let label = self.label();
         let short = label.split(" | ").take(3).collect::<Vec<_>>().join(" | ");
-        // In a fight that place has the line about combat mode, and the notices are there too.
-        if !engaged {
+        // In a fight that place has the line about combat mode, and the notices are there too. In a conversation it is
+        // the bar over the scene, which has only the line being answered.
+        if !engaged && !talking {
             self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &short));
         }
         self.apply_brightness();

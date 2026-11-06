@@ -18,6 +18,8 @@ pub const SCREEN: (u32, u32) = (640, 480);
 const CAPTION_X: i32 = 112;
 /// The black bars of a conversation, as the game has them: `docs/MENU_REFERENCE.md`.
 const LETTERBOX_TOP: i32 = 60;
+/// The words of a conversation, as the reference video has them at 2:30: the file's are white.
+const TALK_BLUE: [f32; 3] = [0.0, 0.65, 0.97];
 /// From this many pixels a unit the stock pictures would be enlarged at least twice, and upscaled ones are worth using.
 const HD_FROM_SCALE: f32 = 2.0;
 
@@ -607,7 +609,8 @@ impl<'a> Ui<'a> {
             // The line being answered stays up, at the foot of the top bar.
             let m = gui.find("LBL_MESSAGE")?;
             let t = m.text.as_ref()?;
-            let (font, color) = (t.font.clone(), t.color);
+            let font = t.font.clone();
+            let color = TALK_BLUE;
             let r = [px, 2, width, LETTERBOX_TOP - 4];
             let line = view.subtitle.clone();
             self.draw_text(&mut cv, &font, &line, r, 34, color);
@@ -636,7 +639,8 @@ impl<'a> Ui<'a> {
                 m.extent.width + extra,
                 m.extent.height,
             ];
-            self.draw_text(&mut cv, &t.font, &view.subtitle, r, t.alignment, t.color);
+            let color = if live { TALK_BLUE } else { t.color };
+            self.draw_text(&mut cv, &t.font, &view.subtitle, r, t.alignment, color);
         } else {
             let list = gui.find("LB_REPLIES")?;
             let proto = list.proto_item.as_ref()?;
@@ -673,6 +677,8 @@ impl<'a> Ui<'a> {
                 }
                 let color = if i == view.selected {
                     [1.0, 1.0, 0.3]
+                } else if live {
+                    TALK_BLUE
                 } else {
                     t.color
                 };

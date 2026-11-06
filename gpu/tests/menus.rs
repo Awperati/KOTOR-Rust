@@ -2472,6 +2472,33 @@ fn the_one_being_fought_stays_the_target_when_the_cursor_leaves() {
 }
 
 #[test]
+fn a_conversations_words_are_blue_and_its_bars_have_nothing_else() {
+    let Some(mut s) = at_menu() else { return };
+    temp_saves(&mut s, "talk_colors");
+    press(&mut s, "BTN_NEWGAME");
+    let talking = (0..12000).find(|_| {
+        s.update(DT);
+        if s.state_line().contains("replies=0") {
+            s.continue_line();
+            false
+        } else {
+            true
+        }
+    });
+    assert!(talking.is_some(), "{}", s.state_line());
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    let top_bar = (o.width * 90 * 4) as usize;
+    let bar = &o.rgba[..top_bar];
+    let bright = |p: &&[u8]| p[3] > 200 && p[2] > 180;
+    assert!(bar.chunks(4).filter(bright).count() > 50, "the line");
+    let white = bar
+        .chunks(4)
+        .filter(|p| p[0] > 200 && p[1] > 200 && p[3] > 200);
+    assert_eq!(white.count(), 0, "no white words, and no caption");
+}
+
+#[test]
 fn the_party_screens_ok_asks_first() {
     let Some((mut s, _)) = in_game("party_ok") else {
         return;
