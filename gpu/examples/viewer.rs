@@ -668,6 +668,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.enable_chargen(!flag("--no-chargen"));
     stage.enable_early_force(!flag("--no-early-force") && !flag("--autopilot"));
     stage.turret_assist = flag("--auto-aim");
+    stage.combat_autosave = !flag("--state-log") && !flag("--autopilot");
     if flag("--original-underwear") {
         stage.set_conventional_underwear(false);
     }

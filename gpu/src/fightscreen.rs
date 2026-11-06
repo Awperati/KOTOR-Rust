@@ -369,7 +369,7 @@ impl Stage {
             self.menus.fight.talk_ended = self.game.world.time;
             return false;
         }
-        if self.menus.auto_pause_on {
+        if self.menus.auto_pause_on || self.combat_autosave {
             self.auto_pause();
         }
         self.menus.paused
@@ -401,10 +401,16 @@ impl Stage {
         let old_target = self.menus.fight.target;
         let retarget = target.is_some() && old_target.is_some() && target != old_target;
 
+        if fresh {
+            self.autosave_before_fight();
+        }
         self.menus.fight.sighted.extend(enemies);
         self.menus.fight.down = down;
         self.menus.fight.round = round;
         self.menus.fight.target = target;
+        if !self.menus.auto_pause_on {
+            return;
+        }
         if fresh && s.pause_enemy {
             self.pause_for(STR_ENEMY_SIGHTED);
         } else if new_down && s.pause_party {

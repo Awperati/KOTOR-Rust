@@ -289,6 +289,8 @@ pub struct Stage {
     ui_width: u32,
     overlay: Option<Image>,
     overlay_key: String,
+    /// A game someone is playing saves before each fight. A test's or a driver's must not touch their saves.
+    pub combat_autosave: bool,
     /// A test driver has given someone this: `--grenadier`.
     pub armed: Option<ObjId>,
     /// A test driver has the turret aim for it.
@@ -404,6 +406,7 @@ impl Stage {
             ui_width: 853,
             overlay: None,
             overlay_key: String::new(),
+            combat_autosave: false,
             armed: None,
             turret_assist: false,
             overlay_version: 0,
@@ -2028,10 +2031,10 @@ impl Stage {
         let middle_slot = at(self.hud_pixel("BTN_TARGET1", layout));
         let right_slot = at(self.hud_pixel("BTN_TARGET2", layout));
         let disengage = at(self.hud_pixel("BTN_CLEARALL", layout));
+        let beside = at(self.hud_pixel("BTN_CHAR3", layout));
         let w = &self.game.world;
         let align = w.object(w.pc).map_or(-1, |o| o.alignment);
         // The OK of a message, on a screen's 640 by 480.
-        let beside = at(self.hud_pixel("BTN_CHAR3", layout));
         let ok = at(self.menu_pixel("BTN_OK", None, (640, 480)));
         // The rows of a screen's list, the same way.
         let row0 = at(self.menu_pixel("LB_ITEMS", Some(0), (640, 480)));

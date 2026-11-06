@@ -50,6 +50,8 @@ const SAVE_NAME_MAX: usize = 32;
 const SMALL_FONT: &str = "fnt_d16x16";
 /// Strings of the save screen in `dialog.tlk`.
 const STR_LOAD_GAME: u32 = 1585;
+/// Enemies seen this soon after the last save are the same fight. **Assumed.**
+const ONE_FIGHT_SECONDS: f32 = 30.0;
 const STR_WRONG_SIDE: u32 = 1512;
 const STR_SAVE_GAME: u32 = 1588;
 
@@ -523,12 +525,12 @@ pub(super) struct Menus {
     shop: storescreen::Shop,
     /// Pazaak, while it is up.
     pazaak: pazaakscreen::Pazaak,
-    /// The galaxy map, once it has been up.
-    galaxy: Option<galaxyscreen::Galaxy>,
     /// Which figure is the big one on the first screen of making a character.
     chargen_big: usize,
     /// When a fight was last saved before, on the game's clock.
     last_fight_save: Option<f32>,
+    /// The galaxy map, once it has been up.
+    galaxy: Option<galaxyscreen::Galaxy>,
     /// The words of the option the cursor last rested on.
     option_words: Option<u32>,
     /// Why that option is greyed.
@@ -1244,9 +1246,26 @@ impl Stage {
 
     /// With Autosave ticked, a change of module writes `autosave.sav` over the last one.
     pub(super) fn autosave(&mut self) {
-        if !self.menus.settings.autosave || self.why_no_save().is_some() {
-            return;
+        if self.menus.settings.autosave && self.why_no_save().is_none() {
+            self.write_autosave();
         }
+    }
+
+    /// The owner's rule: a save before every fight, whatever the tick says, each taking the place of the last. The enemy
+    /// has often begun already when they are seen, so this may be in a fight. Loading it, they come at the player again.
+    pub(super) fn autosave_before_fight(&mut self) {
+        let now = self.game.world.time;
+        let lately = self
+            .menus
+            .last_fight_save
+            .is_some_and(|t| now - t < ONE_FIGHT_SECONDS);
+        if self.combat_autosave && !lately && !self.game.world.in_dialogue() {
+            self.menus.last_fight_save = Some(now);
+            self.write_autosave();
+        }
+    }
+
+    fn write_autosave(&mut self) {
         if self.menus.saves_dir.is_none() {
             self.menus.saves_dir = default_saves_dir();
         }

@@ -752,6 +752,89 @@ fn the_option_pages_change_what_they_say_and_keep_it() {
 }
 
 #[test]
+fn a_fight_is_saved_before_it_starts_in_the_one_file() {
+    let Some((mut s, dir)) = in_game("fight_save") else {
+        return;
+    };
+    let file = dir.join("autosave.sav");
+    s.combat_autosave = true;
+    s.enable_auto_pause(false);
+    let pc = s.game.world.pc;
+    let foes: Vec<u32> = s
+        .game
+        .world
+        .objects
+        .values()
+        .filter(|o| o.kind == kotor_game::Kind::Creature && s.game.world.reputation(pc, o.id) <= 10)
+        .map(|o| o.id)
+        .collect();
+    assert!(foes.len() >= 2);
+    s.update(DT);
+    assert!(!file.exists(), "nobody seen yet");
+    s.game.world.combat.perceived.insert((pc, foes[0]));
+    s.update(DT);
+    let info = kotor_game::read_save_info(&file).unwrap();
+    assert_eq!(info.name, "Autosave");
+    let saved = std::fs::metadata(&file).unwrap().modified().unwrap();
+
+    // Another of the same fight does not save again, and it is the same one file.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    s.game.world.combat.perceived.insert((pc, foes[1]));
+    s.update(DT);
+    assert_eq!(std::fs::metadata(&file).unwrap().modified().unwrap(), saved);
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_game_for_a_test_never_saves_before_a_fight() {
+    let Some((mut s, dir)) = in_game("fight_no_save") else {
+        return;
+    };
+    s.enable_auto_pause(true);
+    let pc = s.game.world.pc;
+    let foe = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.kind == kotor_game::Kind::Creature && s.game.world.reputation(pc, o.id) <= 10)
+        .map(|o| o.id)
+        .unwrap();
+    s.game.world.combat.perceived.insert((pc, foe));
+    s.update(DT);
+    assert!(!dir.join("autosave.sav").exists());
+}
+
+#[test]
+fn the_party_screen_shows_who_is_in_a_slot() {
+    let Some((mut s, _)) = in_game("party_faces") else {
+        return;
+    };
+    // Trask is in Bastila's slot on the Endar Spire: `k_pend` scripts use slot 0.
+    s.game.world.available.insert(0, "end_trask".to_string());
+    assert_eq!(s.game.world.party_portrait(0).as_deref(), Some("po_ptrask"));
+}
+
+#[test]
+fn the_figure_the_mouse_is_on_is_the_big_one() {
+    let Some(mut s) = at_chargen("big_one") else {
+        return;
+    };
+    let hole = |s: &mut Stage, tag: &str| {
+        let p = s.menu_pixel(tag, None, SIZE).unwrap();
+        s.hover(p, SIZE);
+        s.update(DT);
+        frame(s)
+    };
+    let first = hole(&mut s, "BTN_SEL1");
+    let fifth = hole(&mut s, "BTN_SEL5");
+    assert!(first != fifth, "the big one moves");
+    let again = hole(&mut s, "BTN_SEL1");
+    assert_eq!(first.len(), again.len());
+}
+
+#[test]
 fn autosave_writes_on_a_change_of_module_when_ticked() {
     let Some((mut s, dir)) = in_game("autosave") else {
         return;
