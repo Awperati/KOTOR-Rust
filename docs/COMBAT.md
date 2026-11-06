@@ -37,3 +37,21 @@ Spire battle with the player (blaster pistol) against a Sith soldier and prints 
   being "knocked out" instead of dying, AI styles of the party (`GetPartyAIStyle` and `GetNPCAIStyle` return 0).
 - `GetCreatureTalentBest`/`Random`, `GetIsDebilitated`, `GetLastAttackAction`, `GetNPCAIStyle`, `GetPartyAIStyle`, `GetPlayerRestrictMode` and
   `GetUserActionsPending` still answer fixed values (counted in `World::constant_defaults`): the fight calls them hundreds of times.
+
+## Combat builder's changes, 6 Nov 2026 (`combat-party`)
+All sizes below are my assumptions, not measured from the game.
+| What | Rule | Where |
+|---|---|---|
+| Force Push (bug 36) | `EffectForcePushed` throws the target 3 m away from the caster over 0.5 s (stopped by walls, closed doors and creatures) and leaves it down for at least 3 s. The power's own script gives only 0.1 s | `force.rs`, `Shove`, `update_shoves` |
+| Party doors (bug 39) | Followers and chasing enemies route through unlocked shut doors and open them within 1.6 m | `follow.rs`, `combat.rs` `chase` |
+| Teammates (bug 21) | The player and party never attack one another. A party member with no target takes the leader's | `combat.rs` `assist_leader`, `attack` |
+| Knocked out (GAPS 5) | `GetIsDead` is true for someone down. Downed creatures are not attacked. A fight lasts while an enemy still notices a standing party member | `host.rs`, `combat.rs`, `rules.rs` `fight_is_over` |
+| Remains (bug 34) | Everything carried goes into the remains whatever Droppable says, except creature claws, bite and hide (`baseitems.2da` rows 81-84) | `play.rs` `leave_loot` |
+| Collision (bug 15) | The player is stopped by party members too (walks through after 0.5 s pressed). Scripted walkers go round people | `follow.rs`, `play.rs` `step_move` |
+| Sight (bug 25) | Sight is blocked by closed doors and by upright non-floor walkmesh faces at eye height (1.5 m). Floor missing for under 2.5 m (tables, crates) no longer blocks | `combat.rs` `clear_line`, `NavMesh::sight_blocked` |
+| Camera (bug 26) | Tilted up, the camera stays 0.3 m under the top of the walls within 6 m | `gpu/src/stage.rs` `camera` |
+| Talents (GAPS 8) | `GetCreatureTalentBest` is the dearest affordable power of the right kind (categories 1-3 harmful), `Random` any. `GetIsDebilitated` follows disabling effects | `host.rs` |
+| Encounters (GAPS 6) | A creature whose CR is over the player's level plus `encdifficulty.2da` `value` stays home, unless it is the weakest on offer. `GetIsEncounterCreature` is real | `encounters.rs` |
+
+Bug 32 (the dark Jedi fight): I could not reproduce a wait for a click. The Jedi and the Apprentice fight at one hit point each until the player opens `end_door16`, then `end_cut04` runs and ends by itself, in 36 s in my run (`the_jedi_duel_ends_without_any_click`). The 36 s is dice, not scripted.
+Frames: `docs/shots/combat` at 720p and 2160p, made by `gpu/examples/combat_shots.rs`.

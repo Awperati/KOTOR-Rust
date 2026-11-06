@@ -45,7 +45,11 @@ impl Floor {
     pub fn wall_top_near(&self, x: f32, y: f32, from_z: f32, radius: f32) -> Option<f32> {
         let mut top: Option<f32> = None;
         for m in &self.meshes {
-            for f in m.faces.iter().filter(|f| !f.walkable() && f.normal[2].abs() < 0.7) {
+            for f in m
+                .faces
+                .iter()
+                .filter(|f| !f.walkable() && f.normal[2].abs() < 0.7)
+            {
                 for &i in &f.vertices {
                     let v = m.vertices[i as usize];
                     if (v[0] - x).hypot(v[1] - y) <= radius && v[2] > from_z {
