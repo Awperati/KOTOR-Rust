@@ -74,6 +74,23 @@ fn a_thing_with_no_floor_under_it_can_be_used_from_beside_it() {
 }
 
 #[test]
+fn someone_beside_a_table_can_still_walk_away() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    w.transition("tar_m11aa", "tar11_sw11aa08").unwrap();
+    // Where a fight left Carth in the Hidden Bek base's bar, in the gap in the floor around a table.
+    let at = [35.34, 77.34, 0.0];
+    let nav = w.nav.as_ref().unwrap();
+    assert!(nav.height_at(at[0], at[1], 1.0).is_none(), "off the floor");
+    assert!(nav.find_path(at, [34.0, 72.0, 0.0]).is_some());
+}
+
+#[test]
 fn someone_behind_a_counter_can_be_spoken_to() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

@@ -49,6 +49,17 @@ fn dist(a: V3, b: V3) -> f32 {
     (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f32>().sqrt()
 }
 
+fn dist_to_segment(p: V3, a: V3, b: V3) -> f32 {
+    let ab: [f32; 3] = std::array::from_fn(|i| b[i] - a[i]);
+    let len2 = ab.iter().map(|v| v * v).sum::<f32>();
+    if len2 < 1e-9 {
+        return dist(p, a);
+    }
+    let t = (0..3).map(|i| (p[i] - a[i]) * ab[i]).sum::<f32>() / len2;
+    let t = t.clamp(0.0, 1.0);
+    dist(p, std::array::from_fn(|i| a[i] + ab[i] * t))
+}
+
 fn tri_height(t: &[V3; 3], x: f32, y: f32) -> Option<f32> {
     let (a, b, c) = (t[0], t[1], t[2]);
     let d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
@@ -261,11 +272,32 @@ impl NavMesh {
             .map(|(i, _)| i)
     }
 
+    /// Face containing `p`, or else the face whose edge is nearest within `snap` metres. For whoever walks: a route that
+    /// cuts a corner can leave them just off the floor, and a large face's centre can be far from its edge. Carth stood
+    /// beside a table in `tar_m11aa` and could go nowhere.
+    fn face_beside(&self, p: V3, snap: f32) -> Option<usize> {
+        if let Some((i, _)) = self.locate(p[0], p[1], p[2] + 0.5) {
+            return Some(i);
+        }
+        self.tris
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let d = (0..3)
+                    .map(|e| dist_to_segment(p, t[e], t[(e + 1) % 3]))
+                    .fold(f32::MAX, f32::min);
+                (i, d)
+            })
+            .filter(|(_, d)| *d <= snap)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| i)
+    }
+
     /// Faces from the face under `from` to the face under `to` (A* over face centres), if connected.
-    /// A point not on a face snaps to the nearest face centre within 1.5 m. The last face may be blocked, as a door's is
-    /// to whoever walks up to it, and two doors side by side can share one.
+    /// A start not on a face snaps to the nearest face edge within 1.5 m, and an end to the nearest face centre within
+    /// 1.5 m. The last face may be blocked, as a door's is to whoever walks up to it, and two doors side by side can share one.
     pub fn face_path(&self, from: V3, to: V3) -> Option<Vec<usize>> {
-        let (start, goal) = (self.face_near(from, 1.5)?, self.face_near(to, 1.5)?);
+        let (start, goal) = (self.face_beside(from, 1.5)?, self.face_near(to, 1.5)?);
         let mut g = vec![f32::MAX; self.tris.len()];
         let mut came = vec![usize::MAX; self.tris.len()];
         // Where a walker comes onto each face. A face's centre can lie across a blocked line from where the walker is.
@@ -528,6 +560,33 @@ mod tests {
         nav.unblock_disc([10.0, 2.0, 0.0], 5.0);
         assert_eq!(nav.blocked_count(), 0);
         assert!(nav.find_path(from, to).is_some());
+    }
+
+    #[test]
+    fn someone_just_off_the_floor_walks_back_onto_it() {
+        // Eight squares around a hole. The faces' centres are all further than 1.5 m from the point in the hole.
+        let squares = [
+            [0.0, 0.0, 4.0, 4.0],
+            [4.0, 0.0, 8.0, 4.0],
+            [8.0, 0.0, 12.0, 4.0],
+            [0.0, 4.0, 4.0, 8.0],
+            [8.0, 4.0, 12.0, 8.0],
+            [0.0, 8.0, 4.0, 12.0],
+            [4.0, 8.0, 8.0, 12.0],
+            [8.0, 8.0, 12.0, 12.0],
+        ];
+        let nav = NavMesh::from_meshes(&[floor(&squares)]);
+        let start = [4.3, 6.0, 0.0];
+        assert_eq!(nav.height_at(start[0], start[1], 1.0), None);
+        let route = nav.find_path(start, [10.0, 6.0, 0.0]).unwrap();
+        // It goes round the hole, not across it.
+        for w in route.windows(2) {
+            let mid = [(w[0][0] + w[1][0]) / 2.0, (w[0][1] + w[1][1]) / 2.0];
+            assert!(
+                !(4.5..7.5).contains(&mid[0]) || !(4.5..7.5).contains(&mid[1]),
+                "{route:?}"
+            );
+        }
     }
 
     #[test]

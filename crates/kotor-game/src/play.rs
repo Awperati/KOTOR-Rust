@@ -169,8 +169,9 @@ impl World {
                     to[1] + turn.sin() * stop * share,
                     to[2],
                 ];
-                // Nobody is spoken to through a closed door: Trask waits behind one.
-                if nav.crosses_block(at, to) {
+                // Nobody is spoken to through a closed door: Trask waits behind one. And nobody stands in the gap around a
+                // stage to speak to its dancers: from there the next route can lead onto the stage, with no way off.
+                if nav.crosses_block(at, to) || nav.height_at(at[0], at[1], at[2] + 1.0).is_none() {
                     continue;
                 }
                 if let Some(route) = nav.find_path(from, at) {
