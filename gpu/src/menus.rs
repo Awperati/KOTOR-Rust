@@ -17,6 +17,45 @@ const SMALL_FONT: &str = "fnt_d16x16";
 const STR_LOAD_GAME: u32 = 1585;
 const STR_SAVE_GAME: u32 = 1588;
 
+/// The picture an empty slot shows, by the slot's button: stock names, seen in the reference video at 7:05.
+fn empty_slot_picture(button: &str) -> &'static str {
+    match button {
+        "BTN_INV_HEAD" => "ihead",
+        "BTN_INV_IMPLANT" => "iimplant",
+        "BTN_INV_BODY" => "iarmor",
+        "BTN_INV_ARM_L" => "iforearm_l",
+        "BTN_INV_ARM_R" => "iforearm_r",
+        "BTN_INV_WEAP_L" => "iweap_l",
+        "BTN_INV_WEAP_R" => "iweap_r",
+        "BTN_INV_BELT" => "ibelt",
+        _ => "ihands",
+    }
+}
+
+/// `top.gui`: the row of tabs over the party's screens. `lbl_icn_*2`, the file's `HILIGHT`, is the green picture the
+/// reference video shows for the screen that is up.
+const TABS: [(&str, &str, &str); 8] = [
+    ("BTN_EQU", "LBLH_EQU", "lbl_icn_equ"),
+    ("BTN_INV", "LBLH_INV", "lbl_icn_inv"),
+    ("BTN_CHAR", "LBLH_CHA", "lbl_icn_char"),
+    ("BTN_ABI", "LBLH_ABI", "lbl_icn_abi"),
+    ("BTN_MSG", "LBLH_MSG", "lbl_icn_msg"),
+    ("BTN_JOU", "LBLH_JOU", "lbl_icn_que"),
+    ("BTN_MAP", "LBLH_MAP", "lbl_icn_map"),
+    ("BTN_OPT", "LBLH_OPT", "lbl_icn_opt"),
+];
+const STR_CONTAINER: u32 = 393;
+const STR_SELECT_ITEM: u32 = 38154;
+/// What the pause menu's right side says under the cursor: the buttons the talk table has words for.
+fn pause_words(tag: &str) -> Option<u32> {
+    match tag {
+        "BTN_LOADGAME" => Some(42300),
+        "BTN_SAVEGAME" => Some(42301),
+        "BTN_QUIT" => Some(42302),
+        _ => None,
+    }
+}
+
 /// The equipment screen's slots: button, the label that shows the item, slot, and the name shown above them.
 const EQUIP_SLOTS: [(&str, &str, i32, &str); 9] = [
     ("BTN_INV_HEAD", "LBL_INV_HEAD", SLOT_HEAD, "Head"),
@@ -337,6 +376,29 @@ impl Stage {
         if !self.menus.message.is_empty() {
             v.message = self.menus.message.clone();
         }
+        let active = match top {
+            Screen::Equip => Some("BTN_EQU"),
+            Screen::Inventory => Some("BTN_INV"),
+            Screen::Character => Some("BTN_CHAR"),
+            Screen::Pause if self.started => Some("BTN_OPT"),
+            _ => None,
+        };
+        if let Some(active) = active {
+            let mut row = MenuView::new("top");
+            for (button, label, picture) in TABS {
+                let lit = matches!(&v.hover, Some(Hit::Button(t)) if t == button);
+                let suffix = if button == active || lit { "2" } else { "" };
+                row.fill(label, format!("{picture}{suffix}"));
+            }
+            v.top = Some(Box::new(row));
+        }
+        if let (Screen::Pause, Some(Hit::Button(tag))) = (top, &v.hover) {
+            if let Some(words) = pause_words(tag) {
+                let text = self.ui.strref(words);
+                v.patches.entry("LB_DESC".to_string()).or_default().hidden = false;
+                v.text("LB_DESC", text);
+            }
+        }
         Some(v)
     }
 
@@ -533,10 +595,11 @@ impl Stage {
         v.text("LBL_VITALITY", self.vitality());
         let pc = self.game.world.pc;
         let shown_slot = self.menus.hover_slot.or(self.menus.slot);
-        for (_, label, slot, name) in EQUIP_SLOTS {
+        for (button, label, slot, name) in EQUIP_SLOTS {
             if shown_slot == Some(slot) {
                 v.text("LBL_SLOTNAME", name);
             }
+            v.fill(label, empty_slot_picture(button));
             let w = &mut self.game.world;
             let worn = w.object(pc).and_then(|o| o.equipped.get(&slot).copied());
             let picture = worn
@@ -549,9 +612,10 @@ impl Stage {
         if shown_slot.is_none() {
             v.text("LBL_SLOTNAME", "");
         }
+        let select = self.ui.strref(STR_SELECT_ITEM);
         v.text(
             "LBL_SELECTTITLE",
-            self.menus.slot.map_or("Items", |_| "Items for this slot"),
+            self.menus.slot.map_or(String::new(), |_| select),
         );
         let w = &mut self.game.world;
         v.text("LBL_DEF", w.defense_of(pc).to_string());
@@ -751,11 +815,8 @@ impl Stage {
         let mut v = MenuView::new("container");
         v.over_scene = true;
         v.hide(&["BTN_GIVEITEMS"]);
-        let w = &self.game.world;
-        let title = w.opened.and_then(|id| w.object(id)).map(|o| o.name.clone());
-        if let Some(name) = title.filter(|n| !n.is_empty()) {
-            v.text("LBL_MESSAGE", name);
-        }
+        let title = self.ui.strref(STR_CONTAINER);
+        v.text("LBL_MESSAGE", title);
         let rows = self.item_rows();
         v.lists
             .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
@@ -794,11 +855,15 @@ impl Stage {
         v.text("LBL_EXPERIENCE_STAT", s.xp.to_string());
         v.text("LBL_NEEDED_XP", s.next_level_xp.to_string());
         v.text("LBL_VITALITY_STAT", format!("{}/{}", s.hp, s.max_hp));
-        v.text("LBL_FORCE_STAT", format!("{}/{}", s.force, s.max_force));
+        if s.max_force > 0 {
+            v.text("LBL_FORCE_STAT", format!("{}/{}", s.force, s.max_force));
+        } else {
+            v.hide(&["LBL_FORCE", "LBL_FORCE_STAT"]);
+        }
         v.text("LBL_DEFENSE_STAT", s.defense.to_string());
-        v.text("LBL_FORTITUDE_STAT", format!("{:+}", s.fortitude));
-        v.text("LBL_REFLEX_STAT", format!("{:+}", s.reflex));
-        v.text("LBL_WILL_STAT", format!("{:+}", s.will));
+        v.text("LBL_FORTITUDE_STAT", s.fortitude.to_string());
+        v.text("LBL_REFLEX_STAT", s.reflex.to_string());
+        v.text("LBL_WILL_STAT", s.will.to_string());
         for (i, (score, modifier)) in [
             "LBL_STR", "LBL_DEX", "LBL_CON", "LBL_INT", "LBL_WIS", "LBL_CHA",
         ]
@@ -815,15 +880,18 @@ impl Stage {
         {
             let (value, bonus) = s.abilities[i];
             v.text(score, value.to_string());
-            v.text(modifier, format!("{bonus:+}"));
+            let shown = if bonus == 0 {
+                "0".to_string()
+            } else {
+                format!("{bonus:+}")
+            };
+            v.text(modifier, shown);
         }
-        // One mark down the scale, from light at the top. **Assumed** from the tags and where they lie.
-        let row = ((100 - s.alignment.clamp(0, 100)) * 9 / 100) + 1;
+        // The handle on the scale says it; the marks are for something else: none shows in the reference video.
         for n in 1..=10 {
-            if n != row {
-                v.hide(&[format!("LBL_GOOD{n}").as_str()]);
-            }
+            v.hide(&[format!("LBL_GOOD{n}").as_str()]);
         }
+        v.hide(&["LBL_MORE"]);
         v.value("SLD_ALIGN", 100 - s.alignment, 100);
         v
     }
@@ -835,6 +903,27 @@ impl Stage {
         if self.game.world.use_item(pc, item).is_ok() {
             self.menus.about = self.game.world.object(item).map(|_| item);
             self.menus.first = 0;
+        }
+    }
+
+    fn change_tab(&mut self, screen: Screen) {
+        self.menus.stack.pop();
+        self.menus.stack.push(screen);
+        self.menus.first = 0;
+        self.menus.slot = None;
+        self.menus.about = None;
+        self.menus.hover_slot = None;
+        self.menus.refused = false;
+    }
+
+    /// A click on one of the HUD's buttons: the screen it opens. `BTN_ACTION0` is the stage's.
+    pub(super) fn hud_button(&mut self, tag: &str) {
+        match tag {
+            "BTN_EQU" => self.open_equip(),
+            "BTN_INV" => self.open_inventory(),
+            "BTN_CHAR" => self.open_character(),
+            "BTN_OPT" => self.escape(),
+            _ => {}
         }
     }
 
@@ -922,7 +1011,7 @@ impl Stage {
 
     fn menu_layout_point(&self, pixel: (f32, f32), size: (u32, u32)) -> (f32, f32) {
         (
-            pixel.0 * self.ui_width as f32 / size.0.max(1) as f32,
+            pixel.0 * 640.0 / size.0.max(1) as f32,
             pixel.1 * 480.0 / size.1.max(1) as f32,
         )
     }
@@ -978,6 +1067,22 @@ impl Stage {
         let Some(top) = self.top() else {
             return;
         };
+        // The tabs change between the party's screens. The other four are not built.
+        if self.menus.stack.last().is_some() && TABS.iter().any(|t| t.0 == tag) {
+            let target = match tag {
+                "BTN_EQU" => Some(Screen::Equip),
+                "BTN_INV" => Some(Screen::Inventory),
+                "BTN_CHAR" => Some(Screen::Character),
+                "BTN_OPT" => Some(Screen::Pause),
+                _ => None,
+            };
+            match target {
+                Some(screen) => self.change_tab(screen),
+                None => self.menus.message = "That screen is not built yet.".to_string(),
+            }
+            self.menus.hover = None;
+            return;
+        }
         match (top, tag) {
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
@@ -1305,10 +1410,7 @@ impl Stage {
     ) -> Option<(f32, f32)> {
         let view = self.menu_view()?;
         let (x, y) = self.ui.menu_point(&view, tag, row)?;
-        Some((
-            x * size.0 as f32 / self.ui_width as f32,
-            y * size.1 as f32 / 480.0,
-        ))
+        Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
     }
 
     /// The name in the text box.
@@ -1330,8 +1432,14 @@ impl Stage {
 /// movies are greyed.
 fn main_menu() -> MenuView {
     let mut v = MenuView::new("mainmenu");
-    v.stretch = vec!["TGuiPanel".to_string(), "LBL_3DVIEW".to_string()];
-    v.hide(&["LB_MODULES", "BTN_WARP", "LBL_NEWCONTENT"]);
+    v.hide(&[
+        "LB_MODULES",
+        "BTN_WARP",
+        "LBL_NEWCONTENT",
+        "LBL_BW",
+        "LBL_LUCAS",
+    ]);
+    v.plain("BTN_EXIT");
     v.inert(&["BTN_MOVIES"]);
     v
 }

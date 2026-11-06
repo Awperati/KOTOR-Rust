@@ -531,8 +531,8 @@ fn a_container_opens_its_own_window_over_the_scene() {
 /// The middle of a slider is at this share of its width, on the window.
 fn slide(s: &mut Stage, tag: &str, along: f32) {
     let (x, y) = s.menu_pixel(tag, None, SIZE).unwrap();
-    // A slider is 240 units wide, at 1.5 pixels to a unit.
-    let px = x + (along - 0.5) * 240.0 * 1.5;
+    // A slider is 240 units wide, at 2 pixels to a unit across.
+    let px = x + (along - 0.5) * 240.0 * 2.0;
     s.hover((px, y), SIZE);
     s.click((px, y), SIZE);
 }
@@ -715,4 +715,62 @@ fn the_character_screen_shows_the_sheet_and_use_item_heals() {
         "the last one is gone"
     );
     assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
+}
+
+#[test]
+fn the_tabs_change_screen_and_the_hud_buttons_open_them() {
+    let Some((mut s, _)) = in_game("tabs") else {
+        return;
+    };
+    s.update(DT);
+    // The HUD's buttons, at the top right.
+    let p = s.hud_pixel("BTN_INV", SIZE).unwrap();
+    assert!(p.0 > SIZE.0 as f32 * 0.7 && p.1 < 60.0, "{p:?}");
+    s.click(p, SIZE);
+    assert_eq!(s.menu_name(), "inventory");
+    s.update(DT);
+    press(&mut s, "BTN_EQU");
+    assert_eq!(s.menu_name(), "equip");
+    press(&mut s, "BTN_CHAR");
+    assert_eq!(s.menu_name(), "character");
+    press(&mut s, "BTN_OPT");
+    assert_eq!(s.menu_name(), "pause");
+    press(&mut s, "BTN_INV");
+    assert_eq!(s.menu_name(), "inventory");
+    // The tabs for screens not built say so and stay.
+    press(&mut s, "BTN_JOU");
+    assert_eq!(s.menu_name(), "inventory");
+    assert!(
+        s.menu_message().contains("not built"),
+        "{}",
+        s.menu_message()
+    );
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    // The screens fill the window: nothing is left black at the sides.
+    s.open_equip();
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    let px = |x: u32, y: u32| &o.rgba[((y * o.width + x) * 4) as usize..][..3];
+    assert!(
+        px(4, SIZE.1 / 2).iter().any(|c| *c > 8),
+        "{:?}",
+        px(4, SIZE.1 / 2)
+    );
+    s.escape();
+    // In a conversation the bars are black and the scene shows between them.
+    s.game.world.talk_to(s.game.world.by_tag("end_trask")[0]);
+    for _ in 0..200 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            break;
+        }
+    }
+    assert!(s.game.world.in_dialogue());
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    let alpha = |x: u32, y: u32| o.rgba[((y * o.width + x) * 4 + 3) as usize];
+    assert_eq!(alpha(SIZE.0 - 1, 20), 255, "the top bar");
+    assert_eq!(alpha(SIZE.0 - 1, SIZE.1 - 2), 255, "the bottom bar");
+    assert_eq!(alpha(SIZE.0 / 2, SIZE.1 / 2), 0, "the scene");
 }

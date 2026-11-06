@@ -5,3 +5,6 @@
 # Renders of the owner's installed game: local viewing only, never committed (they contain game textures).
 /docs/shots/
 gpu/target/
+
+# Frames from the reference video: local viewing only, never committed.
+/cache/

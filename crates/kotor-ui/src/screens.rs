@@ -14,6 +14,10 @@ use std::collections::HashMap;
 
 /// The layout space of every GUI file.
 pub const SCREEN: (u32, u32) = (640, 480);
+/// Where the line naming the module starts, in layout units.
+const CAPTION_X: i32 = 112;
+/// The black bars of a conversation, as the game has them: `docs/MENU_REFERENCE.md`.
+const LETTERBOX_TOP: i32 = 60;
 /// From this many pixels a unit the stock pictures would be enlarged at least twice, and upscaled ones are worth using.
 const HD_FROM_SCALE: f32 = 2.0;
 
@@ -35,6 +39,7 @@ pub struct Ui<'a> {
     fonts: HashMap<String, Option<Font>>,
     /// The talk table, read the first time a control needs it.
     tlk: Option<Option<kotor_tables::Tlk>>,
+    target_at: Option<(i32, i32)>,
 }
 
 /// Per-control changes a screen applies on top of the file: replacement fill, text, bar value, or hiding.
@@ -47,6 +52,8 @@ pub struct Patch {
     /// Replacement colour and font for the control's text.
     pub color: Option<[f32; 3]>,
     pub font: Option<String>,
+    /// No border, whatever the file says.
+    pub plain: bool,
 }
 
 /// What the dialogue box shows.
@@ -84,6 +91,7 @@ impl<'a> Ui<'a> {
             textures: HashMap::new(),
             fonts: HashMap::new(),
             tlk: None,
+            target_at: None,
         }
     }
 
@@ -150,6 +158,8 @@ impl<'a> Ui<'a> {
             "optgameplay",
             "optgraphics",
             "optsound",
+            "top",
+            "mipc28x6",
             "inventory",
             "equip",
             "character",
@@ -190,9 +200,12 @@ impl<'a> Ui<'a> {
         }
         let key = name.to_ascii_lowercase();
         if !self.textures.contains_key(&key) {
-            let img = self
+            let mut img = self
                 .hd_picture(&key)
                 .or_else(|| load_texture(self.inst, &key));
+            if let (Some(i), true) = (img.as_mut(), additive(self.inst, &key)) {
+                brightness_to_alpha(i);
+            }
             self.textures.insert(key.clone(), img);
         }
         self.textures[&key].as_ref()
@@ -208,8 +221,13 @@ impl<'a> Ui<'a> {
             let f = f.map(|f| {
                 let name = f.name.to_ascii_lowercase();
                 // A font's letters are white and only their alpha counts. The colours hidden under the clear parts,
-                // once upscaled, would fringe the letters.
-                match self.hd_picture(&name) {
+                // once upscaled, would fringe the letters. The upscaled console font has its letters run together.
+                let big = if name == "fnt_console" {
+                    None
+                } else {
+                    self.hd_picture(&name)
+                };
+                match big {
                     Some(mut big) => {
                         for p in big.rgba.chunks_mut(4) {
                             p[0] = 255;
@@ -398,6 +416,20 @@ impl<'a> Ui<'a> {
         self.dialogue_on(view, None, [0, 0, 0, 0])
     }
 
+    /// The black bars of a conversation, with nothing on them.
+    pub fn letterbox_overlay(&mut self) -> Option<Image> {
+        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        self.letterbox(&mut cv);
+        Some(cv.into_image())
+    }
+
+    fn letterbox(&mut self, cv: &mut Canvas) {
+        let w = self.width as i32 + 1;
+        cv.fill_rect(0, 0, w, LETTERBOX_TOP, [0, 0, 0, 255]);
+        let bottom = self.gui("dialog").map_or(374, |g| g.panel.extent.top - 4);
+        cv.fill_rect(0, bottom, w, SCREEN.1 as i32 - bottom + 1, [0, 0, 0, 255]);
+    }
+
     fn dialogue_on(
         &mut self,
         view: &DialogueView,
@@ -423,15 +455,30 @@ impl<'a> Ui<'a> {
         let (px, py) = (p.extent.left, p.extent.top);
         // The box is a bar from edge to edge and down to the bottom of the screen; the text keeps the file's margins.
         let width = p.extent.width + extra;
-        cv.fill_rect(
-            0,
-            py - 4,
-            self.width as i32 + 1,
-            SCREEN.1 as i32 - py + 5,
-            [0, 0, 0, 160],
-        );
+        // Over a live scene: the game's black bars, and no name, since the voice and the shot say who speaks.
+        let live = clear[3] == 0;
+        if live {
+            self.letterbox(&mut cv);
+        } else {
+            cv.fill_rect(
+                0,
+                py - 4,
+                self.width as i32 + 1,
+                SCREEN.1 as i32 - py + 5,
+                [0, 0, 0, 160],
+            );
+        }
         self.draw_border(&mut cv, &p.border, [px, py, width, p.extent.height], None);
-        if !view.speaker.is_empty() {
+        if live && !view.replies.is_empty() && !view.subtitle.is_empty() {
+            // The line being answered stays up, at the foot of the top bar.
+            let m = gui.find("LBL_MESSAGE")?;
+            let t = m.text.as_ref()?;
+            let (font, color) = (t.font.clone(), t.color);
+            let r = [px, 2, width, LETTERBOX_TOP - 4];
+            let line = view.subtitle.clone();
+            self.draw_text(&mut cv, &font, &line, r, 34, color);
+        }
+        if !live && !view.speaker.is_empty() {
             let name = view.speaker.clone();
             let font = gui
                 .find("LBL_MESSAGE")
@@ -541,16 +588,18 @@ impl<'a> Ui<'a> {
             width: img.width,
             height: img.height,
             scale: self.scale,
+            scale_x: self.scale,
             rgba: img.rgba,
         };
+        // To the right of the map.
         cv.fill_rect(
-            0,
+            CAPTION_X,
             0,
             font.measure(text) + 8,
             font.line_height + 4,
             [0, 0, 0, 170],
         );
-        font.draw_line(&mut cv, 4, 2, text, [0.8, 0.9, 1.0]);
+        font.draw_line(&mut cv, CAPTION_X + 4, 2, text, [0.8, 0.9, 1.0]);
         Some(cv.into_image())
     }
 
@@ -568,9 +617,108 @@ impl<'a> Ui<'a> {
         action: &str,
         icon: &str,
     ) -> Option<Image> {
-        self.action = action.to_string();
-        self.action_icon = icon.to_string();
-        self.hud_on(party, target, [0, 0, 0, 0])
+        let mut gui = self.gui(HUD_GUI)?;
+        place_hud(&mut gui.panel, self.width, self.target_at);
+        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        let mut patches: HashMap<String, Patch> = HashMap::new();
+        for tag in all_tags(&gui.panel) {
+            if tag != "LBL_MAPBORDER" && HUD_HIDDEN.iter().any(|p| tag.starts_with(p)) {
+                patches.insert(
+                    tag,
+                    Patch {
+                        hidden: true,
+                        ..Patch::default()
+                    },
+                );
+            }
+        }
+        let hide = |patches: &mut HashMap<String, Patch>, tag: String| {
+            patches.entry(tag).or_default().hidden = true;
+        };
+        for n in 1..=3 {
+            match party.get(n - 1) {
+                Some(m) => {
+                    patches.entry(format!("LBL_CHAR{n}")).or_default().fill =
+                        Some(m.portrait.clone());
+                    patches.entry(format!("PB_VIT{n}")).or_default().value = Some((m.hp, m.max_hp));
+                    patches.entry(format!("PB_FORCE{n}")).or_default().value =
+                        Some((m.force, m.max_force));
+                }
+                None => {
+                    for tag in ["LBL_BACK", "LBL_CHAR", "PB_VIT", "PB_FORCE"] {
+                        hide(&mut patches, format!("{tag}{n}"));
+                    }
+                }
+            }
+        }
+        match target {
+            Some((name, hp, max)) => {
+                patches.entry("LBL_NAME".to_string()).or_default().text = Some(name.to_string());
+                patches.entry("PB_HEALTH".to_string()).or_default().value = Some((hp, max));
+                patches.entry("LBL_ACTION0".to_string()).or_default().fill = Some(icon.to_string());
+                patches
+                    .entry("LBL_ACTIONDESC".to_string())
+                    .or_default()
+                    .text = Some(action.to_string());
+                if self.target_at.is_none() {
+                    for tag in ["LBL_NAMEBG", "LBL_NAME", "LBL_HEALTHBG", "PB_HEALTH"] {
+                        hide(&mut patches, tag.to_string());
+                    }
+                }
+            }
+            None => {
+                for tag in [
+                    "LBL_NAMEBG",
+                    "LBL_NAME",
+                    "LBL_HEALTHBG",
+                    "PB_HEALTH",
+                    "LBL_ACTION0",
+                    "LBL_ACTIONDESC",
+                    "LBL_ACTIONDESCBG",
+                ] {
+                    hide(&mut patches, tag.to_string());
+                }
+            }
+        }
+        // File order: later controls lie on top, as in the menus.
+        for c in gui.panel.children.iter().filter(|c| c.kind != 9) {
+            self.draw_control(&mut cv, c, (0, 0), &patches);
+        }
+        Some(cv.into_image())
+    }
+
+    /// Where the target's name bar goes, in layout units: above it on the screen.
+    pub fn set_target_at(&mut self, at: Option<(i32, i32)>) {
+        self.target_at = at;
+    }
+
+    /// What the HUD has at a point of the layout: one of its menu buttons, or `BTN_ACTION0`.
+    pub fn hud_hit(&mut self, x: f32, y: f32) -> Option<String> {
+        let mut gui = self.gui(HUD_GUI)?;
+        place_hud(&mut gui.panel, self.width, self.target_at);
+        gui.panel
+            .children
+            .iter()
+            .filter(|c| HUD_BUTTONS.contains(&c.tag.as_str()))
+            .find(|c| {
+                let e = &c.extent;
+                x >= e.left as f32
+                    && x < (e.left + e.width) as f32
+                    && y >= e.top as f32
+                    && y < (e.top + e.height) as f32
+            })
+            .map(|c| c.tag.clone())
+    }
+
+    /// The layout point in the middle of a HUD control.
+    pub fn hud_point(&mut self, tag: &str) -> Option<(f32, f32)> {
+        let mut gui = self.gui(HUD_GUI)?;
+        place_hud(&mut gui.panel, self.width, self.target_at);
+        let e = &gui.find(tag)?.extent;
+        Some((
+            e.left as f32 + e.width as f32 / 2.0,
+            e.top as f32 + e.height as f32 / 2.0,
+        ))
     }
 
     fn hud_on(
@@ -729,6 +877,80 @@ impl<'a> Ui<'a> {
     }
 }
 
+/// The HUD the game shows on this layout: portraits at the bottom left, actions at the bottom right, the map at the top
+/// left, the menu buttons at the top right. It is written for 800x600.
+const HUD_GUI: &str = "mipc28x6";
+const HUD_FILE_SIZE: (i32, i32) = (800, 600);
+/// What the HUD does not show now: combat, notices, the action queue and the map's picture are not built.
+const HUD_HIDDEN: [&str; 25] = [
+    "LBL_CMBT",
+    "LBL_COMBATBG",
+    "LBL_MAP",
+    "LBL_ARROW_MARGIN",
+    "LBL_DISABLE",
+    "LBL_DEBILATATED",
+    "LBL_LVLUPBG",
+    "LBL_LEVELUP",
+    "LBL_STEALTHXP",
+    "LBL_DARKSHIFT",
+    "LBL_LIGHTSHIFT",
+    "LBL_PLOTXP",
+    "LBL_ITEM",
+    "LBL_JOURNAL",
+    "LBL_CASH",
+    "LBL_QUEUE",
+    "BTN_CLEAR",
+    "BTN_TARGET",
+    "LBL_TARGET",
+    "BTN_ACTIONUP",
+    "BTN_ACTIONDOWN",
+    "TB_SOLO",
+    "TB_STEALTH",
+    "LBL_ACTION1",
+    "LBL_ACTION2",
+];
+const HUD_BUTTONS: [&str; 9] = [
+    "BTN_EQU",
+    "BTN_INV",
+    "BTN_CHAR",
+    "BTN_ABI",
+    "BTN_MSG",
+    "BTN_JOU",
+    "BTN_MAP",
+    "BTN_OPT",
+    "BTN_ACTION0",
+];
+
+/// Lay the HUD's file over a screen `width` units wide and 480 high, keeping its proportions: the left half stays at the
+/// left and the right half at the right. **Assumed:** the game keeps these at their pixel size, which at 1080p is smaller
+/// than this. The target's name bar goes over the target.
+fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>) {
+    let k = SCREEN.1 as f32 / HUD_FILE_SIZE.1 as f32;
+    let scale = |v: i32| (v as f32 * k).round() as i32;
+    for c in &mut panel.children {
+        let e = &mut c.extent;
+        let right = e.left + e.width / 2 >= HUD_FILE_SIZE.0 / 2;
+        e.left = if right {
+            width as i32 - scale(HUD_FILE_SIZE.0 - e.left)
+        } else {
+            scale(e.left)
+        };
+        e.top = scale(e.top);
+        e.width = scale(e.width);
+        e.height = scale(e.height);
+    }
+    let Some((x, y)) = target_at else { return };
+    for c in &mut panel.children {
+        let down = match c.tag.as_str() {
+            "LBL_NAMEBG" | "LBL_NAME" => 0,
+            "LBL_HEALTHBG" | "PB_HEALTH" => 21,
+            _ => continue,
+        };
+        c.extent.left = x - c.extent.width / 2;
+        c.extent.top = y + down;
+    }
+}
+
 /// Spread a 640-wide HUD over a wider screen. The left side stays, the party and the map keep their distance from
 /// the right edge, and the action slot and the notice icons stay centred.
 fn anchored(panel: &mut Control, width: u32) {
@@ -781,6 +1003,31 @@ fn all_tags(c: &Control) -> Vec<String> {
         v.extend(all_tags(k));
     }
     v
+}
+
+/// Whether a picture's TXI says it is added to what is under it, so that its black is see-through. The HUD's mouldings
+/// are, and drawn plainly they are black boxes.
+fn additive(inst: &mut Install, name: &str) -> bool {
+    inst.read(name, kotor_core::ResType::TPC)
+        .ok()
+        .and_then(|d| kotor_image::parse_tpc(&d).ok())
+        .is_some_and(|t| t.txi.to_ascii_lowercase().contains("blending additive"))
+}
+
+/// Make an added picture drawable as a plain one: how bright a pixel is becomes how much of it shows.
+fn brightness_to_alpha(img: &mut Image) {
+    for p in img.rgba.chunks_mut(4) {
+        let most = p[0].max(p[1]).max(p[2]);
+        if most == 0 {
+            p[3] = 0;
+            continue;
+        }
+        let k = 255.0 / most as f32;
+        p[0] = (p[0] as f32 * k) as u8;
+        p[1] = (p[1] as f32 * k) as u8;
+        p[2] = (p[2] as f32 * k) as u8;
+        p[3] = ((most as u32 * p[3] as u32) / 255) as u8;
+    }
 }
 
 /// A texture by name, top-down: TPC rows are flipped, TGA is read as stored.

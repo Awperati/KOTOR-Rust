@@ -39,9 +39,16 @@ fn the_interface_reaches_the_edges_of_a_wide_screen() {
     }];
     let h = ui.hud_overlay(&party, None, "", "").unwrap();
     assert_eq!((h.width, h.height), (WIDTH, 480));
-    let moved = WIDTH - 640;
-    assert!(alpha(&h, 510 + moved, 405) > 0, "portrait at its new place");
-    assert_eq!(alpha(&h, 510, 405), 0, "nothing at the old place");
+    // The game's own layout: the portrait at the bottom left, the action slots at the bottom right.
+    let (px, py) = ui.hud_point("LBL_CHAR1").unwrap();
+    assert!(alpha(&h, px as u32, py as u32) > 0, "portrait");
+    assert!(px < 80.0 && py > 400.0, "{px} {py}");
+    let (ax, ay) = ui.hud_point("BTN_ACTION3").unwrap();
+    assert!(ax > (WIDTH - 60) as f32 && ay > 400.0, "{ax} {ay}");
+    assert!(alpha(&h, ax as u32, ay as u32) > 0, "action slot");
+    assert_eq!(ui.hud_hit(ax, ay), None, "only the first slot is in use");
+    let (bx, by) = ui.hud_point("BTN_OPT").unwrap();
+    assert_eq!(ui.hud_hit(bx, by).as_deref(), Some("BTN_OPT"));
     assert_eq!(alpha(&h, WIDTH / 2, 240), 0, "the middle stays clear");
 }
 

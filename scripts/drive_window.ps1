@@ -100,7 +100,7 @@ $s = WaitFor "opened" "true"
 Report "E opens the locker" ($s.opened -eq "true" -and [int]$s.items -gt 0) "opened=$($s.opened) items=$($s.items)"
 if ($Shots) { [Drv]::Save($h, "$Shots\live_locker.png") }
 $inv = [int]$s.inv
-Click 645 222   # the first row of container.gui
+Click 648 222   # the first row of container.gui
 $s = State
 Report "Click takes an item" ([int]$s.inv -eq $inv + 1) "inv $inv -> $($s.inv)"
 Key $SPACE[0] $SPACE[1]
@@ -143,8 +143,8 @@ Report "Never took focus" ($during -ne $h) "foreground before=$before now=$durin
 Stop-Process -Id $v.Id -Force
 Get-Content "$scratch\kotor_drive.err" -Tail 4
 
-# The second run: from the main menu, through a save and two loads, to Exit. Layout units are 853 wide on this
-# 1280x720 window, and a 640 wide screen is centred, so a control at layout x is at (x + 106) * 1.5.
+# The second run: from the main menu, through a save and two loads, to Exit. A 640x480 screen fills this 1280x720
+# window, so a control at layout (x, y) is at (2x, 1.5y).
 $savesDir = Join-Path $env:LOCALAPPDATA "kotor-rs\saves"
 $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--state-log","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
@@ -155,7 +155,7 @@ $h = $v.MainWindowHandle
 $before = [Drv]::GetForegroundWindow()
 $script:stateFile = "$scratch\kotor_drive2.out"
 function Press([int]$x, [int]$y, [int]$w, [int]$h2) {
-  Click ([int](($x + $w / 2 + 106) * 1.5)) ([int](($y + $h2 / 2) * 1.5))
+  Click ([int](($x + $w / 2) * 2)) ([int](($y + $h2 / 2) * 1.5))
 }
 function Shot($name) { if ($Shots) { [void](State); [Drv]::Save($h, "$Shots\$name.png") } }
 $ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $KEY_I = @(0x49, 0x17); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E)

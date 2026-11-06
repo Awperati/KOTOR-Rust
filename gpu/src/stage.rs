@@ -1017,9 +1017,13 @@ impl Stage {
             pixel.0 * self.ui_width as f32 / size.0.max(1) as f32,
             pixel.1 * 480.0 / size.1.max(1) as f32,
         );
-        if (40.0..104.0).contains(&x) && (384.0..448.0).contains(&y) {
-            if let Some(id) = self.target() {
-                self.use_thing(id);
+        if let Some(tag) = self.ui.hud_hit(x, y) {
+            if tag == "BTN_ACTION0" {
+                if let Some(id) = self.target() {
+                    self.use_thing(id);
+                }
+            } else {
+                self.hud_button(&tag);
             }
             return;
         }
@@ -1597,6 +1601,8 @@ impl Stage {
         let view = self.choice_view();
         let party = self.party_view();
         let target = self.target_view();
+        let target_at = self.target_on_screen();
+        self.ui.set_target_at(target_at);
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -1604,7 +1610,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{cut}",
+                "{}h{:?}{target:?}{target_at:?}{cut}",
                 self.module,
                 party
                     .iter()
@@ -1619,7 +1625,7 @@ impl Stage {
         self.overlay = match view {
             // A wordless beat: the scene alone.
             Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
-                self.ui.blank_overlay()
+                self.ui.letterbox_overlay()
             }
             Some(v) => self.ui.dialogue_overlay(&v),
             None => {
@@ -1633,8 +1639,10 @@ impl Stage {
                 )
             }
         };
+        // What is on screen in words, as far as the menu buttons leave room.
         let label = self.label();
-        self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &label));
+        let short = label.split(" | ").take(3).collect::<Vec<_>>().join(" | ");
+        self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &short));
         self.apply_brightness();
         self.overlay_version += 1;
     }
@@ -1674,6 +1682,15 @@ impl Stage {
         }
     }
 
+    /// The point on a window of `size` in the middle of a control of the HUD.
+    pub fn hud_pixel(&mut self, tag: &str, size: (u32, u32)) -> Option<(f32, f32)> {
+        let (x, y) = self.ui.hud_point(tag)?;
+        Some((
+            x * size.0 as f32 / self.ui_width as f32,
+            y * size.1 as f32 / 480.0,
+        ))
+    }
+
     /// One line for a test driver watching the live window.
     pub fn state_line(&self) -> String {
         let w = &self.game.world;
@@ -1697,6 +1714,50 @@ impl Stage {
             w.object(w.pc).map_or(0, |o| o.inventory.len()),
             self.target_view().map_or("-".to_string(), |t| t.0.replace(' ', "_")),
         )
+    }
+
+    /// Where the target's name bar goes, in layout units: a little over the target, as the game has it.
+    fn target_on_screen(&self) -> Option<(i32, i32)> {
+        let w = &self.game.world;
+        let o = w.object(self.target()?)?;
+        let up = match o.kind {
+            Kind::Door => 2.6,
+            Kind::Creature if !o.dead => 2.1,
+            _ => 1.1,
+        };
+        let cam = self.camera();
+        let v = [
+            o.position[0] - cam.eye[0],
+            o.position[1] - cam.eye[1],
+            o.position[2] + up - cam.eye[2],
+        ];
+        let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        let norm = |a: [f32; 3]| {
+            let l = dot(a, a).sqrt().max(1e-6);
+            [a[0] / l, a[1] / l, a[2] / l]
+        };
+        let fwd = norm([
+            cam.target[0] - cam.eye[0],
+            cam.target[1] - cam.eye[1],
+            cam.target[2] - cam.eye[2],
+        ]);
+        let right = norm([fwd[1], -fwd[0], 0.0]);
+        let above = [
+            right[1] * fwd[2] - right[2] * fwd[1],
+            right[2] * fwd[0] - right[0] * fwd[2],
+            right[0] * fwd[1] - right[1] * fwd[0],
+        ];
+        let depth = dot(v, fwd);
+        if depth < 0.2 {
+            return None;
+        }
+        let t = (cam.fov.to_radians() / 2.0).tan();
+        let wide = self.ui_width as f32;
+        let nx = dot(v, right) / (depth * t * wide / 480.0);
+        let ny = dot(v, above) / (depth * t);
+        let x = ((nx + 1.0) / 2.0 * wide) as i32;
+        let y = ((1.0 - ny) / 2.0 * 480.0) as i32;
+        Some((x.clamp(80, wide as i32 - 80), y.clamp(2, 440)))
     }
 
     /// The thing under the cursor, else the nearest in reach: name, hit points, and what using it does.

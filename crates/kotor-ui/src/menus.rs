@@ -1,10 +1,10 @@
 //! Menus drawn from stock GUI files: the main menu, the pause menu, the save screens, inventory and equipment. A screen
 //! says what it wants changed in a [`MenuView`], and the same view answers what is under the cursor.
 //!
-//! **Assumptions, not compared with the game:** the 640x480 layout stays centred on a wider screen with black at the
-//! sides, except controls a view names to stretch; controls are drawn in file order, so later ones lie on top (the
-//! opposite of the HUD's order: here the full-screen `LBL_3DVIEW` comes before the logo and buttons); list rows follow
-//! the file's `PROTOITEM`, whose extent is relative to the panel; a button under the cursor has yellow text.
+//! The 640x480 layout is stretched over the whole window, as in the reference video (`docs/MENU_REFERENCE.md`).
+//! **Assumptions:** controls are drawn in file order, so later ones lie on top (the full-screen `LBL_3DVIEW` comes before
+//! the logo and buttons); list rows follow the file's `PROTOITEM`, whose extent is relative to the panel; a button under
+//! the cursor has yellow text.
 
 use crate::canvas::Canvas;
 use crate::gui::Control;
@@ -54,8 +54,8 @@ pub struct MenuView {
     pub hover: Option<Hit>,
     /// A line at the foot of the screen.
     pub message: String,
-    /// Controls drawn across the whole width of a wide screen (`TGuiPanel` is the panel's own picture).
-    pub stretch: Vec<String>,
+    /// A row of controls of its own, `top.gui`, drawn after this screen and asked first what is under the cursor.
+    pub top: Option<Box<MenuView>>,
     /// A dialog over this screen. It takes all the input.
     pub dialog: Option<Box<MenuView>>,
     /// The scene shows around the panel, instead of black.
@@ -90,6 +90,11 @@ impl MenuView {
     }
 
     /// Draw this control's text in another font.
+    /// Draw this control without its border.
+    pub fn plain(&mut self, tag: &str) {
+        self.patches.entry(tag.to_string()).or_default().plain = true;
+    }
+
     pub fn font(&mut self, tag: &str, font: &str) {
         self.patches.entry(tag.to_string()).or_default().font = Some(font.to_string());
     }
@@ -122,21 +127,24 @@ fn row_layout(list: &Control) -> Option<([i32; 4], i32, usize)> {
 impl Ui<'_> {
     /// The layout's left and top on this screen.
     fn panel_origin(&self, panel: &Control) -> (i32, i32) {
-        let extra = (self.width.saturating_sub(SCREEN.0) / 2) as i32;
-        (extra + panel.extent.left, panel.extent.top)
+        (panel.extent.left, panel.extent.top)
     }
 
     /// A screen on black, or with `over` left showing around a dialog.
     pub fn menu_overlay(&mut self, view: &MenuView) -> Option<Image> {
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        cv.scale_x = self.pixels.0 as f32 / SCREEN.0 as f32;
         cv.clear(if view.over_scene {
             [0, 0, 0, 0]
         } else {
             [0, 0, 0, 255]
         });
         self.draw_view(&mut cv, view)?;
+        if let Some(t) = &view.top {
+            self.draw_view(&mut cv, t)?;
+        }
         if let Some(d) = &view.dialog {
-            cv.fill_rect(0, 0, self.width as i32 + 1, 481, [0, 0, 0, 140]);
+            cv.fill_rect(0, 0, SCREEN.0 as i32 + 1, 481, [0, 0, 0, 140]);
             self.draw_view(&mut cv, d)?;
         }
         Some(cv.into_image())
@@ -146,35 +154,25 @@ impl Ui<'_> {
         let gui = self.gui(&view.gui)?;
         let p = &gui.panel;
         let (ox, oy) = self.panel_origin(p);
-        let whole = [0, 0, self.width as i32, SCREEN.1 as i32];
-        let r = if view.stretch.iter().any(|t| t == &p.tag) {
-            whole
-        } else {
-            [ox, oy, p.extent.width, p.extent.height]
-        };
+        let r = [ox, oy, p.extent.width, p.extent.height];
         // **Assumed:** a panel over the scene gets a dark backing, since its picture is see-through and text must read.
         if view.over_scene {
-            cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 0, 190]);
+            cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 0, 140]);
         }
         self.draw_border(cv, &p.border, r, None);
         for c in &p.children {
             if view.is_hidden(&c.tag) || c.kind == SCROLLBAR {
                 continue;
             }
-            let rect = if view.stretch.iter().any(|t| t == &c.tag) {
-                whole
-            } else {
-                let e = &c.extent;
-                [ox + e.left, oy + e.top, e.width, e.height]
-            };
             if c.kind == LIST {
                 self.draw_list(cv, view, c, (ox, oy));
             } else {
-                self.draw_plain(cv, view, c, rect);
+                let e = &c.extent;
+                self.draw_plain(cv, view, c, [ox + e.left, oy + e.top, e.width, e.height]);
             }
         }
         if !view.message.is_empty() {
-            let w = self.width as i32;
+            let w = SCREEN.0 as i32;
             cv.fill_rect(0, 446, w + 1, 24, [0, 0, 0, 200]);
             let text = view.message.clone();
             self.draw_text(cv, "fnt_d16x16", &text, [0, 446, w, 24], 18, LIT);
@@ -207,7 +205,9 @@ impl Ui<'_> {
             self.draw_text(cv, &t.font, &text, words, 17, color);
             return;
         }
-        self.draw_border(cv, &c.border, r, patch.fill.as_deref());
+        if !patch.plain {
+            self.draw_border(cv, &c.border, r, patch.fill.as_deref());
+        }
         if let (true, Some(h)) = (lit, &c.hilight) {
             self.draw_border(cv, h, r, None);
         }
@@ -239,8 +239,11 @@ impl Ui<'_> {
         let along = cur.clamp(0, max.max(1)) as f32 / max.max(1) as f32;
         let full = [0, 0, img.width as i32, img.height as i32];
         let dst = if r[3] > r[2] {
-            let h = r[2] * img.height as i32 / img.width.max(1) as i32;
-            [r[0], r[1] + ((r[3] - h) as f32 * along) as i32, r[2], h]
+            // Small, beside the scale: `docs/MENU_REFERENCE.md`.
+            let w = 14;
+            let h = w * img.height as i32 / img.width.max(1) as i32;
+            let y = r[1] + ((r[3] - h) as f32 * along) as i32;
+            [r[0] + r[2] / 2 + 4, y, w, h]
         } else {
             let w = r[3] * img.width as i32 / img.height.max(1) as i32;
             [r[0] + ((r[2] - w) as f32 * along) as i32, r[1], w, r[3]]
@@ -329,6 +332,9 @@ impl Ui<'_> {
         if let Some(d) = &view.dialog {
             return self.menu_hit(d, x, y);
         }
+        if let Some(hit) = view.top.as_ref().and_then(|t| self.menu_hit(t, x, y)) {
+            return Some(hit);
+        }
         let gui = self.gui(&view.gui)?;
         let (ox, oy) = self.panel_origin(&gui.panel);
         let (x, y) = (x - ox as f32, y - oy as f32);
@@ -388,7 +394,9 @@ impl Ui<'_> {
         }
         let gui = self.gui(&view.gui)?;
         let (ox, oy) = self.panel_origin(&gui.panel);
-        let c = gui.find(tag)?;
+        let Some(c) = gui.find(tag) else {
+            return self.menu_point(view.top.as_ref()?, tag, row);
+        };
         let r = match row {
             Some(i) => {
                 let first = view.lists.get(tag).map_or(0, |l| l.1);

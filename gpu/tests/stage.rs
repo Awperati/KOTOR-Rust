@@ -477,21 +477,20 @@ fn the_hud_shows_the_target_and_its_action() {
     let with = s.overlay().unwrap().clone();
     assert!(s.state_line().contains("target="), "{}", s.state_line());
     assert!(!s.state_line().ends_with("target=-"), "{}", s.state_line());
-    // The action slot at (40, 384) to (104, 448) of the layout has something in it.
+    // The first action slot, at the bottom right, has something in it.
     let w = with.width as usize;
     let k = with.height as f32 / 480.0;
-    let (x0, y0, side) = (
-        (50.0 * k) as usize,
-        (390.0 * k) as usize,
-        (50.0 * k) as usize,
-    );
+    let size = (with.width, with.height);
+    let at = s.hud_pixel("LBL_ACTION0", size).unwrap();
+    let side = (24.0 * k) as usize;
+    let (x0, y0) = (at.0 as usize - side / 2, at.1 as usize - side / 2);
     let inked = (y0..y0 + side)
         .flat_map(|y| (x0..x0 + side).map(move |x| (x, y)))
         .filter(|(x, y)| with.rgba[(y * w + x) * 4 + 3] > 100)
         .count();
-    assert!(inked > 500, "{inked} inked pixels in the slot");
+    assert!(inked > 200, "{inked} inked pixels in the slot");
     // A click on the slot uses the target: the locker opens.
-    s.click((70.0 * k, 410.0 * k), (with.width, with.height));
+    s.click(at, size);
     s.update(DT);
     assert!(s.game.world.opened.is_some(), "{}", s.state_line());
 }

@@ -8,6 +8,8 @@ pub struct Canvas {
     pub height: u32,
     /// Physical pixels per layout unit. `draw_image` and `fill_rect` take layout units; `blend` takes pixels.
     pub scale: f32,
+    /// The same across, where a 640 wide screen is stretched over a wider window.
+    pub scale_x: f32,
     /// RGBA, first row at the top.
     pub rgba: Vec<u8>,
 }
@@ -59,6 +61,7 @@ impl Canvas {
             width,
             height,
             scale: 1.0,
+            scale_x: 1.0,
             rgba: vec![0; (width * height * 4) as usize],
         }
     }
@@ -67,12 +70,19 @@ impl Canvas {
     pub fn scaled_layout(pixels: (u32, u32), scale: f32) -> Canvas {
         let mut c = Canvas::new(pixels.0, pixels.1);
         c.scale = scale;
+        c.scale_x = scale;
         c
     }
 
     fn to_pixels(&self, x: i32, y: i32, w: i32, h: i32) -> [i32; 4] {
-        let at = |v: i32| (v as f32 * self.scale).round() as i32;
-        [at(x), at(y), at(x + w) - at(x), at(y + h) - at(y)]
+        let across = |v: i32| (v as f32 * self.scale_x).round() as i32;
+        let down = |v: i32| (v as f32 * self.scale).round() as i32;
+        [
+            across(x),
+            down(y),
+            across(x + w) - across(x),
+            down(y + h) - down(y),
+        ]
     }
 
     pub fn clear(&mut self, c: [u8; 4]) {
@@ -137,7 +147,7 @@ impl Canvas {
         if dw <= 0 || dh <= 0 || region[2] <= 0 || region[3] <= 0 {
             return;
         }
-        let smooth = self.scale != 1.0;
+        let smooth = self.scale != 1.0 || self.scale_x != 1.0;
         // Shrinking a large picture: average a few samples per pixel.
         let samples = if dw * 4 < region[2] * 3 || dh * 4 < region[3] * 3 {
             2

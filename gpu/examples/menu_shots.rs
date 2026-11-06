@@ -74,9 +74,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = std::fs::remove_dir_all(&saves);
     s.set_saves_dir(saves.clone());
     click(&mut s, "BTN_NEWGAME", None);
-    // Past the opening, to a place worth saving.
+    // Past the opening, to a place worth saving, with a frame of the first replies.
+    let mut talked = false;
     for _ in 0..12000 {
         s.update(DT);
+        if !talked
+            && s.game
+                .world
+                .dialogue_view()
+                .is_some_and(|d| !d.3.is_empty())
+        {
+            talked = true;
+            for _ in 0..60 {
+                s.update(DT);
+            }
+            shot(&mut gpu, &mut s, "dialogue", &out);
+            s.set_view(SIZES[0]);
+        }
         if s.game.world.in_dialogue() {
             s.number_key(1);
             s.continue_line();

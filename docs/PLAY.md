@@ -104,7 +104,7 @@ All of this is the game's own data, measured with `crates/kotor-game/examples/lo
 **Assumed, not compared with the game:** an item a script gives a creature stays on the body when it dies; `OnInvDisturbed` only ever hears of a removal, since nothing can be put into a container yet.
 
 ## Menus
-Stock GUI files drawn by `crates/kotor-ui/src/menus.rs`, with the screens' logic in `gpu/src/menus.rs`. **Assumed, not compared with the game:** a 640x480 screen stays centred on a wide window with black at the sides, except the main menu's background, which stretches; controls are drawn in file order, later ones on top (the HUD draws the other way round); a button under the cursor has yellow text. Text alignment is read as bits: horizontal 1 left, 2 centre, 4 right, vertical 8 top, 16 middle, 32 bottom.
+Stock GUI files drawn by `crates/kotor-ui/src/menus.rs`, with the screens' logic in `gpu/src/menus.rs`. A 640x480 screen is stretched over the whole window, as in the reference video: see `docs/MENU_REFERENCE.md` for what was compared and what still differs. **Assumed:** controls are drawn in file order, later ones on top; a button under the cursor has yellow text. Text alignment is read as bits: horizontal 1 left, 2 centre, 4 right, vertical 8 top, 16 middle, 32 bottom.
 
 ## Other assumptions
 - The player is the recommended Soldier until there is a character creation screen.
