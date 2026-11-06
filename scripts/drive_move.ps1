@@ -101,7 +101,7 @@ $high = [double]$s.pcz
 Down $W; Start-Sleep -Milliseconds 950
 Shot "move_ledge_top_$tag"
 $until = (Get-Date).AddSeconds(6)
-do { $s = State; if ($s.air -eq "true" -and $Shots) { [Drv]::Save($h, "$Shots\move_fall_$tag.png") } } while ($s.air -eq "true" -or ((Get-Date) -lt $until -and [double]$s.pcz -gt $LEDGE_Z - 1.8))
+do { $s = State } while ($s.air -eq "true" -or ((Get-Date) -lt $until -and [double]$s.pcz -gt $LEDGE_Z - 1.8))
 Up $W
 Start-Sleep -Milliseconds 300
 Shot "move_landed_$tag"
@@ -122,6 +122,26 @@ if ($Shots) {
   $s = Open "slow" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767", "--speed", "0.1")
   Key $CTRL[0] $CTRL[1] 30
   for ($i = 1; $i -le 5; $i++) { Start-Sleep -Milliseconds 900; [Drv]::Save($h, "$Shots\move_roll_step$($i)_$tag.png") }
+  FocusReport
+  Close
+}
+# The fall at a tenth of the speed: at full speed it is over in half a second.
+if ($Shots) {
+  $s = Open "slowfall" $LEDGE_MODULE @("--place", $PLACE, "--speed", "0.1")
+  Down $W
+  $until = (Get-Date).AddSeconds(60)
+  do { $s = State } while ($s.air -ne "true" -and (Get-Date) -lt $until)
+  Up $W
+  Report "Slowly, it falls" ($s.air -eq "true") "air=$($s.air) z=$($s.pcz)"
+  [Drv]::Save($h, "$Shots\move_fall1_$tag.png")
+  Start-Sleep -Milliseconds 2000
+  $s = State
+  [Drv]::Save($h, "$Shots\move_fall2_$tag.png")
+  "fall2 at z=$($s.pcz) air=$($s.air)"
+  $until = (Get-Date).AddSeconds(30)
+  do { $s = State } while ($s.air -eq "true" -and (Get-Date) -lt $until)
+  [Drv]::Save($h, "$Shots\move_landing_$tag.png")
+  "landing at z=$($s.pcz) air=$($s.air)"
   FocusReport
   Close
 }
