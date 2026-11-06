@@ -33,6 +33,20 @@ pub struct Row {
     pub dim: bool,
     /// Another font for the row's text.
     pub font: Option<String>,
+    /// Pictures across the row in place of its text, each leading to the next.
+    pub cells: Vec<Cell>,
+}
+
+/// One picture of a row that has several, as a chain of feats does.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Cell {
+    pub icon: String,
+    /// Greyed: it cannot be chosen.
+    pub dim: bool,
+    /// Framed in green: it is had already.
+    pub owned: bool,
+    /// Framed in yellow.
+    pub selected: bool,
 }
 
 /// What is under the cursor.
@@ -40,6 +54,8 @@ pub struct Row {
 pub enum Hit {
     Button(String),
     Row(String, usize),
+    /// A picture of a row that has several.
+    Cell(String, usize, usize),
     /// A slider, and how far along it, 0 to 1.
     Slider(String, f32),
 }
@@ -106,9 +122,26 @@ impl MenuView {
         }
     }
 
+    /// This control's text is lit whatever the cursor does.
+    pub fn lit(&mut self, tag: &str) {
+        self.patches.entry(tag.to_string()).or_default().color = Some(LIT);
+    }
+
+    /// This label answers to the cursor as a button does.
+    pub fn live(&mut self, tag: &str) {
+        self.patches.entry(tag.to_string()).or_default().live = true;
+    }
+
     fn is_hidden(&self, tag: &str) -> bool {
         self.patches.get(tag).is_some_and(|p| p.hidden)
     }
+}
+
+/// Where the pictures of a row with several go: squares at its left, middle and right.
+fn cell_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
+    let side = row[3] - 8;
+    let step = (row[2] - side) / 2;
+    [0, 1, 2].map(|i| [row[0] + i * step, row[1] + 4, side, side])
 }
 
 /// Where a list's rows go: the first row's rectangle in panel units, the step down, and how many fit.
@@ -283,6 +316,10 @@ impl Ui<'_> {
         for (i, row) in rows.iter().enumerate().skip(*first).take(fits) {
             let y = at.1 + first_row[1] + (i - first) as i32 * step;
             let r = [at.0 + first_row[0], y, first_row[2], first_row[3]];
+            if !row.cells.is_empty() {
+                self.draw_cells(cv, view, &list.tag, i, &row.cells, r);
+                continue;
+            }
             let lit = matches!(&view.hover, Some(Hit::Row(l, n)) if l == &list.tag && *n == i);
             self.draw_border(cv, &proto.border, r, None);
             if let (true, Some(h)) = (lit || row.selected, &proto.hilight) {
@@ -327,6 +364,59 @@ impl Ui<'_> {
         }
     }
 
+    /// A row's pictures with an arrow from each to the next, as the reference video has the feats at 1:23:40.
+    fn draw_cells(
+        &mut self,
+        cv: &mut Canvas,
+        view: &MenuView,
+        tag: &str,
+        row: usize,
+        cells: &[Cell],
+        r: [i32; 4],
+    ) {
+        let rects = cell_rects(r);
+        for (n, cell) in cells.iter().enumerate().take(rects.len()) {
+            let at = rects[n];
+            let tint = if cell.dim { [0.3; 3] } else { [1.0; 3] };
+            if let Some(img) = self.texture(&cell.icon).cloned() {
+                let full = [0, 0, img.width as i32, img.height as i32];
+                cv.draw_image(&img, full, at, tint, 1.0, Default::default());
+            }
+            let lit = matches!(&view.hover, Some(Hit::Cell(l, a, b))
+                if l == tag && *a == row && *b == n);
+            let frame = if lit || cell.selected {
+                Some([255, 255, 76, 255])
+            } else if cell.owned {
+                Some([0, 220, 70, 255])
+            } else {
+                None
+            };
+            if let Some(c) = frame {
+                let [x, y, w, h] = at;
+                cv.fill_rect(x, y, w, 1, c);
+                cv.fill_rect(x, y + h - 1, w, 1, c);
+                cv.fill_rect(x, y, 1, h, c);
+                cv.fill_rect(x + w - 1, y, 1, h, c);
+            }
+            if n + 1 < cells.len() {
+                if let Some(img) = self.texture("lbl_rightminus").cloned() {
+                    let full = [0, 0, img.width as i32, img.height as i32];
+                    let side = 14;
+                    let x = (at[0] + at[2] + rects[n + 1][0] - side) / 2;
+                    let arrow = [x, at[1] + (at[3] - side) / 2, side, side];
+                    cv.draw_image(
+                        &img,
+                        full,
+                        arrow,
+                        [0.0, 0.65, 0.97],
+                        1.0,
+                        Default::default(),
+                    );
+                }
+            }
+        }
+    }
+
     /// What is at a point of the layout: the row, else the button whose centre is nearest (slots overlap).
     pub fn menu_hit(&mut self, view: &MenuView, x: f32, y: f32) -> Option<Hit> {
         if let Some(d) = &view.dialog {
@@ -351,17 +441,25 @@ impl Ui<'_> {
             let Some((r0, step, fits)) = row_layout(c) else {
                 continue;
             };
-            for i in *first..rows.len().min(first + fits) {
+            for (i, row) in rows.iter().enumerate().skip(*first).take(fits) {
                 let top = r0[1] + (i - first) as i32 * step;
-                if inside([r0[0], top, r0[2], r0[3]]) {
-                    return Some(Hit::Row(c.tag.clone(), i));
+                let r = [r0[0], top, r0[2], r0[3]];
+                if inside(r) {
+                    if row.cells.is_empty() {
+                        return Some(Hit::Row(c.tag.clone(), i));
+                    }
+                    let n = cell_rects(r).iter().position(|a| inside(*a))?;
+                    return (n < row.cells.len()).then(|| Hit::Cell(c.tag.clone(), i, n));
                 }
             }
         }
         gui.panel
             .children
             .iter()
-            .filter(|c| matches!(c.kind, 5 | 6 | CHECKBOX | SLIDER) && !view.is_hidden(&c.tag))
+            .filter(|c| {
+                let live = view.patches.get(&c.tag).is_some_and(|p| p.live);
+                (live || matches!(c.kind, 5 | 6 | CHECKBOX | SLIDER)) && !view.is_hidden(&c.tag)
+            })
             .filter(|c| {
                 let e = &c.extent;
                 inside([e.left, e.top, e.width, e.height])
@@ -380,6 +478,27 @@ impl Ui<'_> {
             })
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|(_, hit)| hit)
+    }
+
+    /// The layout point in the middle of a picture of a list's row.
+    pub fn menu_cell_point(
+        &mut self,
+        view: &MenuView,
+        tag: &str,
+        row: usize,
+        cell: usize,
+    ) -> Option<(f32, f32)> {
+        let gui = self.gui(&view.gui)?;
+        let (ox, oy) = self.panel_origin(&gui.panel);
+        let c = gui.find(tag)?;
+        let first = view.lists.get(tag).map_or(0, |l| l.1);
+        let (r0, step, _) = row_layout(c)?;
+        let top = r0[1] + row.checked_sub(first)? as i32 * step;
+        let at = cell_rects([r0[0], top, r0[2], r0[3]]).get(cell).copied()?;
+        Some((
+            (ox + at[0]) as f32 + at[2] as f32 / 2.0,
+            (oy + at[1]) as f32 + at[3] as f32 / 2.0,
+        ))
     }
 
     /// The layout point in the middle of a button, or of a row with `row`.

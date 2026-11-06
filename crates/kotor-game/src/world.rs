@@ -335,6 +335,8 @@ pub struct World {
     pub hero: ObjId,
     /// Conversations wait for the player instead of running to the end (see `World::dialogue_view`).
     pub interactive_dialogue: bool,
+    /// The player takes each level on a screen, instead of when the experience comes in.
+    pub hold_levels: bool,
     /// The direction the player is being steered this step, and whether at a run.
     pub steer: Option<([f32; 2], bool)>,
     /// The game's difficulty: a row of `difficultyopt.2da`, 0 easy, 1 normal, 2 difficult.
@@ -486,6 +488,7 @@ impl World {
             conv_paused_at: None,
             hero: 1,
             interactive_dialogue: false,
+            hold_levels: false,
             steer: None,
             difficulty: 1,
             opened: None,

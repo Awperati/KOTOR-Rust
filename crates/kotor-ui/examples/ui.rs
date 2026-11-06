@@ -75,6 +75,7 @@ fn main() {
             max_hp: 30,
             force: 5,
             max_force: 10,
+            level_up: false,
         },
         HudMember {
             portrait: "po_pfha1".into(),
@@ -82,6 +83,7 @@ fn main() {
             max_hp: 30,
             force: 0,
             max_force: 10,
+            level_up: false,
         },
     ];
     save(

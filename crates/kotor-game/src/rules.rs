@@ -128,7 +128,7 @@ impl World {
         }
     }
 
-    fn class_abbr(&mut self, class: i32) -> Option<String> {
+    pub(crate) fn class_abbr(&mut self, class: i32) -> Option<String> {
         let classes = self.table("classes")?;
         Some(abbr(classes.get(class.max(0) as usize, "skillstable")?))
     }
@@ -203,24 +203,27 @@ impl World {
         }
     }
 
-    /// Raise a skill by one rank, spending points. Class skills cost 1, cross-class 2.
+    /// What a rank of a skill costs a creature, and the most ranks it can have. Class skills cost 1, cross-class 2.
+    pub fn skill_price(&mut self, id: ObjId, skill: usize) -> Option<(i32, i32)> {
+        let (class, level) = self.objects.get(&id).map(|o| (o.class, o.level))?;
+        Some(if self.is_class_skill(class, skill) {
+            (1, level + 3)
+        } else {
+            (2, (level + 3) / 2)
+        })
+    }
+
+    /// Raise a skill by one rank, spending points.
     pub fn buy_skill_rank(&mut self, id: ObjId, skill: usize) -> Result<(), String> {
-        let Some((class, level, points)) = self
-            .objects
-            .get(&id)
-            .map(|o| (o.class, o.level, o.skill_points))
-        else {
+        let Some((level, points)) = self.objects.get(&id).map(|o| (o.level, o.skill_points)) else {
             return Err("no such creature".into());
         };
         let count = self.table("skills").map_or(0, |t| t.row_count());
         if skill >= count {
             return Err(format!("no skill {skill}"));
         }
-        let class_skill = self.is_class_skill(class, skill);
-        let (cost, cap) = if class_skill {
-            (1, level + 3)
-        } else {
-            (2, (level + 3) / 2)
+        let Some((cost, cap)) = self.skill_price(id, skill) else {
+            return Err("no such creature".into());
         };
         let ranks = self.skill_ranks(id, skill);
         if ranks >= cap {
@@ -238,7 +241,7 @@ impl World {
         Ok(())
     }
 
-    fn feat_column(&mut self, class: i32, suffix: &str) -> Option<String> {
+    pub(crate) fn feat_column(&mut self, class: i32, suffix: &str) -> Option<String> {
         let classes = self.table("classes")?;
         let a = abbr(classes.get(class.max(0) as usize, "featstable")?);
         Some(format!("{a}_{suffix}"))
@@ -399,12 +402,17 @@ impl World {
         Some(up)
     }
 
-    /// Give experience; level up for every threshold crossed. Returns the level-ups.
+    /// Give experience; level up for every threshold crossed, unless the player's are held for the screen. Returns the
+    /// level-ups.
     pub fn grant_xp(&mut self, id: ObjId, amount: i32) -> Vec<LevelUp> {
+        let (hold, pc) = (self.hold_levels, self.pc);
         let Some(o) = self.objects.get_mut(&id) else {
             return Vec::new();
         };
         o.xp += amount;
+        if hold && id == pc {
+            return Vec::new();
+        }
         let xp = o.xp;
         let target = self.level_for_xp(xp);
         let mut out = Vec::new();

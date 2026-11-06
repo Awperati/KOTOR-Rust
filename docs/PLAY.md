@@ -91,6 +91,11 @@ Item pictures are `i<itemclass>_<number>`. Measured over the 557 item templates 
 ## Character
 `character.gui`, for the player, with the numbers from the rules: class, level, experience and what the next level needs, vitality, Force, defense, the six attributes, the three saves and alignment. **Assumed:** one `LBL_GOOD` mark down the scale shows the alignment, light at the top. The 3D figure is not built, so the portrait stands in its place. Level-up and party switching are hidden, and Scripts is greyed.
 
+## Levelling up
+Experience does not raise the player's level by itself: `World::hold_levels`, which the stage sets, makes the level wait. A mark shows on the portrait, and the character screen shows Auto Level Up and Level Up. `maincg.gui` with `leveluppnl.gui` over it lists the steps, and a step opens once those before it are done: Attributes on levels divisible by 4, Skills, Feats when there are slots, Powers when the class gets some, Accept. Back or Esc on the panel puts the creature back as it was. Cancel or Esc on a page puts back that page.
+
+Feats and powers are chains of up to three pictures, each with an arrow to what it leads to: green is had already, dim cannot be taken, yellow is chosen or under the cursor. Recommended follows the class's columns in `feat.2da`, `skills.2da` and `classes.2da`, and the alignment's in `spells.2da`. Party members still level up by themselves. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/levelup.rs`.
+
 ## Loot
 All of this is the game's own data, measured with `crates/kotor-game/examples/loot_census.rs` over the BIFs and 117 modules. There is no `itemcreate` table in the game: its 2DAs with item in the name are `baseitems`, `itempropdef`, `itemprops`, `itemvalue` and `skillvsitemcost`. `treasurescale.2da` exists and no template or script here was seen using it.
 

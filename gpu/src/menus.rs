@@ -9,6 +9,9 @@ use kotor_game::{
 use kotor_ui::{Hit, MenuView, Row};
 use std::path::{Path, PathBuf};
 
+#[path = "levelup.rs"]
+mod levelup;
+
 /// Longest name a save can be given, and the characters the interface font has.
 const SAVE_NAME_MAX: usize = 32;
 /// The interface's narrow font, for text the wide button font would not fit.
@@ -114,6 +117,12 @@ pub(super) enum Screen {
     Gameplay,
     Graphics,
     Sound,
+    /// The level being taken: its steps, and a page for each.
+    LevelUp,
+    LevelAbilities,
+    LevelSkills,
+    LevelFeats,
+    LevelPowers,
 }
 
 /// What the player chose on the option pages. Kept in a text file beside the saves.
@@ -231,7 +240,23 @@ impl Screen {
             Screen::Gameplay => "gameplay",
             Screen::Graphics => "graphics",
             Screen::Sound => "sound",
+            Screen::LevelUp => "levelup",
+            Screen::LevelAbilities => "level_attributes",
+            Screen::LevelSkills => "level_skills",
+            Screen::LevelFeats => "level_feats",
+            Screen::LevelPowers => "level_powers",
         }
+    }
+
+    fn is_level(self) -> bool {
+        matches!(
+            self,
+            Screen::LevelUp
+                | Screen::LevelAbilities
+                | Screen::LevelSkills
+                | Screen::LevelFeats
+                | Screen::LevelPowers
+        )
     }
 }
 
@@ -268,6 +293,8 @@ pub(super) struct Menus {
     hover_slot: Option<i32>,
     /// The item chosen could not go on.
     refused: bool,
+    /// The level being taken.
+    level: Option<levelup::Draft>,
     settings: Settings,
     /// Where the settings are kept; `None` keeps them in memory, as in tests.
     settings_file: Option<PathBuf>,
@@ -383,6 +410,11 @@ impl Stage {
             Screen::Gameplay => self.gameplay_view(),
             Screen::Graphics => self.graphics_view(),
             Screen::Sound => self.sound_view(),
+            Screen::LevelUp => self.level_panel_view(),
+            Screen::LevelAbilities => self.level_abilities_view(),
+            Screen::LevelSkills => self.level_skills_view(),
+            Screen::LevelFeats => self.level_feats_view(),
+            Screen::LevelPowers => self.level_powers_view(),
         };
         if top != Screen::Name {
             v.hover = hover;
@@ -891,21 +923,17 @@ impl Stage {
     }
 
     /// `character.gui`. The numbers come from the rules. There is no 3D figure yet, so the portrait stands in its place.
-    /// Level-up, scripts and party switching are not built.
+    /// Scripts and party switching are not built. The level-up buttons show when a level is waiting.
     fn character_view(&mut self) -> MenuView {
         let mut v = MenuView::new("character");
-        v.hide(&[
-            "BTN_AUTO",
-            "BTN_LEVELUP",
-            "BTN_CHANGE1",
-            "BTN_CHANGE2",
-            "LBL_CLASS2",
-            "LBL_LEVEL2",
-        ]);
+        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2", "LBL_CLASS2", "LBL_LEVEL2"]);
         v.inert(&["BTN_SCRIPTS"]);
         v.fill("LBL_3DCHAR", self.portrait());
         let w = &mut self.game.world;
         let pc = w.pc;
+        if !w.level_ready(pc) {
+            v.hide(&["BTN_AUTO", "BTN_LEVELUP"]);
+        }
         let Some(s) = w.sheet(pc) else { return v };
         v.text("LBL_NAME", s.name);
         v.text("LBL_CLASS1", s.class);
@@ -1091,8 +1119,11 @@ impl Stage {
         let Some(view) = self.menu_view() else { return };
         let (x, y) = self.menu_layout_point(pixel, size);
         self.menus.hover = self.ui.menu_hit(&view, x, y);
-        if self.top() == Some(Screen::Equip) {
+        let top = self.top();
+        if top == Some(Screen::Equip) {
             self.equip_hover();
+        } else if let Some(screen) = top.filter(|t| t.is_level()) {
+            self.level_hover(screen);
         } else if let Some(Hit::Row(_, row)) = self.menus.hover {
             if let Some(item) = self.listed_items().get(row).copied() {
                 self.menus.about = Some(item);
@@ -1146,6 +1177,11 @@ impl Stage {
                 }
             }
             Some(Hit::Slider(tag, along)) => self.move_slider(&tag, along),
+            Some(Hit::Cell(_, row, cell)) => {
+                if let Some(screen) = self.top() {
+                    self.level_cell(screen, row, cell);
+                }
+            }
             None => self.menus.delete_armed = None,
         }
     }
@@ -1249,6 +1285,9 @@ impl Stage {
             (Screen::Inventory | Screen::Character, "BTN_EXIT") => {
                 self.menus.stack.pop();
             }
+            (Screen::Character, "BTN_LEVELUP") => self.start_level_up(),
+            (Screen::Character, "BTN_AUTO") => self.auto_level_up(),
+            (screen, _) if screen.is_level() => self.level_press(screen, tag),
             (Screen::Equip, "BTN_EQUIP") => self.accept_slot(),
             (Screen::Equip, "BTN_BACK") if self.menus.slot.is_some() => self.leave_slot(),
             (Screen::Equip, "BTN_BACK") => {
@@ -1293,6 +1332,11 @@ impl Stage {
             Some(Screen::Container) => self.game.world.close_container(),
             Some(Screen::Equip) if self.menus.slot.is_some() => {
                 self.leave_slot();
+                self.menus.message.clear();
+            }
+            Some(Screen::LevelUp) => self.abandon_level(),
+            Some(screen) if screen.is_level() => {
+                self.cancel_page();
                 self.menus.message.clear();
             }
             Some(_) => {
@@ -1508,6 +1552,19 @@ impl Stage {
     ) -> Option<(f32, f32)> {
         let view = self.menu_view()?;
         let (x, y) = self.ui.menu_point(&view, tag, row)?;
+        Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
+    }
+
+    /// The point on a window of `size` in the middle of a picture of a list's row.
+    pub fn menu_cell_pixel(
+        &mut self,
+        tag: &str,
+        row: usize,
+        cell: usize,
+        size: (u32, u32),
+    ) -> Option<(f32, f32)> {
+        let view = self.menu_view()?;
+        let (x, y) = self.ui.menu_cell_point(&view, tag, row, cell)?;
         Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
     }
 

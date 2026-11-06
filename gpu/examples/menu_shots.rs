@@ -162,6 +162,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.escape();
     s.open_character();
     shot(&mut gpu, &mut s, "character", &out);
+
+    // A level, with an attribute point: level 4 is 6000 experience.
+    s.game.world.grant_xp(pc, 6000);
+    for _ in 0..2 {
+        s.game.world.level_up(pc);
+    }
+    s.update(0.1);
+    shot(&mut gpu, &mut s, "character_level_up", &out);
+    click(&mut s, "BTN_LEVELUP", None);
+    shot(&mut gpu, &mut s, "level_panel", &out);
+    click(&mut s, "BTN_STEPNAME1", None);
+    click(&mut s, "STR_PLUS_BTN", None);
+    shot(&mut gpu, &mut s, "level_attributes", &out);
+    click(&mut s, "BTN_ACCEPT", None);
+    click(&mut s, "BTN_STEPNAME2", None);
+    click(&mut s, "COM_PLUS_BTN", None);
+    shot(&mut gpu, &mut s, "level_skills", &out);
+    click(&mut s, "BTN_ACCEPT", None);
+    click(&mut s, "BTN_STEPNAME3", None);
+    s.set_view(size);
+    let p = s.menu_cell_pixel("LB_FEATS", 1, 0, size).unwrap();
+    s.hover(p, size);
+    s.click(p, size);
+    shot(&mut gpu, &mut s, "level_feats", &out);
+    click(&mut s, "BTN_ACCEPT", None);
+    click(&mut s, "BTN_STEPNAME5", None);
     s.escape();
 
     // A body that left something, as a list, then with treasure.

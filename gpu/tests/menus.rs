@@ -765,6 +765,189 @@ fn the_character_screen_shows_the_sheet_and_use_item_heals() {
 }
 
 #[test]
+fn a_level_waits_for_the_screen_and_its_pages_spend_and_cancel() {
+    let Some((mut s, _)) = in_game("levelup") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let start = s.game.world.object(pc).unwrap().clone();
+    assert!(s.menu_name() == "-");
+
+    // Experience comes in and the level waits, with a mark on the portrait.
+    let hud = frame_of_hud(&mut s);
+    s.open_character();
+    assert!(
+        s.menu_pixel("BTN_LEVELUP", None, SIZE).is_none(),
+        "no level is waiting"
+    );
+    s.escape();
+    s.game.world.grant_xp(pc, 1000);
+    assert_eq!(s.game.world.object(pc).unwrap().level, start.level);
+    assert!(frame_of_hud(&mut s) != hud);
+
+    // Back on the panel puts everything back.
+    s.open_character();
+    press(&mut s, "BTN_LEVELUP");
+    assert_eq!(s.menu_name(), "levelup");
+    let o = s.game.world.object(pc).unwrap();
+    assert_eq!(o.level, start.level + 1);
+    assert!(o.max_hp > start.max_hp);
+    frame(&mut s);
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "character");
+    let o = s.game.world.object(pc).unwrap();
+    assert_eq!((o.level, o.max_hp), (start.level, start.max_hp));
+    assert_eq!(o.skill_points, start.skill_points);
+
+    // A step past the next one does nothing. Level 2 has no attribute point, so skills come first.
+    press(&mut s, "BTN_LEVELUP");
+    assert!(s.menu_pixel("BTN_STEPNAME1", None, SIZE).is_none());
+    press(&mut s, "BTN_STEPNAME5");
+    assert_eq!(s.menu_name(), "levelup", "Accept waits for the steps");
+    press(&mut s, "BTN_STEPNAME2");
+    assert_eq!(s.menu_name(), "level_skills");
+    frame(&mut s);
+
+    // An arrow spends a point and the other takes it back. Cancel leaves the page as it was found.
+    let ranks = s.game.world.skill_ranks(pc, 0);
+    let points = s.game.world.object(pc).unwrap().skill_points;
+    assert!(points > 0);
+    assert!(
+        s.menu_pixel("COM_MINUS_BTN", None, SIZE).is_none(),
+        "nothing to take back"
+    );
+    press(&mut s, "COM_PLUS_BTN");
+    assert_eq!(s.game.world.skill_ranks(pc, 0), ranks + 1);
+    let cost = points - s.game.world.object(pc).unwrap().skill_points;
+    assert!(cost == 1 || cost == 2, "{cost}");
+    press(&mut s, "COM_MINUS_BTN");
+    assert_eq!(s.game.world.skill_ranks(pc, 0), ranks);
+    assert_eq!(s.game.world.object(pc).unwrap().skill_points, points);
+    press(&mut s, "COM_PLUS_BTN");
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "levelup");
+    assert_eq!(s.game.world.skill_ranks(pc, 0), ranks);
+    // OK keeps them. The words follow the cursor.
+    press(&mut s, "BTN_STEPNAME2");
+    let plain = frame(&mut s);
+    let row = s.menu_pixel("COMPUTER_USE_LBL", None, SIZE).unwrap();
+    s.hover(row, SIZE);
+    assert!(frame(&mut s) != plain, "the words about the skill");
+    press(&mut s, "COM_PLUS_BTN");
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.game.world.skill_ranks(pc, 0), ranks + 1);
+
+    // Feats: chains of pictures. Add takes a feat and a slot, Remove gives them back.
+    press(&mut s, "BTN_STEPNAME3");
+    assert_eq!(s.menu_name(), "level_feats");
+    let slots = s.game.world.object(pc).unwrap().feat_slots;
+    let chains = s.game.world.feat_choices(pc);
+    assert!(chains.iter().all(|c| c.len() <= 3 && !c.is_empty()));
+    let (r, c, feat) = chains
+        .iter()
+        .enumerate()
+        .flat_map(|(r, chain)| chain.iter().enumerate().map(move |(c, f)| (r, c, f)))
+        .find(|(r, _, f)| f.can_take && !f.owned && *r < 4)
+        .map(|(r, c, f)| (r, c, f.id))
+        .expect("a feat in the first rows");
+    let p = s.menu_cell_pixel("LB_FEATS", r, c, SIZE).unwrap();
+    s.hover(p, SIZE);
+    s.click(p, SIZE);
+    frame(&mut s);
+    press(&mut s, "BTN_SELECT");
+    let o = s.game.world.object(pc).unwrap();
+    assert!(o.feats.contains(&feat));
+    assert_eq!(o.feat_slots.0 + o.feat_slots.1, slots.0 + slots.1 - 1);
+    press(&mut s, "BTN_SELECT");
+    let o = s.game.world.object(pc).unwrap();
+    assert!(!o.feats.contains(&feat));
+    assert_eq!(o.feat_slots, slots);
+    // Recommended spends every slot.
+    press(&mut s, "BTN_RECOMMENDED");
+    let o = s.game.world.object(pc).unwrap();
+    assert_eq!(o.feat_slots, (0, 0), "{:?}", o.feats);
+    press(&mut s, "BTN_ACCEPT");
+
+    // Accept keeps it all, and no level is waiting.
+    press(&mut s, "BTN_STEPNAME5");
+    assert_eq!(s.menu_name(), "character");
+    assert_eq!(s.game.world.object(pc).unwrap().level, start.level + 1);
+    assert!(s.menu_pixel("BTN_LEVELUP", None, SIZE).is_none());
+    s.escape();
+
+    // Level 4 has an attribute point: OK asks for it, and Constitution pays back every level.
+    s.game.world.grant_xp(pc, 6000);
+    s.game.world.level_up(pc);
+    let level = s.game.world.object(pc).unwrap().level;
+    assert_eq!(level, 3);
+    s.open_character();
+    press(&mut s, "BTN_LEVELUP");
+    assert_eq!(s.game.world.object(pc).unwrap().level, 4);
+    // Odd to even, so the modifier moves.
+    s.game.world.object_mut(pc).unwrap().abilities[2] = 13;
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(s.menu_name(), "level_attributes");
+    frame(&mut s);
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "level_attributes");
+    assert!(s.menu_message().contains("point"), "{}", s.menu_message());
+    let hp = s.game.world.object(pc).unwrap().max_hp;
+    press(&mut s, "CON_PLUS_BTN");
+    assert!(
+        s.menu_pixel("CON_PLUS_BTN", None, SIZE).is_none(),
+        "the point is spent"
+    );
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.game.world.object(pc).unwrap().abilities[2], 14);
+    assert_eq!(s.game.world.object(pc).unwrap().max_hp, hp + 4);
+    assert_eq!(s.menu_name(), "levelup");
+    s.escape();
+    assert_eq!(s.menu_name(), "character");
+    assert_eq!(s.game.world.object(pc).unwrap().level, 3);
+
+    // A Jedi has powers to choose too. Auto Level Up spends everything at once.
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.class = 3;
+    o.feat_slots = (0, 0);
+    o.skill_points = 0;
+    press(&mut s, "BTN_LEVELUP");
+    press(&mut s, "BTN_STEPNAME1");
+    press(&mut s, "BTN_RECOMMENDED");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME2");
+    press(&mut s, "BTN_ACCEPT");
+    let next = if s.menu_pixel("BTN_STEPNAME3", None, SIZE).is_some() {
+        press(&mut s, "BTN_STEPNAME3");
+        press(&mut s, "BTN_ACCEPT");
+        true
+    } else {
+        false
+    };
+    if s.game.world.power_slots_at(3, 4) > 0 {
+        press(&mut s, "BTN_STEPNAME4");
+        assert_eq!(s.menu_name(), "level_powers", "{next}");
+        frame(&mut s);
+        press(&mut s, "RECOMMENDED_BTN");
+        press(&mut s, "ACCEPT_BTN");
+        assert!(!s.game.world.object(pc).unwrap().spells.is_empty());
+    }
+    press(&mut s, "BTN_STEPNAME5");
+    assert_eq!(s.game.world.object(pc).unwrap().level, 4);
+    s.game.world.grant_xp(pc, 4000);
+    press(&mut s, "BTN_AUTO");
+    let o = s.game.world.object(pc).unwrap();
+    assert_eq!(o.level, 5);
+    assert_eq!(o.feat_slots.0 + o.feat_slots.1, 0);
+    assert_eq!(s.menu_name(), "character");
+}
+
+/// The picture of the game, with nothing open.
+fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
+    s.update(DT);
+    s.overlay().unwrap().rgba.clone()
+}
+
+#[test]
 fn the_tabs_change_screen_and_the_hud_buttons_open_them() {
     let Some((mut s, _)) = in_game("tabs") else {
         return;

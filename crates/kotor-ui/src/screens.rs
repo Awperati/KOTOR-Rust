@@ -54,6 +54,8 @@ pub struct Patch {
     pub font: Option<String>,
     /// No border, whatever the file says.
     pub plain: bool,
+    /// A label that answers to the cursor as a button does.
+    pub live: bool,
 }
 
 /// What the dialogue box shows.
@@ -75,6 +77,8 @@ pub struct HudMember {
     pub max_hp: i32,
     pub force: i32,
     pub max_force: i32,
+    /// A level is waiting to be taken.
+    pub level_up: bool,
 }
 
 impl<'a> Ui<'a> {
@@ -154,6 +158,12 @@ impl<'a> Ui<'a> {
             "saveload",
             "savename",
             "container",
+            "maincg",
+            "leveluppnl",
+            "abchrgen",
+            "skchrgen",
+            "ftchrgen",
+            "pwrlvlup",
             "optionsmain",
             "optgameplay",
             "optgraphics",
@@ -643,6 +653,9 @@ impl<'a> Ui<'a> {
                     patches.entry(format!("PB_VIT{n}")).or_default().value = Some((m.hp, m.max_hp));
                     patches.entry(format!("PB_FORCE{n}")).or_default().value =
                         Some((m.force, m.max_force));
+                    if m.level_up {
+                        patches.entry(format!("LBL_LEVELUP{n}")).or_default().hidden = false;
+                    }
                 }
                 None => {
                     for tag in ["LBL_BACK", "LBL_CHAR", "PB_VIT", "PB_FORCE"] {

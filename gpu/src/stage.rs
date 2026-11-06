@@ -310,6 +310,7 @@ impl Stage {
         base.set_prefer_rim(original);
         let mut world = World::new(base).map_err(e)?;
         world.interactive_dialogue = true;
+        world.hold_levels = true;
         Ok(world)
     }
 
@@ -1614,7 +1615,14 @@ impl Stage {
                 self.module,
                 party
                     .iter()
-                    .map(|m| (&m.portrait, m.hp, m.max_hp, m.force, m.max_force))
+                    .map(|m| (
+                        &m.portrait,
+                        m.hp,
+                        m.max_hp,
+                        m.force,
+                        m.max_force,
+                        m.level_up
+                    ))
                     .collect::<Vec<_>>()
             ),
         };
@@ -1795,6 +1803,7 @@ impl Stage {
                 max_hp: o.max_hp,
                 force: o.force,
                 max_force: o.max_force,
+                level_up: w.level_ready(o.id),
             })
             .collect()
     }
