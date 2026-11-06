@@ -66,6 +66,9 @@ const PRESENTATION: &[&str] = &[
 /// **Assumption:** Trask's template says neutral, which would leave him out of every fight, so joining must change it.
 pub(crate) const PARTY_FACTION: i32 = 2;
 
+/// The longest a creature flees in one go (metres). **Assumed.**
+const FLEE_METRES: f32 = 12.0;
+
 /// Routines that become queued actions with no effect on the headless world.
 const RECORDED_ACTIONS: &[&str] = &[
     "ActionMoveToObject",
@@ -74,6 +77,7 @@ const RECORDED_ACTIONS: &[&str] = &[
     "ActionJumpToLocation",
     "ActionRandomWalk",
     "ActionMoveAwayFromObject",
+    "ActionMoveAwayFromLocation",
     "ActionFollowLeader",
     "ActionSurrenderToEnemies",
     "ActionCastFakeSpellAtObject",
@@ -2221,6 +2225,62 @@ impl Host for Adapter<'_> {
                         walker: None,
                     },
                 );
+                None
+            }
+            // Fleeing (`k_sup_fear`, `k_ai_master`): walk or run directly away from the thing, as far as the floor allows.
+            // **Assumption:** at most `FLEE_METRES` a time however far the script asks (its default is 40 m), and a
+            // blocked line or the floor's edge ends the run.
+            "ActionMoveAwayFromObject" | "ActionMoveAwayFromLocation"
+                if self.world.interactive_dialogue =>
+            {
+                self.record(name, args);
+                let run = args
+                    .get(1)
+                    .is_some_and(|v| matches!(v, Value::Int(i) if *i != 0));
+                let range = match args.get(2) {
+                    Some(Value::Float(f)) => *f,
+                    _ => 40.0,
+                };
+                let from = if name.ends_with("Object") {
+                    self.world
+                        .object(self.obj(caller, args, 0))
+                        .map(|o| o.position)
+                } else {
+                    self.location(args.first()).map(|l| l.0)
+                };
+                let me = self.world.object(caller).map(|o| o.position);
+                if let (Some(from), Some(me), Some(nav)) = (from, me, self.world.nav.as_ref()) {
+                    let (dx, dy) = (me[0] - from[0], me[1] - from[1]);
+                    let len = dx.hypot(dy);
+                    let (ux, uy) = if len > 1e-3 {
+                        (dx / len, dy / len)
+                    } else {
+                        (1.0, 0.0)
+                    };
+                    let reach = range.min(FLEE_METRES);
+                    let mut to = me;
+                    let mut s = 0.5;
+                    while s <= reach {
+                        let (x, y) = (me[0] + ux * s, me[1] + uy * s);
+                        match nav.height_at(x, y, to[2] + 0.4) {
+                            Some(z) if !nav.crosses_block(to, [x, y, z]) => to = [x, y, z],
+                            _ => break,
+                        }
+                        s += 0.5;
+                    }
+                    if to != me {
+                        self.world.queue(
+                            caller,
+                            Action::MoveTo {
+                                target: None,
+                                to,
+                                range: 0.2,
+                                run,
+                                walker: None,
+                            },
+                        );
+                    }
+                }
                 None
             }
             // An animation takes time, and a creature that idles queues the next one straight after it.
