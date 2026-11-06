@@ -40,16 +40,29 @@ Set-Whole $historyFile $history
 # latest.txt goes last: once it names a build, that build is whole.
 Set-Whole (Join-Path $Root 'latest.txt') @($Sha)
 
-# A running launcher can be renamed but not overwritten.
+# The build is out now. Nothing from here on may fail the job: a launcher left running holds its file.
+# A running launcher can be renamed but not overwritten, and once renamed it cannot be removed until it stops.
 $launcher = Join-Path $Root 'KotorRust.exe'
-$old = Join-Path $Root 'KotorRust.old.exe'
-if (Test-Path $old) { Remove-Item -Force $old -ErrorAction SilentlyContinue }
 $new = "$launcher.new"
-Copy-Item $LauncherExe $new -Force
-if (Test-Path $launcher) { Move-Item -Force $launcher $old }
-Move-Item -Force $new $launcher
+try {
+    Get-ChildItem $Root -Filter 'KotorRust.old*.exe' | ForEach-Object { Remove-Item -Force $_.FullName -ErrorAction SilentlyContinue }
+    $same = (Test-Path $launcher) -and ((Get-FileHash $launcher).Hash -eq (Get-FileHash $LauncherExe).Hash)
+    if ($same) {
+        "launcher unchanged"
+    } else {
+        Copy-Item $LauncherExe $new -Force
+        $old = Join-Path $Root 'KotorRust.old.exe'
+        if (Test-Path $old) { $old = Join-Path $Root "KotorRust.old.$Sha.exe" }
+        if (Test-Path $launcher) { Move-Item -Force $launcher $old }
+        Move-Item -Force $new $launcher
+    }
+} catch {
+    "launcher not replaced, the build is published all the same: $_"
+    if (-not (Test-Path $launcher) -and (Test-Path $old)) { Move-Item -Force $old $launcher -ErrorAction SilentlyContinue }
+}
+Remove-Item -Force $new -ErrorAction SilentlyContinue
 
-# The oldest beyond -Keep go, but never what last ran well.
+# The oldest beyond -Keep go, but never what last ran well. A build still running stays for next time.
 $lastRun = ''
 $lastFile = Join-Path $Root 'last_run.txt'
 if (Test-Path $lastFile) { $lastRun = (Get-Content $lastFile -TotalCount 1).Trim() }
@@ -60,11 +73,16 @@ foreach ($line in $history) {
     if ($extra -gt 0 -and $s -ne $lastRun -and $s -ne $Sha) {
         $extra--
         $folder = Join-Path $builds $s
-        if (Test-Path $folder) { Remove-Item -Recurse -Force $folder }
-        "removed old build $s"
+        try {
+            if (Test-Path $folder) { Remove-Item -Recurse -Force $folder }
+            "removed old build $s"
+        } catch {
+            "old build $s kept: $_"
+            $kept += $line
+        }
     } else {
         $kept += $line
     }
 }
-Set-Whole $historyFile $kept
+try { Set-Whole $historyFile $kept } catch { "history not trimmed: $_" }
 "published $Sha to $dest, $($kept.Count) builds kept, $([math]::Round((Get-Item (Join-Path $dest 'kotor.exe')).Length / 1MB, 1)) MB"
