@@ -4,7 +4,7 @@ GPU renderer for `kotor-render` scenes (wgpu), offscreen first. Standalone packa
 workspace needs no network. **Not built yet**: needs the crates downloaded once with
 
 ```
-cargo fetch --manifest-path C:\Users\User\Projects\kotor-rs\gpu\Cargo.toml
+cargo fetch --manifest-path gpu\Cargo.toml
 ```
 
 Then `cargo build --offline --manifest-path gpu\Cargo.toml`. `scripts/check.ps1` builds and lints this package too as soon as

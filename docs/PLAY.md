@@ -3,7 +3,7 @@
 `gpu/examples/viewer.rs` runs the game loop in a window. `gpu/src/stage.rs` holds everything but the window (camera, posed bodies, interface, what to play), so `gpu/tests/stage.rs` runs the same loop headless. `scripts/check.ps1` runs that test.
 
 ```
-cargo run --offline --release --manifest-path C:\Users\User\Projects\kotor-rs\gpu\Cargo.toml --example viewer
+cargo run --offline --release --manifest-path gpu\Cargo.toml --example viewer
 ```
 
 The window opens only on DISPLAY2, and never takes focus by itself: click it to give it the keyboard.

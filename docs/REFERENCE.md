@@ -1,6 +1,6 @@
 # Measurements from the reference video
 
-The owner's longplay of the original game: `E:\Videos\Star Wars_ Knights of the Old Republic Full Walkthrough Gameplay - No Commentary 4K (PC Longplay) [xGPHIQGF4_Y].mp4`.
+The owner's longplay of the original game: the owner's reference video.
 
 It is 1920x1080 at 30 frames a second, not 4K despite its name, and 76,684 s long (`ffprobe`). Its hero is a man.
 

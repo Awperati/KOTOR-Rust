@@ -1,7 +1,7 @@
 # GPU renderer and viewer. A standalone package (not a member of the main workspace) so that the main
 # workspace builds and tests with no network. Its dependencies come from crates.io only:
 #
-#   cargo fetch --manifest-path C:\Users\User\Projects\kotor-rs\gpu\Cargo.toml
+#   cargo fetch --manifest-path gpu\Cargo.toml
 #
 # creates gpu/Cargo.lock and downloads the sources; after that `cargo build --offline` works.
 # See docs/SOURCES.md for what gets downloaded.

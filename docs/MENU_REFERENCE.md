@@ -1,6 +1,6 @@
 # Our menus against the reference video
 
-The owner's reference is a 21.3 hour longplay on `E:\Videos`, 1920x1080 and 30 frames a second, despite "4K" in its name. Frames from it stay in the git-ignored `cache\ref`, and nothing from it goes in the repository. `gpu/examples/menu_shots.rs` writes our frames to `docs/shots/menus`, also git-ignored.
+The owner's reference is a 21.3 hour longplay on the owner's drive, 1920x1080 and 30 frames a second, despite "4K" in its name. Frames from it stay in the git-ignored `cache\ref`, and nothing from it goes in the repository. `gpu/examples/menu_shots.rs` writes our frames to `docs/shots/menus`, also git-ignored.
 
 The video's player runs at 16:9 with a mod or setting we cannot identify, so it shows one way the game can look, not proof of how the stock game looks at 4:3. Its starting clothes match neither the game's packs nor the owner's Override, so its game may be modded: unconfirmed. Layout may still hold, but its looks are weak evidence. Its corners also carry a watermark.
 

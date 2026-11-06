@@ -21,7 +21,7 @@ Start with `PLAN.md` (scope, decisions, risks), `docs/FORMATS.md` (what is verif
 
 ## Use
 
-The game is found through `KOTOR_DIR`, else `E:\Games\Star Wars - KotOR`. It is only ever read.
+The game is found through `KOTOR_DIR`, else `<game folder>`. It is only ever read.
 
 ```
 cargo run -p kotor-tool -- module end_m01aa

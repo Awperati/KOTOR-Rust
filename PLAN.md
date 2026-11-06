@@ -109,5 +109,5 @@ Phase 1 uses only `std`. Proposed for later phases (all normal crates.io, none d
 
 ## Safety rules honoured
 
-Read-only on `E:\Games\Star Wars - KotOR`. Tests only read it and skip if absent. No window is opened in Phase 1; the
+Read-only on `<game folder>`. Tests only read it and skip if absent. No window is opened in Phase 1; the
 renderer in `kotor-tool` is software and writes PNG files. No pushes, no remote, local commits only.

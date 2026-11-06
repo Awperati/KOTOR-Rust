@@ -1,6 +1,6 @@
 # Owner test sheet: first hand-built module in the real game
 
-**Status: prepared, NOT run.** Nothing here has been done to your game. Every step that touches `E:\Games\Star Wars - KotOR`
+**Status: prepared, NOT run.** Nothing here has been done to your game. Every step that touches `<game folder>`
 is yours to do, and each is small and undoable. Stop at any step you do not like.
 
 ## What you are testing
@@ -10,19 +10,19 @@ Whether the original game accepts a module file written by kotor-rs. The test mo
 
 ## 0. Before anything: backup (2 minutes)
 
-1. Copy `E:\Games\Star Wars - KotOR\saves` to a safe place (for example `D:\kotor-backup\saves`).
-2. Copy `E:\Games\Star Wars - KotOR\swkotor.ini` to the same place.
+1. Copy `<game folder>\saves` to a safe place (for example `D:\kotor-backup\saves`).
+2. Copy `<game folder>\swkotor.ini` to the same place.
 3. Note: the test adds **one new file** (`modules\zz_test01.mod`). It overwrites nothing. Undo = delete that one file.
    Your 1440p setup (exe patch, k1hrm menus, Override) is not touched.
 
 ## 1. Build the test module (safe: writes outside the game folder)
 
-From `C:\Users\User\Projects\kotor-rs` in PowerShell:
+From `the repository's folder` in PowerShell:
 
 ```powershell
 cargo build -p kotor-tool
-New-Item -ItemType Directory -Force C:\Users\User\Desktop\kotor-test | Out-Null
-target\debug\kotor-tool.exe author clone end_m01aa "Test Spire" C:\Users\User\Desktop\kotor-test\zz_test01.mod zz_spire
+New-Item -ItemType Directory -Force %USERPROFILE%\Desktop\kotor-test | Out-Null
+target\debug\kotor-tool.exe author clone end_m01aa "Test Spire" %USERPROFILE%\Desktop\kotor-test\zz_test01.mod zz_spire
 ```
 
 Expected output: lines starting `renamed m01aa.are -> zz_spire.are` (also `.git`, `.pth`, and `.lyt`/`.vis` copied from base data),
@@ -30,7 +30,7 @@ then `N string fields rewritten, M bytes written`. The tool refuses to write ins
 
 ## 2. Install it (your step)
 
-Copy `C:\Users\User\Desktop\kotor-test\zz_test01.mod` to `E:\Games\Star Wars - KotOR\modules\`.
+Copy `%USERPROFILE%\Desktop\kotor-test\zz_test01.mod` to `<game folder>\modules\`.
 
 ## 3. Enter the module (open question, I have not verified this)
 
@@ -41,7 +41,7 @@ A new module name is not reachable from the menus. Two routes; pick one. **I do 
 renaming the area and save it under the stock name, then start a new game:
 
 ```powershell
-target\debug\kotor-tool.exe author clone end_m01aa "Endar Spire" C:\Users\User\Desktop\kotor-test\end_m01aa.mod -
+target\debug\kotor-tool.exe author clone end_m01aa "Endar Spire" %USERPROFILE%\Desktop\kotor-test\end_m01aa.mod -
 ```
 
 For test B add `--npc zz_guide Guide docs\examples\guide.dlg.txt` to that command. Copy the file into `modules`. Undo =
@@ -76,7 +76,7 @@ Same module plus one new creature ("Guide", copied from Trask's template, invuln
 standing about 3 m east of where you spawn, with an authored conversation.
 
 ```powershell
-target\debug\kotor-tool.exe author clone end_m01aa "Test Spire B" C:\Users\User\Desktop\kotor-test\zz_test02.mod zz_spireb --npc zz_guide Guide docs\examples\guide.dlg.txt
+target\debug\kotor-tool.exe author clone end_m01aa "Test Spire B" %USERPROFILE%\Desktop\kotor-test\zz_test02.mod zz_spireb --npc zz_guide Guide docs\examples\guide.dlg.txt
 ```
 
 Expected output also lists `added creature zz_guide at (x, y, z) talking zz_guide.dlg`. Copy `zz_test02.mod` to `modules` the
@@ -97,14 +97,14 @@ Names stay "Guide" because the text is stored inline, not in `dialog.tlk`.
 ## 5. Report back / undo
 
 - Tell Top Dog: which checks passed, any crash text, any screenshot.
-- Undo: delete `E:\Games\Star Wars - KotOR\modules\zz_test01.mod`. If anything else looks wrong, restore the backups from step 0.
+- Undo: delete `<game folder>\modules\zz_test01.mod`. If anything else looks wrong, restore the backups from step 0.
 
 ## Dialogue sample (not part of the test above)
 
 `docs/examples/hello.dlg.txt` is a tiny conversation in kotor-rs's text format. Build it with:
 
 ```powershell
-target\debug\kotor-tool.exe author dlg docs\examples\hello.dlg.txt C:\Users\User\Desktop\kotor-test\hello.dlg
+target\debug\kotor-tool.exe author dlg docs\examples\hello.dlg.txt %USERPROFILE%\Desktop\kotor-test\hello.dlg
 ```
 
 A DLG only runs when a creature or placeable points at it. Test B above does that without any compiled script, using the
