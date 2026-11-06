@@ -1,7 +1,7 @@
 # Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**352 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**355 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -55,7 +55,7 @@ Most to least blocking, all absent unless stated:
 7. **Traps, and a chosen Security action.** A click on a locked door tries a carried key, then Security against `OpenLockDC` by itself. Skills reach scripts through `GetSkillRank`, so Computer Use and Repair menus run, but spikes and parts have not been checked.
 8. **Camera in tight places.** Line of sight and the camera against walls are in. The camera can still sink into doors and furniture.
 9. **Dialogue camera angles, and scripted movement in fights.** Close shots stand in for the game's angles.
-10. **The rest of the game.** The autopilot below plays into Taris with an unkillable hero; nobody has judged those modules by eye. Vendors, minigames, the galaxy map and stealth are not built.
+10. **The rest of the game.** The autopilot below plays into Taris with an unkillable hero; nobody has judged those modules by eye. Vendors, minigames, the galaxy map and stealth are not built. `docs/GAPS.md` ranks what is missing.
 
 ## How far the autopilot gets
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 80000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
@@ -137,7 +137,7 @@ Fixed on the way, earliest first, each with a test:
 
 `AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, and gives whoever is worst off a medpack below half their hit points, at most one every 3 s. It uses the first feat on offer with each attack. A party that is down ends the run. A leader knocked out hands over to someone standing, and takes the lead back when up. Each fight is logged as `FIGHT won` or `FIGHT lost`.
 
-Last run: **the party is wiped in `tar_m10aa` at 4,628 game seconds**, after 15 modules, level 3 to 4, with 70 fights won and 4 not. The main character was knocked out 83 times, Mission 4 and Carth once. Small changes move this: the run before the pilot sent its best to terminals had the same pilot reach all 21 modules with no wipe, by 7,186 s, knocked out 217 times.
+Last run: **the party is wiped in `tar_m10aa` at 4,628 game seconds**, after 15 modules, main character at level 3, with 70 fights won and 4 not. The main character was knocked out 83 times, Mission 4 and Carth once. Small changes move this: the run before the pilot sent its best to terminals had the same pilot reach all 21 modules with no wipe, by 7,186 s, knocked out 217 times.
 
 **Why, and it is a missing rule more than balance.** It carried no medpacks by then, and nothing else heals. There is no shop to buy more (`OpenStore` only records itself), no healing out of combat, and getting up after a fight gives 1 hit point. So it walked into `VulkarPool`, 58 hit points, at 1 hit point, with Mission hurt. It held 3 frag grenades it cannot throw, as the engine has no grenades yet. It does not retreat, as nothing would heal it if it did. **Standing up at 1 hit point is an assumption.**
 
