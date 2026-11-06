@@ -5,6 +5,8 @@
 
 pub mod effects;
 pub mod stage;
+mod watch;
+pub use watch::{watch, Watch};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -196,6 +198,7 @@ impl GpuRenderer {
         width: u32,
         height: u32,
     ) -> Result<GpuRenderer, String> {
+        let _wait = watch("making the GPU device and pipelines");
         pollster::block_on(Self::new_async(instance, surface, width, height))
     }
 
@@ -437,6 +440,7 @@ impl GpuRenderer {
         textures: &mut dyn FnMut(&str) -> Option<Image>,
         cam: &Camera,
     ) -> Result<Image, String> {
+        let _wait = watch("rendering a frame");
         self.draw(scene, textures, cam);
         self.read_back()
     }
@@ -810,7 +814,10 @@ impl GpuRenderer {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
         });
+        let polling = watch("device.poll, for a frame to read back");
         self.device.poll(wgpu::Maintain::Wait);
+        drop(polling);
+        let _mapped = watch("the frame's buffer to be mapped");
         rx.recv()
             .map_err(|e| e.to_string())?
             .map_err(|e| format!("map: {e}"))?;

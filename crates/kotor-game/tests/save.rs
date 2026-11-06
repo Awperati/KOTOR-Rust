@@ -423,7 +423,6 @@ fn a_save_keeps_its_header_and_a_replaced_file_is_whole() {
         1,
         "no part file is left behind"
     );
-    let _ = std::fs::remove_dir_all(&dir);
     std::fs::write(&path, b"junk").unwrap();
     assert!(kotor_game::read_save_info(&path).is_err());
     let _ = std::fs::remove_dir_all(&dir);
