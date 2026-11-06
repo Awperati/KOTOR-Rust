@@ -30,6 +30,10 @@ const SHADER: &str = r#"
 struct Globals {
     view_proj: mat4x4<f32>,
     light: vec4<f32>,
+    // A doorway seen into another area: five planes whose inside is the view through it, and mode.x = 1 to cut that
+    // view out of what is drawn, 2 to draw nothing but that view, 0 for everything.
+    planes: array<vec4<f32>, 5>,
+    mode: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> g: Globals;
 @group(1) @binding(0) var diffuse_tex: texture_2d<f32>;
@@ -48,6 +52,7 @@ struct VsOut {
     @location(0) normal: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) uv2: vec2<f32>,
+    @location(3) world: vec3<f32>,
 };
 
 @vertex
@@ -55,6 +60,7 @@ fn vs_main(v: VsIn) -> VsOut {
     var o: VsOut;
     o.clip = g.view_proj * vec4<f32>(v.pos, 1.0);
     o.normal = v.normal;
+    o.world = v.pos;
     // The game's v axis points up; image rows start at the top.
     o.uv = vec2<f32>(v.uv.x, 1.0 - v.uv.y);
     o.uv2 = vec2<f32>(v.uv2.x, 1.0 - v.uv2.y);
@@ -63,6 +69,17 @@ fn vs_main(v: VsIn) -> VsOut {
 
 @fragment
 fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
+    if (g.mode.x > 0.5) {
+        var inside = true;
+        for (var k = 0; k < 5; k = k + 1) {
+            if (dot(g.planes[k].xyz, i.world) + g.planes[k].w < 0.0) {
+                inside = false;
+            }
+        }
+        if (inside == (g.mode.x < 1.5)) {
+            discard;
+        }
+    }
     let tex = textureSample(diffuse_tex, samp, i.uv);
     if (tex.a < params.y) {
         discard;
@@ -125,6 +142,57 @@ struct Vertex {
 struct Globals {
     view_proj: [[f32; 4]; 4],
     light: [f32; 4],
+    planes: [[f32; 4]; 5],
+    mode: [f32; 4],
+}
+
+/// A doorway through which another area is seen, in the world space: where it is, the way through it, half its width.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Aperture {
+    pub at: [f32; 3],
+    pub out: f32,
+    pub half: f32,
+}
+
+/// How high a doorway is drawn, in metres.
+const APERTURE_HEIGHT: f32 = 3.6;
+
+struct Portal {
+    draws: Vec<Draw>,
+    aperture: Aperture,
+}
+
+impl Aperture {
+    /// The five planes that bound the view through the doorway from `eye`, and whether `eye` is on the world side.
+    /// Inside all five is the view through the doorway onto the far side.
+    fn planes(&self, eye: Vec3) -> ([[f32; 4]; 5], bool) {
+        let (s, c) = self.out.sin_cos();
+        let into = Vec3::new(c, s, 0.0);
+        let lat = Vec3::new(-s, c, 0.0);
+        let at = Vec3::from(self.at);
+        let side = (eye - at).dot(into);
+        let low = at - Vec3::Z * 0.2;
+        let corners = [
+            low - lat * self.half,
+            low + lat * self.half,
+            low + lat * self.half + Vec3::Z * APERTURE_HEIGHT,
+            low - lat * self.half + Vec3::Z * APERTURE_HEIGHT,
+        ];
+        let centre = low + Vec3::Z * (APERTURE_HEIGHT / 2.0);
+        let mut out = [[0.0; 4]; 5];
+        for k in 0..4 {
+            let mut n = (corners[k] - eye).cross(corners[(k + 1) % 4] - eye);
+            if n.dot(centre - eye) < 0.0 {
+                n = -n;
+            }
+            let n = n.normalize_or_zero();
+            out[k] = [n.x, n.y, n.z, -n.dot(eye)];
+        }
+        // The half of space beyond the doorway, away from the eye.
+        let n = if side <= 0.0 { into } else { -into };
+        out[4] = [n.x, n.y, n.z, -n.dot(at)];
+        (out, side <= 0.0)
+    }
 }
 
 struct Tex {
@@ -184,6 +252,8 @@ pub struct GpuRenderer {
     white: Tex,
     tex_cache: HashMap<String, Option<Tex>>,
     static_draws: Vec<Draw>,
+    /// Another area seen through a doorway.
+    portal: Option<Portal>,
     /// Draw only what each frame passes in: a figure on a screen.
     figure_only: bool,
 }
@@ -433,6 +503,7 @@ impl GpuRenderer {
             white,
             tex_cache: HashMap::new(),
             static_draws: Vec::new(),
+            portal: None,
             figure_only: false,
             device,
             queue,
@@ -504,6 +575,19 @@ impl GpuRenderer {
         textures: &mut dyn FnMut(&str) -> Option<Image>,
     ) {
         self.static_draws = self.build_draws(scene, textures);
+    }
+
+    /// Another area, drawn only where it is seen through `aperture`, or none. The area's own picture is cut out of that
+    /// view, so the two never mix.
+    pub fn set_portal(
+        &mut self,
+        other: Option<(&Scene, Aperture)>,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+    ) {
+        self.portal = other.map(|(scene, aperture)| Portal {
+            draws: self.build_draws(scene, textures),
+            aperture,
+        });
     }
 
     /// The view of a named texture, decoding and uploading it the first time.
@@ -634,6 +718,8 @@ impl GpuRenderer {
         let globals = Globals {
             view_proj: (proj * view).to_cols_array_2d(),
             light: [0.3, -0.5, 0.8, 0.0],
+            planes: [[0.0; 4]; 5],
+            mode: [0.0; 4],
         };
         let globals_buf = self
             .device
@@ -651,6 +737,43 @@ impl GpuRenderer {
             }],
         });
         let draws = self.build_draws(scene, textures);
+        // Binds 1 and 2 cut a doorway view out of one picture and keep nothing else of the other.
+        let (portal_binds, on_world_side): (Option<[wgpu::BindGroup; 2]>, bool) =
+            match (&self.portal, self.figure_only) {
+                (Some(p), false) => {
+                    let (planes, on_world_side) = p.aperture.planes(eye);
+                    let make = |mode: f32| {
+                        let g = Globals {
+                            planes,
+                            mode: [mode, 0.0, 0.0, 0.0],
+                            ..globals
+                        };
+                        let buf =
+                            self.device
+                                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                    label: Some("portal globals"),
+                                    contents: bytemuck::bytes_of(&g),
+                                    usage: wgpu::BufferUsages::UNIFORM,
+                                });
+                        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("portal globals"),
+                            layout: &self.globals_layout,
+                            entries: &[wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: buf.as_entire_binding(),
+                            }],
+                        })
+                    };
+                    (Some([make(1.0), make(2.0)]), on_world_side)
+                }
+                _ => (None, true),
+            };
+        // Which of the three binds each part is drawn with: 0 plain, 1 with the doorway view cut out, 2 with only it.
+        let (g_static, g_moving, g_portal) = match (&portal_binds, on_world_side) {
+            (None, _) => (0, 0, 0),
+            (Some(_), true) => (1, 0, 2),
+            (Some(_), false) => (2, 2, 1),
+        };
         let batches = std::mem::take(&mut self.particles);
         let particle_draws: Vec<(bool, u32, wgpu::Buffer, wgpu::BindGroup)> = batches
             .iter()
@@ -691,6 +814,8 @@ impl GpuRenderer {
                 let g = Globals {
                     view_proj: (proj * view * shift).to_cols_array_2d(),
                     light: globals.light,
+                    planes: [[0.0; 4]; 5],
+                    mode: [0.0; 4],
                 };
                 let buf = self
                     .device
@@ -752,31 +877,42 @@ impl GpuRenderer {
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
+            let mut parts: Vec<(&Draw, usize)> = Vec::new();
+            parts.extend(self.statics().iter().map(|d| (d, g_static)));
+            parts.extend(draws.iter().map(|d| (d, g_moving)));
+            if let (Some(p), Some(_)) = (&self.portal, &portal_binds) {
+                parts.extend(
+                    p.draws
+                        .iter()
+                        .filter(|d| d.sky.is_none())
+                        .map(|d| (d, g_portal)),
+                );
+            }
+            parts.retain(|(d, _)| !self.sky_at_infinity || d.sky.is_none());
+            let bind_of = |k: usize| -> &wgpu::BindGroup {
+                match (k, &portal_binds) {
+                    (1, Some(b)) => &b[0],
+                    (2, Some(b)) => &b[1],
+                    _ => &globals_bind,
+                }
+            };
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &globals_bind, &[]);
-            for d in self
-                .statics()
-                .iter()
-                .chain(&draws)
-                .filter(|d| !d.blended && (!self.sky_at_infinity || d.sky.is_none()))
-            {
+            for (d, k) in parts.iter().filter(|(d, _)| !d.blended) {
+                pass.set_bind_group(0, bind_of(*k), &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(..));
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
-            let mut see_through: Vec<&Draw> = self
-                .statics()
-                .iter()
-                .chain(&draws)
-                .filter(|d| d.blended && (!self.sky_at_infinity || d.sky.is_none()))
-                .collect();
+            let mut see_through: Vec<(&Draw, usize)> =
+                parts.iter().filter(|(d, _)| d.blended).copied().collect();
             see_through.sort_by(|a, b| {
                 let far = |d: &Draw| Vec3::from(d.centre).distance_squared(eye);
-                far(b).total_cmp(&far(a))
+                far(b.0).total_cmp(&far(a.0))
             });
             pass.set_pipeline(&self.blend_pipeline);
-            for d in see_through {
+            for (d, k) in see_through {
+                pass.set_bind_group(0, bind_of(k), &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(..));
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);

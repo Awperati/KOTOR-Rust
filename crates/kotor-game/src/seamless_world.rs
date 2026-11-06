@@ -24,6 +24,11 @@ pub struct Attached {
     pub cut_theirs: Vec<usize>,
     /// This is the module the party has just come from.
     pub behind: bool,
+    /// The two modules overlap in plan. Each is walkable only near the door (`far_*` are the faces left out) and the
+    /// other is drawn through the doorway alone, never as a neighbour.
+    pub portal: bool,
+    pub far_ours: Vec<usize>,
+    pub far_theirs: Vec<usize>,
 }
 
 /// How the last crossing moved things, for whoever draws: take it once.
@@ -156,6 +161,21 @@ impl World {
         }
     }
 
+    /// Whether a closed door of the loaded module blocks anyone. Where two modules overlap, the one just entered may have
+    /// doors standing in the part of it that lies beyond the doorway, which is where the module behind is walked: those
+    /// are not in the way there.
+    pub(crate) fn in_the_way(&self, o: &crate::world::Object) -> bool {
+        !self.beyond_the_portal(o.position)
+    }
+
+    /// Whether `p` lies in the part of the loaded module that is beyond a doorway to a module it overlaps.
+    pub(crate) fn beyond_the_portal(&self, p: [f32; 3]) -> bool {
+        self.seamless
+            .attached
+            .values()
+            .any(|a| a.portal && a.behind && beyond(a.at, a.out, p).0 > THRESHOLD)
+    }
+
     /// The navigation mesh of the loaded module and everything joined to it, with closed doors blocked.
     fn rebuild_nav(&mut self) {
         let cut: BTreeSet<usize> = self
@@ -166,7 +186,8 @@ impl World {
             .collect();
         let mut meshes = without(&self.seamless.base, &cut);
         for a in self.seamless.attached.values() {
-            let theirs: BTreeSet<usize> = a.cut_theirs.iter().copied().collect();
+            let theirs: BTreeSet<usize> =
+                a.cut_theirs.iter().chain(&a.far_theirs).copied().collect();
             meshes.extend(
                 without(&a.bwms, &theirs)
                     .iter()
@@ -176,6 +197,11 @@ impl World {
         if meshes.is_empty() {
             return;
         }
+        // The strips come last, so the faces from this count on are theirs.
+        let real: usize = meshes
+            .iter()
+            .map(|m| m.faces.iter().filter(|f| f.walkable()).count())
+            .sum();
         meshes.extend(self.seamless.attached.values().map(doorway_strip));
         let mut nav = NavMesh::from_meshes(&meshes);
         for a in self.seamless.attached.values() {
@@ -196,7 +222,8 @@ impl World {
                     let find = |sign: f32| {
                         (1..=30).map(|i| sign * i as f32 * 0.1).find(|&d| {
                             let p = at(d, lat);
-                            nav.height_at(p[0], p[1], p[2] + 0.5).is_some()
+                            nav.locate_if(p[0], p[1], p[2] + 0.5, &|i| i < real)
+                                .is_some()
                         })
                     };
                     (find(-1.0), find(1.0))
@@ -204,8 +231,9 @@ impl World {
                 if let (Some(before), Some(after)) = pair {
                     let portal = (at(0.0, lat - 0.4), at(0.0, lat + 0.4));
                     // Through the strip, which covers the gap the two floors leave.
-                    nav.bridge(at(before, lat), at(0.0, lat), portal);
-                    nav.bridge(at(0.0, lat), at(after, lat), portal);
+                    let (floor, strip) = (&|i: usize| i < real, &|i: usize| i >= real);
+                    nav.bridge_between(at(before, lat), at(0.0, lat), portal, floor, strip);
+                    nav.bridge_between(at(0.0, lat), at(after, lat), portal, strip, floor);
                 }
                 k += 1.0;
             }
@@ -213,7 +241,7 @@ impl World {
         for o in self
             .objects
             .values()
-            .filter(|o| o.kind == Kind::Door && !o.open)
+            .filter(|o| o.kind == Kind::Door && !o.open && self.in_the_way(o))
         {
             let (p, q) = crate::play::door_line(o);
             nav.block_line(p, q);
@@ -285,6 +313,9 @@ impl World {
                     cut_ours: a.cut_theirs.clone(),
                     cut_theirs: a.cut_ours.clone(),
                     behind: true,
+                    portal: a.portal,
+                    far_ours: a.far_theirs.clone(),
+                    far_theirs: a.far_ours.clone(),
                 },
             );
         }

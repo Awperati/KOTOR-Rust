@@ -10,7 +10,7 @@ type V3 = [f32; 3];
 type EdgeKey = ([i32; 3], [i32; 3]);
 
 /// Quantisation of vertex positions when welding edges between faces, in metres.
-const WELD: f32 = 0.02;
+pub(crate) const WELD: f32 = 0.02;
 
 #[derive(Clone, Copy, Debug)]
 struct Link {
@@ -394,6 +394,37 @@ impl NavMesh {
         true
     }
 
+    /// Like `bridge`, joining the face under `a` among those `ok_a` accepts to the face under `b` among those `ok_b` does.
+    pub fn bridge_between(
+        &mut self,
+        a: V3,
+        b: V3,
+        portal: (V3, V3),
+        ok_a: &dyn Fn(usize) -> bool,
+        ok_b: &dyn Fn(usize) -> bool,
+    ) -> bool {
+        let (Some((i, _)), Some((j, _))) = (
+            self.locate_if(a[0], a[1], a[2] + 0.5, ok_a),
+            self.locate_if(b[0], b[1], b[2] + 0.5, ok_b),
+        ) else {
+            return false;
+        };
+        if i == j || self.links[i].iter().any(|l| l.to == j) {
+            return false;
+        }
+        self.links[i].push(Link {
+            to: j,
+            a: portal.0,
+            b: portal.1,
+        });
+        self.links[j].push(Link {
+            to: i,
+            a: portal.0,
+            b: portal.1,
+        });
+        true
+    }
+
     /// Number of faces currently blocked.
     pub fn blocked_count(&self) -> usize {
         self.blocked.iter().filter(|&&b| b > 0).count()
@@ -415,9 +446,23 @@ impl NavMesh {
 
     /// Walkable face under `(x, y)` at or below `max_z`, choosing the highest one, and its height.
     pub fn locate(&self, x: f32, y: f32, max_z: f32) -> Option<(usize, f32)> {
+        self.locate_if(x, y, max_z, &|_| true)
+    }
+
+    /// Like `locate`, among the faces `ok` accepts.
+    pub fn locate_if(
+        &self,
+        x: f32,
+        y: f32,
+        max_z: f32,
+        ok: &dyn Fn(usize) -> bool,
+    ) -> Option<(usize, f32)> {
         let mut best: Option<(usize, f32)> = None;
         for &i in self.cells.get(&cell(x, y)).into_iter().flatten() {
             let i = i as usize;
+            if !ok(i) {
+                continue;
+            }
             if let Some(z) = tri_height(&self.tris[i], x, y) {
                 if z <= max_z && best.is_none_or(|(_, bz)| z > bz) {
                     best = Some((i, z));

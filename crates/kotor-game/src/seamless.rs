@@ -19,6 +19,9 @@ pub const MAX_SIDEWAYS: f32 = 3.0;
 pub const MAX_TURN: f32 = 0.5;
 /// Faces whose centres lie this close (metres) to the doorway's plane are its jamb.
 pub const JAMB: f32 = 1.5;
+/// When two modules overlap, each is walkable only this far (metres) from the door that joins them, and the other is
+/// drawn through the doorway alone. See `Attached::portal`.
+pub const PORTAL_REACH: f32 = 20.0;
 
 /// A door or trigger that leads to another module.
 #[derive(Clone, Debug)]
@@ -93,6 +96,11 @@ pub struct Placed {
     pub back_half: f32,
     /// The faces of the neighbour that its stub covers.
     pub back_stub: Vec<usize>,
+    /// The two modules overlap, so each is walkable only near the door; the other is seen through the doorway.
+    pub portal: bool,
+    /// With `portal`, the faces of ours and of the neighbour's that lie beyond `PORTAL_REACH` of the door.
+    pub far_ours: Vec<usize>,
+    pub far_theirs: Vec<usize>,
 }
 
 impl World {
@@ -240,12 +248,29 @@ fn outward(nav: &kotor_walkmesh::NavMesh, at: [f32; 3], candidates: &[f32]) -> O
 ///
 /// The neighbour's own door back to us is laid on ours. Then both arrival waypoints are checked: the neighbour's must
 /// come out beyond our door facing the way through, and ours beyond the neighbour's, which is on our side.
+///
+/// Modules that would overlap are not given up: they are placed as a portal, each walkable only within `PORTAL_REACH`
+/// of the door, and only a placement whose near parts still overlap falls back.
 pub fn plan_link(
     from: &Sketch,
     site: &Site,
     neighbour: &Sketch,
     cut: &BTreeSet<usize>,
     placed: &[(String, Vec<Tri>)],
+) -> Result<Placed, Fallback> {
+    match plan_with(from, site, neighbour, cut, placed, false) {
+        Err(Fallback::Overlaps(_)) => plan_with(from, site, neighbour, cut, placed, true),
+        r => r,
+    }
+}
+
+fn plan_with(
+    from: &Sketch,
+    site: &Site,
+    neighbour: &Sketch,
+    cut: &BTreeSet<usize>,
+    placed: &[(String, Vec<Tri>)],
+    portal: bool,
 ) -> Result<Placed, Fallback> {
     let (wp, facing) = *neighbour
         .waypoints
@@ -285,11 +310,30 @@ pub fn plan_link(
         let behind = (-a_along).max(b_along).max(0.0);
         return Err(Fallback::Disagree(residual.0.max(behind), residual.1));
     }
-    let theirs: Vec<Tri> = neighbour
+    let near = |t: &Tri, at: [f32; 3]| {
+        let c = [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
+        (c[0] - at[0]).hypot(c[1] - at[1]) <= PORTAL_REACH
+    };
+    let far = |tris: &[Tri], at: [f32; 3]| -> Vec<usize> {
+        if !portal {
+            return Vec::new();
+        }
+        (0..tris.len()).filter(|&i| !near(&tris[i], at)).collect()
+    };
+    let far_ours = far(&from.tris, site.at);
+    let far_theirs = far(&neighbour.tris, back.at);
+    let theirs_full: Vec<Tri> = neighbour
         .tris
         .iter()
         .enumerate()
         .filter(|(i, _)| !back.stub.contains(i))
+        .map(|(_, t)| *t)
+        .collect();
+    let theirs_near: Vec<Tri> = neighbour
+        .tris
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !back.stub.contains(i) && !far_theirs.contains(i))
         .map(|(_, t)| *t)
         .collect();
     // The doorway itself is where the two meet: both floors run a little into the other's wall, and that is not an
@@ -299,18 +343,26 @@ pub fn plan_link(
         let (along, across) = beyond(site.at, out, c);
         along.abs() > JAMB || across > site.half + 0.5
     };
-    let moved: Vec<Tri> = move_tris(&theirs, &forward)
-        .into_iter()
-        .filter(|t| clear(t))
-        .collect();
-    let ours: Vec<Tri> = from
-        .tris
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !cut.contains(i) && !site.stub.contains(i))
-        .map(|(_, t)| *t)
-        .filter(|t| clear(t))
-        .collect();
+    let place = |tris: &[Tri]| -> Vec<Tri> {
+        move_tris(tris, &forward)
+            .into_iter()
+            .filter(|t| clear(t))
+            .collect()
+    };
+    // What the party can stand on once it is through: in a portal, the neighbour only near the door.
+    let moved = place(if portal { &theirs_near } else { &theirs_full });
+    let moved_full = place(&theirs_full);
+    let mine = |keep_far: bool| -> Vec<Tri> {
+        from.tris
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !cut.contains(i) && !site.stub.contains(i))
+            .filter(|(i, _)| keep_far || !far_ours.contains(i))
+            .map(|(_, t)| *t)
+            .filter(|t| clear(t))
+            .collect()
+    };
+    let ours = mine(true);
     let at = |t: &Tri| {
         format!(
             "({:.0}, {:.0})",
@@ -324,6 +376,17 @@ pub fn plan_link(
             from.module,
             at(&ours[i])
         )));
+    }
+    if portal {
+        // Once through, the party stands on the neighbour's whole floor and the near part of ours.
+        let ours_near = mine(false);
+        if let Some((i, _)) = first_overlap(&ours_near, &moved_full, OVERLAP_EPS, FLOOR_TOL) {
+            return Err(Fallback::Overlaps(format!(
+                "{} at {}",
+                neighbour.module,
+                at(&ours_near[i])
+            )));
+        }
     }
     for (name, faces) in placed {
         if let Some((i, _)) = first_overlap(faces, &moved, OVERLAP_EPS, FLOOR_TOL) {
@@ -340,6 +403,9 @@ pub fn plan_link(
         back_out,
         back_half: back.half,
         back_stub: back.stub.clone(),
+        portal,
+        far_ours,
+        far_theirs,
     })
 }
 
@@ -396,6 +462,9 @@ pub fn prepare(
             cut_ours: site.stub.clone(),
             cut_theirs: p.back_stub,
             behind: false,
+            portal: p.portal,
+            far_ours: p.far_ours,
+            far_theirs: p.far_theirs,
         },
         sketch,
     ))
@@ -459,6 +528,21 @@ mod tests {
         let (a, b) = pair(PI, 0.0, room(0.0, 0.0, 30.0, 10.0));
         let r = plan_link(&a, &a.sites[0], &b, &BTreeSet::new(), &[]);
         assert!(matches!(r, Err(Fallback::Overlaps(_))), "{r:?}");
+    }
+
+    #[test]
+    fn a_neighbour_that_overlaps_only_far_from_the_door_becomes_a_portal() {
+        // Our room runs on far past the door, where the neighbour would stand, but the part in the way is 40 m off.
+        let mut tris = room(0.0, 0.0, 10.0, 10.0);
+        tris.extend(room(40.0, 0.0, 60.0, 10.0));
+        let (a, b) = pair(PI, 0.0, tris);
+        let mut far = b.clone();
+        far.tris.extend(room(40.0, 0.0, 50.0, 10.0));
+        let p = plan_link(&a, &a.sites[0], &far, &BTreeSet::new(), &[]).unwrap();
+        assert!(p.portal);
+        assert!(!p.far_theirs.is_empty() && !p.far_ours.is_empty());
+        // Moved by 10 m, the far room of the neighbour lies on ours at 50 to 60.
+        assert!(p.tris.iter().all(|t| t[0][0] < 40.0));
     }
 
     #[test]

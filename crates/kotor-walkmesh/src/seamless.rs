@@ -1,6 +1,7 @@
 //! Seamless areas: the rigid move that puts a neighbouring module beside this one, so that a door's far side is the
 //! neighbour's arrival point, and the check that two modules never overlap in world space. See `docs/SEAMLESS.md`.
 
+use crate::nav::WELD;
 use crate::Bwm;
 use std::collections::HashMap;
 
@@ -22,8 +23,24 @@ impl Rigid {
         shift: [0.0; 3],
     };
 
-    pub fn apply(&self, p: V3) -> V3 {
+    /// Sine and cosine of the turn, exact for the quarter turns that placed modules mostly are: a vertex shared by two
+    /// rooms must come out the same on both, and a quarter turn through the rounded value of pi/2 would not.
+    fn trig(&self) -> (f32, f32) {
         let (s, c) = self.yaw.sin_cos();
+        let snap = |v: f32| {
+            if v.abs() < 1e-6 {
+                0.0
+            } else if (v.abs() - 1.0).abs() < 1e-6 {
+                v.signum()
+            } else {
+                v
+            }
+        };
+        (snap(s), snap(c))
+    }
+
+    pub fn apply(&self, p: V3) -> V3 {
+        let (s, c) = self.trig();
         [
             c * p[0] - s * p[1] + self.shift[0],
             s * p[0] + c * p[1] + self.shift[1],
@@ -33,7 +50,7 @@ impl Rigid {
 
     /// A direction (no shift).
     pub fn apply_dir(&self, d: V3) -> V3 {
-        let (s, c) = self.yaw.sin_cos();
+        let (s, c) = self.trig();
         [c * d[0] - s * d[1], s * d[0] + c * d[1], d[2]]
     }
 
@@ -100,9 +117,22 @@ pub fn join(door: V3, out: f32, theirs: V3, theirs_out: f32) -> Rigid {
         shift: [0.0; 3],
     };
     let at = turn.apply(theirs);
+    let shift = [door[0] - at[0], door[1] - at[1], door[2] - at[2]];
+    // Two rooms' faces are joined where their edges meet on the navigation mesh's weld grid. The edges of one module
+    // that meet there do so in its own frame, so a move that is a quarter turn and a shift by whole grid cells keeps
+    // the grid, and every join, exactly where it was. Any other move may land a seam across a cell line and open it.
+    let grid = |v: f32| (v / WELD).round() * WELD;
+    let quarter = std::f32::consts::FRAC_PI_2;
+    let turned = (turn.yaw / quarter).round() * quarter;
+    if (turn.yaw - turned).abs() < 1e-3 {
+        return Rigid {
+            yaw: wrap(turned),
+            shift: shift.map(grid),
+        };
+    }
     Rigid {
         yaw: turn.yaw,
-        shift: [door[0] - at[0], door[1] - at[1], door[2] - at[2]],
+        shift,
     }
 }
 

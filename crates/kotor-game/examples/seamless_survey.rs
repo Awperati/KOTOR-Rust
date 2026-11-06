@@ -36,11 +36,12 @@ fn main() {
                 .map_or("?".into(), |o| format!("{:.0}", o.to_degrees()));
             match r {
                 Ok(p) => println!(
-                    "| {m} | {} {:?} | {at} | {out} | {} / {} | placed: shift ({:.1}, {:.1}, {:.1}), turn {:.0} deg | {:.2} m, {:.1} deg |",
+                    "| {m} | {} {:?} | {at} | {out} | {} / {} | {}: shift ({:.1}, {:.1}, {:.1}), turn {:.0} deg | {:.2} m, {:.1} deg |",
                     site.tag,
                     site.kind,
                     site.to_module,
                     site.to_waypoint,
+                    if p.portal { "portal" } else { "placed" },
                     p.rigid.shift[0],
                     p.rigid.shift[1],
                     p.rigid.shift[2],

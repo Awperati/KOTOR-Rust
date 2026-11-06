@@ -92,6 +92,8 @@ impl World {
         self.objects
             .values()
             .filter(|o| o.kind == Kind::Creature && !o.dead && o.id != who)
+            // Whoever stands where another module is drawn, through a doorway, is not there to be walked round.
+            .filter(|o| !self.beyond_the_portal(o.position))
             .map(|o| [o.position[0], o.position[1]])
             .collect()
     }

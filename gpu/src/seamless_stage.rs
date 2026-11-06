@@ -3,6 +3,7 @@
 //! `docs/SEAMLESS.md`.
 
 use super::{chest_templates, Stage};
+use crate::Aperture;
 use kotor_archive::Install;
 use kotor_game::seamless::{prepare, Fallback, Sketch};
 use kotor_game::{Attached, Kind};
@@ -44,6 +45,11 @@ pub(super) struct Seam {
     pub(super) base: Scene,
     /// Which neighbours are stitched on now, and where.
     parts: Vec<(String, Rigid)>,
+    /// The area seen through a doorway, which overlaps this one and so is never stitched on: its picture placed in this
+    /// space, and the doorway. `portal_version` goes up whenever either changes.
+    portal: Option<(Scene, Aperture)>,
+    portal_key: Option<(String, Rigid, Aperture)>,
+    pub portal_version: u64,
     /// Why links fell back to the old way, for logs and tests.
     pub notes: Vec<String>,
 }
@@ -55,10 +61,21 @@ impl Seam {
         self.jobs.clear();
         self.failed.clear();
         self.parts.clear();
+        self.portal_key = None;
     }
 }
 
 impl Stage {
+    /// The area to draw only through a doorway, when the one joined overlaps this one, and the doorway.
+    pub fn portal(&self) -> Option<(&Scene, Aperture)> {
+        self.seam.portal.as_ref().map(|(s, a)| (s, *a))
+    }
+
+    /// Goes up whenever `portal` changes.
+    pub fn portal_version(&self) -> u64 {
+        self.seam.portal_version
+    }
+
     /// Why links fell back to the loading screen, so far.
     pub fn seam_notes(&self) -> &[String] {
         &self.seam.notes
@@ -191,14 +208,35 @@ impl Stage {
 
     /// Make the picture show this module and whatever is joined to it.
     fn seamless_stitch(&mut self) {
-        let want: Vec<(String, Rigid)> = self
-            .game
-            .world
-            .seamless
-            .attached
+        let attached = &self.game.world.seamless.attached;
+        let want: Vec<(String, Rigid)> = attached
             .values()
+            .filter(|a| !a.portal)
             .map(|a| (a.module.clone(), a.rigid))
             .collect();
+        // One doorway at a time is seen into; the first loaded is the one.
+        let door = attached.values().find(|a| a.portal).map(|a| {
+            (
+                a.module.clone(),
+                a.rigid,
+                Aperture {
+                    at: a.at,
+                    out: a.out,
+                    half: a.half,
+                },
+            )
+        });
+        if door != self.seam.portal_key {
+            let ready = door
+                .as_ref()
+                .and_then(|(m, r, a)| Some((self.seam.cache.get(m)?.0.moved(r.yaw, r.shift), *a)));
+            // A neighbour whose picture has not come yet is waited for, not shown half.
+            if door.is_none() || ready.is_some() {
+                self.seam.portal = ready;
+                self.seam.portal_key = door;
+                self.seam.portal_version += 1;
+            }
+        }
         if want == self.seam.parts {
             return;
         }

@@ -194,6 +194,7 @@ struct State {
     gpu: GpuRenderer,
     presenter: Presenter,
     static_seen: u64,
+    portal_seen: u64,
     overlay_seen: u64,
 }
 
@@ -251,6 +252,7 @@ impl App {
             gpu,
             presenter,
             static_seen: 0,
+            portal_seen: 0,
             overlay_seen: 0,
         })
     }
@@ -397,6 +399,14 @@ impl App {
             st.static_seen = stage.static_version;
             let scene = stage.static_scene().clone();
             st.gpu.set_static_scene(&scene, &mut |n| stage.texture(n));
+        }
+        if st.portal_seen != stage.portal_version() {
+            st.portal_seen = stage.portal_version();
+            let other = stage.portal().map(|(sc, a)| (sc.clone(), a));
+            st.gpu
+                .set_portal(other.as_ref().map(|(sc, a)| (sc, *a)), &mut |n| {
+                    stage.texture(n)
+                });
         }
         if st.overlay_seen != stage.overlay_version {
             st.overlay_seen = stage.overlay_version;

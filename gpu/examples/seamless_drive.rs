@@ -28,11 +28,18 @@ impl Run {
     }
 }
 
-fn shot(gpu: &mut GpuRenderer, s: &mut Stage, seen: &mut u64, path: &std::path::Path) {
-    if *seen != s.static_version {
+fn shot(gpu: &mut GpuRenderer, s: &mut Stage, seen: &mut (u64, u64), path: &std::path::Path) {
+    if seen.0 != s.static_version {
         let scene = s.static_scene().clone();
         gpu.set_static_scene(&scene, &mut |n| s.texture(n));
-        *seen = s.static_version;
+        seen.0 = s.static_version;
+    }
+    if seen.1 != s.portal_version() {
+        let other = s.portal().map(|(sc, a)| (sc.clone(), a));
+        gpu.set_portal(other.as_ref().map(|(sc, a)| (sc, *a)), &mut |n| {
+            s.texture(n)
+        });
+        seen.1 = s.portal_version();
     }
     let scene = s.dynamic_scene();
     let cam = s.camera();
@@ -63,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.enable_tutorials(false);
     s.enable_auto_pause(false);
     let mut gpu = GpuRenderer::new(width, height)?;
-    let mut seen = 0u64;
+    let mut seen = (0u64, 0u64);
     let frames_wall = std::cell::RefCell::new(Vec::<f32>::new());
     let step = |s: &mut Stage| {
         let t = Instant::now();
@@ -174,13 +181,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dist(s.game.world.pc_mover.pos, site.at) <= 1.4,
         format!("{walked} frames"),
     );
+    // Some doors start locked (the Cantina's). The test is about the crossing, not the lock, so it is taken off.
+    if let Some(o) = s.game.world.objects.get_mut(&door_id) {
+        if o.locked {
+            println!("note: {tag} starts locked; unlocked for this run");
+            o.locked = false;
+        }
+    }
     let before_use = s.game.world.module.clone();
     s.game.world.use_door(door_id);
     let opened = s.game.world.object(door_id).is_some_and(|o| o.open);
     r.check(
         "using the door opens it, and does not change module",
         opened && s.game.world.transition_request.is_none(),
-        format!("module {before_use}"),
+        format!(
+            "module {before_use}, door {:?} {:?} locked {}, request {:?}, joined {}",
+            s.game.world.object(door_id).map(|o| o.door),
+            s.game.world.object(door_id).map(|o| o.open),
+            s.game.world.object(door_id).is_some_and(|o| o.locked),
+            s.game.world.transition_request,
+            s.game.world.seamless.attached.contains_key(&door_id)
+        ),
     );
     for i in 0..90 {
         step(&mut s);

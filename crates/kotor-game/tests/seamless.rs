@@ -137,8 +137,7 @@ fn walking_through_a_joined_door_changes_module_without_moving_anyone() {
 }
 
 #[test]
-fn upper_city_south_takes_the_apartments_and_leaves_the_cantina_on_the_old_way() {
-    use kotor_game::seamless::Fallback;
+fn upper_city_south_joins_the_apartments_and_shows_the_cantina_through_its_doorway() {
     let Some(mut w) = world("tar_m02ac") else {
         return;
     };
@@ -150,16 +149,115 @@ fn upper_city_south_takes_the_apartments_and_leaves_the_cantina_on_the_old_way()
     };
     let apartments = plan("Apartments").expect("the Apartments fit");
     assert_eq!(apartments.module, "tar_m02aa");
+    assert!(!apartments.portal, "side by side, not through a doorway");
     assert!(
         (apartments.rigid.shift[0] + 22.5).abs() < 0.1
             && (apartments.rigid.shift[1] - 47.8).abs() < 0.1
     );
     assert!(apartments.rigid.yaw.abs() < 0.01);
-    // The Cantina's floor would stand under the plaza.
-    let cantina = plan("tar02_cantdoor");
-    assert!(
-        matches!(cantina, Err(Fallback::Overlaps(_))),
-        "{:?}",
-        cantina.err()
+    // The Cantina's floor would stand under the plaza far from the door, so each is walkable only near it.
+    let cantina = plan("tar02_cantdoor").expect("the Cantina is a portal");
+    assert_eq!(cantina.module, "tar_m02ae");
+    assert!(cantina.portal);
+    assert!(!cantina.far_theirs.is_empty() && !cantina.far_ours.is_empty());
+}
+
+/// Where `who` stands in the space of the module the walk began in.
+fn in_first(w: &World, first: &str, rigid: kotor_walkmesh::seamless::Rigid, who: u32) -> [f32; 3] {
+    let p = w.objects[&who].position;
+    if w.module == first {
+        p
+    } else {
+        rigid.apply(p)
+    }
+}
+
+#[test]
+fn a_party_of_four_goes_through_a_doorway_that_is_only_a_portal_without_anyone_jumping() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "tar02_cantdoor")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("a portal");
+    assert!(att.portal);
+    let door = w.link_door_at(site.at).unwrap();
+    let (rigid, out) = (att.rigid, att.out);
+    w.seamless_attach(door, att);
+    if let Some(o) = w.objects.get_mut(&door) {
+        o.locked = false;
+    }
+    w.use_door(door);
+    for _ in 0..90 {
+        w.step(1.0 / 60.0);
+    }
+    assert!(w.objects[&door].open);
+    // The leader starts 3 m before the door and the others arrive beside her.
+    let start = [
+        site.at[0] - out.cos() * 3.0,
+        site.at[1] - out.sin() * 3.0,
+        site.at[2],
+    ];
+    let pc = w.pc;
+    w.teleport(pc, start);
+    for (slot, t) in [(0, "p_bastilla"), (2, "p_carth"), (6, "p_mission")] {
+        w.available.insert(slot, t.to_string());
+    }
+    w.choose_party(&[0, 2, 6], "");
+    assert_eq!(w.party.len(), 3, "the leader and three more");
+    let people: Vec<u32> = std::iter::once(w.pc)
+        .chain(w.party.iter().copied())
+        .collect();
+    let first = w.module.clone();
+    let mut last: Vec<[f32; 3]> = people
+        .iter()
+        .map(|id| in_first(&w, &first, rigid, *id))
+        .collect();
+    let (mut jumps, mut biggest) = (0, 0.0f32);
+    let mut p = start;
+    for i in 0..900 {
+        // The leader walks 5.5 m, as far as the Cantina's entrance hall goes before its inner door, then stands while the
+        // others catch up.
+        if i < 55 {
+            p = [p[0] + out.cos() * 0.1, p[1] + out.sin() * 0.1, p[2]];
+            let here = if w.module == first {
+                p
+            } else {
+                rigid.inverse().apply(p)
+            };
+            w.pc_mover.pos = here;
+            let pc = w.pc;
+            w.objects.get_mut(&pc).unwrap().position = here;
+        }
+        w.step(1.0 / 60.0);
+        let now: Vec<[f32; 3]> = people
+            .iter()
+            .map(|id| in_first(&w, &first, rigid, *id))
+            .collect();
+        for (a, b) in last.iter().zip(&now) {
+            // Companions shoulder each other aside by up to 0.7 m in a crowded doorway; a teleport is metres.
+            biggest = biggest.max(dist(*a, *b));
+            jumps += (dist(*a, *b) > 1.5) as u32;
+        }
+        last = now;
+    }
+    assert_eq!(
+        jumps, 0,
+        "nobody jumps; the biggest step was {biggest:.2} m"
     );
+    assert_eq!(
+        w.module, "tar_m02ae",
+        "through the doorway into the Cantina"
+    );
+    let lead = w.objects[&w.pc].position;
+    for id in &w.party {
+        let d = dist(lead, w.objects[id].position);
+        assert!(d < 4.5, "{id} is {d:.1} m from the leader");
+    }
 }

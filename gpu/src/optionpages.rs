@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 7] = [
+const STYLE_ROWS: [(&str, &str, &str); 8] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -49,6 +49,11 @@ const STYLE_ROWS: [(&str, &str, &str); 7] = [
         "Auto-advance dialogue: On",
         "Auto-advance dialogue: Off",
         "Cutscene lines move on when their voice ends, or after a few seconds with none. Off, they wait for a click or Space.",
+    ),
+    (
+        "Seamless areas: On",
+        "Seamless areas: Off",
+        "A door opens onto the next area and you walk through, with no loading screen. Off: every door loads the next area on a loading screen, as the game does. Takes hold at the next door.",
     ),
 ];
 /// A box on the Auto-Pause page, and its words.
@@ -114,6 +119,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         9 => &mut s.movement_modern,
         10 => &mut s.click_to_walk,
         11 => &mut s.auto_advance,
+        12 => &mut s.seamless_areas,
         _ => return None,
     })
 }
@@ -229,7 +235,7 @@ impl Stage {
                 ..Row::default()
             });
         }
-        // Eleven rows, and six fit: the wheel brings up the rest.
+        // Thirteen rows, and six fit: the wheel brings up the rest.
         v.lists
             .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
         self.option_words(&mut v, "LB_DESC");

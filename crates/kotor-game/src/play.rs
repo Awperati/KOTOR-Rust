@@ -929,7 +929,7 @@ impl World {
         let doors: Vec<([f32; 3], [f32; 3])> = self
             .objects
             .values()
-            .filter(|o| o.kind == Kind::Door && !o.open && !o.locked)
+            .filter(|o| o.kind == Kind::Door && !o.open && !o.locked && self.in_the_way(o))
             .map(door_line)
             .collect();
         let nav = self.nav.as_mut()?;

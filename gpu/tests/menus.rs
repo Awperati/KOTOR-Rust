@@ -3798,3 +3798,43 @@ fn figures_on_the_party_screen_breathe() {
         "the figure idles"
     );
 }
+
+/// The last row of Feedback is Seamless areas: it flips, the file keeps it, and with it off no door joins its neighbour.
+#[test]
+fn the_seamless_areas_row_flips_and_turns_the_joining_off() {
+    let Some((mut s, dir)) = in_game("seamless_row") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    assert!(s.settings().seamless_areas, "on to begin with");
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    for _ in 0..10 {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_OPTIONS", 12);
+    assert!(!s.settings().seamless_areas);
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("seamless_areas=false"));
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    s.update(DT);
+    assert!(
+        !s.game.world.seamless.enabled,
+        "off: doors load as they did"
+    );
+    // And back on.
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    for _ in 0..10 {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_OPTIONS", 12);
+    assert!(s.settings().seamless_areas);
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    s.update(DT);
+    assert!(s.game.world.seamless.enabled);
+}
