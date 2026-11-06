@@ -202,6 +202,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "journal", &out);
     s.escape();
 
+    // The other option pages, from the pause menu.
+    s.escape();
+    click(&mut s, "BTN_FEEDBACK", None);
+    s.set_view(size);
+    let p = s.menu_pixel("LB_OPTIONS", Some(1), size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "opt_feedback", &out);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_AUTOPAUSE", None);
+    s.set_view(size);
+    let p = s.menu_pixel("CB_ENEMYSIGHTED", None, size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "opt_autopause", &out);
+    click(&mut s, "BTN_BACK", None);
+    s.escape();
+
     // Where the party is: the map.
     s.open_map();
     shot(&mut gpu, &mut s, "map", &out);

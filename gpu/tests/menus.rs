@@ -141,9 +141,6 @@ fn esc_pauses_the_game_and_exit_game_goes_back_to_the_main_menu() {
     assert_eq!(s.game.world.time, t, "the clock stops");
     let drawn = s.overlay().unwrap().clone();
     assert!(drawn.rgba.chunks(4).all(|p| p[3] == 255));
-    // The greyed pages do nothing.
-    press(&mut s, "BTN_FEEDBACK");
-    assert_eq!(s.menu_name(), "pause");
     // Close and Esc both go back to the game.
     press(&mut s, "BTN_EXIT");
     assert_eq!(s.menu_name(), "-");
@@ -1260,6 +1257,100 @@ fn a_tutorial_comes_once_over_a_screen_and_notices_flash() {
     s.enable_tutorials(false);
     assert_eq!(s.menu_name(), "-");
     assert!(frame(&mut s) != first);
+}
+
+#[test]
+fn the_feedback_and_autopause_pages_keep_what_they_say_and_it_takes_effect() {
+    let Some((mut s, dir)) = in_game("feedback") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    s.escape();
+    assert_eq!(s.menu_name(), "pause");
+
+    // Feedback: a click on a row flips it, and the file keeps it.
+    press(&mut s, "BTN_FEEDBACK");
+    assert_eq!(s.menu_name(), "feedback");
+    let before = frame(&mut s);
+    assert!(s.settings().minimap);
+    let row = s.menu_pixel("LB_OPTIONS", Some(3), SIZE).unwrap();
+    s.hover(row, SIZE);
+    assert!(frame(&mut s) != before, "its words show");
+    click_row(&mut s, "LB_OPTIONS", 3);
+    assert!(!s.settings().minimap);
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("minimap=false"));
+    click_row(&mut s, "LB_OPTIONS", 0);
+    assert!(s.settings().hide_unequippable);
+    click_row(&mut s, "LB_OPTIONS", 2);
+    assert!(!s.settings().subtitles);
+    press(&mut s, "BTN_DEFAULT");
+    assert!(s.settings().minimap && s.settings().subtitles);
+    click_row(&mut s, "LB_OPTIONS", 3);
+    click_row(&mut s, "LB_OPTIONS", 0);
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "pause");
+
+    // Auto-Pause: its boxes flip.
+    press(&mut s, "BTN_AUTOPAUSE");
+    assert_eq!(s.menu_name(), "autopause");
+    assert!(s.settings().pause_enemy);
+    press(&mut s, "CB_ENEMYSIGHTED");
+    assert!(!s.settings().pause_enemy);
+    assert!(s.settings().pause_party);
+    press(&mut s, "BTN_DEFAULT");
+    assert!(s.settings().pause_enemy);
+    press(&mut s, "BTN_BACK");
+
+    // Gameplay: Auto Level Up and Combat Movement.
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "CB_LEVELUP");
+    assert!(s.settings().auto_level);
+    press(&mut s, "CB_DISABLEMOVE");
+    assert!(!s.settings().combat_movement);
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+
+    // The small map's frame has gone, and the corner no longer opens the map.
+    s.update(DT);
+    let corner = s.hud_pixel("BTN_MINIMAP", SIZE).unwrap();
+    s.click(corner, SIZE);
+    assert_eq!(s.menu_name(), "-");
+
+    // A level is taken by itself.
+    let pc = s.game.world.pc;
+    let level = s.game.world.object(pc).unwrap().level;
+    s.game.world.grant_xp(pc, 1000);
+    s.update(DT);
+    assert_eq!(s.game.world.object(pc).unwrap().level, level + 1);
+    assert_eq!(s.menu_name(), "-");
+
+    // In a fight, the keys and the floor no longer move the player.
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 3.0, p[1], p[2]]);
+    s.game.world.combat.target.insert(foe, pc);
+    s.update(DT);
+    assert!(s.game.world.steer.is_none());
+
+    // What cannot be worn leaves the list.
+    s.game.world.combat.target.clear();
+    let armour = s.game.world.spawn_item("g_a_class4001");
+    s.game.world.carry(pc, armour);
+    s.game.world.object_mut(pc).unwrap().feats.clear();
+    s.open_equip();
+    press(&mut s, "BTN_INV_BODY");
+    let view_rows = s.menu_pixel("LB_ITEMS", Some(1), SIZE);
+    click_row(&mut s, "LB_ITEMS", 1);
+    press(&mut s, "BTN_EQUIP");
+    assert!(view_rows.is_some(), "the place is there, the row is not");
+    assert!(!s.game.world.object(pc).unwrap().equipped.contains_key(&1));
+    assert!(s.game.world.carried(pc).contains(&armour));
 }
 
 /// The picture of the game, with nothing open.

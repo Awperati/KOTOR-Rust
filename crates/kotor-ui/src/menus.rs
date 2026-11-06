@@ -418,6 +418,16 @@ impl Ui<'_> {
                 continue;
             }
             let lit = matches!(&view.hover, Some(Hit::Row(l, n)) if l == &list.tag && *n == i);
+            if proto.kind == CHECKBOX {
+                let ticked = proto.selected.as_ref().filter(|_| row.selected);
+                let side = r[3] * 3 / 4;
+                let tick = [r[0], r[1] + (r[3] - side) / 2, side, side];
+                self.draw_border(cv, ticked.unwrap_or(&proto.border), tick, None);
+                let words = [r[0] + side + 6, r[1], r[2] - side - 6, r[3]];
+                let color = if lit { LIT } else { t.color };
+                self.draw_text(cv, &t.font, &row.text, words, 17, color);
+                continue;
+            }
             self.draw_border(cv, &proto.border, r, None);
             if let (true, Some(h)) = (lit || row.selected, &proto.hilight) {
                 self.draw_border(cv, h, r, None);

@@ -138,6 +138,11 @@ impl Stage {
     /// The small map on the HUD. What moves it is rounded, so the HUD is drawn again only when it shows.
     pub(in crate::stage) fn minimap_view(&mut self) -> Option<MiniMap> {
         self.see_here();
+        let off = !self.menus.settings.minimap;
+        self.ui.set_minimap_off(off);
+        if off {
+            return None;
+        }
         let map = self.menus.map.as_ref()?.map.as_ref()?;
         let w = &self.game.world;
         let p = w.object(w.pc)?.position;
@@ -152,7 +157,7 @@ impl Stage {
     }
 
     /// The party cannot change in a fight.
-    pub(super) fn party_blocked(&self) -> bool {
+    pub(in crate::stage) fn party_blocked(&self) -> bool {
         let w = &self.game.world;
         let party = |id: &u32| *id == w.pc || w.party.contains(id);
         w.combat.target.iter().any(|(a, t)| party(a) || party(t))

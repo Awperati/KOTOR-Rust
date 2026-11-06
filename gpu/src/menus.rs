@@ -16,6 +16,8 @@ mod levelup;
 mod mapscreen;
 #[path = "notices.rs"]
 mod notices;
+#[path = "optionpages.rs"]
+mod optionpages;
 #[path = "partyscreen.rs"]
 mod partyscreen;
 
@@ -145,6 +147,9 @@ pub(super) enum Screen {
     Map,
     /// A tutorial pop-up over whatever is under it.
     Tutorial,
+    /// `optfeedback.gui` and `optautopause.gui`.
+    Feedback,
+    AutoPause,
 }
 
 /// What the player chose on the option pages. Kept in a text file beside the saves.
@@ -167,6 +172,21 @@ pub struct Settings {
     /// Tutorial pop-ups come up. The talk table has "Tutorial Popups" but the file has no box for it, so this is in the
     /// settings file only.
     pub tutorials: bool,
+    /// The player's levels are taken as they come, with what the class recommends.
+    pub auto_level: bool,
+    /// The player can move in a fight.
+    pub combat_movement: bool,
+    /// The equipment list leaves out what cannot be worn.
+    pub hide_unequippable: bool,
+    pub subtitles: bool,
+    pub minimap: bool,
+    pub floating_numbers: bool,
+    /// What pauses the game by itself.
+    pub pause_round: bool,
+    pub pause_enemy: bool,
+    pub pause_party: bool,
+    pub pause_action: bool,
+    pub pause_target: bool,
 }
 
 impl Default for Settings {
@@ -181,6 +201,17 @@ impl Default for Settings {
             difficulty: 1,
             size: None,
             tutorials: true,
+            auto_level: false,
+            combat_movement: true,
+            hide_unequippable: false,
+            subtitles: true,
+            minimap: true,
+            floating_numbers: true,
+            pause_round: false,
+            pause_enemy: true,
+            pause_party: true,
+            pause_action: false,
+            pause_target: false,
         }
     }
 }
@@ -191,7 +222,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -199,7 +230,18 @@ impl Settings {
             self.invert_camera,
             self.autosave,
             self.difficulty,
-            self.tutorials
+            self.tutorials,
+            self.auto_level,
+            self.combat_movement,
+            self.hide_unequippable,
+            self.subtitles,
+            self.minimap,
+            self.floating_numbers,
+            self.pause_round,
+            self.pause_enemy,
+            self.pause_party,
+            self.pause_action,
+            self.pause_target
         )
     }
 
@@ -220,6 +262,17 @@ impl Settings {
                 "autosave" => s.autosave = v == "true",
                 "difficulty" => s.difficulty = v.parse().unwrap_or(1).clamp(0, 2),
                 "tutorials" => s.tutorials = v == "true",
+                "auto_level" => s.auto_level = v == "true",
+                "combat_movement" => s.combat_movement = v == "true",
+                "hide_unequippable" => s.hide_unequippable = v == "true",
+                "subtitles" => s.subtitles = v == "true",
+                "minimap" => s.minimap = v == "true",
+                "floating_numbers" => s.floating_numbers = v == "true",
+                "pause_round" => s.pause_round = v == "true",
+                "pause_enemy" => s.pause_enemy = v == "true",
+                "pause_party" => s.pause_party = v == "true",
+                "pause_action" => s.pause_action = v == "true",
+                "pause_target" => s.pause_target = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -277,6 +330,8 @@ impl Screen {
             Screen::Party => "party",
             Screen::Map => "map",
             Screen::Tutorial => "tutorial",
+            Screen::Feedback => "feedback",
+            Screen::AutoPause => "autopause",
         }
     }
 
@@ -333,6 +388,8 @@ pub(super) struct Menus {
     /// Pages of tutorial pop-ups waiting, and whether they come up at all.
     tutorials: std::collections::VecDeque<u32>,
     tutorials_on: bool,
+    /// The words of the option the cursor last rested on.
+    option_words: Option<u32>,
     /// The icons flashing on the HUD and when they stop, and what they were last compared with.
     notices: Vec<(&'static str, f32)>,
     had: Option<notices::Had>,
@@ -515,6 +572,8 @@ impl Stage {
             Screen::Journal => self.journal_view(),
             Screen::Party => self.party_view_screen(),
             Screen::Map => self.map_view(),
+            Screen::Feedback => self.feedback_view(),
+            Screen::AutoPause => self.autopause_view(),
         }
     }
 
@@ -693,8 +752,9 @@ impl Stage {
         let pc = w.pc;
         let mut choices = vec![None];
         choices.extend(worn_in(w, slot).map(Some));
+        let hide = self.menus.settings.hide_unequippable;
         for item in w.carried(pc) {
-            if w.slots_of(item) & (1 << slot) != 0 {
+            if w.slots_of(item) & (1 << slot) != 0 && !(hide && w.can_wear(pc, item).is_err()) {
                 choices.push(Some(item));
             }
         }
@@ -976,15 +1036,11 @@ impl Stage {
     /// `optgameplay.gui`. The other boxes and buttons are about things not built, so they are greyed.
     fn gameplay_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optgameplay");
-        v.hide(&["LB_DESC"]);
-        v.inert(&[
-            "CB_LEVELUP",
-            "CB_REVERSE",
-            "CB_DISABLEMOVE",
-            "BTN_KEYMAP",
-            "BTN_MOUSE",
-        ]);
+        self.gameplay_words(&mut v);
+        v.inert(&["CB_REVERSE", "BTN_KEYMAP", "BTN_MOUSE"]);
         let s = self.menus.settings;
+        v.value("CB_LEVELUP", s.auto_level as i32, 1);
+        v.value("CB_DISABLEMOVE", s.combat_movement as i32, 1);
         v.value("CB_INVERTCAM", s.invert_camera as i32, 1);
         v.value("CB_AUTOSAVE", s.autosave as i32, 1);
         let name = self.ui.strref(STR_DIFFICULTY + s.difficulty as u32);
@@ -1301,6 +1357,9 @@ impl Stage {
         let (x, y) = self.menu_layout_point(pixel, size);
         self.menus.hover = self.ui.menu_hit(&view, x, y);
         let top = self.top();
+        if let Some(screen) = top {
+            self.option_hover(screen);
+        }
         if top == Some(Screen::Equip) {
             self.equip_hover();
         } else if let Some(screen) = top.filter(|t| t.is_level()) {
@@ -1348,6 +1407,7 @@ impl Stage {
                 self.menus.delete_armed = None;
                 match self.top() {
                     Some(Screen::Inventory | Screen::Container) => self.use_listed_item(row),
+                    Some(Screen::Feedback) => self.feedback_row(row),
                     Some(Screen::Equip) => {
                         if self.menus.slot.is_some() {
                             self.menus.chosen = Some(row);
@@ -1403,6 +1463,21 @@ impl Stage {
                 self.menus.stack.push(Screen::Graphics)
             }
             (Screen::Options | Screen::Pause, "BTN_SOUND") => self.menus.stack.push(Screen::Sound),
+            (Screen::Options | Screen::Pause, "BTN_FEEDBACK") => {
+                self.menus.stack.push(Screen::Feedback)
+            }
+            (Screen::Options | Screen::Pause, "BTN_AUTOPAUSE") => {
+                self.menus.stack.push(Screen::AutoPause)
+            }
+            (Screen::Feedback | Screen::AutoPause, _) => self.option_page_press(top, tag),
+            (Screen::Gameplay, "CB_LEVELUP") => {
+                self.menus.settings.auto_level = !self.menus.settings.auto_level;
+                self.settings_changed();
+            }
+            (Screen::Gameplay, "CB_DISABLEMOVE") => {
+                self.menus.settings.combat_movement = !self.menus.settings.combat_movement;
+                self.settings_changed();
+            }
             (Screen::Options | Screen::Gameplay | Screen::Graphics | Screen::Sound, "BTN_BACK") => {
                 self.menus.stack.pop();
             }
@@ -1425,6 +1500,7 @@ impl Stage {
                 let s = &mut self.menus.settings;
                 (s.invert_camera, s.autosave, s.difficulty) =
                     (d.invert_camera, d.autosave, d.difficulty);
+                (s.auto_level, s.combat_movement) = (d.auto_level, d.combat_movement);
                 self.settings_changed();
             }
             (Screen::Graphics, "BTN_DEFAULT") => {
@@ -1805,11 +1881,10 @@ fn main_menu() -> MenuView {
     v
 }
 
-/// `optionsingame.gui`. Feedback and Auto-Pause are about things not built, so they are greyed.
+/// `optionsingame.gui`.
 fn pause_menu() -> MenuView {
     let mut v = MenuView::new("optionsingame");
     v.hide(&["LB_DESC"]);
-    v.inert(&["BTN_FEEDBACK", "BTN_AUTOPAUSE"]);
     v
 }
 
@@ -1817,6 +1892,5 @@ fn pause_menu() -> MenuView {
 fn options_menu() -> MenuView {
     let mut v = MenuView::new("optionsmain");
     v.hide(&["LB_DESC"]);
-    v.inert(&["BTN_FEEDBACK", "BTN_AUTOPAUSE"]);
     v
 }

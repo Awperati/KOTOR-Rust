@@ -101,6 +101,10 @@ Feats and powers are chains of up to three pictures, each with an arrow to what 
 ## Journal
 J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `World::journal` with their names and the words of their state from `global.jrl`, with the planet first as the file has one. One button swaps active and completed quests, and one goes through the four orders. Scripts and conversations both set a state, and a save keeps the order. Quest items are not built, so their button is greyed. Experience for a quest's state, the file's `XP_Percentage`, is not paid here. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/journal.rs`.
 
+## Feedback and Auto-Pause
+From the pause menu or the main menu's Options. Feedback has Hide Unequippable, Tutorial Popups, Subtitles, Mini Map and Floating Numbers. Auto-Pause has End of Combat Round, Enemy Sighted, Party Member Down, Action Menu Used and New Target Selected; Mine Sighted is greyed, as there are no mines. Auto Level Up on the Gameplay page takes the player's levels as they come, and with Combat Movement off the keys and the floor do not move the player in a fight. Enemy Sighted and Party Member Down start ticked: **assumed**. All of it is kept in the settings file.
+
+
 ## Pop-ups and notices
 A tutorial pop-up comes up once in a game for what `tutorial.2da` names, or when a script calls `ShowTutorialWindow`. The game waits, and OK, Continue or Esc goes on. `tutorials=false` in the settings file turns them off, and `--no-tutorials` does for one run; `--autopilot` has none. Icons at the top of the HUD flash for a new journal entry, a change in credits, experience from a script, items gained or lost outside the screens, and a change of alignment. Experience from a kill has no icon.
 

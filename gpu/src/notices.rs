@@ -113,6 +113,15 @@ impl Stage {
             }
         }
         self.menus.had = Some(now);
+        let w = &self.game.world;
+        if self.menus.settings.auto_level
+            && w.hold_levels
+            && w.level_ready(w.pc)
+            && !w.in_dialogue()
+            && self.menus.stack.is_empty()
+        {
+            self.auto_level_up();
+        }
         let time = self.game.world.time;
         self.menus.notices.retain(|n| n.1 > time);
 

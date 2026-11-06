@@ -494,7 +494,9 @@ impl Stage {
         let (cos, sin) = (self.yaw.cos(), self.yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
         let len = dir[0].hypot(dir[1]);
-        self.game.world.steer = (len > 0.01).then(|| ([dir[0] / len, dir[1] / len], !walk));
+        let held = !self.settings().combat_movement && self.party_blocked();
+        self.game.world.steer =
+            (len > 0.01 && !held).then(|| ([dir[0] / len, dir[1] / len], !walk));
         let speed = self.speed;
         if let Some(p) = self.pilot.as_mut() {
             // A scripted player opens no screens: levels and forced party members come straight away.
@@ -1039,7 +1041,9 @@ impl Stage {
             return;
         }
         if let Some(p) = self.floor_under_ray(o, d) {
-            self.game.world.walk_to(p);
+            if self.settings().combat_movement || !self.party_blocked() {
+                self.game.world.walk_to(p);
+            }
         }
     }
 
@@ -1603,7 +1607,13 @@ impl Stage {
             }
             return;
         }
-        let view = self.choice_view();
+        let mut view = self.choice_view();
+        if !self.settings().subtitles {
+            // **Assumed:** with subtitles off the line being said goes, and the replies stay.
+            if let Some(v) = view.as_mut() {
+                v.subtitle.clear();
+            }
+        }
         let party = self.party_view();
         let target = self.target_view();
         let target_at = self.target_on_screen();

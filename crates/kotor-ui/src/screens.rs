@@ -44,6 +44,8 @@ pub struct Ui<'a> {
     combat: CombatHud,
     /// The icons flashing at the top.
     notices: Vec<String>,
+    /// The small map and its frame are switched off.
+    minimap_off: bool,
 }
 
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
@@ -135,6 +137,7 @@ impl<'a> Ui<'a> {
             minimap: None,
             combat: CombatHud::default(),
             notices: Vec::new(),
+            minimap_off: false,
         }
     }
 
@@ -198,6 +201,8 @@ impl<'a> Ui<'a> {
             "container",
             "partyselection",
             "map",
+            "optfeedback",
+            "optautopause",
             "maincg",
             "leveluppnl",
             "abchrgen",
@@ -782,13 +787,18 @@ impl<'a> Ui<'a> {
             hide(&mut patches, "LBL_ARROW".to_string());
         }
         self.patch_combat(&mut patches);
+        if self.minimap_off {
+            for tag in ["LBL_MAPBORDER", "LBL_MAPVIEW", "LBL_ARROW"] {
+                hide(&mut patches, tag.to_string());
+            }
+        }
         for tag in &self.notices {
             patches.entry(tag.clone()).or_default().hidden = false;
         }
         // File order: later controls lie on top, as in the menus.
         for c in gui.panel.children.iter().filter(|c| c.kind != 9) {
             self.draw_control(&mut cv, c, (0, 0), &patches);
-            if c.tag == "LBL_MAPVIEW" {
+            if c.tag == "LBL_MAPVIEW" && !self.minimap_off {
                 let e = &c.extent;
                 self.draw_minimap(&mut cv, [e.left, e.top, e.width, e.height]);
             }
@@ -896,6 +906,11 @@ impl<'a> Ui<'a> {
         self.combat = combat;
     }
 
+    /// The Mini Map box on the Feedback page.
+    pub fn set_minimap_off(&mut self, off: bool) {
+        self.minimap_off = off;
+    }
+
     /// The small map on the HUD, if the area has one.
     pub fn set_minimap(&mut self, map: Option<MiniMap>) {
         self.minimap = map;
@@ -913,6 +928,7 @@ impl<'a> Ui<'a> {
         let shown = |tag: &str| match tag {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
             "BTN_TARGET0" => self.combat.attack.is_some() && self.target_at.is_some(),
+            "BTN_MINIMAP" => !self.minimap_off,
             _ => true,
         };
         gui.panel
