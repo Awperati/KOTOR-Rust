@@ -408,9 +408,22 @@ impl Ui<'_> {
                 let [x, y, w, _] = first_row;
                 let room = list.extent.top + list.extent.height - y;
                 let n = (room / f.line_height.max(1)).max(0) as usize;
-                for (i, l) in f.wrap(&text, w).iter().take(n).enumerate() {
+                let lines = f.wrap(&text, w);
+                let skip = patch
+                    .from_end
+                    .map_or(0, |back| lines.len().saturating_sub(n + back));
+                for (i, l) in lines.iter().skip(skip).take(n).enumerate() {
                     let top = at.1 + y + i as i32 * f.line_height;
                     f.draw_line(cv, at.0 + x, top, l, t.color);
+                }
+                let bar = list.children.iter().find(|k| k.kind == SCROLLBAR);
+                if let Some(bar) = bar.filter(|_| patch.from_end.is_some() && lines.len() > n) {
+                    let e = &bar.extent;
+                    let r = [at.0 + e.left, at.1 + e.top, e.width, e.height];
+                    self.draw_border(cv, &bar.border, r, None);
+                    let h = (r[3] * n as i32 / lines.len() as i32).max(8);
+                    let y = r[1] + (r[3] - h) * skip as i32 / (lines.len() - n) as i32;
+                    cv.fill_rect(r[0] + 3, y + 3, r[2] - 6, h - 6, [0, 166, 247, 170]);
                 }
             }
             return;
@@ -671,6 +684,26 @@ impl Ui<'_> {
             (ox + r[0]) as f32 + r[2] as f32 / 2.0,
             (oy + r[1]) as f32 + r[3] as f32 / 2.0,
         ))
+    }
+
+    /// How many lines some words make in a list, and how many fit on screen.
+    pub fn menu_text_lines(&mut self, gui: &str, tag: &str, text: &str) -> (usize, usize) {
+        let Some(list) = self.gui(gui).and_then(|g| g.find(tag).cloned()) else {
+            return (0, 1);
+        };
+        let proto = list.proto_item.as_deref();
+        let font = proto.and_then(|p| p.text.as_ref()).map(|t| t.font.clone());
+        let (Some(layout), Some(font)) = (row_layout(&list), font) else {
+            return (0, 1);
+        };
+        let Some(f) = self.font(&font) else {
+            return (0, 1);
+        };
+        let room = list.extent.top + list.extent.height - layout.0[1];
+        (
+            f.wrap(text, layout.0[2]).len(),
+            (room / f.line_height.max(1)).max(1) as usize,
+        )
     }
 
     /// How many rows of a list fit on screen.

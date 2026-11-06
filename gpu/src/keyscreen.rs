@@ -12,7 +12,7 @@ use kotor_ui::{MenuView, Row};
 use std::collections::BTreeMap;
 
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 16] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 18] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
@@ -24,6 +24,8 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 16] = [
     ("Equip", 48037, 1, "KeyU"),
     ("Inventory", 48039, 1, "KeyI"),
     ("Character", 48041, 1, "KeyC"),
+    ("Abilities", 48043, 1, "KeyK"),
+    ("Messages", 48045, 1, "KeyL"),
     ("Quests", 48050, 1, "KeyJ"),
     ("Map", 48048, 1, "KeyM"),
     ("Options", 48052, 1, "KeyO"),
@@ -31,7 +33,7 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 16] = [
     ("CancelCombat", 48315, 1, "KeyF"),
 ];
 /// Each action's name in `keymap.2da`.
-const ORIGINAL_NAMES: [(&str, &str); 16] = [
+const ORIGINAL_NAMES: [(&str, &str); 18] = [
     ("MoveForward", "ActionUp"),
     ("MoveBack", "ActionDown"),
     ("MoveLeft", "ActionLeft"),
@@ -43,6 +45,8 @@ const ORIGINAL_NAMES: [(&str, &str); 16] = [
     ("Equip", "Equip"),
     ("Inventory", "Inventory"),
     ("Character", "Character"),
+    ("Abilities", "SkillsAndFeats"),
+    ("Messages", "Messages"),
     ("Quests", "Quests"),
     ("Map", "Map"),
     ("Options", "Options"),

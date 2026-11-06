@@ -14,7 +14,7 @@ $h = $v.MainWindowHandle
 "window $h"
 $before = [Drv]::GetForegroundWindow()
 $ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $SPACE = @(0x20, 0x39); $ONE = @(0x31, 0x02); $W = @(0x57, 0x11); $D = @(0x44, 0x20)
-$E = @(0x45, 0x12); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E); $KEY_J = @(0x4A, 0x24); $KEY_M = @(0x4D, 0x32)
+$E = @(0x45, 0x12); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E); $KEY_J = @(0x4A, 0x24); $KEY_M = @(0x4D, 0x32); $KEY_K = @(0x4B, 0x25)
 
 # New game.
 WaitLog
@@ -104,6 +104,23 @@ Key $KEY_J[0] $KEY_J[1]
 $s = WaitFor "menu" "journal"
 Report "J opens the journal" ($s.menu -eq "journal") "menu=$($s.menu)"
 Shot "play_journal"
+Press 263 43 52 40     # BTN_ABI
+$s = WaitFor "menu" "abilities"
+Report "The tab opens Abilities" ($s.menu -eq "abilities") "menu=$($s.menu)"
+Shot "play_abilities"
+Press 389 88 138 18    # BTN_FEATS
+[void](State)
+Shot "play_abilities_feats"
+Press 325 43 52 40     # BTN_MSG
+$s = WaitFor "menu" "messages"
+Report "The tab opens Messages" ($s.menu -eq "messages") "menu=$($s.menu)"
+Shot "play_messages"
+Press 113 410 279 28   # BTN_SHOW
+[void](State)
+Shot "play_messages_feedback"
+Key $KEY_K[0] $KEY_K[1]
+$s = WaitFor "menu" "abilities"
+Report "K opens Abilities" ($s.menu -eq "abilities") "menu=$($s.menu)"
 Key $KEY_M[0] $KEY_M[1]
 $s = WaitFor "menu" "map"
 Report "M opens the map" ($s.menu -eq "map") "menu=$($s.menu)"

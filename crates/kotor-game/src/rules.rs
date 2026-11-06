@@ -151,6 +151,26 @@ impl World {
             .unwrap_or(0)
     }
 
+    /// What a skill has besides its ranks: its key ability's modifier and effects.
+    pub fn skill_modifier(&mut self, id: ObjId, skill: usize) -> i32 {
+        let key = match self
+            .table("skills")
+            .as_ref()
+            .and_then(|t| t.get(skill, "keyability").map(str::to_string))
+            .as_deref()
+        {
+            Some("STR") => 0,
+            Some("DEX") => 1,
+            Some("CON") => 2,
+            Some("WIS") => 4,
+            Some("CHA") => 5,
+            _ => 3,
+        };
+        ability_mod(self.ability_score(id, key))
+            + self.effect_sum(id, "EffectSkillIncrease", Some(skill as f32))
+            - self.effect_sum(id, "EffectSkillDecrease", Some(skill as f32))
+    }
+
     /// d20 + ranks + key ability modifier + effects against `dc`. A skill that cannot be used untrained fails
     /// without a roll when the creature has no ranks.
     pub fn skill_check(&mut self, id: ObjId, skill: usize, dc: i32) -> Check {
@@ -164,18 +184,7 @@ impl World {
             };
         };
         let untrained = t.int(skill, "untrained").unwrap_or(0) != 0;
-        let key = match t.get(skill, "keyability").unwrap_or("INT") {
-            "STR" => 0,
-            "DEX" => 1,
-            "CON" => 2,
-            "WIS" => 4,
-            "CHA" => 5,
-            _ => 3,
-        };
-        let bonus = ranks
-            + ability_mod(self.ability_score(id, key))
-            + self.effect_sum(id, "EffectSkillIncrease", Some(skill as f32))
-            - self.effect_sum(id, "EffectSkillDecrease", Some(skill as f32));
+        let bonus = ranks + self.skill_modifier(id, skill);
         if ranks == 0 && !untrained {
             return Check {
                 roll: 0,

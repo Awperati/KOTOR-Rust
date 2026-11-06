@@ -135,6 +135,53 @@ impl World {
         }
     }
 
+    /// The feats a creature has, in the table's order.
+    pub fn owned_feats(&mut self, id: ObjId) -> Vec<Choice> {
+        let Some(t) = self.table("feat") else {
+            return Vec::new();
+        };
+        let owned: Vec<usize> = self.objects.get(&id).map_or(Vec::new(), |o| {
+            o.feats.iter().map(|f| *f as usize).collect()
+        });
+        owned
+            .into_iter()
+            .filter(|r| t.int(*r, "name").is_some())
+            .map(|r| self.feat_choice(id, &t, r))
+            .collect()
+    }
+
+    /// The Force powers a creature has, in the table's order.
+    pub fn owned_powers(&mut self, id: ObjId) -> Vec<Choice> {
+        let Some(t) = self.table("spells") else {
+            return Vec::new();
+        };
+        let owned: Vec<usize> = self.objects.get(&id).map_or(Vec::new(), |o| {
+            o.spells.iter().map(|p| *p as usize).collect()
+        });
+        owned
+            .into_iter()
+            .filter(|r| t.int(*r, "name").is_some())
+            .map(|r| self.power_choice(id, &t, r))
+            .collect()
+    }
+
+    /// The skills as the Abilities tab lists them.
+    pub fn skill_choices(&mut self) -> Vec<Choice> {
+        let Some(t) = self.table("skills") else {
+            return Vec::new();
+        };
+        (0..t.row_count())
+            .map(|r| Choice {
+                id: r as i32,
+                name: t.int(r, "name").unwrap_or(0) as u32,
+                description: t.int(r, "description").unwrap_or(0) as u32,
+                icon: t.get(r, "icon").unwrap_or("").to_ascii_lowercase(),
+                owned: false,
+                can_take: false,
+            })
+            .collect()
+    }
+
     /// Take a feat with a slot that holds it: the slot of its own list first, then the other.
     pub fn choose_feat(&mut self, id: ObjId, feat: i32) -> Result<(), String> {
         let regular_list = self.can_take_feat(id, feat, 1);

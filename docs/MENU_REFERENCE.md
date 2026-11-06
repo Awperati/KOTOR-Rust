@@ -32,7 +32,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | What | Before | Now |
 |---|---|---|
 | Screens on a wide window | centred, black at the sides | stretched over the window, 3 across to 2.25 down at 1080p |
-| Tabs over equipment, inventory, character and pause | none | `top.gui`; the screen that is up uses `lbl_icn_*2`, which is green. Abilities and Messages tabs say they are not built |
+| Tabs over equipment, inventory, character and pause | none | `top.gui`; the screen that is up uses `lbl_icn_*2`, which is green. |
 | HUD | `maininterface.gui`, portraits at the right | `mipc28x6.gui`: portraits bottom left, four action slots bottom right, eight menu buttons top right that open their screens, map frame top left |
 | Target name and health | fixed at the top | a bar floating over the target |
 | Pictures with `blending additive` in their TXI | black boxes | their black is see-through. This applies to every interface picture |
@@ -45,6 +45,8 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | `fnt_console` at 4K | letters run together | the stock font: its upscaled picture was the cause |
 | What has not been seen of a map | all of it showed | a grid, as at 1:25:00 and 3:50:35: spacing and colours measured from those two frames, so close, not exact. Seen is a circle 14 of the picture's pixels round the player, with a soft edge |
 | 3D figure on the sheet and level-up panel | a portrait, an empty space | the leader, as at 1:23:50 and 22:20: only they are drawn, behind a hole in the picture. Frames: `character`, `level_panel`. Opening the sheet in the driver covers it live, but only a frame shows what it looks like |
+| Abilities tab | said it was not built | `abilities.gui`: skills with rank, bonus and total, powers with their cost, feats, each with its picture and the table's words. Frames: `abilities_skills`, `abilities_feats`, `abilities_powers`. **Not compared:** two scans of the video's thumbnails found no such screen. **Assumed:** a power shows only its base cost, since the rules charge nothing for alignment. The cursor shows a row's words, and a click keeps them |
+| Messages tab | said it was not built | `messages.gui`: what has been said, and with Show Feedback the attacks; the wheel goes back. Frames: `messages_dialog`, `messages_feedback`. **Not compared:** not found in the video either. **Assumed:** the words of a line, which are mine in talk-table words: `who > whom: Hit, roll + bonus / defense. Damage: n`. Only the party's attacks are listed, not the other feedback the options page names. It is kept in memory, so a load empties it |
 | Changing member | none | the small portraits at the foot of the equipment, inventory and character screens, as at 1:23:50, and the HUD's. The bag goes with whoever leads, and a level waits for each member. Frame: `character_party`. Tested in code, not clicked live: the driver has no party |
 | Interface sounds | none | `guisounds.2da`'s for entering, clicking, ticking, a refusal, a panel opening and closing, the slots and taking an item. Which goes with what is read from its labels. Heard in no comparison: I looked at the video's frames only, and tests check that a sound is sent, not how it sounds |
 | Advanced Graphics | a greyed button | the stock page with V-Sync working. The other boxes stay greyed and say why, since each needs the renderer. Not seen in the video. Frames: `opt_graphics_reason`, `opt_graphics_advanced` |

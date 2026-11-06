@@ -117,6 +117,8 @@ pub struct Patch {
     pub plain: bool,
     /// A label that answers to the cursor as a button does.
     pub live: bool,
+    /// A list of words: show the page that ends this many lines before the last, with a bar.
+    pub from_end: Option<usize>,
 }
 
 /// What the dialogue box shows.

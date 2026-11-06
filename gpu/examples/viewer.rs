@@ -347,6 +347,8 @@ impl App {
                         "Equip" => self.stage.open_equip(),
                         "Inventory" => self.stage.open_inventory(),
                         "Character" => self.stage.open_character(),
+                        "Abilities" => self.stage.open_abilities(),
+                        "Messages" => self.stage.open_messages(),
                         "Quests" => self.stage.open_journal(),
                         "Map" => self.stage.open_map(),
                         "Options" => self.stage.escape(),

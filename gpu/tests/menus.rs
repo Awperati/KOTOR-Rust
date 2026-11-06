@@ -1896,6 +1896,107 @@ fn the_sheet_and_the_level_panel_have_a_figure_behind_a_hole() {
     assert_eq!(o.rgba[((hy * o.width + hx) * 4 + 3) as usize], 0);
 }
 
+#[test]
+fn the_abilities_tab_lists_what_the_leader_has() {
+    let Some((mut s, _)) = in_game("abilities") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.open_character();
+    press(&mut s, "BTN_ABI");
+    assert_eq!(s.menu_name(), "abilities");
+    let skills = frame(&mut s);
+    assert_eq!(s.game.world.skill_choices().len(), 8);
+
+    // A row's words and numbers follow the cursor, from the sheet's ranks and modifier.
+    let skills_had = &mut s.game.world.objects.get_mut(&pc).unwrap().skills;
+    skills_had.resize(8, 0);
+    skills_had[1] = 3;
+    let p = s.menu_pixel("LB_ABILITY", Some(1), SIZE).unwrap();
+    s.hover(p, SIZE);
+    assert!(frame(&mut s) != skills);
+    let modifier = s.game.world.skill_modifier(pc, 1);
+    let int = s.game.world.object(pc).unwrap().abilities[3];
+    assert_eq!(modifier, (int - 10).div_euclid(2));
+
+    // A soldier has no powers, so that tab cannot be chosen. Give one and it can.
+    assert!(s.game.world.owned_powers(pc).is_empty());
+    press(&mut s, "BTN_FEATS");
+    let feats = frame(&mut s);
+    assert!(feats != skills);
+    let owned = s.game.world.owned_feats(pc);
+    assert!(!owned.is_empty());
+    assert!(owned.iter().all(|c| c.owned && c.name > 0), "{owned:?}");
+    press(&mut s, "BTN_POWERS");
+    s.hover((0.0, 0.0), SIZE);
+    assert_eq!(frame(&mut s), feats, "greyed");
+    let spells = s.game.world.power_choices(pc);
+    assert!(spells.is_empty(), "a soldier's list");
+    s.game.world.objects.get_mut(&pc).unwrap().spells.insert(8);
+    assert_eq!(s.game.world.owned_powers(pc).len(), 1);
+    press(&mut s, "BTN_POWERS");
+    assert!(frame(&mut s) != feats);
+
+    // The tabs go on to the other screens, and Close closes.
+    press(&mut s, "BTN_MSG");
+    assert_eq!(s.menu_name(), "messages");
+    press(&mut s, "BTN_ABI");
+    press(&mut s, "BTN_EXIT");
+    assert!(!s.menu_open());
+    s.open_abilities();
+    assert_eq!(s.menu_name(), "abilities");
+    s.escape();
+    s.open_messages();
+    assert_eq!(s.menu_name(), "messages");
+}
+
+#[test]
+fn the_messages_tab_shows_what_was_said_and_fought() {
+    let Some((mut s, _)) = in_game("messages") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.open_messages();
+    let words = s.messages_words();
+    let said = s.game.world.transcript.clone();
+    assert!(said.len() > 3);
+    assert!(said.iter().all(|l| words.contains(&l.text)), "{words}");
+    let last = frame(&mut s);
+
+    // The wheel goes back through it, and no further than its start.
+    let at = (0..400).find(|_| {
+        s.menu_wheel(1.0);
+        frame(&mut s) != last
+    });
+    assert!(at.is_some(), "more than a page has been said");
+    s.menu_wheel(-1.0);
+    assert_eq!(frame(&mut s), last);
+
+    // The other list holds the party's attacks, with the talk table's words. The Jedi of the opening are not theirs.
+    assert!(!s.game.world.combat.log.is_empty());
+    press(&mut s, "BTN_SHOW");
+    assert_eq!(s.messages_words(), "");
+    let empty = frame(&mut s);
+    assert!(empty != last);
+    s.game.world.combat.log.push(kotor_game::AttackLog {
+        round: 1,
+        attacker: pc,
+        target: pc,
+        roll: 14,
+        bonus: 5,
+        defense: 12,
+        outcome: kotor_game::Outcome::Hit,
+        damage: 6,
+        target_hp: 10,
+    });
+    let line = s.messages_words();
+    assert!(line.contains("Hit, 14 + 5 / 12"), "{line}");
+    assert!(line.ends_with("Damage: 6"), "{line}");
+    assert!(frame(&mut s) != empty);
+    press(&mut s, "BTN_SHOW");
+    assert_eq!(frame(&mut s), last);
+}
+
 /// How many short sounds come out of the next update.
 fn sounds(s: &mut Stage) -> usize {
     let cues = s.update(DT);
@@ -1978,14 +2079,8 @@ fn the_tabs_change_screen_and_the_hud_buttons_open_them() {
     assert_eq!(s.menu_name(), "pause");
     press(&mut s, "BTN_INV");
     assert_eq!(s.menu_name(), "inventory");
-    // The tabs for screens not built say so and stay.
     press(&mut s, "BTN_ABI");
-    assert_eq!(s.menu_name(), "inventory");
-    assert!(
-        s.menu_message().contains("not built"),
-        "{}",
-        s.menu_message()
-    );
+    assert_eq!(s.menu_name(), "abilities");
     s.escape();
     assert_eq!(s.menu_name(), "-");
     // The screens fill the window: nothing is left black at the sides.

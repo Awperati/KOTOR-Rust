@@ -10,6 +10,8 @@ use kotor_game::{
 use kotor_ui::{CombatHud, Hit, MenuView, Row};
 use std::path::{Path, PathBuf};
 
+#[path = "abilityscreen.rs"]
+mod abilityscreen;
 #[path = "fightscreen.rs"]
 mod fightscreen;
 #[path = "figure.rs"]
@@ -161,6 +163,9 @@ pub(super) enum Screen {
     LevelPowers,
     /// `journal.gui`.
     Journal,
+    /// `abilities.gui` and `messages.gui`.
+    Abilities,
+    Messages,
     /// `partyselection.gui`.
     Party,
     /// `map.gui`.
@@ -367,6 +372,8 @@ impl Screen {
             Screen::LevelFeats => "level_feats",
             Screen::LevelPowers => "level_powers",
             Screen::Journal => "journal",
+            Screen::Abilities => "abilities",
+            Screen::Messages => "messages",
             Screen::Party => "party",
             Screen::Map => "map",
             Screen::Tutorial => "tutorial",
@@ -457,6 +464,10 @@ pub(super) struct Menus {
     /// The journal lists completed quests, and in which of `QUEST_SORTS`.
     journal_completed: bool,
     journal_sort: usize,
+    /// Which tab of the Abilities screen is up, the Messages screen shows the fight's lines, and how far back it is.
+    abilities_tab: usize,
+    messages_feedback: bool,
+    message_back: usize,
     settings: Settings,
     /// Where the settings are kept; `None` keeps them in memory, as in tests.
     settings_file: Option<PathBuf>,
@@ -577,6 +588,8 @@ impl Stage {
             Some(Screen::Equip) => Some("BTN_EQU"),
             Some(Screen::Inventory) => Some("BTN_INV"),
             Some(Screen::Character) => Some("BTN_CHAR"),
+            Some(Screen::Abilities) => Some("BTN_ABI"),
+            Some(Screen::Messages) => Some("BTN_MSG"),
             Some(Screen::Journal) => Some("BTN_JOU"),
             Some(Screen::Map) => Some("BTN_MAP"),
             Some(Screen::Pause) if self.started => Some("BTN_OPT"),
@@ -631,6 +644,8 @@ impl Stage {
             Screen::LevelFeats => self.level_feats_view(),
             Screen::LevelPowers => self.level_powers_view(),
             Screen::Journal => self.journal_view(),
+            Screen::Abilities => self.abilities_view(),
+            Screen::Messages => self.messages_view(),
             Screen::Party => self.party_view_screen(),
             Screen::Map => self.map_view(),
             Screen::Feedback => self.feedback_view(),
@@ -1248,7 +1263,8 @@ impl Stage {
         self.menus.stack.pop();
         self.menus.stack.push(screen);
         self.menus.first = 0;
-        self.menus.selected = (screen == Screen::Journal).then_some(0);
+        self.menus.message_back = 0;
+        self.menus.selected = matches!(screen, Screen::Journal | Screen::Abilities).then_some(0);
         self.leave_slot();
         self.menus.hover_slot = None;
     }
@@ -1389,6 +1405,8 @@ impl Stage {
                 Screen::Inventory
                     | Screen::Equip
                     | Screen::Character
+                    | Screen::Abilities
+                    | Screen::Messages
                     | Screen::Journal
                     | Screen::Map
             )
@@ -1397,7 +1415,9 @@ impl Stage {
             self.menus.stack.pop();
             self.menus.stack.push(screen);
             self.menus.first = 0;
-            self.menus.selected = (screen == Screen::Journal).then_some(0);
+            self.menus.message_back = 0;
+            self.menus.selected =
+                matches!(screen, Screen::Journal | Screen::Abilities).then_some(0);
             self.leave_slot();
             self.menus.hover_slot = None;
             self.menus.hover = None;
@@ -1583,12 +1603,14 @@ impl Stage {
         let Some(top) = self.top() else {
             return;
         };
-        // The tabs change between the party's screens. The other four are not built.
+        // The tabs change between the party's screens.
         if self.menus.stack.last().is_some() && TABS.iter().any(|t| t.0 == tag) {
             let target = match tag {
                 "BTN_EQU" => Some(Screen::Equip),
                 "BTN_INV" => Some(Screen::Inventory),
                 "BTN_CHAR" => Some(Screen::Character),
+                "BTN_ABI" => Some(Screen::Abilities),
+                "BTN_MSG" => Some(Screen::Messages),
                 "BTN_JOU" => Some(Screen::Journal),
                 "BTN_MAP" => Some(Screen::Map),
                 "BTN_OPT" => Some(Screen::Pause),
@@ -1714,6 +1736,7 @@ impl Stage {
                 self.menus.selected = Some(0);
                 self.menus.first = 0;
             }
+            (Screen::Abilities | Screen::Messages, _) => self.ability_press(tag),
             (Screen::Tutorial, "BTN_OK") => self.tutorial_next(),
             (Screen::Inventory | Screen::Equip | Screen::Character, "BTN_CHANGE1") => {
                 self.change_member(0)
@@ -1982,6 +2005,10 @@ impl Stage {
 
     /// The wheel over a list.
     pub fn menu_wheel(&mut self, lines: f32) {
+        if self.top() == Some(Screen::Messages) {
+            self.messages_wheel(lines);
+            return;
+        }
         let Some(view) = self.menu_view() else { return };
         let Some((tag, (rows, _))) = view.lists.iter().next() else {
             return;

@@ -200,6 +200,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.set_view(size);
     click(&mut s, "LB_ITEMS", Some(1));
     shot(&mut gpu, &mut s, "journal", &out);
+    click(&mut s, "BTN_ABI", None);
+    shot(&mut gpu, &mut s, "abilities_skills", &out);
+    click(&mut s, "BTN_FEATS", None);
+    click(&mut s, "LB_ABILITY", Some(1));
+    shot(&mut gpu, &mut s, "abilities_feats", &out);
+    let pc = s.game.world.pc;
+    s.game.world.objects.get_mut(&pc).unwrap().spells.insert(8);
+    click(&mut s, "BTN_POWERS", None);
+    shot(&mut gpu, &mut s, "abilities_powers", &out);
+    s.game.world.objects.get_mut(&pc).unwrap().spells.remove(&8);
+    click(&mut s, "BTN_SKILLS", None);
+    click(&mut s, "BTN_MSG", None);
+    shot(&mut gpu, &mut s, "messages_dialog", &out);
+    click(&mut s, "BTN_SHOW", None);
+    let foe = s.game.world.party.first().copied().unwrap_or(pc);
+    for (roll, outcome, damage) in [
+        (14, kotor_game::Outcome::Hit, 6),
+        (3, kotor_game::Outcome::Miss, 0),
+        (20, kotor_game::Outcome::Critical, 11),
+    ] {
+        s.game.world.combat.log.push(kotor_game::AttackLog {
+            round: 1,
+            attacker: pc,
+            target: foe,
+            roll,
+            bonus: 5,
+            defense: 12,
+            outcome,
+            damage,
+            target_hp: 10,
+        });
+    }
+    shot(&mut gpu, &mut s, "messages_feedback", &out);
+    click(&mut s, "BTN_SHOW", None);
+    s.game.world.combat.log.clear();
+    s.escape();
+    s.open_journal();
     s.escape();
 
     // The other option pages, from the pause menu.
