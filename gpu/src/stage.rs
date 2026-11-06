@@ -2031,6 +2031,7 @@ impl Stage {
         let w = &self.game.world;
         let align = w.object(w.pc).map_or(-1, |o| o.alignment);
         // The OK of a message, on a screen's 640 by 480.
+        let beside = at(self.hud_pixel("BTN_CHAR3", layout));
         let ok = at(self.menu_pixel("BTN_OK", None, (640, 480)));
         // The rows of a screen's list, the same way.
         let row0 = at(self.menu_pixel("LB_ITEMS", Some(0), (640, 480)));
@@ -2069,7 +2070,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} race={race} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} foe={foe} race={race} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

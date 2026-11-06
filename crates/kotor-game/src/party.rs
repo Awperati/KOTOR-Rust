@@ -90,6 +90,22 @@ impl World {
         Some((name, level, self.class_name(class)))
     }
 
+    /// The picture of whoever is in a slot. A slot is not one person: the Endar Spire has Trask in Bastila's.
+    pub fn party_portrait(&mut self, slot: i32) -> Option<String> {
+        if let Some(o) = self
+            .npc_slots
+            .get(&slot)
+            .and_then(|id| self.objects.get(id))
+        {
+            if !o.portrait.is_empty() {
+                return Some(o.portrait.clone());
+            }
+        }
+        let template = self.available.get(&slot)?.clone();
+        let g = Gff::parse(&self.inst.read(&template, CREATURE_FILE).ok()?).ok()?;
+        Some(self.creature_portrait(&g.root)).filter(|p| !p.is_empty())
+    }
+
     /// Bring a slot's creature to the party, beside the leader.
     fn join_slot(&mut self, slot: i32) -> Option<ObjId> {
         let template = self.available.get(&slot)?.clone();

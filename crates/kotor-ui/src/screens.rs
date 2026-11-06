@@ -201,9 +201,9 @@ impl<'a> Ui<'a> {
             action_icon: String::new(),
             textures: HashMap::new(),
             fonts: HashMap::new(),
+            guis: HashMap::new(),
             tlk: None,
             target_at: None,
-            guis: HashMap::new(),
             minimap: None,
             combat: CombatHud::default(),
             notices: Vec::new(),
@@ -897,8 +897,8 @@ impl<'a> Ui<'a> {
         let hide = |patches: &mut HashMap<String, Patch>, tag: String| {
             patches.entry(tag).or_default().hidden = true;
         };
-        for n in 1..=3 {
-            match party.get(n - 1) {
+        for (i, n) in HUD_MEMBER_SLOTS.into_iter().enumerate() {
+            match party.get(i) {
                 Some(m) => {
                     patches.entry(format!("LBL_CHAR{n}")).or_default().fill =
                         Some(m.portrait.clone());
@@ -1175,8 +1175,8 @@ impl<'a> Ui<'a> {
                 self.combat.slots[2].is_some() && self.target_at.is_some()
             }
             "BTN_MINIMAP" => !self.minimap_off,
-            "BTN_CHAR2" => self.hud_party >= 2,
-            "BTN_CHAR3" => self.hud_party >= 3,
+            "BTN_CHAR3" => self.hud_party >= 2,
+            "BTN_CHAR2" => self.hud_party >= 3,
             _ => true,
         };
         gui.panel
@@ -1319,7 +1319,7 @@ impl<'a> Ui<'a> {
                             || t == "LBL_ICON1")
                 })
                 .collect();
-            for n in party.len() + 1..=3 {
+            for n in HUD_MEMBER_SLOTS.into_iter().skip(party.len()) {
                 hide.push(format!("LBL_BACK{n}"));
             }
             if party.len() < 2 {
@@ -1400,6 +1400,9 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
+/// Which of the file's three places each member has, in the party's order. The file's second place is the far one: the video
+/// has one companion right beside the leader at 7:30.
+const HUD_MEMBER_SLOTS: [usize; 3] = [1, 3, 2];
 const HUD_BUTTONS: [&str; 26] = [
     "BTN_EQU",
     "BTN_INV",

@@ -1936,7 +1936,7 @@ fn a_screen_or_the_hud_changes_to_another_member_with_the_bag() {
     // The HUD's small portraits do the same.
     s.update(DT);
     let leader = s.game.world.pc;
-    let portrait = s.hud_pixel("BTN_CHAR2", SIZE).unwrap();
+    let portrait = s.hud_pixel("BTN_CHAR3", SIZE).unwrap();
     s.click(portrait, SIZE);
     assert_ne!(s.game.world.pc, leader);
     s.update(DT);

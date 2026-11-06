@@ -97,7 +97,8 @@ impl Stage {
             );
             if offered {
                 v.hide(&[&tag_na]);
-                v.fill(&tag_char, *portrait);
+                let own = self.game.world.party_portrait(n);
+                v.fill(&tag_char, own.unwrap_or_else(|| portrait.to_string()));
                 v.value(&tag_button, chosen.contains(&n) as i32, 1);
             } else {
                 v.hide(&[&tag_char, &tag_button]);
