@@ -570,6 +570,10 @@ impl World {
                 self.pc_mover = kotor_walkmesh::Mover::new(wp, std::f32::consts::FRAC_PI_2);
                 self.place_party_near(wp);
             }
+        } else if let Some(entry) = self.objects.get(&self.pc).map(|o| o.position) {
+            // No waypoint: the module's entry point, where `load_module` put the player. The swoop race's module is entered so.
+            self.pc_mover = kotor_walkmesh::Mover::new(entry, std::f32::consts::FRAC_PI_2);
+            self.place_party_near(entry);
         }
         self.events
             .push(format!("transition to {module} at {waypoint:?}"));

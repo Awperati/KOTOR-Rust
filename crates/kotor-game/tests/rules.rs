@@ -18,6 +18,30 @@ fn effect(w: &mut World, name: &str, nums: &[f32]) -> u32 {
 }
 
 #[test]
+fn a_module_entered_with_no_waypoint_starts_at_its_entry_point() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    // The swoop race's module, as `k_ptar_bekrace` starts it. Its file gives the entry point.
+    w.transition("tar_m03af", "").unwrap();
+    let at = w.object(w.pc).unwrap().position;
+    assert!(
+        (at[0] - 246.196).abs() < 0.01 && (at[1] - 218.443).abs() < 0.01,
+        "{at:?}"
+    );
+    w.step(1.0 / 60.0);
+    let at = w.object(w.pc).unwrap().position;
+    assert!(
+        (at[0] - 246.196).abs() < 0.5 && (at[1] - 218.443).abs() < 0.5,
+        "{at:?}"
+    );
+}
+
+#[test]
 fn someone_behind_a_counter_can_be_spoken_to() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

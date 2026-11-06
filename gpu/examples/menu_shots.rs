@@ -351,6 +351,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let p = s.menu_pixel("LB_OPTIONS", Some(1), size).unwrap();
     s.hover(p, size);
     shot(&mut gpu, &mut s, "opt_feedback", &out);
+    // Its last rows, the owner's: the underwear style and early Force.
+    for _ in 0..4 {
+        s.menu_wheel(-1.0);
+    }
+    shot(&mut gpu, &mut s, "opt_feedback_style", &out);
+    for _ in 0..4 {
+        s.menu_wheel(1.0);
+    }
     click(&mut s, "BTN_BACK", None);
     click(&mut s, "BTN_AUTOPAUSE", None);
     s.set_view(size);
