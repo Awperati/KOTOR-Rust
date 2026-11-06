@@ -1,0 +1,26 @@
+# The same gate as scripts/check.ps1, with no game files: KOTOR_DIR names a folder that does not exist, so every test
+# that needs the install skips itself, timing runs among them. The live drivers and the pilot's long runs stay local.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: [self-hosted, Windows, X64, kotor]
+    timeout-minutes: 60
+    env:
+      KOTOR_DIR: ${{ github.workspace }}\..\no-game
+      # Outside the checkout, so each run compiles only what changed.
+      CARGO_TARGET_DIR: ${{ github.workspace }}\..\cargo-target
+    steps:
+      - uses: actions/checkout@v4
+      - name: Format, lints and tests
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check.ps1

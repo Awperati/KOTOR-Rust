@@ -1,7 +1,7 @@
 # Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**355 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**357 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -58,6 +58,8 @@ Most to least blocking, all absent unless stated:
 10. **The rest of the game.** The autopilot below plays into Taris with an unkillable hero; nobody has judged those modules by eye. Vendors, minigames, the galaxy map and stealth are not built. `docs/GAPS.md` ranks what is missing.
 
 ## How far the autopilot gets
+CI runs `scripts/check.ps1` on a self-hosted runner with no game files (`.github/workflows/ci.yml`). All 357 tests pass there, but those that need the install return at once, so CI proves the build, the lints and the tests with no install, not the game.
+
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 80000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
 Last run: 15,796 game seconds in 60 wall seconds, 121 kills, experience 9,721, level 4, 3,265 door tries, 87 items, 9,531 lines. It ends when no new module has come for 8,000 s. Script errors: 4. The 387 `locked` stalls are doors it tried and gave up on.
