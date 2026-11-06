@@ -187,6 +187,7 @@ struct App {
     turning: f32,
     keys: [bool; 5],
     looking: bool,
+    cursor_known: bool,
     state: Option<State>,
     failed: Option<String>,
 }
@@ -551,28 +552,33 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let now = (position.x as f32, position.y as f32);
+                // A cursor that has just come into the window has not moved from anywhere.
+                let from = if self.cursor_known { self.cursor } else { now };
+                self.cursor_known = true;
                 if self.stage.turret_on() {
                     if self.turret_cursor_known {
                         self.stage
                             .turret_look(now.0 - self.cursor.0, now.1 - self.cursor.1);
                     }
                     self.turret_cursor_known = true;
-                    if let Some(st) = &self.state {
-                        // A cursor at the window's edge stops giving movement. Only with the window in use: a driver's has no focus.
-                        let z = st.window.inner_size();
-                        let middle = (z.width as f32 / 2.0, z.height as f32 / 2.0);
-                        let off = (now.0 - middle.0).abs().max((now.1 - middle.1).abs());
-                        if st.window.has_focus() && off > middle.1 / 2.0 {
-                            let spot = winit::dpi::PhysicalPosition::new(middle.0, middle.1);
-                            if st.window.set_cursor_position(spot).is_ok() {
+                    if let Some(middle) = self.state.as_ref().and_then(|st| back_to_middle(st, now))
+                    {
+                        self.cursor = middle;
+                        return;
+                    }
+                } else if self.looking != self.stage.mouse_look_on() {
+                    // With the Mouse Look box on it is the other way round: the button frees the cursor to reach the screen's edge.
+                    self.stage.look(now.0 - from.0, now.1 - from.1);
+                    if self.stage.mouse_look_on() {
+                        if let Some(st) = &self.state {
+                            let z = st.window.inner_size();
+                            self.stage.hover(now, (z.width, z.height));
+                            if let Some(middle) = back_to_middle(st, now) {
                                 self.cursor = middle;
                                 return;
                             }
                         }
                     }
-                } else if self.looking {
-                    self.stage
-                        .look(now.0 - self.cursor.0, now.1 - self.cursor.1);
                 } else if let Some(st) = &self.state {
                     let z = st.window.inner_size();
                     self.stage.hover(now, (z.width, z.height));
@@ -585,6 +591,7 @@ impl ApplicationHandler for App {
             WindowEvent::Focused(false) => {
                 self.keys = [false; 5];
                 self.looking = false;
+                self.cursor_known = false;
                 self.turning = 0.0;
             }
             WindowEvent::MouseInput { state, button, .. }
@@ -650,6 +657,22 @@ impl ApplicationHandler for App {
     }
 }
 
+/// A cursor at the window's edge stops giving movement, so it goes back to the middle.
+/// Only with the window in use: a driver's has no focus.
+fn back_to_middle(st: &State, now: (f32, f32)) -> Option<(f32, f32)> {
+    let z = st.window.inner_size();
+    let middle = (z.width as f32 / 2.0, z.height as f32 / 2.0);
+    let off = (now.0 - middle.0).abs().max((now.1 - middle.1).abs());
+    if !st.window.has_focus() || off <= middle.1 / 2.0 {
+        return None;
+    }
+    let spot = winit::dpi::PhysicalPosition::new(middle.0, middle.1);
+    st.window
+        .set_cursor_position(spot)
+        .is_ok()
+        .then_some(middle)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let args: Vec<String> = std::env::args().collect();
@@ -704,7 +727,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if flag("--early-force") {
         stage.restart_with_early_force()?;
     }
-    if !flag("--skip-menu") && !flag("--autopilot") {
+    if let Some(file) = opt("--settings") {
+        stage.use_settings_file(file.into());
+    } else if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }
     let out = if flag("--mute") {
@@ -780,6 +805,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         turning: 0.0,
         keys: [false; 5],
         looking: false,
+        cursor_known: false,
         state: None,
         failed: None,
     };

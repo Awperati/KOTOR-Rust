@@ -899,20 +899,45 @@ fn the_arrow_on_a_portrait_goes_to_the_character_when_a_level_waits() {
 }
 
 #[test]
-fn the_mouse_look_box_does_not_flip_the_camera() {
+fn the_mouse_going_down_looks_down_with_the_box_on_or_off() {
     let Some((mut s, dir)) = in_game("mouse_look") else {
         return;
     };
-    let before = s.pitch;
-    s.look(0.0, 10.0);
-    let plain = s.pitch - before;
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("settings.txt");
-    std::fs::write(&file, "invert_camera=true\n").unwrap();
+    for (text, box_on) in [
+        ("mouse_look=false\nmovement_modern=true\n", false),
+        ("mouse_look=false\nmovement_modern=false\n", false),
+        ("mouse_look=true\nmovement_modern=true\n", true),
+        ("mouse_look=true\nmovement_modern=false\n", true),
+        // An old file's name for the box turns nothing on.
+        ("invert_camera=true\n", false),
+    ] {
+        std::fs::write(&file, text).unwrap();
+        s.use_settings_file(file.clone());
+        assert_eq!(s.mouse_look_on(), box_on, "{text}");
+        let before = s.looks_down();
+        s.look(0.0, 10.0);
+        let lower = s.looks_down();
+        assert!(lower > before, "{text}: {before} then {lower}");
+        s.look(0.0, -20.0);
+        assert!(s.looks_down() < lower, "{text}");
+    }
+}
+
+#[test]
+fn the_mouse_look_box_leaves_the_mouse_alone_in_a_menu() {
+    let Some((mut s, dir)) = in_game("mouse_look_menu") else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("settings.txt");
+    std::fs::write(&file, "mouse_look=true\n").unwrap();
     s.use_settings_file(file);
-    let before = s.pitch;
-    s.look(0.0, 10.0);
-    assert!((s.pitch - before - plain).abs() < 1e-6);
+    assert!(s.mouse_look_on());
+    s.escape();
+    assert!(s.menu_open());
+    assert!(!s.mouse_look_on());
 }
 
 #[test]

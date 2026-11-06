@@ -1170,7 +1170,12 @@ impl Stage {
             }
             // Not while the mouse is looking: it decides where the camera goes. In Modern the keys go by the camera,
             // so a camera that followed them would turn a strafe into a circle.
-            _ if self.looking || (w.movement == MovementMode::Modern && w.steer.is_some()) => None,
+            _ if self.looking
+                || self.mouse_look_on()
+                || (w.movement == MovementMode::Modern && w.steer.is_some()) =>
+            {
+                None
+            }
             _ => w.pc_walking().then_some(w.pc_mover.heading),
         };
         if let Some(a) = wanted {
@@ -1250,7 +1255,27 @@ impl Stage {
         }
     }
 
-    /// Drag with the right button: turn the camera round the player and tilt it.
+    /// Whether the mouse turns the camera with no button held: the Mouse Look box, while the game is being played.
+    pub fn mouse_look_on(&self) -> bool {
+        self.settings().mouse_look
+            && !self.menu_open()
+            && !self.turret_on()
+            && !self.game.world.in_dialogue()
+    }
+
+    /// How far the camera points down, from -1 straight up to 1 straight down, for a test driver.
+    pub fn looks_down(&self) -> f32 {
+        let c = self.camera();
+        let d = [
+            c.target[0] - c.eye[0],
+            c.target[1] - c.eye[1],
+            c.target[2] - c.eye[2],
+        ];
+        -d[2] / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-3)
+    }
+
+    /// Drag with the right button, or move with the Mouse Look box on: turn the camera round the player and tilt it.
+    /// The mouse going down looks down, and going up looks up: `pitch` lifts the camera above the player.
     pub fn look(&mut self, dx: f32, dy: f32) {
         // A half on the Mouse Settings slider is the speed this always had.
         let speed = self.settings().mouse_sensitivity * 2.0;
@@ -2360,7 +2385,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} yaw={:.3} heading={:.3} steps={} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
@@ -2389,8 +2414,10 @@ impl Stage {
             !w.pc_body.grounded,
             w.pc_body.rolling(),
             self.camera().fov,
+            self.pitch,
             self.yaw,
             w.pc_mover.heading,
+            self.looks_down(),
             self.game.steps,
             self.target_view().map_or("-".to_string(), |t| t.0.replace(' ', "_")),
         )
