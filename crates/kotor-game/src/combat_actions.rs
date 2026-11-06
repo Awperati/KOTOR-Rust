@@ -1,10 +1,14 @@
-//! What the player can queue in a fight: the feats that change the next attack and the Force powers that hurt. The
-//! numbers are the talk table's own words for each feat.
+//! What the slots under an enemy's bar offer, as the owner has them: on the left the feats that change the next attack, in
+//! the middle the Force powers that hurt, on the right what can be thrown. The numbers are the talk table's own words for
+//! each feat.
 //!
 //! A power is for an enemy when `spells.2da` fills its `forcehostile`, as a test checks. **Assumed:** "while using this feat" in Flurry's
 //! words is the combat round.
 
 use crate::world::{ObjId, World};
+
+/// The rows of `baseitems.2da` of the game's grenades and its thermal detonator, read from their item files.
+const BASE_THROWN: std::ops::RangeInclusive<i32> = 25..=34;
 
 /// What the player has queued for their next attacks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,6 +145,23 @@ impl World {
             ));
         }
         out.into_iter().map(|(_, c)| c).collect()
+    }
+
+    /// What a creature carries that it can throw at an enemy with `use_item_on`. One with no power cannot be used: the
+    /// flash grenade's file has none.
+    pub fn combat_throwables(&mut self, id: ObjId) -> Vec<ObjId> {
+        let thrown: Vec<ObjId> = self
+            .carried(id)
+            .into_iter()
+            .filter(|i| {
+                self.object(*i)
+                    .is_some_and(|o| BASE_THROWN.contains(&o.base_item))
+            })
+            .collect();
+        thrown
+            .into_iter()
+            .filter(|i| self.item_view(*i).is_some_and(|v| v.power.is_some()))
+            .collect()
     }
 
     /// The powers a creature knows that are for an enemy and it has the Force for.

@@ -18,6 +18,34 @@ fn effect(w: &mut World, name: &str, nums: &[f32]) -> u32 {
 }
 
 #[test]
+fn the_right_slot_has_what_can_be_thrown_and_not_what_cannot() {
+    let Some(mut w) = world() else {
+        return;
+    };
+    let pc = w.pc;
+    let empty = w.combat_throwables(pc).is_empty();
+    assert!(empty);
+    // Its template has no "gren" in it.
+    let detonator = w.spawn_item("g_w_thermldet01");
+    let frag = w.spawn_item("g_w_fraggren01");
+    // Its file names no power, so `use_item_on` could only refuse.
+    let flash = w.spawn_item("g_w_flashgren001");
+    let medpack = w.spawn_item("g_i_medeqpmnt01");
+    for item in [detonator, frag, flash, medpack] {
+        w.carry(pc, item);
+    }
+    let list = w.combat_throwables(pc);
+    assert!(
+        list.contains(&detonator) && list.contains(&frag),
+        "{list:?}"
+    );
+    assert!(
+        !list.contains(&flash) && !list.contains(&medpack),
+        "{list:?}"
+    );
+}
+
+#[test]
 fn a_grenade_thrown_at_a_foe_hurts_it_and_is_used_up() {
     let Some(mut w) = world() else { return };
     let pc = w.pc;

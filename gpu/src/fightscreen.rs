@@ -21,8 +21,6 @@ const PAUSE_KEY: &str = "Space";
 const AFTER_TALK_SECONDS: f32 = 0.5;
 const MOST_QUEUED: usize = 4;
 const STR_ATTACK: u32 = 375;
-/// The rows of `baseitems.2da` of the game's grenades and its thermal detonator, read from their item files.
-const BASE_THROWN: std::ops::RangeInclusive<i32> = 25..=34;
 const FLOAT_SECONDS: f32 = 1.5;
 const FLOAT_RISE: f32 = 40.0;
 const DAMAGE_COLOR: [f32; 3] = [1.0, 0.2, 0.15];
@@ -124,19 +122,11 @@ impl Stage {
 
     fn throwables(&mut self) -> Vec<SlotChoice> {
         let w = &mut self.game.world;
-        let thrown: Vec<ObjId> = w
-            .carried(w.pc)
-            .into_iter()
-            .filter(|i| {
-                w.object(*i)
-                    .is_some_and(|o| BASE_THROWN.contains(&o.base_item))
-            })
-            .collect();
+        let pc = w.pc;
+        let thrown = w.combat_throwables(pc);
         let views: Vec<_> = thrown.iter().filter_map(|i| w.item_view(*i)).collect();
-        // One with no power cannot be used: the flash grenade's file has none.
         views
             .into_iter()
-            .filter(|v| v.power.is_some())
             .map(|v| SlotChoice {
                 does: SlotDoes::Throw(v.id),
                 icon: v

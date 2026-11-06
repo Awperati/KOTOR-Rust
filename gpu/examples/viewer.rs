@@ -15,6 +15,7 @@
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
 //!     --no-chargen    New Game starts at once, with the preset character
 //!     --no-early-force New games play by the game's own rules, whatever Settings says
+//!     --early-force   With --autopilot, new games have the early Force rule too, for a test driver
 //!     --power N       give the player this power of `spells.2da` and the Force for it when a game starts, for a test driver
 //!     --give NAME     give the player this item when a game starts, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
@@ -551,7 +552,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.enable_tutorials(!flag("--no-tutorials") && !flag("--autopilot"));
     stage.enable_auto_pause(!flag("--no-auto-pause") && !flag("--autopilot"));
     stage.enable_chargen(!flag("--no-chargen"));
-    stage.enable_early_force(!flag("--no-early-force") && !flag("--autopilot"));
+    stage.enable_early_force(
+        flag("--early-force") || (!flag("--no-early-force") && !flag("--autopilot")),
+    );
     if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }

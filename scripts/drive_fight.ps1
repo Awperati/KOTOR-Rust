@@ -1,11 +1,13 @@
 # One fight in the running window: an enemy sighted, the pause, the three slots, floats and the HUD.
 # Like drive_window.ps1 it posts messages to the viewer's own handle only, and holds only at 1x: see docs/FASTTEST.md.
-param([string]$Shots)
+param([string]$Shots, [switch]$EarlyForce)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 # The pilot plays up to the first fight at its own speed and hands over when an enemy is seen. It writes no saves.
+# -EarlyForce plays with the owner's rule, so the middle slot's Force Push is the character's own, not one given to it.
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_fight.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--power","23","--give","g_w_adhsvgren001","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
+$power = if ($EarlyForce) { @("--early-force") } else { @("--power","23") }
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList (@("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight") + $power + @("--give","g_w_adhsvgren001","--frames","400000")) -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"

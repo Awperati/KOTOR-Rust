@@ -20,7 +20,15 @@ All the numbers here are my proposal, and none comes from the game. Change them 
 
 ## The slots
 
-The attack window reads what the character has: `combat_feats` for the middle slot, so Power Attack if owned, and `combat_powers` for the right one, so Force Push. With this rule on, a power too dear still shows, with `usable` false, and the screen greys it.
+As the owner has them, the three slots under an enemy's bar are:
+
+| Slot | What it holds | The engine's list |
+|---|---|---|
+| Left, with the arrows | The plain attack, then physical attacks such as Power Attack | `combat_feats` |
+| Middle | Force powers, so Force Push from level 1 with this rule | `combat_powers` |
+| Right | Grenades and other throwables | `combat_throwables`, thrown with `use_item_on` |
+
+With this rule on, a power too dear still shows, with `usable` false, and the screen greys it.
 
 ## Becoming a Jedi
 

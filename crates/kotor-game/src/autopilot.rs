@@ -534,11 +534,7 @@ impl Autopilot {
                 let tough = w.object(foe).is_some_and(|o| o.hp > GRENADE_HP);
                 if tough && self.grenade_wait <= 0.0 {
                     let pc = w.pc;
-                    let grenade = w
-                        .carried(pc)
-                        .into_iter()
-                        .find(|i| w.object(*i).is_some_and(|o| o.template.contains("gren")));
-                    if let Some(g) = grenade {
+                    if let Some(g) = w.combat_throwables(pc).first().copied() {
                         if w.use_item_on(pc, g, foe).is_ok() {
                             self.grenade_wait = GRENADE_SECONDS;
                             self.log.push(format!("threw {g} at {foe}"));

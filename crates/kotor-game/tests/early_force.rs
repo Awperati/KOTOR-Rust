@@ -38,6 +38,22 @@ fn with_the_rule_off_a_soldier_has_no_force_and_no_powers() {
 }
 
 #[test]
+fn force_push_is_in_the_powers_list_and_in_no_other_slot() {
+    let Some(mut w) = world(true, 10) else {
+        return;
+    };
+    let pc = w.pc;
+    let power = CombatAction::Power(FORCE_PUSH);
+    assert!(w.combat_powers(pc).iter().any(|c| c.action == power));
+    assert!(w.combat_feats(pc).iter().all(|c| c.action != power));
+    assert!(w
+        .combat_powers(pc)
+        .iter()
+        .all(|c| matches!(c.action, CombatAction::Power(_))));
+    assert!(w.combat_throwables(pc).is_empty());
+}
+
+#[test]
 fn the_pool_starts_small_and_grows_with_level_and_wisdom() {
     let Some(mut w) = world(true, 10) else {
         return;
