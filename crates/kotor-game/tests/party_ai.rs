@@ -115,3 +115,32 @@ fn the_player_does_not_walk_through_a_teammate_at_once() {
         "walked into the teammate: {closest_early} m"
     );
 }
+
+#[test]
+fn the_party_ai_style_decides_who_joins_the_leaders_fight() {
+    let Some((mut w, mate, foe)) = world() else {
+        return;
+    };
+    let pc = w.pc;
+    // Aggressive, the default: the teammate joins.
+    assert_eq!(w.party_ai_style, 0);
+    w.attack(pc, foe);
+    for _ in 0..80 {
+        w.step(0.05);
+    }
+    assert_eq!(w.combat.target.get(&mate), Some(&foe));
+    // Passive: it lets go and stays out.
+    w.party_ai_style = 2;
+    for _ in 0..80 {
+        w.step(0.05);
+    }
+    assert!(!w.combat.target.contains_key(&mate));
+    // Defensive: it stays out while the foe has not turned on the party, and the style answers back to scripts.
+    w.party_ai_style = 1;
+    w.combat.target.remove(&foe);
+    w.object_mut(foe).unwrap().faction = 0;
+    for _ in 0..80 {
+        w.step(0.05);
+    }
+    assert!(!w.combat.target.contains_key(&mate));
+}

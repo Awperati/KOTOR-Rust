@@ -366,6 +366,8 @@ pub struct World {
     pub shoves: Vec<crate::force::Shove>,
     /// Creatures an encounter brought out (`GetIsEncounterCreature`).
     pub encounter_creatures: BTreeSet<ObjId>,
+    /// `SetPartyAIStyle`: 0 aggressive, 1 defensive, 2 passive (`PARTY_AISTYLE_*`).
+    pub party_ai_style: i32,
     /// Every player-side creature is knocked out.
     pub game_over: bool,
     /// An `ActionPauseConversation` ran and its resume has not yet.
@@ -588,6 +590,7 @@ impl World {
             effect_expiry: HashMap::new(),
             shoves: Vec::new(),
             encounter_creatures: BTreeSet::new(),
+            party_ai_style: 0,
             game_over: false,
             conv_paused: false,
             conv_paused_at: None,

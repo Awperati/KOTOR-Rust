@@ -35,7 +35,6 @@ const PRESENTATION: &[&str] = &[
     "SetCameraFacing",
     "SetLockOrientationInDialog",
     "SetLockHeadFollowInDialog",
-    "SetPartyAIStyle",
     "SetTutorialWindowsEnabled",
     "SetFacingPoint",
     "SetPartyLeader",
@@ -626,6 +625,12 @@ impl Host for Adapter<'_> {
                 if let Some(Value::Engine(_, h)) = args.get(1) {
                     self.world.effects_at.push((*h, at));
                 }
+                self.record(name, args);
+                None
+            }
+            "GetPartyAIStyle" => Some(Value::Int(self.world.party_ai_style)),
+            "SetPartyAIStyle" => {
+                self.world.party_ai_style = int(args, 0)?.clamp(0, 2);
                 self.record(name, args);
                 None
             }
@@ -1711,10 +1716,7 @@ impl Host for Adapter<'_> {
                 .encounter_creatures
                 .contains(&self.obj(caller, args, 0))),
             "GetIsDebilitated" => b(self.world.is_disabled(self.obj(caller, args, 0))),
-            "GetLastAttackAction"
-            | "GetUserActionsPending"
-            | "GetPartyAIStyle"
-            | "GetSubScreenID" => {
+            "GetLastAttackAction" | "GetUserActionsPending" | "GetSubScreenID" => {
                 self.default_hit(name);
                 Some(Value::Int(0))
             }

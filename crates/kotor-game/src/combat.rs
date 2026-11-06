@@ -806,12 +806,27 @@ impl World {
 
     /// Party members who have no target join the leader's: they fight what the player fights (bug 21).
     ///
-    /// **Assumption:** the game's party AI style "follow" does this. Members with a target of their own keep it.
+    /// **Assumption:** the aggressive party AI style does this. Members with a target of their own keep it. Defensive
+    /// joins only a foe that already fights the party, passive never (`SetPartyAIStyle`).
     fn assist_leader(&mut self) {
+        let style = self.party_ai_style;
+        // Passive: the party does not start or keep fights, whatever the leader does.
+        if style >= 2 {
+            for id in self.party.clone() {
+                self.stop_attacking(id);
+            }
+            return;
+        }
         let Some(foe) = self.combat.target.get(&self.pc).copied() else {
             return;
         };
         if self.reputation(self.pc, foe) > 10 {
+            return;
+        }
+        // Defensive: they join only against a foe that is fighting the party already.
+        let mine = |w: &World, id: ObjId| id == w.pc || w.party.contains(&id);
+        let on_us = self.combat.target.get(&foe).is_some_and(|t| mine(self, *t));
+        if style == 1 && !on_us {
             return;
         }
         for id in self.party.clone() {
