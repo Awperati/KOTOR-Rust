@@ -14,6 +14,8 @@ const STR_ACTION_MENU: u32 = 48415;
 const STR_TARGET_CHANGED: u32 = 42481;
 /// Words the talk table fills in for the key, as the viewer has it.
 const PAUSE_KEY: &str = "Space";
+/// How long after a conversation Space still does not pause. **Assumed:** long enough for one more press.
+const AFTER_TALK_SECONDS: f32 = 0.5;
 const MOST_QUEUED: usize = 4;
 const FLOAT_SECONDS: f32 = 1.5;
 const FLOAT_RISE: f32 = 40.0;
@@ -45,6 +47,8 @@ pub(super) struct Fight {
     xp_seen: Option<i32>,
     /// What has already paused the game: enemies seen, the last round, who was down and the last target.
     sighted: std::collections::BTreeSet<ObjId>,
+    /// When a conversation was last open.
+    talk_ended: f32,
     round: u32,
     down: std::collections::BTreeSet<ObjId>,
     target: Option<ObjId>,
@@ -127,12 +131,13 @@ impl Stage {
         self.menus.paused
     }
 
-    /// Space: goes on with a line or a container, or else pauses.
+    /// Space: goes on with a line or a container, or else pauses. It never pauses in a conversation, nor just after
+    /// one: a player going through its lines presses once more than there are.
     pub fn space_key(&mut self) {
         let w = &self.game.world;
         if self.menu_open() || w.in_dialogue() || w.opened.is_some() {
             self.continue_line();
-        } else {
+        } else if w.time - self.menus.fight.talk_ended >= AFTER_TALK_SECONDS {
             self.toggle_pause();
         }
     }
@@ -166,6 +171,7 @@ impl Stage {
     pub(in crate::stage) fn pause_tick(&mut self) -> bool {
         if self.game.world.in_dialogue() {
             self.menus.paused = false;
+            self.menus.fight.talk_ended = self.game.world.time;
             return false;
         }
         if self.menus.auto_pause_on {

@@ -1513,6 +1513,44 @@ fn enemies_pause_the_game_and_space_goes_on() {
     }
 }
 
+#[test]
+fn space_never_pauses_in_a_conversation_nor_just_after_one() {
+    let Some((mut s, _)) = in_game("space") else {
+        return;
+    };
+    let trask = s.game.world.by_tag("end_trask")[0];
+    s.game.world.talk_to(trask);
+    for _ in 0..400 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            break;
+        }
+    }
+    assert!(s.game.world.in_dialogue());
+    // However many presses it takes to get through, none of them pauses.
+    for _ in 0..4000 {
+        if !s.game.world.in_dialogue() {
+            break;
+        }
+        s.space_key();
+        s.number_key(1);
+        assert!(!s.paused());
+        s.update(DT);
+    }
+    assert!(!s.game.world.in_dialogue());
+    // The press after the last line does nothing.
+    s.space_key();
+    assert!(!s.paused());
+    // A moment later Space pauses again.
+    for _ in 0..40 {
+        s.update(DT);
+    }
+    s.space_key();
+    assert!(s.paused());
+    s.space_key();
+    assert!(!s.paused());
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);
