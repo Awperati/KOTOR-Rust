@@ -43,7 +43,7 @@ pub use items::{
 };
 pub use journal::Quest;
 pub use levelup::Choice;
-pub use party::{PartyRequest, PARTY_SIZE};
+pub use party::{BenchedMember, PartyRequest, PARTY_SIZE};
 pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,
 };

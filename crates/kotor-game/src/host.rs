@@ -1044,6 +1044,7 @@ impl Host for Adapter<'_> {
                             o.facing = facing;
                         }
                         self.world.run_spawn_script(id);
+                        self.world.restore_benched(slot, id);
                         id
                     }
                     None => OBJECT_INVALID,

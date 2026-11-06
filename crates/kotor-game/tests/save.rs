@@ -41,6 +41,66 @@ fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
     assert_eq!(back.party, vec![hero]);
 }
 
+#[test]
+fn a_member_left_behind_keeps_levels_and_items_through_a_save() {
+    let Some(mut w) = world() else { return };
+    w.available.insert(2, "end_trask".to_string());
+    w.choose_party(&[2], "");
+    let id = w.npc_slots[&2];
+    let (pistol, medpack) = (
+        w.spawn_item("g_w_blstrpstl001"),
+        w.spawn_item("g_i_medeqpmnt01"),
+    );
+    let o = w.object_mut(id).unwrap();
+    o.level = 7;
+    o.xp = 21000;
+    o.max_hp = 77;
+    o.hp = 0;
+    o.feats.insert(13);
+    o.spells.insert(23);
+    o.skill_points = 4;
+    o.abilities[3] = 18;
+    o.inventory = vec![medpack];
+    o.equipped.clear();
+    o.equipped.insert(4, pistol);
+    w.object_mut(medpack).unwrap().stack = 3;
+
+    // Left behind, they and their things are gone from the world.
+    w.choose_party(&[], "");
+    assert!(w.party.is_empty());
+    assert!(w.npc_slots.is_empty());
+    assert!(w.object(id).is_none());
+    assert!(w.object(pistol).is_none());
+    assert_eq!(w.party_candidate(2).unwrap().1, 7);
+
+    // A save and a load keep them.
+    let bytes = w.save_bytes("bench").unwrap();
+    let mut back = fresh();
+    back.load_save(&bytes).unwrap();
+    assert_eq!(back.bench, w.bench);
+    assert_eq!(
+        back.bench[&2].carried,
+        vec![("g_i_medeqpmnt01".to_string(), 3)]
+    );
+
+    // They come back as they were, without what their template would give them.
+    back.choose_party(&[2], "");
+    assert!(back.bench.is_empty());
+    let id = back.npc_slots[&2];
+    let o = back.object(id).unwrap().clone();
+    assert_eq!((o.level, o.xp, o.max_hp, o.hp), (7, 21000, 77, 1));
+    assert!(o.feats.contains(&13) && o.spells.contains(&23));
+    assert_eq!((o.skill_points, o.abilities[3]), (4, 18));
+    assert_eq!(o.inventory.len(), 1);
+    assert_eq!(back.object(o.inventory[0]).unwrap().stack, 3);
+    assert_eq!(o.equipped.len(), 1);
+    assert_eq!(
+        back.object(o.equipped[&4]).unwrap().template,
+        "g_w_blstrpstl001"
+    );
+    assert_eq!(back.object(id).unwrap().faction, 2);
+}
+
 /// Play a little: open the first door, give Trask to the party with an item, earn XP, set variables, hurt a creature.
 fn play(w: &mut World) {
     let d = *w

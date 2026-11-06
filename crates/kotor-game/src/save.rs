@@ -8,6 +8,7 @@
 //! queues, conversations in progress, who is fighting whom, and `Effect` or location handles held by scripts. A load
 //! starts the module fresh, applies the saved state over it and does not run the area's enter scripts again.
 
+use crate::party::BenchedMember;
 use crate::world::{DoorState, Kind, ObjId, World};
 use kotor_archive::{write_archive, Erf, ErfKind, NewResource, Source};
 use kotor_core::{Error, ResType, Result};
@@ -114,6 +115,98 @@ pub fn read_save_info(path: &Path) -> Result<SaveInfo> {
             .filter_map(|p| p.str("Portrait").map(str::to_string))
             .collect(),
     })
+}
+
+fn value_list<'a>(values: impl IntoIterator<Item = &'a i32>) -> Value {
+    list_of(values, |v| st(vec![("Value", Value::Int(*v))]))
+}
+
+fn values_of(s: &Struct, label: &str) -> impl Iterator<Item = i32> {
+    let list = s.list(label).unwrap_or_default();
+    let values: Vec<i32> = list
+        .iter()
+        .filter_map(|x| x.int("Value").map(|v| v as i32))
+        .collect();
+    values.into_iter()
+}
+
+fn bench_struct(slot: i32, b: &BenchedMember) -> Struct {
+    st(vec![
+        ("Slot", Value::Int(slot)),
+        ("Class", Value::Int(b.class)),
+        ("Level", Value::Int(b.level)),
+        ("XP", Value::Int(b.xp)),
+        ("Alignment", Value::Int(b.alignment)),
+        ("HP", Value::Int(b.hp)),
+        ("MaxHP", Value::Int(b.max_hp)),
+        ("Force", Value::Int(b.force)),
+        ("MaxForce", Value::Int(b.max_force)),
+        ("SkillPoints", Value::Int(b.skill_points)),
+        ("FeatRegular", Value::Int(b.feat_slots.0)),
+        ("FeatBonus", Value::Int(b.feat_slots.1)),
+        ("Abilities", value_list(&b.abilities)),
+        ("Skills", value_list(&b.skills)),
+        ("Feats", value_list(&b.feats)),
+        ("Spells", value_list(&b.spells)),
+        (
+            "Carried",
+            list_of(&b.carried, |(t, n)| {
+                st(vec![("Template", s(t)), ("Stack", Value::Int(*n))])
+            }),
+        ),
+        (
+            "Worn",
+            list_of(&b.worn, |(slot, t, n)| {
+                st(vec![
+                    ("Slot", Value::Int(*slot)),
+                    ("Template", s(t)),
+                    ("Stack", Value::Int(*n)),
+                ])
+            }),
+        ),
+    ])
+}
+
+fn bench_from(e: &Struct) -> BenchedMember {
+    let int = |l: &str| e.int(l).unwrap_or(0) as i32;
+    let mut abilities = [10; 6];
+    for (to, from) in abilities.iter_mut().zip(values_of(e, "Abilities")) {
+        *to = from;
+    }
+    BenchedMember {
+        class: int("Class"),
+        level: int("Level"),
+        xp: int("XP"),
+        alignment: int("Alignment"),
+        hp: int("HP"),
+        max_hp: int("MaxHP"),
+        force: int("Force"),
+        max_force: int("MaxForce"),
+        abilities,
+        skills: values_of(e, "Skills").collect(),
+        skill_points: int("SkillPoints"),
+        feats: values_of(e, "Feats").collect(),
+        feat_slots: (int("FeatRegular"), int("FeatBonus")),
+        spells: values_of(e, "Spells").collect(),
+        carried: e
+            .list("Carried")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| Some((x.str("Template")?.to_string(), x.int("Stack")? as i32)))
+            .collect(),
+        worn: e
+            .list("Worn")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| {
+                Some((
+                    x.int("Slot")? as i32,
+                    x.str("Template")?.to_string(),
+                    x.int("Stack")? as i32,
+                ))
+            })
+            .collect(),
+    }
 }
 
 impl World {
@@ -234,6 +327,10 @@ impl World {
                             ("Order", Value::Int(order.map_or(i32::MAX, |o| o as i32))),
                         ])
                     }),
+                ),
+                (
+                    "PT_BENCH",
+                    list_of(self.bench.iter(), |(slot, b)| bench_struct(*slot, b)),
                 ),
                 ("PT_GOLD", Value::Int(self.gold)),
                 (
@@ -743,6 +840,12 @@ impl World {
             .iter()
             .filter_map(|x| Some((x.int("Slot")? as i32, x.str("Template")?.to_string())))
             .collect();
+        self.bench = p
+            .list("PT_BENCH")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|b| Some((b.int("Slot")? as i32, bench_from(b))))
+            .collect();
         self.gold = p.int("PT_GOLD").unwrap_or(0) as i32;
         self.tokens = p
             .list("PT_TOKENS")
@@ -799,6 +902,7 @@ impl World {
         b.sort();
         let _ = writeln!(out, "booleans {b:?}");
         let _ = writeln!(out, "journal {:?}", self.journal);
+        let _ = writeln!(out, "bench {:?}", self.bench);
         let party: Vec<String> = self.party.iter().map(&name).collect();
         let _ = writeln!(out, "party {party:?}");
         let mut slots: Vec<_> = self
