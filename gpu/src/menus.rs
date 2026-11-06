@@ -33,6 +33,8 @@ mod notices;
 mod optionpages;
 #[path = "partyscreen.rs"]
 mod partyscreen;
+#[path = "storescreen.rs"]
+mod storescreen;
 #[path = "workbenchscreen.rs"]
 mod workbenchscreen;
 
@@ -174,6 +176,8 @@ pub(super) enum Screen {
     Messages,
     /// `questitem.gui`, over the journal or the inventory.
     QuestItems,
+    /// `store.gui`.
+    Store,
     /// `upgradesel.gui`, `upgradeitems.gui` and `upgrade.gui`.
     BenchKinds,
     BenchItems,
@@ -413,6 +417,7 @@ impl Screen {
             Screen::Abilities => "abilities",
             Screen::Messages => "messages",
             Screen::QuestItems => "quest_items",
+            Screen::Store => "store",
             Screen::BenchKinds => "bench_kinds",
             Screen::BenchItems => "bench_items",
             Screen::Bench => "bench",
@@ -498,6 +503,8 @@ pub(super) struct Menus {
     stack_seen: Option<usize>,
     /// The fight's slots and rising words.
     fight: fightscreen::Fight,
+    /// A shop, while one is open.
+    shop: storescreen::Shop,
     /// The words of the option the cursor last rested on.
     option_words: Option<u32>,
     /// Why that option is greyed.
@@ -584,10 +591,12 @@ impl Stage {
     fn top(&self) -> Option<Screen> {
         let w = &self.game.world;
         let container = w.opened.is_some() && !w.in_dialogue();
+        let shop = w.store.is_some() && !w.in_dialogue();
         self.menus
             .stack
             .last()
             .copied()
+            .or(shop.then_some(Screen::Store))
             .or(container.then_some(Screen::Container))
     }
 
@@ -715,6 +724,7 @@ impl Stage {
             Screen::Abilities => self.abilities_view(),
             Screen::Messages => self.messages_view(),
             Screen::QuestItems => self.quest_items_view(),
+            Screen::Store => self.store_view(),
             Screen::BenchKinds => self.bench_kinds_view(),
             Screen::BenchItems => self.bench_items_view(),
             Screen::Bench => self.bench_view(),
@@ -1679,13 +1689,14 @@ impl Stage {
                 self.menus.delete_armed = None;
                 self.effect(match self.top() {
                     Some(Screen::Container) => SOUND_ITEM_TAKE,
-                    Some(Screen::Inventory | Screen::Equip) => SOUND_ITEM_SELECT,
+                    Some(Screen::Inventory | Screen::Equip | Screen::Store) => SOUND_ITEM_SELECT,
                     Some(Screen::Feedback) => SOUND_CHECK,
                     _ => SOUND_CLICK,
                 });
                 match self.top() {
                     Some(Screen::Inventory | Screen::Container) => self.use_listed_item(row),
                     Some(Screen::Feedback) => self.feedback_row(row),
+                    Some(Screen::Store) => self.store_row(row),
                     Some(Screen::BenchItems | Screen::Bench) => self.bench_row(row),
                     Some(Screen::KeyMap) => self.key_row(row),
                     Some(Screen::Equip) => {
@@ -1737,6 +1748,7 @@ impl Stage {
             return;
         }
         match (top, tag) {
+            (Screen::Store, _) => self.store_press(tag),
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),
@@ -1903,6 +1915,7 @@ impl Stage {
     pub(super) fn menu_enter(&mut self) {
         match self.top() {
             Some(Screen::Container) => self.game.world.close_container(),
+            Some(Screen::Store) => self.store_accept(),
             Some(Screen::Saves(mode)) => self.save_or_load(mode),
             Some(Screen::Name) => self.write_save(),
             Some(Screen::ChargenName) => self.chargen_name_accept(),
@@ -1934,6 +1947,7 @@ impl Stage {
         match self.top() {
             Some(Screen::Main) => {}
             Some(Screen::Container) => self.game.world.close_container(),
+            Some(Screen::Store) => self.store_escape(),
             Some(Screen::Equip) if self.menus.slot.is_some() => {
                 self.leave_slot();
                 self.menus.message.clear();

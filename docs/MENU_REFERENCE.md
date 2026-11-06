@@ -95,6 +95,20 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Transitions | not compared | none | I looked at frames only, one every 5 seconds |
 
+## The shop
+
+`store.gui`, compared with the video at 50:10 and 50:20. One list at a time, Buy or Sell, with a button to change. A click
+chooses a row and shows its price, amount and words, and the button at the foot trades one. Close or Esc leaves, and the
+game waits under it. The rules are `kotor_game::store`. `drive_store.ps1` clicks it live in Zelka's shop. Frames:
+`store_buy`, `store_question`, `store_sell`.
+
+| | Video | Ours | Why |
+|---|---|---|---|
+| Rows | about 13 units, a small icon in a box of its own, 23 fit | the file's 50, with a border and a large icon, 6 fit | as all our lists: see List rows |
+| Question | "This item costs more than 150 credits. Do you still wish to buy?" | the same words, for anything over 150 | not in the talk table, so the words are copied from the video. The 150 is assumed from them |
+| Too dear | not seen | "You do not have enough credits." on the line at the foot | my words |
+| Descriptions | feats, damage and a threat line over the words | the item's own words only | as the inventory |
+
 ## Portraits
 
 A creature's picture is the row of `portraits.2da` its file's `PortraitId` names: `po_ptrask` for Trask. It was only read

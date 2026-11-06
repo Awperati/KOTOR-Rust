@@ -399,6 +399,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.update(0.1);
     shot(&mut gpu, &mut s, "hud_minimap", &out);
 
+    // A shop: what it sells, the question over a dear item, and what it would buy.
+    let keeper = s.game.world.spawn_creature("n_calonord", [0.0; 3]);
+    if let Some(o) = s.game.world.object_mut(keeper) {
+        o.inventory.clear();
+    }
+    for t in [
+        "g_i_medeqpmnt01",
+        "g_w_fraggren01",
+        "g_a_class5001",
+        "g_w_blstrrfl001",
+        "g_w_lngswrd01",
+    ] {
+        let item = s.game.world.spawn_item(t);
+        if let Some(o) = s.game.world.object_mut(keeper) {
+            o.inventory.push(item);
+        }
+    }
+    s.game.world.gold += 900;
+    s.game.world.store = Some(kotor_game::StoreOpen {
+        store: keeper,
+        mark_up: 100,
+        mark_down: 40,
+        can_buy: true,
+        can_sell: true,
+    });
+    click(&mut s, "LB_SHOPITEMS", Some(2));
+    shot(&mut gpu, &mut s, "store_buy", &out);
+    click(&mut s, "BTN_Accept", None);
+    shot(&mut gpu, &mut s, "store_question", &out);
+    s.escape();
+    click(&mut s, "BTN_Examine", None);
+    click(&mut s, "LB_INVITEMS", Some(0));
+    shot(&mut gpu, &mut s, "store_sell", &out);
+    s.escape();
+    s.game.world.objects.remove(&keeper);
+    s.update(0.1);
+
     // Trask at the player's side has his own picture.
     let trask = s.game.world.spawn_creature("end_trask", [0.0; 3]);
     s.game.world.party.push(trask);

@@ -2880,6 +2880,132 @@ fn the_screens_of_a_game_keep_their_words_inside_their_boxes() {
     press(&mut s, "BTN_JOU");
     words_too_big(&mut s, "journal", &mut found);
     assert!(found.is_empty(), "{}", found.join("\n"));
+
+    // A shop's lists, and its question.
+    let Some((mut s, _, _)) = at_shop("fit_shop") else {
+        return;
+    };
+    words_too_big(&mut s, "shop", &mut found);
+    click_row(&mut s, "LB_SHOPITEMS", 1);
+    words_too_big(&mut s, "shop item", &mut found);
+    press(&mut s, "BTN_Accept");
+    words_too_big(&mut s, "shop question", &mut found);
+    press(&mut s, "BTN_CANCEL");
+    press(&mut s, "BTN_Examine");
+    words_too_big(&mut s, "shop sell", &mut found);
+    assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+/// A shop with a cheap thing and a dear one, and some credits.
+fn at_shop(name: &str) -> Option<(Stage, u32, u32)> {
+    let (mut s, _) = in_game(name)?;
+    let w = &mut s.game.world;
+    let keeper = w.spawn_creature("n_calonord", [0.0; 3]);
+    let cheap = w.spawn_item("g_i_medeqpmnt01");
+    let dear = w.spawn_item("g_a_class5001");
+    w.object_mut(keeper).unwrap().inventory = vec![cheap, dear];
+    w.gold = 1000;
+    w.store = Some(kotor_game::StoreOpen {
+        store: keeper,
+        mark_up: 100,
+        mark_down: 50,
+        can_buy: true,
+        can_sell: true,
+    });
+    s.update(DT);
+    Some((s, cheap, dear))
+}
+
+#[test]
+fn a_shop_buys_and_sells_asks_over_a_dear_item_and_holds_the_game() {
+    let Some((mut s, cheap, dear)) = at_shop("shop") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    assert_eq!(s.menu_name(), "store");
+    let time = s.game.world.time;
+    frame(&mut s);
+    assert_eq!(s.game.world.time, time, "the game waits");
+
+    // Nothing chosen: the button does nothing. A click chooses, and it buys one.
+    press(&mut s, "BTN_Accept");
+    assert_eq!(s.game.world.gold, 1000);
+    let nothing = frame(&mut s);
+    click_row(&mut s, "LB_SHOPITEMS", 0);
+    assert!(frame(&mut s) != nothing, "its words and price show");
+    press(&mut s, "BTN_Accept");
+    let price = 1000 - s.game.world.gold;
+    assert!(price > 0 && price <= 150, "{price}");
+    let carried = |s: &Stage, item: u32| s.game.world.carried(pc).contains(&item);
+    assert!(carried(&s, cheap), "not infinite, so that one comes over");
+    assert_eq!(s.game.world.store_lines().len(), 1);
+
+    // A dear one asks. Cancel and Esc keep the credits, OK buys it.
+    click_row(&mut s, "LB_SHOPITEMS", 0);
+    let credits = s.game.world.gold;
+    let before = frame(&mut s);
+    press(&mut s, "BTN_Accept");
+    assert!(frame(&mut s) != before, "the question shows");
+    press(&mut s, "BTN_CANCEL");
+    assert_eq!(s.game.world.gold, credits);
+    press(&mut s, "BTN_Accept");
+    s.escape();
+    assert_eq!(s.menu_name(), "store", "Esc answers the question and stays");
+    assert_eq!(s.game.world.gold, credits);
+    press(&mut s, "BTN_Accept");
+    press(&mut s, "BTN_OK");
+    assert!(s.game.world.gold < credits);
+    assert!(carried(&s, dear));
+
+    // Too dear says so, and no question.
+    let w = &mut s.game.world;
+    let also = w.spawn_item("g_a_class5001");
+    let keeper = w.store.as_ref().unwrap().store;
+    w.object_mut(keeper).unwrap().inventory.push(also);
+    w.gold = 1;
+    click_row(&mut s, "LB_SHOPITEMS", 0);
+    press(&mut s, "BTN_Accept");
+    assert_eq!(s.game.world.gold, 1);
+    assert_eq!(s.menu_message(), "You do not have enough credits.");
+    assert!(!carried(&s, also));
+
+    // The other list: selling pays, and what is sold goes to the shop.
+    press(&mut s, "BTN_Examine");
+    assert!(s.menu_pixel("LB_SHOPITEMS", Some(0), SIZE).is_none());
+    let sold = s.game.world.sell_lines()[0].clone();
+    click_row(&mut s, "LB_INVITEMS", 0);
+    press(&mut s, "BTN_Accept");
+    assert_eq!(s.game.world.gold, 1 + sold.price);
+    assert!(s
+        .game
+        .world
+        .store_lines()
+        .iter()
+        .any(|l| l.name == sold.name));
+    press(&mut s, "BTN_Examine");
+    assert!(s.menu_pixel("LB_SHOPITEMS", Some(0), SIZE).is_some());
+
+    // Close, and the game goes on.
+    press(&mut s, "BTN_Cancel");
+    assert!(s.game.world.store.is_none());
+    assert_eq!(s.menu_name(), "-");
+    s.update(DT);
+    assert!(s.game.world.time > time);
+}
+
+#[test]
+fn a_shop_that_only_buys_has_only_the_sell_list_and_esc_closes_it() {
+    let Some((mut s, _, _)) = at_shop("shop_sell") else {
+        return;
+    };
+    s.game.world.store.as_mut().unwrap().can_buy = false;
+    assert!(s.menu_pixel("LB_SHOPITEMS", Some(0), SIZE).is_none());
+    press(&mut s, "BTN_Examine");
+    assert!(s.menu_pixel("LB_SHOPITEMS", Some(0), SIZE).is_none());
+    words_too_big(&mut s, "shop", &mut Vec::new());
+    s.escape();
+    assert!(s.game.world.store.is_none());
+    assert_eq!(s.menu_name(), "-");
 }
 
 /// The mist's colour, over all that is drawn of it.

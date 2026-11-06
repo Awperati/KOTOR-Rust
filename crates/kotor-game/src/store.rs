@@ -47,7 +47,7 @@ pub enum CannotTrade {
 
 impl World {
     /// `OpenStore`: `bonus_up` and `bonus_down` are added to the store's own percentages.
-    pub(crate) fn open_store(&mut self, store: ObjId, bonus_up: i32, bonus_down: i32) {
+    pub fn open_store(&mut self, store: ObjId, bonus_up: i32, bonus_down: i32) {
         let Some(template) = self
             .object(store)
             .filter(|o| o.kind == Kind::Store)

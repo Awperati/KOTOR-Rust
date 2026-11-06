@@ -18,6 +18,8 @@
 //!     --early-force   With --autopilot, new games have the early Force rule too, for a test driver
 //!     --power N       give the player this power of `spells.2da` and the Force for it when a game starts, for a test driver
 //!     --give NAME     give the player this item when a game starts, for a test driver
+//!     --gold N        give the player these credits when a game starts, for a test driver
+//!     --store TAG     open this store when a game starts, as its script would, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
 //!                     gives a level (`level`), for a test driver
@@ -144,6 +146,8 @@ struct App {
     xp: Option<i32>,
     power: Option<i32>,
     give: Option<String>,
+    gold: Option<i32>,
+    store: Option<String>,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -232,6 +236,15 @@ impl App {
             if let Some(tag) = self.near.take() {
                 if !self.stage.stand_near(&tag) {
                     eprintln!("no floor beside {tag}");
+                }
+            }
+            if let Some(gold) = self.gold.take() {
+                self.stage.game.world.gold += gold;
+            }
+            if let Some(tag) = self.store.take() {
+                let w = &mut self.stage.game.world;
+                if let Some(store) = w.by_tag(&tag).first().copied() {
+                    w.open_store(store, 0, 0);
                 }
             }
             if let Some(template) = self.give.take() {
@@ -609,6 +622,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         xp: opt("--xp").and_then(|n| n.parse().ok()),
         power: opt("--power").and_then(|n| n.parse().ok()),
         give: opt("--give"),
+        gold: opt("--gold").and_then(|n| n.parse().ok()),
+        store: opt("--store"),
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,
