@@ -1,4 +1,4 @@
-﻿[workspace]
+[workspace]
 resolver = "2"
 # gpu/ is a separate package with its own lockfile: it needs crates.io downloads that are not made yet.
 exclude = ["gpu"]
@@ -30,4 +30,27 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 
+# The tests go through every file of the game, and unoptimised they spend minutes on it. Overflow checks and debug
+# assertions stay on, as they are by default in this profile. The crates that read files get full optimisation, and
+# the rest stay quick to rebuild.
+[profile.dev]
+debug = "line-tables-only"
 
+[profile.dev.package.kotor-core]
+opt-level = 3
+[profile.dev.package.kotor-archive]
+opt-level = 3
+[profile.dev.package.kotor-image]
+opt-level = 3
+[profile.dev.package.kotor-model]
+opt-level = 3
+[profile.dev.package.kotor-gff]
+opt-level = 3
+[profile.dev.package.kotor-tables]
+opt-level = 3
+[profile.dev.package.kotor-audio]
+opt-level = 3
+[profile.dev.package.kotor-walkmesh]
+opt-level = 3
+[profile.dev.package.kotor-script]
+opt-level = 3

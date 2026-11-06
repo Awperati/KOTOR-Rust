@@ -1,5 +1,6 @@
 use crate::Source;
 use kotor_core::{Error, Reader, ResRef, ResType, Result};
+use std::collections::HashMap;
 
 /// Which container layout a file uses. ERF, MOD and SAV share one layout; RIM differs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,10 +24,25 @@ pub struct ErfEntry {
 pub struct Erf {
     pub kind: ErfKind,
     pub entries: Vec<ErfEntry>,
+    /// Where the first entry of each name is: a texture pack has thousands.
+    index: HashMap<(ResRef, ResType), usize>,
     source: Source,
 }
 
 impl Erf {
+    fn with_entries(kind: ErfKind, entries: Vec<ErfEntry>, source: Source) -> Erf {
+        let mut index = HashMap::with_capacity(entries.len());
+        for (i, e) in entries.iter().enumerate() {
+            index.entry((e.resref.clone(), e.restype)).or_insert(i);
+        }
+        Erf {
+            kind,
+            entries,
+            index,
+            source,
+        }
+    }
+
     pub fn open(source: Source) -> Result<Erf> {
         let head = source.read_at(0, 160.min(source.len()? as usize))?;
         let mut r = Reader::new(&head);
@@ -75,11 +91,7 @@ impl Erf {
             b"SAV " => ErfKind::Sav,
             _ => ErfKind::Erf,
         };
-        Ok(Erf {
-            kind,
-            entries,
-            source,
-        })
+        Ok(Erf::with_entries(kind, entries, source))
     }
 
     fn open_rim(source: Source, r: &mut Reader, ver: &[u8; 4]) -> Result<Erf> {
@@ -106,17 +118,12 @@ impl Erf {
                 size,
             });
         }
-        Ok(Erf {
-            kind: ErfKind::Rim,
-            entries,
-            source,
-        })
+        Ok(Erf::with_entries(ErfKind::Rim, entries, source))
     }
 
     pub fn find(&self, resref: &ResRef, restype: ResType) -> Option<&ErfEntry> {
-        self.entries
-            .iter()
-            .find(|e| e.restype == restype && &e.resref == resref)
+        let i = *self.index.get(&(resref.clone(), restype))?;
+        self.entries.get(i)
     }
 
     pub fn read(&self, entry: &ErfEntry) -> Result<Vec<u8>> {

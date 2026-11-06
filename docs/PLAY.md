@@ -125,6 +125,14 @@ Stock GUI files drawn by `crates/kotor-ui/src/menus.rs`, with the screens' logic
 - The camera stops at walkmesh walls and closed doors, not at furniture.
 - Chests with a `close2open` animation are drawn each frame. Lids stay open once opened.
 
+## Checking fast
+`scripts\check.ps1` with no switches is the gate for commits: fmt, clippy, every test and doc tests. It prints a last line `gate: P passed, F failed`, and exits 0 only when nothing failed. `-Fast` leaves out fmt, clippy and doc tests, for the inner loop. `-Only kotor-game` runs one crate's tests, and `-Only gpu` everything in `gpu\`. Test binaries run at once, half as many as the machine has logical processors, `-Jobs N` to change it.
+
+The time went to reading every file of the game unoptimised, and to test binaries running one after another. The crates that read files are now optimised in test builds, with overflow checks and debug assertions still on. `scripts\drive_window.ps1` waits for the window to report instead of sleeping fixed times. It only holds a key down for a set time where the distance walked is the point.
+
+## When a read fails
+One gate run lost 62 scripts in a row as "not found" in `every_endar_spire_script_runs_in_the_world`, and the cause was not caught. Then 1.15 million reads and 600 test runs under load gave no failure, and neither did about 30 minutes of a watcher (`crates/kotor-archive/examples/read_watch.rs`). Antivirus is off, the System log has no disk errors, and the 1440p Builder had not touched the files. `Get-Volume E` does say `Full Repair Needed` on the exFAT USB drive that holds the game. Another program holding a module file with no sharing does give that exact pattern with one open per read: os error 32 on every read while it holds the file. So archives now stay open from their first read, a run of lost scripts cannot come from that, and a failed read names the file and the operating system's error.
+
 ## Measured
 - TPC rows are stored bottom-up. `load_texture` flips them, so every picture has its first row on top. Before this fix all model textures were upside down, which scrambled faces and clothes.
 - A camera model's `camerahook` and a stunt's animation are in world space, and the hook looks along its local -z: in the opening's 18 shots the stunt's head lies at -0.91 to -1.00 along that axis.
