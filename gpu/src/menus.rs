@@ -274,6 +274,8 @@ pub struct Settings {
     pub movement_modern: bool,
     /// A click on the floor walks there.
     pub click_to_walk: bool,
+    /// What is shown is spelt as in Australia, and not as the game's files have it.
+    pub australian_english: bool,
     /// Doors between modules open onto the next area and the party walks through, with no loading in between.
     pub seamless_areas: bool,
 }
@@ -311,6 +313,7 @@ impl Default for Settings {
             glow_boxes: true,
             movement_modern: true,
             click_to_walk: true,
+            australian_english: true,
             seamless_areas: true,
         }
     }
@@ -322,7 +325,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -352,7 +355,8 @@ impl Settings {
             self.glow_boxes,
             self.movement_modern,
             self.click_to_walk,
-            self.seamless_areas
+            self.seamless_areas,
+            self.australian_english
         )
     }
 
@@ -395,6 +399,7 @@ impl Settings {
                 "noto_font" => s.noto_font = v == "true",
                 "glow_boxes" => s.glow_boxes = v == "true",
                 "seamless_areas" => s.seamless_areas = v == "true",
+                "australian_english" => s.australian_english = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')

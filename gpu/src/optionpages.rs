@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 8] = [
+const STYLE_ROWS: [(&str, &str, &str); 9] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -54,6 +54,11 @@ const STYLE_ROWS: [(&str, &str, &str); 8] = [
         "Seamless areas: On",
         "Seamless areas: Off",
         "A door opens onto the next area and you walk through, with no loading screen. Off: every door loads the next area on a loading screen, as the game does. Takes hold at the next door.",
+    ),
+    (
+        "English: Australian",
+        "English: American (original)",
+        "What the game shows is spelt as in Australia: armour, colour, centre. Or as the game's files have it.",
     ),
 ];
 /// A box on the Auto-Pause page, and its words.
@@ -120,6 +125,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         10 => &mut s.click_to_walk,
         11 => &mut s.auto_advance,
         12 => &mut s.seamless_areas,
+        13 => &mut s.australian_english,
         _ => return None,
     })
 }

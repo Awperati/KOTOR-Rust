@@ -7,6 +7,7 @@ pub mod glow;
 mod gui;
 mod menus;
 mod screens;
+mod spelling;
 mod ttf;
 
 pub use canvas::{Canvas, Orient};
@@ -17,4 +18,5 @@ pub use screens::{
     CombatHud, DialogueView, Float, HudMember, MiniMap, Patch, SlotShown, Ui, SCREEN,
 };
 pub use screens::{TARGET_BAR_AND_SLOTS_HIGH, TARGET_BAR_HIGH};
+pub use spelling::set_australian;
 pub use ttf::{Face, Sized};

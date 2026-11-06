@@ -2050,6 +2050,9 @@ impl Stage {
         if self.ui.set_text_style(s.noto_font, s.glow_boxes) {
             self.overlay_key.clear();
         }
+        if kotor_ui::set_australian(s.australian_english) {
+            self.overlay_key.clear();
+        }
         if let Some(view) = self.menu_view() {
             let key = format!("{view:?}{}", self.ui_width);
             if key != self.overlay_key {

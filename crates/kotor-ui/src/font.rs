@@ -145,6 +145,8 @@ impl Font {
 
     /// Break `s` into lines no wider than `width` pixels, at spaces (a word wider than the line gets its own).
     pub fn wrap(&self, s: &str, width: i32) -> Vec<String> {
+        // All that is drawn comes through here, so the spelling is done here.
+        let s = crate::spelling::shown(s);
         let mut out = Vec::new();
         for para in s.split('\n') {
             let mut line = String::new();
