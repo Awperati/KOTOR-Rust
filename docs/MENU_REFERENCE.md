@@ -55,9 +55,9 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Auto Level Up, Combat Movement | greyed boxes | working. Not clicked live |
 | Tutorial pop-ups | none | a box with words and OK or Continue, from `tutorial.2da`, once each, as at 3:15, 3:36 and 4:00. What sets each off is read from the table's labels. Frames: `tutorial_screen`, `tutorial_game`. Over a screen and over the game tested in code; not clicked live, the driver turns them off |
 | Notices | none | the HUD's own icons for quest, credits, XP from scripts, items and alignment, as at 3:46. Frame: `notices`. Not clicked live |
-| Pause | none | Space or the hourglass, which is framed in yellow; as at 5:50, an enemy first seen pauses the game with the box at the top right. The video's ring on the hourglass is a plain frame here. Frame: `enemy_sighted`. Space was driven live. The pause by itself is tested in code, not live: the driver runs with `--no-auto-pause` |
-| Combat slots and floats | empty | as at 6:05: feats in the second slot and hostile powers in the third, arrows through them, yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. Tested in code, not clicked live |
-| Combat HUD | none | as at 5:50 and 6:05: the panel at the foot with the action under way and Disengage, the red line at the top, the enemy's bar red, slots under it. The first slot and Disengage were clicked in a test, not in the live window: the driver cannot start a fight. Frames: `combat_target`, `combat_engaged` |
+| Pause | none | Space or the hourglass, which is framed in yellow; as at 5:50, an enemy first seen pauses the game with the box at the top right. The video's ring on the hourglass is a plain frame here. Frame: `enemy_sighted`. Clicked live in `scripts/drive_fight.ps1`, with the first Sith |
+| Combat slots and floats | empty | as at 6:05: feats in the second slot and hostile powers in the third, arrows through them, yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. In `drive_fight.ps1` the feat slot's name, its click and the words rising are live; the arrows and the powers' slot are tested in code |
+| Combat HUD | none | as at 5:50 and 6:05: the panel at the foot with the action under way and Disengage, the red line at the top, the enemy's bar red, slots under it. Live in `drive_fight.ps1`: combat mode, the bar, the slots, and F to disengage. The Disengage button and the first slot were clicked in a test only. Frames: `combat_target`, `combat_engaged` |
 | Small map on the HUD | a frame and a still arrow | the map round the player, 120 of the picture's pixels, with `mm_barrow` turning, compared with 3:46. A click opens the map. Which way the arrow's picture points is read from the frame `hud_minimap` |
 | Choosing equipment | a click wore at once, a click on a worn slot took off | a click on a slot lists it, `inone` and None first, `(Equipped)` marked, words on the left, OK and Cancel. The owner chose this |
 
@@ -92,4 +92,13 @@ state log has the same level, worn items, bag, credits and place, and the sheet 
 
 **Not real play:** `--xp 1000` gives the level, and `--near` puts the player by the footlocker. The journal is empty at this point.
 I don't know if the original has a quest by then. The driver presses Recommended only, so the arrows and the feat grid are tested
-in code, not clicked live. It does not fight, so nothing on the combat rows above is live either.
+in code, not clicked live. It does not fight: `scripts/drive_fight.ps1` does.
+
+## One fight, live
+
+`scripts/drive_fight.ps1` lets the pilot play at its own speed from the start of `end_m01aa` to the first Sith, then hands over at 1x
+with `--pilot-until fight`. In the window: the Enemy Sighted pause, the camera turned with the arrow key in that pause, the cursor on the
+Sith, the bar and Power Attack's name, a click on the feat slot, Space, the blow, the words rising, the Messages tab's lines, and F.
+
+**Not real play:** the pilot played the part before the fight, and it cannot die, so the hand-over restores the player's Vitality.
+Trask fights as well, and can kill the Sith before the player does.

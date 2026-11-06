@@ -14,6 +14,12 @@ fn fresh() -> World {
     world().expect("install")
 }
 
+/// A place of this checkout's own: other checkouts run these tests at the same time.
+fn temp_place(name: &str) -> std::path::PathBuf {
+    let checkout = env!("CARGO_MANIFEST_DIR").replace(|c: char| !c.is_alphanumeric(), "_");
+    std::env::temp_dir().join(format!("kotor_rs_{checkout}_{name}"))
+}
+
 #[test]
 fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
     let Some(mut w) = world() else { return };
@@ -262,7 +268,7 @@ fn a_save_never_goes_into_the_install_folder() {
     assert!(err.is_err(), "writing into the install must be refused");
     assert!(!dir.join("test_save.sav").exists());
     // A temp file works and reads back.
-    let path = std::env::temp_dir().join("kotor_rs_test_save.sav");
+    let path = temp_place("test_save.sav");
     w.save_to(&path, "temp").unwrap();
     let mut b = fresh();
     b.load_from(&path).unwrap();
@@ -404,7 +410,7 @@ fn a_file_that_will_not_load_leaves_the_world_alone() {
 #[test]
 fn a_save_keeps_its_header_and_a_replaced_file_is_whole() {
     let Some(w) = world() else { return };
-    let dir = std::env::temp_dir().join("kotor_rs_save_header");
+    let dir = temp_place("save_header");
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("one.sav");
     w.save_to(&path, "Header").unwrap();

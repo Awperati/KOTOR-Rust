@@ -92,9 +92,14 @@ fn test_modes_still_start_in_the_game() {
 }
 
 /// A temp folder for saves, empty, so that a test never touches the real ones.
+/// A folder of this checkout's own: other checkouts run these tests at the same time.
+fn temp_place(name: &str) -> std::path::PathBuf {
+    let checkout = env!("CARGO_MANIFEST_DIR").replace(|c: char| !c.is_alphanumeric(), "_");
+    std::env::temp_dir().join(format!("kotor_rs_{checkout}_{name}"))
+}
+
 fn temp_saves(s: &mut Stage, name: &str) -> std::path::PathBuf {
-    // Each process its own: two worktrees' gates can run at once.
-    let dir = std::env::temp_dir().join(format!("kotor_rs_{name}_{}", std::process::id()));
+    let dir = temp_place(name);
     let _ = std::fs::remove_dir_all(&dir);
     s.set_saves_dir(dir.clone());
     dir
@@ -501,7 +506,8 @@ fn a_body_with_loot_is_a_target_and_opens_as_a_list() {
     // E uses it, and it opens as a list on the screen.
     s.interact();
     s.update(DT);
-    assert_eq!(s.game.world.opened, Some(foe), "{}", s.state_line());
+    let line = s.state_line();
+    assert_eq!(s.game.world.opened, Some(foe), "{line}");
     assert!(!s.game.world.container_items().is_empty());
     let before = s.game.world.carried(pc).len();
     s.number_key(1);
@@ -585,9 +591,7 @@ fn slide(s: &mut Stage, tag: &str, along: f32) {
 #[test]
 fn the_option_pages_change_what_they_say_and_keep_it() {
     let Some(mut s) = at_menu() else { return };
-    let file = std::env::temp_dir()
-        .join("kotor_rs_settings_test")
-        .join("settings.txt");
+    let file = temp_place("settings_test").join("settings.txt");
     let _ = std::fs::remove_file(&file);
     s.use_settings_file(file.clone());
     press(&mut s, "BTN_OPTIONS");
@@ -1991,11 +1995,53 @@ fn the_messages_tab_shows_what_was_said_and_fought() {
         target_hp: 10,
     });
     let line = s.messages_words();
-    assert!(line.contains("Hit, 14 + 5 / 12"), "{line}");
+    assert!(line.contains("Hit, 14 +5 / 12"), "{line}");
     assert!(line.ends_with("Damage: 6"), "{line}");
     assert!(frame(&mut s) != empty);
     press(&mut s, "BTN_SHOW");
     assert_eq!(frame(&mut s), last);
+}
+
+#[test]
+fn space_ends_a_pause_that_began_just_after_a_talk() {
+    let Some((mut s, _)) = in_game("pause_after_talk") else {
+        return;
+    };
+    s.toggle_pause();
+    assert!(s.paused());
+    // The game's clock stands still in a pause, so it would never get past the wait after a talk.
+    s.game.world.time = 0.0;
+    s.space_key();
+    assert!(!s.paused());
+    s.space_key();
+    assert!(!s.paused(), "and that wait still holds when not paused");
+}
+
+#[test]
+fn the_pilot_hands_a_fight_over_to_the_player() {
+    let Some(mut s) = at_menu() else { return };
+    press(&mut s, "BTN_NEWGAME");
+    s.pilot = Some(kotor_game::Autopilot::new());
+    s.speed = 16.0;
+    let arrived = (0..3000).find(|_| {
+        s.update(DT);
+        s.pilot_arrived(false)
+    });
+    assert!(arrived.is_some(), "{}", s.state_line());
+    s.take_over_from_pilot(true);
+    assert!(s.pilot.is_none());
+    assert_eq!(s.speed, 1.0);
+    assert!(s.game.world.hold_levels);
+    assert!(s.game.world.party_screen);
+    let pc = s.game.world.object(s.game.world.pc).unwrap();
+    assert_eq!(pc.hp, pc.max_hp);
+    assert!(s.seen_enemy().is_some());
+    // The enemy it stopped for pauses the game, as a player's first sight of them does.
+    s.update(DT);
+    assert!(s.paused());
+    assert!(s.state_line().contains("note=ENEMY"), "{}", s.state_line());
+    // For a level it waits for an enemy worth one: one Sith is far from 1000 experience.
+    assert!(!s.pilot_arrived(true));
 }
 
 /// How many short sounds come out of the next update.

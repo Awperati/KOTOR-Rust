@@ -28,8 +28,8 @@ function State {
     if ($now -gt $start) {
       $tail = @(Get-Content $script:stateFile -Tail 3 | Where-Object { $_ -like "state *" })
       if ($tail.Count) { $line = $tail[-1] }
-      # A state line is over 100 bytes, so this is two lines.
-      if ($now - $start -gt 200) { break }
+      # This much is two lines.
+      if ($line -and $now - $start -gt 2 * $line.Length) { break }
     }
     Start-Sleep -Milliseconds 5
   }

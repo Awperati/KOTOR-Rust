@@ -121,6 +121,52 @@ impl Stage {
         true
     }
 
+    /// The nearest living enemy the leader has seen.
+    pub fn seen_enemy(&self) -> Option<ObjId> {
+        let w = &self.game.world;
+        let pc = w.pc;
+        let here = w.object(pc)?.position;
+        w.combat
+            .perceived
+            .iter()
+            .filter(|(watcher, _)| *watcher == pc)
+            .map(|(_, seen)| *seen)
+            .filter(|id| w.object(*id).is_some_and(|o| !o.dead) && w.reputation(pc, *id) <= 10)
+            .min_by_key(|id| {
+                let o = w.object(*id).map_or(here, |o| o.position);
+                (((o[0] - here[0]).hypot(o[1] - here[1])) * 100.0) as i32
+            })
+    }
+
+    /// Whether a pilot playing to reach a fight should stop now: an enemy is in sight, or with `for_level` one whose
+    /// death gives the player a level.
+    pub fn pilot_arrived(&self, for_level: bool) -> bool {
+        let w = &self.game.world;
+        if w.in_dialogue() {
+            return false;
+        }
+        let (Some(foe), Some(pc)) = (self.seen_enemy(), w.object(w.pc)) else {
+            return false;
+        };
+        !for_level || w.level_for_xp(pc.xp + w.kill_xp(foe)) > pc.level
+    }
+
+    /// The pilot stops and the player takes over at the normal speed, with levels and screens as in a played game. It
+    /// could not die, so its wounds count for nothing.
+    pub fn take_over_from_pilot(&mut self, auto_pause: bool) {
+        self.pilot = None;
+        self.speed = 1.0;
+        self.enable_auto_pause(auto_pause);
+        self.disengage();
+        let w = &mut self.game.world;
+        w.hold_levels = true;
+        w.party_screen = true;
+        let pc = w.pc;
+        if let Some(o) = w.object_mut(pc) {
+            o.hp = o.max_hp;
+        }
+    }
+
     /// Things pause the game by themselves, as the Auto-Pause page says. Off unless asked for, like the pop-ups.
     pub fn enable_auto_pause(&mut self, on: bool) {
         self.menus.auto_pause_on = on;
@@ -137,7 +183,7 @@ impl Stage {
         let w = &self.game.world;
         if self.menu_open() || w.in_dialogue() || w.opened.is_some() {
             self.continue_line();
-        } else if w.time - self.menus.fight.talk_ended >= AFTER_TALK_SECONDS {
+        } else if self.menus.paused || w.time - self.menus.fight.talk_ended >= AFTER_TALK_SECONDS {
             self.toggle_pause();
         }
     }

@@ -136,7 +136,7 @@ impl Stage {
                         Outcome::Critical => (STR_CRITICAL, true),
                     };
                     let words = format!(
-                        "{} > {}: {}, {} + {} / {}",
+                        "{} > {}: {}, {} {:+} / {}",
                         self.named(a.attacker),
                         self.named(a.target),
                         self.ui.strref(outcome),

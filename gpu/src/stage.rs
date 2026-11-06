@@ -1731,12 +1731,12 @@ impl Stage {
             .or_else(|| w.nearest_usable(USE_REACH))
     }
 
-    /// Put the player on the floor beside an object with this tag. For test scenes.
     /// Whether a module is being played, and not only the main menu shown.
     pub fn in_game(&self) -> bool {
         !self.module.is_empty()
     }
 
+    /// Put the player on the floor beside an object with this tag. For test scenes.
     pub fn stand_near(&mut self, tag: &str) -> bool {
         let w = &mut self.game.world;
         let Some(at) = w
@@ -1773,16 +1773,31 @@ impl Stage {
     }
 
     /// One line for a test driver watching the live window.
-    pub fn state_line(&self) -> String {
+    pub fn state_line(&mut self) -> String {
+        // Where the slots are, in layout units, for a driver to click: they move with the target's bar.
+        let layout = (self.ui_width, 480);
+        let at =
+            |p: Option<(f32, f32)>| p.map_or("-".to_string(), |p| format!("{:.0},{:.0}", p.0, p.1));
+        let attack_slot = at(self.hud_pixel("BTN_TARGET0", layout));
+        let feat_slot = at(self.hud_pixel("BTN_TARGET1", layout));
+        let (paused, note) = self.pause_view();
+        let floats = self.floats_shown().len();
+        let foe = self
+            .seen_enemy()
+            .and_then(|id| self.game.world.object(id))
+            .and_then(|o| self.on_screen(o.position, 1.0))
+            .map_or("-".to_string(), |p| format!("{},{}", p.0, p.1));
         let w = &self.game.world;
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} level={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={attack_slot} slot1={feat_slot} foe={foe} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
             w.object(w.pc).map_or(0, |o| o.level),
+            w.object(w.pc).map_or(0, |o| o.xp),
+            w.object(w.pc).map_or(0, |o| o.hp),
             w.object(w.pc).map_or(0, |o| o.equipped.len()),
             if self.module.is_empty() { "-" } else { &self.module },
             here[0],
@@ -1794,6 +1809,12 @@ impl Stage {
             w.opened.is_some(),
             w.container_items().len(),
             w.object(w.pc).map_or(0, |o| o.inventory.len()),
+            self.pilot.is_some(),
+            w.combat.target.contains_key(&w.pc),
+            note.lines().next().unwrap_or("-").replace(' ', "_"),
+            w.combat.log.iter().filter(|a| a.attacker == w.pc).count(),
+            w.combat_queue.len(),
+            self.ui_width,
             self.target_view().map_or("-".to_string(), |t| t.0.replace(' ', "_")),
         )
     }

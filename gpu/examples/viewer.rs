@@ -14,6 +14,8 @@
 //!     --state-log     print the game's state every few frames, for a test driver
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
 //!     --xp N          give the player this much experience when a game starts, for a test driver
+//!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
+//!                     gives a level (`level`), for a test driver
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
 //!
 //! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
@@ -132,6 +134,8 @@ struct App {
     /// What a test driver asked for once a game has started, from the menu or at once.
     near: Option<String>,
     xp: Option<i32>,
+    pilot_until: Option<String>,
+    auto_pause: bool,
     frames: u32,
     started: std::time::Instant,
     last: std::time::Instant,
@@ -224,6 +228,12 @@ impl App {
                 let w = &mut self.stage.game.world;
                 let pc = w.pc;
                 w.grant_xp(pc, xp);
+            }
+        }
+        if let Some(until) = &self.pilot_until {
+            if self.stage.pilot_arrived(until == "level") {
+                self.stage.take_over_from_pilot(self.auto_pause);
+                self.pilot_until = None;
             }
         }
         self.stage.turn = self.turning;
@@ -561,6 +571,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|s| s * 60),
         near: opt("--near"),
         xp: opt("--xp").and_then(|n| n.parse().ok()),
+        pilot_until: opt("--pilot-until"),
+        auto_pause: !flag("--no-auto-pause"),
         frames: 0,
         started: std::time::Instant::now(),
         last: std::time::Instant::now(),
