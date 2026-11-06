@@ -80,8 +80,13 @@ fn walking_through_a_joined_door_changes_module_without_moving_anyone() {
         site.at[1] - out.sin() * 1.0,
         site.at[2],
     ];
-    let before_in_new = rigid.inverse().apply(start);
     let path = walk_through(&mut w, start, out, rigid, 40);
+    // No frame of the crossing moved the player more than the 10 cm walked: a jump would be a teleport.
+    assert_eq!(
+        path.windows(2).filter(|p| dist(p[0], p[1]) > 0.5).count(),
+        0,
+        "the player never jumps"
+    );
     assert_eq!(w.module, "tar_m02aa", "crossed into the Apartments");
     // The party's old module is joined behind us and its door is open.
     assert!(w
