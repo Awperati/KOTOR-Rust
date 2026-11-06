@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 
 const LIT: [f32; 3] = [1.0, 1.0, 0.3];
 const DIM: [f32; 3] = [0.45, 0.5, 0.55];
+const TEXT_BLUE: [f32; 3] = [0.0, 0.65, 0.97];
 /// `PROTOITEM` and `SCROLLBAR` are children; these two kinds are drawn with their list.
 const LIST: i32 = 11;
 const SCROLLBAR: i32 = 9;
@@ -48,6 +49,20 @@ pub struct Cell {
     /// Framed in yellow.
     pub selected: bool,
 }
+
+/// A box of words with one button over a screen, in the colours of `confirm.gui`, sized to its words.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Notice {
+    pub text: String,
+    pub button: String,
+}
+
+/// The tag a [`Notice`]'s button answers to.
+const NOTICE_BUTTON: &str = "BTN_OK";
+const NOTICE_FONT: &str = "fnt_d16x16";
+const NOTICE_WIDTH: i32 = 460;
+/// A notice's box, its button, its lines and how far apart they are.
+type NoticeLayout = ([i32; 4], [i32; 4], Vec<String>, i32);
 
 /// A picture laid over a screen, centred on a point of the layout.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -91,6 +106,8 @@ pub struct MenuView {
     pub over_scene: bool,
     /// Pictures over the screen, in order.
     pub marks: Vec<Mark>,
+    /// A box over it all that takes all the input.
+    pub notice: Option<Notice>,
 }
 
 impl MenuView {
@@ -187,7 +204,9 @@ impl Ui<'_> {
         } else {
             [0, 0, 0, 255]
         });
-        self.draw_view(&mut cv, view)?;
+        if !view.gui.is_empty() {
+            self.draw_view(&mut cv, view)?;
+        }
         if let Some(t) = &view.top {
             self.draw_view(&mut cv, t)?;
         }
@@ -195,7 +214,45 @@ impl Ui<'_> {
             cv.fill_rect(0, 0, SCREEN.0 as i32 + 1, 481, [0, 0, 0, 140]);
             self.draw_view(&mut cv, d)?;
         }
+        if let Some(n) = &view.notice {
+            self.draw_notice(&mut cv, n, &view.hover);
+        }
         Some(cv.into_image())
+    }
+
+    /// Where a notice goes: its box, its button, and its lines.
+    fn notice_layout(&mut self, n: &Notice) -> Option<NoticeLayout> {
+        let f = self.font(NOTICE_FONT)?;
+        let lines = f.wrap(&n.text, NOTICE_WIDTH - 24);
+        let step = f.line_height;
+        let height = lines.len() as i32 * step + 54;
+        let x = (SCREEN.0 as i32 - NOTICE_WIDTH) / 2;
+        let y = (SCREEN.1 as i32 - height) / 2;
+        let button = [SCREEN.0 as i32 / 2 - 50, y + height - 34, 100, 26];
+        Some(([x, y, NOTICE_WIDTH, height], button, lines, step))
+    }
+
+    fn draw_notice(&mut self, cv: &mut Canvas, n: &Notice, hover: &Option<Hit>) {
+        let Some((r, button, lines, step)) = self.notice_layout(n) else {
+            return;
+        };
+        const EDGE: [u8; 4] = [20, 50, 110, 255];
+        let frame = |cv: &mut Canvas, r: [i32; 4], c: [u8; 4]| {
+            cv.fill_rect(r[0], r[1], r[2], 1, c);
+            cv.fill_rect(r[0], r[1] + r[3] - 1, r[2], 1, c);
+            cv.fill_rect(r[0], r[1], 1, r[3], c);
+            cv.fill_rect(r[0] + r[2] - 1, r[1], 1, r[3], c);
+        };
+        cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 8, 235]);
+        frame(cv, r, EDGE);
+        for (i, line) in lines.iter().enumerate() {
+            let at = [r[0] + 12, r[1] + 10 + i as i32 * step, r[2] - 24, step];
+            self.draw_text(cv, NOTICE_FONT, line, at, 18, TEXT_BLUE);
+        }
+        let lit = matches!(hover, Some(Hit::Button(t)) if t == NOTICE_BUTTON);
+        frame(cv, button, if lit { [255, 255, 76, 255] } else { EDGE });
+        let text = n.button.clone();
+        self.draw_text(cv, NOTICE_FONT, &text, button, 18, LIT);
     }
 
     fn draw_view(&mut self, cv: &mut Canvas, view: &MenuView) -> Option<()> {
@@ -459,6 +516,14 @@ impl Ui<'_> {
 
     /// What is at a point of the layout: the row, else the button whose centre is nearest (slots overlap).
     pub fn menu_hit(&mut self, view: &MenuView, x: f32, y: f32) -> Option<Hit> {
+        if let Some(n) = &view.notice {
+            let (_, b, _, _) = self.notice_layout(n)?;
+            let on = x >= b[0] as f32
+                && x < (b[0] + b[2]) as f32
+                && y >= b[1] as f32
+                && y < (b[1] + b[3]) as f32;
+            return on.then(|| Hit::Button(NOTICE_BUTTON.to_string()));
+        }
         if let Some(d) = &view.dialog {
             return self.menu_hit(d, x, y);
         }
@@ -548,6 +613,16 @@ impl Ui<'_> {
         tag: &str,
         row: Option<usize>,
     ) -> Option<(f32, f32)> {
+        if let Some(n) = &view.notice {
+            if tag != NOTICE_BUTTON {
+                return None;
+            }
+            let (_, b, _, _) = self.notice_layout(n)?;
+            return Some((
+                b[0] as f32 + b[2] as f32 / 2.0,
+                b[1] as f32 + b[3] as f32 / 2.0,
+            ));
+        }
         if let Some(d) = &view.dialog {
             return self.menu_point(d, tag, row);
         }

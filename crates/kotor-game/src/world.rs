@@ -346,6 +346,11 @@ pub struct World {
     pub party_request: Option<crate::party::PartyRequest>,
     /// What has been seen of each map, by its picture: `SEEN_COLS` by `SEEN_ROWS` cells.
     pub explored: BTreeMap<String, Vec<bool>>,
+    /// Rows of `tutorial.2da` that have come up in this game, and those scripts have asked for.
+    pub tutorial_seen: BTreeSet<i32>,
+    pub tutorial_requests: Vec<i32>,
+    /// All the experience scripts have given, as against kills.
+    pub plot_xp: i32,
     /// Who the party screen left behind, by slot.
     pub bench: BTreeMap<i32, crate::party::BenchedMember>,
     /// The direction the player is being steered this step, and whether at a run.
@@ -503,6 +508,9 @@ impl World {
             party_screen: false,
             party_request: None,
             explored: BTreeMap::new(),
+            tutorial_seen: BTreeSet::new(),
+            tutorial_requests: Vec::new(),
+            plot_xp: 0,
             bench: BTreeMap::new(),
             journal_order: Vec::new(),
             journal_file: None,

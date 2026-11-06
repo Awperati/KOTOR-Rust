@@ -19,6 +19,7 @@ mod play;
 mod rules;
 mod save;
 mod sheet;
+mod tutorial;
 mod world;
 
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};

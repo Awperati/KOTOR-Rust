@@ -220,6 +220,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "party", &out);
     s.escape();
 
+    // A tutorial pop-up over a screen and over the game, and the icons at the top.
+    s.enable_tutorials(true);
+    s.game.world.tutorial_seen.clear();
+    s.open_inventory();
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "tutorial_screen", &out);
+    click(&mut s, "BTN_OK", None);
+    s.escape();
+    s.game.world.gold += 5;
+    s.game.world.plot_xp += 5;
+    s.game.world.journal.insert("x".to_string(), 1);
+    s.update(0.05);
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "tutorial_game", &out);
+    while s.menu_name() == "tutorial" {
+        s.escape();
+        s.update(0.05);
+    }
+    s.game.world.journal.remove("x");
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "notices", &out);
+    s.enable_tutorials(false);
+
     // A fight: the panel at the foot, the red bar and the first slot under it.
     let at = s.game.world.object(pc).map_or([0.0; 3], |o| o.position);
     let foe = s

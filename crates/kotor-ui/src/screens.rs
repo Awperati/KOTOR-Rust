@@ -42,6 +42,8 @@ pub struct Ui<'a> {
     target_at: Option<(i32, i32)>,
     minimap: Option<MiniMap>,
     combat: CombatHud,
+    /// The icons flashing at the top.
+    notices: Vec<String>,
 }
 
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
@@ -132,6 +134,7 @@ impl<'a> Ui<'a> {
             target_at: None,
             minimap: None,
             combat: CombatHud::default(),
+            notices: Vec::new(),
         }
     }
 
@@ -779,6 +782,9 @@ impl<'a> Ui<'a> {
             hide(&mut patches, "LBL_ARROW".to_string());
         }
         self.patch_combat(&mut patches);
+        for tag in &self.notices {
+            patches.entry(tag.clone()).or_default().hidden = false;
+        }
         // File order: later controls lie on top, as in the menus.
         for c in gui.panel.children.iter().filter(|c| c.kind != 9) {
             self.draw_control(&mut cv, c, (0, 0), &patches);
@@ -878,6 +884,11 @@ impl<'a> Ui<'a> {
             patches.entry("LBL_NAME".to_string()).or_default().color = Some(COMBAT_RED);
             patches.entry("PB_HEALTH".to_string()).or_default().color = Some(COMBAT_RED);
         }
+    }
+
+    /// The icons flashing at the top of the HUD, by their tags.
+    pub fn set_notices(&mut self, notices: Vec<String>) {
+        self.notices = notices;
     }
 
     /// What the HUD shows of a fight.

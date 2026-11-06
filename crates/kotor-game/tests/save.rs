@@ -42,6 +42,19 @@ fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
 }
 
 #[test]
+fn a_tutorial_comes_once_and_a_save_remembers() {
+    let Some(mut w) = world() else { return };
+    let pages = w.tutorial_once(41);
+    assert_eq!(pages, vec![47886, 47887], "two pages");
+    assert!(w.tutorial_once(41).is_empty());
+    let bytes = w.save_bytes("tutorial").unwrap();
+    let mut back = fresh();
+    back.load_save(&bytes).unwrap();
+    assert!(back.tutorial_once(41).is_empty());
+    assert_eq!(back.tutorial_once(14), vec![41882]);
+}
+
+#[test]
 fn what_has_been_seen_of_a_map_grows_and_is_saved() {
     let Some(mut w) = world() else { return };
     let map = w.area_map().expect("the first area has a map");

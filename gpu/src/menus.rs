@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 mod levelup;
 #[path = "mapscreen.rs"]
 mod mapscreen;
+#[path = "notices.rs"]
+mod notices;
 #[path = "partyscreen.rs"]
 mod partyscreen;
 
@@ -141,6 +143,8 @@ pub(super) enum Screen {
     Party,
     /// `map.gui`.
     Map,
+    /// A tutorial pop-up over whatever is under it.
+    Tutorial,
 }
 
 /// What the player chose on the option pages. Kept in a text file beside the saves.
@@ -160,6 +164,9 @@ pub struct Settings {
     pub difficulty: i32,
     /// The window's size, once it has been chosen.
     pub size: Option<(u32, u32)>,
+    /// Tutorial pop-ups come up. The talk table has "Tutorial Popups" but the file has no box for it, so this is in the
+    /// settings file only.
+    pub tutorials: bool,
 }
 
 impl Default for Settings {
@@ -173,6 +180,7 @@ impl Default for Settings {
             autosave: false,
             difficulty: 1,
             size: None,
+            tutorials: true,
         }
     }
 }
@@ -183,14 +191,15 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\n",
             self.music,
             self.voice,
             self.effects,
             self.brightness,
             self.invert_camera,
             self.autosave,
-            self.difficulty
+            self.difficulty,
+            self.tutorials
         )
     }
 
@@ -210,6 +219,7 @@ impl Settings {
                 "invert_camera" => s.invert_camera = v == "true",
                 "autosave" => s.autosave = v == "true",
                 "difficulty" => s.difficulty = v.parse().unwrap_or(1).clamp(0, 2),
+                "tutorials" => s.tutorials = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -266,6 +276,7 @@ impl Screen {
             Screen::Journal => "journal",
             Screen::Party => "party",
             Screen::Map => "map",
+            Screen::Tutorial => "tutorial",
         }
     }
 
@@ -319,6 +330,12 @@ pub(super) struct Menus {
     /// The party being chosen.
     party: Option<partyscreen::Draft>,
     map: Option<mapscreen::Shown>,
+    /// Pages of tutorial pop-ups waiting, and whether they come up at all.
+    tutorials: std::collections::VecDeque<u32>,
+    tutorials_on: bool,
+    /// The icons flashing on the HUD and when they stop, and what they were last compared with.
+    notices: Vec<(&'static str, f32)>,
+    had: Option<notices::Had>,
     /// The journal lists completed quests, and in which of `QUEST_SORTS`.
     journal_completed: bool,
     journal_sort: usize,
@@ -416,7 +433,60 @@ impl Stage {
     pub(super) fn menu_view(&mut self) -> Option<MenuView> {
         let top = self.top()?;
         let hover = self.menus.hover.clone();
-        let mut v = match top {
+        // A pop-up shows over what is under it, or by itself over the game.
+        let under = if top == Screen::Tutorial {
+            self.menus.stack.iter().rev().nth(1).copied()
+        } else {
+            Some(top)
+        };
+        let mut v = match under {
+            Some(screen) => self.screen_view(screen),
+            None => MenuView {
+                over_scene: true,
+                ..MenuView::default()
+            },
+        };
+        if top == Screen::Tutorial {
+            v.notice = Some(self.tutorial_page());
+        }
+        if top != Screen::Name {
+            v.hover = hover;
+        }
+        if !self.menus.message.is_empty() {
+            v.message = self.menus.message.clone();
+        }
+        let active = match under {
+            Some(Screen::Equip) => Some("BTN_EQU"),
+            Some(Screen::Inventory) => Some("BTN_INV"),
+            Some(Screen::Character) => Some("BTN_CHAR"),
+            Some(Screen::Journal) => Some("BTN_JOU"),
+            Some(Screen::Map) => Some("BTN_MAP"),
+            Some(Screen::Pause) if self.started => Some("BTN_OPT"),
+            _ => None,
+        };
+        if let Some(active) = active {
+            let mut row = MenuView::new("top");
+            for (button, label, picture) in TABS {
+                let lit = matches!(&v.hover, Some(Hit::Button(t)) if t == button);
+                let suffix = if button == active || lit { "2" } else { "" };
+                row.fill(label, format!("{picture}{suffix}"));
+            }
+            v.top = Some(Box::new(row));
+        }
+        if let (Screen::Pause, Some(Hit::Button(tag))) = (top, &v.hover) {
+            if let Some(words) = pause_words(tag) {
+                let text = self.ui.strref(words);
+                v.patches.entry("LB_DESC".to_string()).or_default().hidden = false;
+                v.text("LB_DESC", text);
+            }
+        }
+        Some(v)
+    }
+
+    fn screen_view(&mut self, top: Screen) -> MenuView {
+        let hover = self.menus.hover.clone();
+        match top {
+            Screen::Tutorial => MenuView::default(),
             Screen::Main => main_menu(),
             Screen::Pause => pause_menu(),
             Screen::Saves(mode) => self.saves_view(mode),
@@ -445,39 +515,7 @@ impl Stage {
             Screen::Journal => self.journal_view(),
             Screen::Party => self.party_view_screen(),
             Screen::Map => self.map_view(),
-        };
-        if top != Screen::Name {
-            v.hover = hover;
         }
-        if !self.menus.message.is_empty() {
-            v.message = self.menus.message.clone();
-        }
-        let active = match top {
-            Screen::Equip => Some("BTN_EQU"),
-            Screen::Inventory => Some("BTN_INV"),
-            Screen::Character => Some("BTN_CHAR"),
-            Screen::Journal => Some("BTN_JOU"),
-            Screen::Map => Some("BTN_MAP"),
-            Screen::Pause if self.started => Some("BTN_OPT"),
-            _ => None,
-        };
-        if let Some(active) = active {
-            let mut row = MenuView::new("top");
-            for (button, label, picture) in TABS {
-                let lit = matches!(&v.hover, Some(Hit::Button(t)) if t == button);
-                let suffix = if button == active || lit { "2" } else { "" };
-                row.fill(label, format!("{picture}{suffix}"));
-            }
-            v.top = Some(Box::new(row));
-        }
-        if let (Screen::Pause, Some(Hit::Button(tag))) = (top, &v.hover) {
-            if let Some(words) = pause_words(tag) {
-                let text = self.ui.strref(words);
-                v.patches.entry("LB_DESC".to_string()).or_default().hidden = false;
-                v.text("LB_DESC", text);
-            }
-        }
-        Some(v)
     }
 
     /// `saveload.gui`. There is no thumbnail of the scene yet, so `LBL_SCREENSHOT` stays dark.
@@ -1118,6 +1156,9 @@ impl Stage {
 
     /// What the HUD shows of a fight: `action` is what the target offers.
     pub(super) fn combat_view(&mut self, action: Option<&str>) -> CombatHud {
+        if action == Some("Attack") {
+            self.enemy_sighted();
+        }
         let w = &self.game.world;
         let attacking = w.combat.target.contains_key(&w.pc);
         let queue = if attacking {
@@ -1178,6 +1219,11 @@ impl Stage {
             self.leave_slot();
             self.menus.hover_slot = None;
             self.menus.hover = None;
+            match screen {
+                Screen::Inventory => self.tutorial(notices::TUTORIAL_INVENTORY),
+                Screen::Map => self.tutorial(notices::TUTORIAL_MAP),
+                _ => {}
+            }
         }
     }
 
@@ -1203,6 +1249,7 @@ impl Stage {
         self.menus.about = None;
         self.menus.refused = false;
         self.menus.first = 0;
+        self.tutorial(notices::TUTORIAL_EQUIP_SLOT);
     }
 
     /// Back from a slot's list, or off the screen: nothing more is chosen.
@@ -1434,6 +1481,7 @@ impl Stage {
                 self.menus.selected = Some(0);
                 self.menus.first = 0;
             }
+            (Screen::Tutorial, "BTN_OK") => self.tutorial_next(),
             (Screen::Party, _) => self.party_press(tag),
             (Screen::Map, _) => self.map_press(tag),
             (Screen::Character, "BTN_LEVELUP") => self.start_level_up(),
@@ -1485,6 +1533,7 @@ impl Stage {
                 self.leave_slot();
                 self.menus.message.clear();
             }
+            Some(Screen::Tutorial) => self.tutorial_next(),
             Some(Screen::Party) => {
                 self.party_press("BTN_BACK");
                 self.menus.hover = None;
@@ -1595,6 +1644,7 @@ impl Stage {
         }
         self.forget_view();
         self.menus.map = None;
+        self.menus.had = None;
         if let Err(e) = self.enter_module() {
             self.game.world.errors.push(format!("stage: {e}"));
         }

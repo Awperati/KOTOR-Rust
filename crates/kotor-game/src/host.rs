@@ -38,7 +38,6 @@ const PRESENTATION: &[&str] = &[
     "SetPartyAIStyle",
     "SetNPCAIStyle",
     "SetTutorialWindowsEnabled",
-    "ShowTutorialWindow",
     "SetFacingPoint",
     "SetPartyLeader",
     "PlayAnimation",
@@ -1685,9 +1684,15 @@ impl Host for Adapter<'_> {
             "GetJournalEntry" => Some(Value::Int(
                 *self.world.journal.get(&string(args, 0)).unwrap_or(&0),
             )),
+            "ShowTutorialWindow" => {
+                self.record(name, args);
+                self.world.tutorial_requests.push(int(args, 0)?);
+                None
+            }
             "GiveXPToCreature" => {
                 let id = self.obj(caller, args, 0);
                 let amount = int(args, 1)?;
+                self.world.plot_xp += amount;
                 for u in self.world.grant_xp(id, amount) {
                     let who = self.world.describe(id);
                     self.world

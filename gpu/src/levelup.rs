@@ -441,6 +441,13 @@ impl Stage {
         }
         self.menus.first = 0;
         self.menus.stack.push(screen);
+        use super::notices as n;
+        self.tutorial(match screen {
+            Screen::LevelAbilities => n::TUTORIAL_LEVEL_ABILITIES,
+            Screen::LevelFeats => n::TUTORIAL_LEVEL_FEATS,
+            Screen::LevelPowers => n::TUTORIAL_LEVEL_POWERS,
+            _ => n::TUTORIAL_LEVEL_SKILLS,
+        });
     }
 
     /// Back to how the page was found.

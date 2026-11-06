@@ -1204,6 +1204,64 @@ fn a_fight_brings_up_its_panel_and_the_target_slot_attacks() {
     assert_eq!(s.game.world.combat.target.get(&pc), None);
 }
 
+#[test]
+fn a_tutorial_comes_once_over_a_screen_and_notices_flash() {
+    let Some((mut s, _)) = in_game("tutorial") else {
+        return;
+    };
+    s.enable_tutorials(true);
+    s.game.world.tutorial_seen.clear();
+
+    // The first look at the inventory brings its pop-up over it, and only the button answers.
+    s.open_inventory();
+    s.update(DT);
+    assert_eq!(s.menu_name(), "tutorial");
+    assert!(s.menu_pixel("BTN_EXIT", None, SIZE).is_none());
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.menu_name(), "inventory");
+    s.escape();
+    // The second brings nothing.
+    s.open_inventory();
+    s.update(DT);
+    assert_eq!(s.menu_name(), "inventory");
+    s.escape();
+
+    // A script asks for one with two pages: Continue, then OK. It pauses the game. Esc does what the button does.
+    s.game.world.tutorial_requests.push(41);
+    s.update(DT);
+    assert_eq!(s.menu_name(), "tutorial");
+    let time = s.game.world.time;
+    s.update(DT);
+    assert_eq!(s.game.world.time, time, "the game waits");
+    let first = frame(&mut s);
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.menu_name(), "tutorial");
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) != first, "the next page");
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+
+    // Things that change flash an icon on the HUD, with their pop-up the first time.
+    s.update(DT);
+    let plain = frame(&mut s);
+    s.game.world.gold += 7;
+    s.update(DT);
+    assert_eq!(s.menu_name(), "tutorial");
+    s.escape();
+    assert!(frame(&mut s) != plain, "the credits icon");
+    // It goes after a while.
+    for _ in 0..200 {
+        s.game.world.time += 0.05;
+        s.update(DT);
+        if s.menu_name() != "-" {
+            s.escape();
+        }
+    }
+    s.enable_tutorials(false);
+    assert_eq!(s.menu_name(), "-");
+    assert!(frame(&mut s) != first);
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);

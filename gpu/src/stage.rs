@@ -485,6 +485,7 @@ impl Stage {
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.take_party_request();
+        self.notices_tick();
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
@@ -1609,6 +1610,7 @@ impl Stage {
         self.ui.set_target_at(target_at);
         let minimap = self.minimap_view();
         let combat = self.combat_view(target.as_ref().map(|t| t.3));
+        let notices = self.notices_view();
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -1616,7 +1618,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}",
+                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}{notices:?}",
                 self.module,
                 party
                     .iter()
@@ -1636,7 +1638,8 @@ impl Stage {
         }
         self.overlay_key = key;
         self.ui.set_minimap(minimap);
-        let engaged = combat.engaged;
+        let engaged = combat.engaged || !notices.is_empty();
+        self.ui.set_notices(notices);
         self.ui.set_combat(combat);
         self.overlay = match view {
             // A wordless beat: the scene alone.
@@ -1658,7 +1661,7 @@ impl Stage {
         // What is on screen in words, as far as the menu buttons leave room.
         let label = self.label();
         let short = label.split(" | ").take(3).collect::<Vec<_>>().join(" | ");
-        // In a fight that place has the line about combat mode.
+        // In a fight that place has the line about combat mode, and the notices are there too.
         if !engaged {
             self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &short));
         }

@@ -352,6 +352,8 @@ impl World {
                         ])
                     }),
                 ),
+                ("PT_TUTORIALS", value_list(&self.tutorial_seen)),
+                ("PT_PLOT_XP", Value::Int(self.plot_xp)),
                 (
                     "PT_EXPLORED",
                     list_of(self.explored.iter(), |(map, cells)| {
@@ -870,6 +872,8 @@ impl World {
             .iter()
             .filter_map(|x| Some((x.int("Slot")? as i32, x.str("Template")?.to_string())))
             .collect();
+        self.tutorial_seen = values_of(p, "PT_TUTORIALS").collect();
+        self.plot_xp = p.int("PT_PLOT_XP").unwrap_or(0) as i32;
         self.explored = p
             .list("PT_EXPLORED")
             .unwrap_or_default()

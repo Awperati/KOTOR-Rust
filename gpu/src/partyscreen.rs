@@ -50,6 +50,7 @@ impl Stage {
         });
         self.menus.stack.push(Screen::Party);
         self.menus.hover = None;
+        self.tutorial(super::notices::TUTORIAL_PARTY);
     }
 
     /// The party screen, from the map or a test.

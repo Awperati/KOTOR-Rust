@@ -450,6 +450,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if flag("--no-hd") {
         stage.no_hd();
     }
+    stage.enable_tutorials(!flag("--no-tutorials") && !flag("--autopilot"));
     if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }
