@@ -1621,8 +1621,44 @@ fn the_keys_can_be_changed_kept_and_put_back() {
     // Default gives the first keys back.
     press(&mut s, "BTN_KEYMAP");
     press(&mut s, "BTN_Default");
-    press(&mut s, "BTN_Accept");
     assert_eq!(s.action_for_key("KeyU"), Some("Equip"));
+    assert_eq!(s.action_for_key("KeyP"), None);
+
+    // Then the same button is called Original, and gives the game's own keys, from its table.
+    let ours = frame(&mut s);
+    press(&mut s, "BTN_Default");
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) != ours);
+    for (key, action) in [
+        ("KeyP", "Character"),
+        ("KeyL", "Quests"),
+        ("KeyZ", "MoveLeft"),
+        ("KeyC", "MoveRight"),
+        ("KeyA", "TurnLeft"),
+        ("KeyD", "TurnRight"),
+        ("KeyW", "MoveForward"),
+        ("KeyS", "MoveBack"),
+        ("KeyR", "Use"),
+        ("KeyF", "CancelCombat"),
+        ("KeyO", "Options"),
+        ("KeyU", "Equip"),
+        ("KeyI", "Inventory"),
+        ("KeyM", "Map"),
+        ("Tab", "ChangeLeader"),
+        ("Space", "Pause"),
+    ] {
+        assert_eq!(s.action_for_key(key), Some(action), "{key}");
+    }
+    assert_eq!(s.action_for_key("ArrowLeft"), None);
+    // It is kept like any other, and the button goes back.
+    press(&mut s, "BTN_Accept");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("key.Character=KeyP"), "{text}");
+    press(&mut s, "BTN_KEYMAP");
+    press(&mut s, "BTN_Default");
+    press(&mut s, "BTN_Accept");
+    assert_eq!(s.action_for_key("KeyC"), Some("Character"));
+    assert_eq!(s.action_for_key("ArrowLeft"), Some("TurnLeft"));
 
     // The Cancel Combat key is the Disengage button.
     press(&mut s, "BTN_BACK");

@@ -312,6 +312,8 @@ impl App {
             Some("MoveBack") => return self.keys[1] = pressed,
             Some("MoveLeft") => return self.keys[2] = pressed,
             Some("MoveRight") => return self.keys[3] = pressed,
+            Some("TurnLeft") => return self.turning = if pressed { TURN_SPEED } else { 0.0 },
+            Some("TurnRight") => return self.turning = if pressed { -TURN_SPEED } else { 0.0 },
             Some(action) => {
                 if pressed {
                     match action {
@@ -336,12 +338,6 @@ impl App {
         }
         match code {
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys[4] = pressed,
-            KeyCode::ArrowLeft => {
-                self.turning = if pressed { TURN_SPEED } else { 0.0 };
-            }
-            KeyCode::ArrowRight => {
-                self.turning = if pressed { -TURN_SPEED } else { 0.0 };
-            }
             KeyCode::Escape if pressed => self.stage.escape(),
             KeyCode::Enter if pressed => self.stage.continue_line(),
             _ if pressed && digit > 0 => self.stage.number_key(digit),

@@ -2,20 +2,23 @@
 //! the words of `keymap.2da`'s rows.
 //!
 //! **Differences:** the table has more rows, for things not built, and those are left out. Its keys differ from these in
-//! places (P for the character, L for quests, Z and C to strafe): Default gives the keys `docs/PLAY.md` lists, which came
-//! first here. A key taken from another action swaps with it. Mini Games is greyed: none are built. **Assumed:** reversed
-//! buttons swap everywhere, on the screens too.
+//! places (P for the character, L for quests, Z and C to strafe). The first keys are the ones `docs/PLAY.md` lists, which
+//! came first here, and the Default button goes between them and the table's, called Original. A key taken from another
+//! action swaps with it. Mini Games is greyed: none are built. **Assumed:** reversed buttons swap everywhere, on the
+//! screens too.
 
 use super::{Screen, Stage};
 use kotor_ui::{MenuView, Row};
 use std::collections::BTreeMap;
 
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 14] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 16] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
     ("MoveRight", 48031, 0, "KeyD"),
+    ("TurnLeft", 48319, 0, "ArrowLeft"),
+    ("TurnRight", 48321, 0, "ArrowRight"),
     ("Use", 48313, 1, "KeyE"),
     ("ChangeLeader", 48033, 1, "Tab"),
     ("Equip", 48037, 1, "KeyU"),
@@ -27,6 +30,26 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 14] = [
     ("Pause", 48019, 1, "Space"),
     ("CancelCombat", 48315, 1, "KeyF"),
 ];
+/// Each action's name in `keymap.2da`.
+const ORIGINAL_NAMES: [(&str, &str); 16] = [
+    ("MoveForward", "ActionUp"),
+    ("MoveBack", "ActionDown"),
+    ("MoveLeft", "ActionLeft"),
+    ("MoveRight", "ActionRight"),
+    ("TurnLeft", "CameraRotateLeft"),
+    ("TurnRight", "CameraRotateRight"),
+    ("Use", "DefaultAction"),
+    ("ChangeLeader", "ChangeChar"),
+    ("Equip", "Equip"),
+    ("Inventory", "Inventory"),
+    ("Character", "Character"),
+    ("Quests", "Quests"),
+    ("Map", "Map"),
+    ("Options", "Options"),
+    ("Pause", "Pause"),
+    ("CancelCombat", "CancleCombat"),
+];
+const ORIGINAL_LABEL: &str = "Original";
 const MINI_GAMES_PAGE: usize = 2;
 const FILTERS: [&str; 3] = ["BTN_Filter_Move", "BTN_Filter_Game", "BTN_Filter_Mini"];
 const STR_REVERSE_WORDS: u32 = 48450;
@@ -84,6 +107,17 @@ impl KeyMap {
     }
 }
 
+/// A key as `keymap.2da` writes it, by `winit`'s name: `W` is `KeyW`, `1` is `Digit1`.
+fn key_from_table(key: &str) -> String {
+    match key.chars().next() {
+        Some(c) if key.len() == 1 && c.is_ascii_alphabetic() => {
+            format!("Key{}", c.to_ascii_uppercase())
+        }
+        Some(c) if key.len() == 1 && c.is_ascii_digit() => format!("Digit{c}"),
+        _ => key.to_string(),
+    }
+}
+
 /// A key as the page shows it: `KeyW` is W, `Digit1` is 1, and `ArrowUp` is Up.
 fn pretty(key: &str) -> &str {
     key.strip_prefix("Key")
@@ -138,6 +172,10 @@ impl Stage {
     pub(super) fn key_map_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optkeymapping");
         v.inert(&[FILTERS[MINI_GAMES_PAGE]]);
+        // The button says what a click gives.
+        if self.menus.keys == KeyMap::default() {
+            v.text("BTN_Default", ORIGINAL_LABEL);
+        }
         v.lit(FILTERS[self.menus.key_page]);
         let capture = self.menus.key_capture;
         let mut rows = Vec::new();
@@ -164,7 +202,13 @@ impl Stage {
     pub(super) fn key_map_press(&mut self, tag: &str) {
         self.menus.key_capture = None;
         match tag {
-            "BTN_Default" => self.menus.keys = KeyMap::default(),
+            "BTN_Default" => {
+                self.menus.keys = if self.menus.keys == KeyMap::default() {
+                    self.original_keys()
+                } else {
+                    KeyMap::default()
+                };
+            }
             "BTN_Accept" => {
                 self.menus.stack.pop();
                 self.settings_changed();
@@ -178,6 +222,17 @@ impl Stage {
                 }
             }
         }
+    }
+
+    /// The keys of `keymap.2da`. An action it does not name keeps its first key.
+    fn original_keys(&mut self) -> KeyMap {
+        let mut keys = KeyMap::default();
+        for (action, name) in ORIGINAL_NAMES {
+            if let Some(key) = self.game.world.original_key(name) {
+                keys.0.insert(action, key_from_table(&key));
+            }
+        }
+        keys
     }
 
     /// Cancel, or Esc.

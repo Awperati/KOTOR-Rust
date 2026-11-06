@@ -14,6 +14,7 @@ mod game;
 mod host;
 mod items;
 mod journal;
+mod keymap;
 mod levelup;
 mod party;
 mod play;
