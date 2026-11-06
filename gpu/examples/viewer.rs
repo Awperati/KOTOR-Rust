@@ -76,6 +76,11 @@ impl Sound {
                     }
                 }
             }
+            Cue::Levels(music, voice, effects) => {
+                if let Some(o) = &mut self.out {
+                    o.set_levels(music, voice, effects);
+                }
+            }
             Cue::StopVoice => {
                 self.newest[Channel::Voice as usize] += 1;
                 if let Some(o) = &mut self.out {
@@ -220,6 +225,9 @@ impl App {
             self.sound.cue(c);
         }
         self.sound.pump();
+        if let Some((w, h)) = self.stage.take_wanted_size() {
+            let _ = st.window.request_inner_size(PhysicalSize::new(w, h));
+        }
         if let Some(s) = self.stage.status() {
             println!("{s}");
         }
@@ -429,6 +437,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
     if flag("--no-hd") {
         stage.no_hd();
+    }
+    if !flag("--skip-menu") {
+        stage.use_saved_settings();
     }
     if let Some(tag) = opt("--near") {
         if !stage.stand_near(&tag) {

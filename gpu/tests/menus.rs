@@ -1,5 +1,5 @@
 //! The screens over the game, driven headless through the same clicks a window sends.
-use kotor_gpu::stage::Stage;
+use kotor_gpu::stage::{Cue, Stage};
 
 const DT: f32 = 1.0 / 30.0;
 const SIZE: (u32, u32) = (1280, 720);
@@ -41,9 +41,7 @@ fn the_main_menu_starts_a_game_and_exit_quits() {
     s.update(DT);
     assert_eq!(s.overlay().unwrap().rgba, o.rgba, "and goes out again");
 
-    // Options is not built: it says so and nothing changes. Hidden buttons do not take clicks.
-    press(&mut s, "BTN_OPTIONS");
-    assert_eq!(s.menu_name(), "main");
+    // Hidden buttons do not take clicks.
     let warp = s.menu_pixel("BTN_WARP", None, SIZE).unwrap();
     s.click(warp, SIZE);
     assert_eq!(s.menu_name(), "main");
@@ -146,7 +144,7 @@ fn esc_pauses_the_game_and_exit_game_goes_back_to_the_main_menu() {
     let drawn = s.overlay().unwrap().clone();
     assert!(drawn.rgba.chunks(4).all(|p| p[3] == 255));
     // The greyed pages do nothing.
-    press(&mut s, "BTN_GRAPHICS");
+    press(&mut s, "BTN_FEEDBACK");
     assert_eq!(s.menu_name(), "pause");
     // Close and Esc both go back to the game.
     press(&mut s, "BTN_EXIT");
@@ -528,4 +526,151 @@ fn a_container_opens_its_own_window_over_the_scene() {
     assert_eq!(s.menu_name(), "-");
     s.escape();
     assert_eq!(s.menu_name(), "pause");
+}
+
+/// The middle of a slider is at this share of its width, on the window.
+fn slide(s: &mut Stage, tag: &str, along: f32) {
+    let (x, y) = s.menu_pixel(tag, None, SIZE).unwrap();
+    // A slider is 240 units wide, at 1.5 pixels to a unit.
+    let px = x + (along - 0.5) * 240.0 * 1.5;
+    s.hover((px, y), SIZE);
+    s.click((px, y), SIZE);
+}
+
+#[test]
+fn the_option_pages_change_what_they_say_and_keep_it() {
+    let Some(mut s) = at_menu() else { return };
+    let file = std::env::temp_dir()
+        .join("kotor_rs_settings_test")
+        .join("settings.txt");
+    let _ = std::fs::remove_file(&file);
+    s.use_settings_file(file.clone());
+    press(&mut s, "BTN_OPTIONS");
+    assert_eq!(s.menu_name(), "options");
+
+    // Sound: the levels reach the window as a cue.
+    press(&mut s, "BTN_SOUND");
+    assert_eq!(s.menu_name(), "sound");
+    s.update(DT);
+    let before = s.overlay().unwrap().clone();
+    slide(&mut s, "SLI_MUSIC", 0.25);
+    let cues = s.update(DT);
+    let level = s.settings().music;
+    assert!((level - 0.25).abs() < 0.02, "{level}");
+    assert!(
+        cues.iter()
+            .any(|c| matches!(c, Cue::Levels(m, 1.0, 1.0) if *m == level)),
+        "{cues:?}"
+    );
+    assert_ne!(s.overlay().unwrap().rgba, before.rgba, "the handle moved");
+    slide(&mut s, "SLI_VO", 0.5);
+    slide(&mut s, "SLI_FX", 0.01);
+    assert!(s.settings().effects < 0.02);
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "options");
+
+    // Graphics: brightness shows on the picture, and the size is asked of the window.
+    press(&mut s, "BTN_GRAPHICS");
+    s.update(DT);
+    let normal = s.overlay().unwrap().clone();
+    slide(&mut s, "SLI_GAMMA", 0.99);
+    s.update(DT);
+    let bright = s.overlay().unwrap().clone();
+    let sum = |o: &kotor_image::Image| o.rgba.iter().map(|b| *b as u64).sum::<u64>();
+    assert!(sum(&bright) > sum(&normal));
+    slide(&mut s, "SLI_GAMMA", 0.01);
+    s.update(DT);
+    assert!(sum(s.overlay().unwrap()) < sum(&normal));
+    press(&mut s, "BTN_DEFAULT");
+    s.update(DT);
+    assert_eq!(s.settings().brightness, 0.5);
+    assert_eq!(
+        s.overlay().unwrap().rgba,
+        normal.rgba,
+        "a half changes nothing"
+    );
+    assert_eq!(s.take_wanted_size(), None);
+    press(&mut s, "BTN_RESOLUTION");
+    assert_eq!(s.take_wanted_size(), Some((1280, 720)));
+    press(&mut s, "BTN_RESOLUTION");
+    assert_eq!(s.take_wanted_size(), Some((1920, 1080)));
+    assert_eq!(s.take_wanted_size(), None, "asked once");
+    // Greyed boxes do nothing.
+    let same = s.settings();
+    press(&mut s, "CB_SHADOWS");
+    assert_eq!(s.settings(), same);
+    press(&mut s, "BTN_BACK");
+
+    // Gameplay: difficulty and the boxes.
+    press(&mut s, "BTN_GAMEPLAY");
+    assert_eq!(s.settings().difficulty, 1);
+    press(&mut s, "BTN_DIFFRIGHT");
+    press(&mut s, "BTN_DIFFRIGHT");
+    assert_eq!(s.settings().difficulty, 2, "it stops at the last");
+    assert_eq!(s.game.world.difficulty, 2);
+    assert!((s.game.world.difficulty_multiplier() - 1.5).abs() < 0.01);
+    s.update(DT);
+    let ticked = s.overlay().unwrap().clone();
+    press(&mut s, "CB_AUTOSAVE");
+    assert!(s.settings().autosave);
+    press(&mut s, "CB_INVERTCAM");
+    s.update(DT);
+    assert_ne!(s.overlay().unwrap().rgba, ticked.rgba, "the box is ticked");
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "main");
+
+    // A new start reads them back, and New Game plays by them.
+    let kept = s.settings();
+    let mut again = at_menu().unwrap();
+    assert_eq!(again.settings(), kotor_gpu::stage::Settings::default());
+    again.use_settings_file(file.clone());
+    assert_eq!(again.settings(), kept);
+    assert_eq!(again.take_wanted_size(), Some((1920, 1080)));
+    press(&mut again, "BTN_NEWGAME");
+    assert_eq!(again.game.world.difficulty, 2);
+    // The camera turns the other way on the pitch.
+    let before = again.pitch;
+    again.look(0.0, 10.0);
+    assert!(again.pitch < before);
+    let _ = std::fs::remove_file(&file);
+
+    // Also from the pause menu.
+    let Some((mut p, _)) = in_game("settings") else {
+        return;
+    };
+    p.escape();
+    press(&mut p, "BTN_SOUND");
+    assert_eq!(p.menu_name(), "sound");
+    p.escape();
+    assert_eq!(p.menu_name(), "pause");
+}
+
+#[test]
+fn autosave_writes_on_a_change_of_module_when_ticked() {
+    let Some((mut s, dir)) = in_game("autosave") else {
+        return;
+    };
+    let file = dir.join("autosave.sav");
+    s.game.world.transition_request = Some(("end_m01ab".to_string(), String::new()));
+    for _ in 0..5 {
+        s.update(DT);
+    }
+    assert_eq!(s.game.world.module, "end_m01ab");
+    assert!(!file.exists(), "not ticked");
+
+    let settings = dir.with_extension("settings.txt");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(&settings, "autosave=true\n").unwrap();
+    s.use_settings_file(settings.clone());
+    s.game.world.transition_request = Some(("end_m01aa".to_string(), String::new()));
+    for _ in 0..5 {
+        s.update(DT);
+    }
+    assert_eq!(s.game.world.module, "end_m01aa");
+    let info = kotor_game::read_save_info(&file).unwrap();
+    assert_eq!(info.name, "Autosave");
+    assert_eq!(info.module, "end_m01aa");
+    let _ = std::fs::remove_file(&settings);
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -99,6 +99,8 @@ pub struct AudioOut {
     voice: Option<rodio::Sink>,
     music: Option<rodio::Sink>,
     volume: f32,
+    /// The player's levels for music, voice and effects, 0 to 1, on top of `volume`.
+    levels: [f32; 3],
 }
 
 impl AudioOut {
@@ -111,18 +113,30 @@ impl AudioOut {
             voice: None,
             music: None,
             volume,
+            levels: [1.0; 3],
         })
     }
 
-    fn sink(&self) -> Result<rodio::Sink, String> {
+    fn sink(&self, level: f32) -> Result<rodio::Sink, String> {
         let s = rodio::Sink::try_new(&self.handle).map_err(|e| e.to_string())?;
-        s.set_volume(self.volume);
+        s.set_volume(self.volume * level);
         Ok(s)
+    }
+
+    /// The player's levels for music, voice and effects, 0 to 1. What is playing changes at once.
+    pub fn set_levels(&mut self, music: f32, voice: f32, effects: f32) {
+        self.levels = [music, voice, effects];
+        if let Some(s) = &self.music {
+            s.set_volume(self.volume * music * 0.6);
+        }
+        if let Some(s) = &self.voice {
+            s.set_volume(self.volume * voice);
+        }
     }
 
     /// Say a line, cutting off the one before.
     pub fn play_voice(&mut self, a: &Audio) -> Result<(), String> {
-        let s = self.sink()?;
+        let s = self.sink(self.levels[1])?;
         s.append(rodio::buffer::SamplesBuffer::new(
             a.channels,
             a.sample_rate,
@@ -134,7 +148,7 @@ impl AudioOut {
 
     /// Play a short sound over everything else; it runs to its end by itself.
     pub fn play_effect(&mut self, a: &Audio) -> Result<(), String> {
-        let s = self.sink()?;
+        let s = self.sink(self.levels[2])?;
         s.append(rodio::buffer::SamplesBuffer::new(
             a.channels,
             a.sample_rate,
@@ -151,8 +165,8 @@ impl AudioOut {
     /// Replace the music with `a`, looping.
     pub fn play_music(&mut self, a: &Audio) -> Result<(), String> {
         use rodio::Source;
-        let s = self.sink()?;
-        s.set_volume(self.volume * 0.6);
+        let s = self.sink(self.levels[0])?;
+        s.set_volume(self.volume * self.levels[0] * 0.6);
         s.append(
             rodio::buffer::SamplesBuffer::new(a.channels, a.sample_rate, a.samples.clone())
                 .repeat_infinite(),

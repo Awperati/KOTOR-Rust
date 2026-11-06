@@ -146,6 +146,10 @@ impl<'a> Ui<'a> {
             "saveload",
             "savename",
             "container",
+            "optionsmain",
+            "optgameplay",
+            "optgraphics",
+            "optsound",
             "inventory",
             "equip",
         ] {

@@ -337,6 +337,8 @@ pub struct World {
     pub interactive_dialogue: bool,
     /// The direction the player is being steered this step, and whether at a run.
     pub steer: Option<([f32; 2], bool)>,
+    /// The game's difficulty: a row of `difficultyopt.2da`, 0 easy, 1 normal, 2 difficult.
+    pub difficulty: i32,
     /// The container the player has open.
     pub opened: Option<ObjId>,
     /// Who last took something out of a container and what, and who last closed one.
@@ -485,6 +487,7 @@ impl World {
             hero: 1,
             interactive_dialogue: false,
             steer: None,
+            difficulty: 1,
             opened: None,
             last_disturbed_by: OBJECT_INVALID,
             disturbed_item: OBJECT_INVALID,

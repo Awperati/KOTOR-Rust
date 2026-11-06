@@ -1355,6 +1355,8 @@ impl Host for Adapter<'_> {
             }
             // ---- last-event queries
             "GetExitingObject" => Some(Value::Object(self.world.exiting)),
+            "GetGameDifficulty" => Some(Value::Int(self.world.difficulty)),
+            "GetDifficultyModifier" => Some(Value::Float(self.world.difficulty_multiplier())),
             "GetLastOpenedBy" => Some(Value::Object(self.world.last_opened_by)),
             "GetLastClosedBy" => Some(Value::Object(self.world.last_closed_by)),
             "GetLastDisturbed" => Some(Value::Object(self.world.last_disturbed_by)),

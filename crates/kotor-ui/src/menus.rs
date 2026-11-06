@@ -17,6 +17,8 @@ const DIM: [f32; 3] = [0.45, 0.5, 0.55];
 /// `PROTOITEM` and `SCROLLBAR` are children; these two kinds are drawn with their list.
 const LIST: i32 = 11;
 const SCROLLBAR: i32 = 9;
+const CHECKBOX: i32 = 7;
+const SLIDER: i32 = 8;
 
 /// One row of a list.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -38,6 +40,8 @@ pub struct Row {
 pub enum Hit {
     Button(String),
     Row(String, usize),
+    /// A slider, and how far along it, 0 to 1.
+    Slider(String, f32),
 }
 
 /// One screen: a GUI file and what to change in it.
@@ -78,6 +82,11 @@ impl MenuView {
 
     pub fn fill(&mut self, tag: &str, fill: impl Into<String>) {
         self.patches.entry(tag.to_string()).or_default().fill = Some(fill.into());
+    }
+
+    /// A slider's place, or a checkbox: ticked when not zero.
+    pub fn value(&mut self, tag: &str, cur: i32, max: i32) {
+        self.patches.entry(tag.to_string()).or_default().value = Some((cur, max));
     }
 
     /// Draw this control's text in another font.
@@ -175,7 +184,29 @@ impl Ui<'_> {
 
     fn draw_plain(&mut self, cv: &mut Canvas, view: &MenuView, c: &Control, r: [i32; 4]) {
         let patch = view.patches.get(&c.tag).cloned().unwrap_or_default();
-        let lit = matches!(&view.hover, Some(Hit::Button(t)) if t == &c.tag);
+        let lit = match &view.hover {
+            Some(Hit::Button(t)) | Some(Hit::Slider(t, _)) => t == &c.tag,
+            _ => false,
+        };
+        if c.kind == SLIDER {
+            return self.draw_slider(cv, c, r, &patch, lit);
+        }
+        if c.kind == CHECKBOX {
+            let ticked = patch.value.is_some_and(|v| v.0 != 0);
+            let picture = c.selected.as_ref().filter(|_| ticked).unwrap_or(&c.border);
+            let side = r[3] * 3 / 4;
+            let tick = [r[0], r[1] + (r[3] - side) / 2, side, side];
+            self.draw_border(cv, picture, tick, None);
+            let Some(t) = &c.text else { return };
+            let text = patch.text.clone().unwrap_or_else(|| match t.strref {
+                Some(s) if t.text.is_empty() => self.strref(s),
+                _ => t.text.clone(),
+            });
+            let color = patch.color.unwrap_or(if lit { LIT } else { t.color });
+            let words = [r[0] + side + 6, r[1], r[2] - side - 6, r[3]];
+            self.draw_text(cv, &t.font, &text, words, 17, color);
+            return;
+        }
         self.draw_border(cv, &c.border, r, patch.fill.as_deref());
         if let (true, Some(h)) = (lit, &c.hilight) {
             self.draw_border(cv, h, r, None);
@@ -195,6 +226,26 @@ impl Ui<'_> {
         };
         let font = patch.font.as_deref().unwrap_or(&t.font);
         self.draw_text(cv, font, &text, r, t.alignment, color);
+    }
+
+    /// The track, and the handle along it: across, or down from the top when the slider is taller than wide.
+    fn draw_slider(&mut self, cv: &mut Canvas, c: &Control, r: [i32; 4], patch: &Patch, lit: bool) {
+        let track = c.hilight.as_ref().filter(|_| lit).unwrap_or(&c.border);
+        self.draw_border(cv, track, r, None);
+        let (cur, max) = patch.value.unwrap_or((c.cur_value, c.max_value));
+        let Some(img) = c.thumb.as_deref().and_then(|n| self.texture(n)).cloned() else {
+            return;
+        };
+        let along = cur.clamp(0, max.max(1)) as f32 / max.max(1) as f32;
+        let full = [0, 0, img.width as i32, img.height as i32];
+        let dst = if r[3] > r[2] {
+            let h = r[2] * img.height as i32 / img.width.max(1) as i32;
+            [r[0], r[1] + ((r[3] - h) as f32 * along) as i32, r[2], h]
+        } else {
+            let w = r[3] * img.width as i32 / img.height.max(1) as i32;
+            [r[0] + ((r[2] - w) as f32 * along) as i32, r[1], w, r[3]]
+        };
+        cv.draw_image(&img, full, dst, [1.0; 3], 1.0, Default::default());
     }
 
     fn draw_list(&mut self, cv: &mut Canvas, view: &MenuView, list: &Control, at: (i32, i32)) {
@@ -304,7 +355,7 @@ impl Ui<'_> {
         gui.panel
             .children
             .iter()
-            .filter(|c| matches!(c.kind, 5 | 6) && !view.is_hidden(&c.tag))
+            .filter(|c| matches!(c.kind, 5 | 6 | CHECKBOX | SLIDER) && !view.is_hidden(&c.tag))
             .filter(|c| {
                 let e = &c.extent;
                 inside([e.left, e.top, e.width, e.height])
@@ -313,10 +364,16 @@ impl Ui<'_> {
                 let e = &c.extent;
                 let dx = x - (e.left + e.width / 2) as f32;
                 let dy = y - (e.top + e.height / 2) as f32;
-                (dx * dx + dy * dy, c.tag.clone())
+                let hit = if c.kind == SLIDER {
+                    let along = (x - e.left as f32) / e.width.max(1) as f32;
+                    Hit::Slider(c.tag.clone(), along.clamp(0.0, 1.0))
+                } else {
+                    Hit::Button(c.tag.clone())
+                };
+                (dx * dx + dy * dy, hit)
             })
             .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(_, tag)| Hit::Button(tag))
+            .map(|(_, hit)| hit)
     }
 
     /// The layout point in the middle of a button, or of a row with `row`.

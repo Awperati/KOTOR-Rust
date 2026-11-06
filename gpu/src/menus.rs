@@ -63,7 +63,105 @@ pub(super) enum Screen {
     Equip,
     /// `container.gui`, up for as long as the world has something open. The game runs on behind it.
     Container,
+    /// `optionsmain.gui`, from the main menu.
+    Options,
+    Gameplay,
+    Graphics,
+    Sound,
 }
+
+/// What the player chose on the option pages. Kept in a text file beside the saves.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Settings {
+    /// Levels from 0 to 1.
+    pub music: f32,
+    pub voice: f32,
+    pub effects: f32,
+    /// 0 to 1; a half changes nothing.
+    pub brightness: f32,
+    /// Dragging the camera up tilts it the other way.
+    pub invert_camera: bool,
+    /// Save on every change of module.
+    pub autosave: bool,
+    /// 0 easy, 1 normal, 2 difficult.
+    pub difficulty: i32,
+    /// The window's size, once it has been chosen.
+    pub size: Option<(u32, u32)>,
+}
+
+impl Default for Settings {
+    fn default() -> Settings {
+        Settings {
+            music: 1.0,
+            voice: 1.0,
+            effects: 1.0,
+            brightness: 0.5,
+            invert_camera: false,
+            autosave: false,
+            difficulty: 1,
+            size: None,
+        }
+    }
+}
+
+impl Settings {
+    fn to_text(self) -> String {
+        let size = self
+            .size
+            .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
+        format!(
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\n",
+            self.music,
+            self.voice,
+            self.effects,
+            self.brightness,
+            self.invert_camera,
+            self.autosave,
+            self.difficulty
+        )
+    }
+
+    /// Anything missing or unreadable keeps its default.
+    fn from_text(text: &str) -> Settings {
+        let mut s = Settings::default();
+        let level = |v: &str, old: f32| v.parse().map_or(old, |n: f32| n.clamp(0.0, 1.0));
+        for line in text.lines() {
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            match k {
+                "music" => s.music = level(v, s.music),
+                "voice" => s.voice = level(v, s.voice),
+                "effects" => s.effects = level(v, s.effects),
+                "brightness" => s.brightness = level(v, s.brightness),
+                "invert_camera" => s.invert_camera = v == "true",
+                "autosave" => s.autosave = v == "true",
+                "difficulty" => s.difficulty = v.parse().unwrap_or(1).clamp(0, 2),
+                "size" => {
+                    s.size = v
+                        .split_once('x')
+                        .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+                }
+                _ => {}
+            }
+        }
+        s
+    }
+}
+
+/// `%LOCALAPPDATA%\kotor-rs\settings.txt`, outside the install and the repository.
+pub fn default_settings_file() -> Option<PathBuf> {
+    Some(
+        PathBuf::from(std::env::var_os("LOCALAPPDATA")?)
+            .join("kotor-rs")
+            .join("settings.txt"),
+    )
+}
+
+/// The sizes the Screen Resolution button goes through, as `docs/PLAY.md` lists them.
+const SIZES: [(u32, u32); 4] = [(1280, 720), (1920, 1080), (2560, 1440), (3840, 2160)];
+/// The names of the rows of `difficultyopt.2da`, from its `desc` column.
+const STR_DIFFICULTY: u32 = 42335;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Mode {
@@ -82,6 +180,10 @@ impl Screen {
             Screen::Inventory => "inventory",
             Screen::Equip => "equip",
             Screen::Container => "container",
+            Screen::Options => "options",
+            Screen::Gameplay => "gameplay",
+            Screen::Graphics => "graphics",
+            Screen::Sound => "sound",
         }
     }
 }
@@ -116,6 +218,10 @@ pub(super) struct Menus {
     hover_slot: Option<i32>,
     /// The last item clicked could not go on.
     refused: bool,
+    settings: Settings,
+    /// Where the settings are kept; `None` keeps them in memory, as in tests.
+    settings_file: Option<PathBuf>,
+    wanted_size: Option<(u32, u32)>,
 }
 
 /// `%LOCALAPPDATA%\kotor-rs\saves`, outside the install and the repository.
@@ -217,6 +323,10 @@ impl Stage {
             Screen::Inventory => self.inventory_view(),
             Screen::Equip => self.equip_view(),
             Screen::Container => self.container_view(),
+            Screen::Options => options_menu(),
+            Screen::Gameplay => self.gameplay_view(),
+            Screen::Graphics => self.graphics_view(),
+            Screen::Sound => self.sound_view(),
         };
         if top != Screen::Name {
             v.hover = hover;
@@ -473,6 +583,159 @@ impl Stage {
         v
     }
 
+    /// What the player chose on the option pages.
+    pub fn settings(&self) -> Settings {
+        self.menus.settings
+    }
+
+    /// Read the player's settings from their file, and keep them there from now on.
+    pub fn use_saved_settings(&mut self) {
+        if let Some(path) = default_settings_file() {
+            self.use_settings_file(path);
+        }
+    }
+
+    /// Read settings from this file, and keep them there from now on.
+    pub fn use_settings_file(&mut self, path: PathBuf) {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            self.menus.settings = Settings::from_text(&text);
+        }
+        self.menus.settings_file = Some(path);
+        self.settings_changed();
+        self.menus.wanted_size = self.menus.settings.size;
+    }
+
+    /// What follows from a change of settings: the sound, the rules and the picture.
+    fn settings_changed(&mut self) {
+        let s = self.menus.settings;
+        self.cues.push(Cue::Levels(s.music, s.voice, s.effects));
+        self.apply_difficulty();
+        self.overlay_key.clear();
+        if let Some(path) = &self.menus.settings_file {
+            let written = path
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(path, s.to_text()));
+            if let Err(e) = written {
+                self.menus.message = format!("Cannot keep the settings: {e}");
+            }
+        }
+    }
+
+    pub(super) fn apply_difficulty(&mut self) {
+        self.game.world.difficulty = self.menus.settings.difficulty;
+    }
+
+    /// The window size the Screen Resolution button asked for, once.
+    pub fn take_wanted_size(&mut self) -> Option<(u32, u32)> {
+        self.menus.wanted_size.take()
+    }
+
+    /// Brightness, as a layer in the overlay, which is laid over the scene with premultiplied alpha: black dims what
+    /// is under it, and colour with no alpha adds to it. **Assumed:** this stands in for the game's gamma, which would
+    /// need the renderer.
+    pub(super) fn apply_brightness(&mut self) {
+        let b = self.menus.settings.brightness;
+        let Some(o) = self.overlay.as_mut().filter(|_| b != 0.5) else {
+            return;
+        };
+        if b < 0.5 {
+            let keep = 1.0 - (0.5 - b) * 1.4;
+            for p in o.rgba.chunks_mut(4) {
+                p[0] = (p[0] as f32 * keep) as u8;
+                p[1] = (p[1] as f32 * keep) as u8;
+                p[2] = (p[2] as f32 * keep) as u8;
+                p[3] = 255 - ((255 - p[3]) as f32 * keep) as u8;
+            }
+        } else {
+            let add = ((b - 0.5) * 120.0) as u8;
+            for p in o.rgba.chunks_mut(4) {
+                p[0] = p[0].saturating_add(add);
+                p[1] = p[1].saturating_add(add);
+                p[2] = p[2].saturating_add(add);
+            }
+        }
+    }
+
+    /// With Autosave ticked, a change of module writes `autosave.sav` over the last one.
+    pub(super) fn autosave(&mut self) {
+        if !self.menus.settings.autosave || self.why_no_save().is_some() {
+            return;
+        }
+        if self.menus.saves_dir.is_none() {
+            self.menus.saves_dir = default_saves_dir();
+        }
+        let Some(dir) = self.menus.saves_dir.clone() else {
+            return;
+        };
+        let written = std::fs::create_dir_all(&dir)
+            .map_err(|e| e.to_string())
+            .and_then(|()| {
+                let path = dir.join("autosave.sav");
+                let w = &self.game.world;
+                w.save_to(&path, "Autosave").map_err(|e| e.to_string())
+            });
+        if let Err(e) = written {
+            self.game.world.errors.push(format!("autosave: {e}"));
+        }
+    }
+
+    /// `optgameplay.gui`. The other boxes and buttons are about things not built, so they are greyed.
+    fn gameplay_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("optgameplay");
+        v.hide(&["LB_DESC"]);
+        v.inert(&[
+            "CB_LEVELUP",
+            "CB_REVERSE",
+            "CB_DISABLEMOVE",
+            "BTN_KEYMAP",
+            "BTN_MOUSE",
+        ]);
+        let s = self.menus.settings;
+        v.value("CB_INVERTCAM", s.invert_camera as i32, 1);
+        v.value("CB_AUTOSAVE", s.autosave as i32, 1);
+        let name = self.ui.strref(STR_DIFFICULTY + s.difficulty as u32);
+        v.text("BTN_DIFFICULTY", name);
+        v
+    }
+
+    /// `optgraphics.gui`. The renderer has no shadows or grass, and no advanced settings.
+    fn graphics_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("optgraphics");
+        v.hide(&["LB_DESC"]);
+        v.inert(&["CB_SHADOWS", "CB_GRASS", "BTN_ADVANCED"]);
+        let s = self.menus.settings;
+        v.value("SLI_GAMMA", (s.brightness * 100.0) as i32, 100);
+        if let Some((w, h)) = s.size {
+            v.text("BTN_RESOLUTION", format!("{w} x {h}"));
+        }
+        v
+    }
+
+    /// `optsound.gui`. There are no movies, and no advanced page.
+    fn sound_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("optsound");
+        v.hide(&["LB_DESC", "LBL_MOVIE", "SLI_MOVIE", "BTN_ADVANCED"]);
+        let s = self.menus.settings;
+        v.value("SLI_MUSIC", (s.music * 100.0) as i32, 100);
+        v.value("SLI_VO", (s.voice * 100.0) as i32, 100);
+        v.value("SLI_FX", (s.effects * 100.0) as i32, 100);
+        v
+    }
+
+    /// A slider was clicked, this far along.
+    fn move_slider(&mut self, tag: &str, along: f32) {
+        let s = &mut self.menus.settings;
+        match tag {
+            "SLI_MUSIC" => s.music = along,
+            "SLI_VO" => s.voice = along,
+            "SLI_FX" => s.effects = along,
+            "SLI_GAMMA" => s.brightness = along,
+            _ => return,
+        }
+        self.settings_changed();
+    }
+
     /// `container.gui`, over the scene. Nothing can be put into a container yet, so its button is hidden.
     fn container_view(&mut self) -> MenuView {
         let mut v = MenuView::new("container");
@@ -620,6 +883,7 @@ impl Stage {
                     _ => self.menus.selected = Some(row),
                 }
             }
+            Some(Hit::Slider(tag, along)) => self.move_slider(&tag, along),
             None => self.menus.delete_armed = None,
         }
     }
@@ -634,8 +898,56 @@ impl Stage {
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),
             (Screen::Main | Screen::Pause, "BTN_LOADGAME") => self.open_saves(Mode::Load),
-            (Screen::Main, "BTN_OPTIONS") => {
-                self.menus.message = "The options are not built yet.".to_string();
+            (Screen::Main, "BTN_OPTIONS") => self.menus.stack.push(Screen::Options),
+            (Screen::Options | Screen::Pause, "BTN_GAMEPLAY") => {
+                self.menus.stack.push(Screen::Gameplay)
+            }
+            (Screen::Options | Screen::Pause, "BTN_GRAPHICS") => {
+                self.menus.stack.push(Screen::Graphics)
+            }
+            (Screen::Options | Screen::Pause, "BTN_SOUND") => self.menus.stack.push(Screen::Sound),
+            (Screen::Options | Screen::Gameplay | Screen::Graphics | Screen::Sound, "BTN_BACK") => {
+                self.menus.stack.pop();
+            }
+            (Screen::Gameplay, "CB_INVERTCAM") => {
+                self.menus.settings.invert_camera = !self.menus.settings.invert_camera;
+                self.settings_changed();
+            }
+            (Screen::Gameplay, "CB_AUTOSAVE") => {
+                self.menus.settings.autosave = !self.menus.settings.autosave;
+                self.settings_changed();
+            }
+            (Screen::Gameplay, "BTN_DIFFLEFT" | "BTN_DIFFRIGHT") => {
+                let step = if tag == "BTN_DIFFLEFT" { -1 } else { 1 };
+                let d = self.menus.settings.difficulty + step;
+                self.menus.settings.difficulty = d.clamp(0, 2);
+                self.settings_changed();
+            }
+            (Screen::Gameplay, "BTN_DEFAULT") => {
+                let d = Settings::default();
+                let s = &mut self.menus.settings;
+                (s.invert_camera, s.autosave, s.difficulty) =
+                    (d.invert_camera, d.autosave, d.difficulty);
+                self.settings_changed();
+            }
+            (Screen::Graphics, "BTN_DEFAULT") => {
+                self.menus.settings.brightness = Settings::default().brightness;
+                self.settings_changed();
+            }
+            (Screen::Graphics, "BTN_RESOLUTION") => {
+                let at = SIZES
+                    .iter()
+                    .position(|s| Some(*s) == self.menus.settings.size)
+                    .map_or(0, |i| (i + 1) % SIZES.len());
+                self.menus.settings.size = Some(SIZES[at]);
+                self.menus.wanted_size = Some(SIZES[at]);
+                self.settings_changed();
+            }
+            (Screen::Sound, "BTN_DEFAULT") => {
+                let d = Settings::default();
+                let s = &mut self.menus.settings;
+                (s.music, s.voice, s.effects) = (d.music, d.voice, d.effects);
+                self.settings_changed();
             }
             (Screen::Main, "BTN_EXIT") => self.menus.exit = true,
             (Screen::Pause, "BTN_SAVEGAME") => match self.why_no_save() {
@@ -934,20 +1246,22 @@ fn main_menu() -> MenuView {
     let mut v = MenuView::new("mainmenu");
     v.stretch = vec!["TGuiPanel".to_string(), "LBL_3DVIEW".to_string()];
     v.hide(&["LB_MODULES", "BTN_WARP", "LBL_NEWCONTENT"]);
-    v.inert(&["BTN_MOVIES", "BTN_OPTIONS"]);
+    v.inert(&["BTN_MOVIES"]);
     v
 }
 
-/// `optionsingame.gui`. Load, Save, Exit Game and Close work; the option pages are not built, so they are greyed.
+/// `optionsingame.gui`. Feedback and Auto-Pause are about things not built, so they are greyed.
 fn pause_menu() -> MenuView {
     let mut v = MenuView::new("optionsingame");
     v.hide(&["LB_DESC"]);
-    v.inert(&[
-        "BTN_GAMEPLAY",
-        "BTN_FEEDBACK",
-        "BTN_AUTOPAUSE",
-        "BTN_GRAPHICS",
-        "BTN_SOUND",
-    ]);
+    v.inert(&["BTN_FEEDBACK", "BTN_AUTOPAUSE"]);
+    v
+}
+
+/// `optionsmain.gui`, as the pause menu's pages from the main menu.
+fn options_menu() -> MenuView {
+    let mut v = MenuView::new("optionsmain");
+    v.hide(&["LB_DESC"]);
+    v.inert(&["BTN_FEEDBACK", "BTN_AUTOPAUSE"]);
     v
 }

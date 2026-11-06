@@ -44,6 +44,10 @@ pub struct Control {
     pub border: Border,
     /// What a button shows under the cursor.
     pub hilight: Option<Border>,
+    /// What a checkbox shows when it is ticked.
+    pub selected: Option<Border>,
+    /// The picture of a slider's handle.
+    pub thumb: Option<String>,
     pub text: Option<GuiText>,
     /// Progress bars: the fill drawn for the filled part, and the value range.
     pub progress_fill: Option<Border>,
@@ -115,6 +119,10 @@ fn control(s: &Struct) -> Control {
         extent: s.strukt("EXTENT").map(extent).unwrap_or_default(),
         border: s.strukt("BORDER").map(border).unwrap_or_default(),
         hilight: s.strukt("HILIGHT").map(border),
+        selected: s.strukt("SELECTED").map(border),
+        thumb: s
+            .strukt("THUMB")
+            .and_then(|t| t.str("IMAGE").map(str::to_string)),
         text,
         progress_fill: s.strukt("PROGRESS").map(border),
         cur_value: s.int("CURVALUE").unwrap_or(0) as i32,

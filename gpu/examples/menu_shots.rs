@@ -53,6 +53,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = Stage::menu("end_m01aa", true)?;
     hover(&mut s, "BTN_NEWGAME");
     shot(&mut gpu, &mut s, "main_menu", &out);
+    click(&mut s, "BTN_OPTIONS", None);
+    shot(&mut gpu, &mut s, "options", &out);
+    click(&mut s, "BTN_GAMEPLAY", None);
+    click(&mut s, "BTN_DIFFRIGHT", None);
+    click(&mut s, "CB_AUTOSAVE", None);
+    shot(&mut gpu, &mut s, "opt_gameplay", &out);
+    click(&mut s, "CB_AUTOSAVE", None);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_GRAPHICS", None);
+    shot(&mut gpu, &mut s, "opt_graphics", &out);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_SOUND", None);
+    shot(&mut gpu, &mut s, "opt_sound", &out);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_BACK", None);
 
     // Saves in a folder of their own: frames must not touch the real ones.
     let saves = std::env::temp_dir().join("kotor_rs_menu_shots");

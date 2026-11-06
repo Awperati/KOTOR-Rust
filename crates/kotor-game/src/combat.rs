@@ -150,6 +150,14 @@ impl CombatState {
 }
 
 impl World {
+    /// The `multiplier` of the row of `difficultyopt.2da` the game is on.
+    pub fn difficulty_multiplier(&mut self) -> f32 {
+        let row = self.difficulty.max(0) as usize;
+        self.table("difficultyopt")
+            .and_then(|t| t.get(row, "multiplier")?.parse().ok())
+            .unwrap_or(1.0)
+    }
+
     /// A roll of a die with `sides` sides, from the world's random stream.
     pub fn roll(&mut self, sides: i32) -> i32 {
         self.rng ^= self.rng << 13;
@@ -299,6 +307,10 @@ impl World {
             let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
             let mod_ = if weapon.ranged { 0 } else { str_mod };
             dealt = damage(dice, mod_, outcome, weapon.multiplier);
+            // **Assumption:** difficulty scales what the party takes, by the `multiplier` of `difficultyopt.2da`.
+            if target == self.pc || self.party.contains(&target) {
+                dealt = ((dealt as f32 * self.difficulty_multiplier()).round() as i32).max(1);
+            }
         }
         let fell = self.hurt(attacker, target, dealt);
         let hp_after = self.objects.get(&target).map_or(0, |t| t.hp);

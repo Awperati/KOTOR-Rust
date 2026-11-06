@@ -8,7 +8,7 @@ cargo run --offline --release --manifest-path C:\Users\User\Projects\kotor-rs\gp
 
 The window opens only on DISPLAY2, and never takes focus by itself: click it to give it the keyboard.
 
-It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and Exit closes the window. `--skip-menu` starts straight in the game, which is what `Stage::open` and the test driver do. The movie button, the 3D model behind the menu, the debug warp and the new-content notice are left out; Options says it is not built.
+It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and Exit closes the window. `--skip-menu` starts straight in the game, which is what `Stage::open` and the test driver do. The movie button, the 3D model behind the menu, the debug warp and the new-content notice are left out; Options opens the pages below.
 
 | Input | What it does |
 |---|---|
@@ -62,7 +62,18 @@ The camera starts 3.3 m behind and 1.7 m above the player, and comes closer wher
 GUI files lay out 640x480. The interface is drawn 480 units high and as wide as the window's shape makes it, then stretched over the whole window. **Assumed, not compared with the game:** the left of the HUD stays, the party and map keep their distance from the right edge, the action slot and notice icons stay centred, and the dialogue box is a bar from edge to edge.
 
 ## Pause
-Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game goes back to the main menu with the game gone, and Close or Esc goes back to the game. Gameplay, Feedback, Auto-Pause, Graphics and Sound are greyed and do nothing.
+Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game goes back to the main menu with the game gone, and Close or Esc goes back to the game. Feedback and Auto-Pause are greyed and do nothing.
+
+## Options
+`optionsmain.gui` from the main menu, or straight from the pause menu. The choices are kept in `%LOCALAPPDATA%\kotor-rs\settings.txt`, and a `--skip-menu` run ignores that file.
+
+| Page | Works | Greyed or left out, because nothing behind it is built |
+|---|---|---|
+| Gameplay | difficulty, `CB_INVERTCAM` (tilts the camera the other way), Autosave (writes `autosave.sav` on each change of module, off by default) | Auto Level Up, mini-game axis, Combat Movement, Key Mapping, Mouse Settings |
+| Graphics | Brightness, Screen Resolution (goes through 1280x720, 1920x1080, 2560x1440, 3840x2160) | Shadows, Grass, Advanced Options |
+| Sound | music, voice and effects levels | Movie Volume and Advanced Options, left out |
+
+**Assumed, not compared with the game:** difficulty multiplies what the party takes by the `multiplier` of `difficultyopt.2da` (0.5, 1, 1.5), which is a table fact, but where the game applies it is a guess; left is easier; brightness is a layer in the overlay, an offset instead of the game's gamma; the label of `CB_INVERTCAM` reads "Mouse Look", and I went by its tag. Nobody has heard the sound levels.
 
 ## Saving
 Saves are files in `%LOCALAPPDATA%\kotor-rs\saves` and nowhere else, and writing inside the install is refused. Save Game lists them newest first with a New save row: choose a row, press Save, type a name, press OK or Enter. Choosing an old save overwrites it; a file is written beside the old one and then moved over it, so a crash does not cost the old save. Load Game works from the pause menu and the main menu, from any module to any module. Delete asks once, then takes the file away. A file this engine cannot read is not listed.

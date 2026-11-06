@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
-pub use menus::default_saves_dir;
+pub use menus::{default_saves_dir, default_settings_file, Settings};
 
 type Mat = [[f32; 4]; 4];
 
@@ -48,6 +48,8 @@ pub enum Cue {
     Music(PathBuf),
     /// A short sound, as the bytes of its file.
     Effect(Vec<u8>),
+    /// The player's levels for music, voice and effects, 0 to 1.
+    Levels(f32, f32, f32),
     StopMusic,
 }
 
@@ -392,6 +394,7 @@ impl Stage {
             .ok_or("no recommended character")?;
         world.create_character(&spec)?;
         self.game = Game::new(world);
+        self.apply_difficulty();
         self.forget_view();
         self.enter_module()?;
         self.started = true;
@@ -487,6 +490,7 @@ impl Stage {
             if let Err(e) = self.enter_module() {
                 self.game.world.errors.push(format!("stage: {e}"));
             }
+            self.autosave();
         }
         self.scan_music_events();
         self.play_world_sounds(dt);
@@ -911,6 +915,11 @@ impl Stage {
 
     /// Drag with the right button: turn the camera round the player and tilt it.
     pub fn look(&mut self, dx: f32, dy: f32) {
+        let dy = if self.settings().invert_camera {
+            -dy
+        } else {
+            dy
+        };
         self.yaw -= dx * 0.005;
         self.pitch = (self.pitch + dy * 0.004).clamp(-0.2, 1.2);
     }
@@ -1580,6 +1589,7 @@ impl Stage {
             if key != self.overlay_key {
                 self.overlay_key = key;
                 self.overlay = self.ui.menu_overlay(&view);
+                self.apply_brightness();
                 self.overlay_version += 1;
             }
             return;
@@ -1625,6 +1635,7 @@ impl Stage {
         };
         let label = self.label();
         self.overlay = self.overlay.take().and_then(|o| self.ui.caption(o, &label));
+        self.apply_brightness();
         self.overlay_version += 1;
     }
 
