@@ -21,6 +21,8 @@ use crate::follow::dist2d;
 use crate::world::{EffectRec, ObjId, World};
 use kotor_script::OBJECT_INVALID;
 
+/// `DAMAGE_TYPE_UNIVERSAL`.
+pub const UNIVERSAL: i32 = 8;
 pub const DURATION_INSTANT: i32 = 0;
 pub const DURATION_TEMPORARY: i32 = 1;
 pub const DURATION_PERMANENT: i32 = 2;
@@ -104,6 +106,39 @@ impl World {
             .sum()
     }
 
+    /// What is left of `amount` of damage of type `kind` (a set of `DAMAGE_TYPE_*` bits) after the target's resistance,
+    /// reduction and immunity.
+    ///
+    /// **Assumed, not measured:** `EffectDamageResistance(type, amount)` takes `amount` off a hit of a matching type and
+    /// ignores its limit; `EffectDamageReduction(amount)` takes it off any type; immunity is a percentage per type,
+    /// raised and lowered by `EffectDamageImmunityIncrease` and `Decrease`, and kept between 0 and 100. Universal damage
+    /// (type 8) passes resistance and immunity, as in the d20 game.
+    pub fn adjust_damage(&self, target: ObjId, amount: i32, kind: i32) -> i32 {
+        if kind & UNIVERSAL != 0 || amount <= 0 {
+            return amount.max(0);
+        }
+        let Some(o) = self.objects.get(&target) else {
+            return amount;
+        };
+        let (mut flat, mut immune) = (0, 0);
+        for e in o
+            .effects
+            .iter()
+            .filter_map(|h| self.effects.get(h.wrapping_sub(1) as usize))
+        {
+            let num = |i: usize| e.nums.get(i).copied().unwrap_or(0.0) as i32;
+            match e.name.as_str() {
+                "EffectDamageResistance" if num(0) & kind != 0 => flat += num(1),
+                "EffectDamageReduction" => flat += num(0),
+                "EffectDamageImmunityIncrease" if num(0) & kind != 0 => immune += num(1),
+                "EffectDamageImmunityDecrease" if num(0) & kind != 0 => immune -= num(1),
+                _ => {}
+            }
+        }
+        let left = (amount - flat).max(0);
+        left * (100 - immune.clamp(0, 100)) / 100
+    }
+
     /// Whether an active effect stops the creature acting.
     pub fn is_disabled(&self, id: ObjId) -> bool {
         self.objects.get(&id).is_some_and(|o| {
@@ -141,7 +176,10 @@ impl World {
         match rec.name.as_str() {
             "EffectLinkEffects" => {}
             "EffectDamage" => {
-                self.hurt(creator, target, n0);
+                // `EffectDamage(amount, type, power)`: the type is a set of `DAMAGE_TYPE_*` bits.
+                let kind = rec.nums.get(1).copied().unwrap_or(UNIVERSAL as f32) as i32;
+                let amount = self.adjust_damage(target, n0, kind);
+                self.hurt(creator, target, amount);
             }
             "EffectDeath" => {
                 let hp = self.objects.get(&target).map_or(0, |o| o.hp);

@@ -421,6 +421,21 @@ impl World {
         }
     }
 
+    /// The `DAMAGE_TYPE_*` bits of the weapon in the right hand: its `damageflags` column, bludgeoning for a fist.
+    fn weapon_damage_type(&mut self, id: ObjId) -> i32 {
+        let base = self
+            .objects
+            .get(&id)
+            .and_then(|o| o.equipped.get(&4))
+            .and_then(|i| self.objects.get(i))
+            .map(|i| i.base_item);
+        let Some(base) = base else { return 1 };
+        self.table("baseitems")
+            .and_then(|t| t.int(base.max(0) as usize, "damageflags"))
+            .map_or(crate::force::UNIVERSAL, |v| v as i32)
+            .max(1)
+    }
+
     /// `EffectAssuredHit` is on: a blow cannot miss.
     fn has_assured_hit(&self, id: ObjId) -> bool {
         self.objects.get(&id).is_some_and(|o| {
@@ -454,6 +469,9 @@ impl World {
             let mod_ = self.gear_damage(attacker, 4).0 + if weapon.ranged { 0 } else { str_mod };
             let more = self.roll_gear_damage(attacker, 4, target, outcome == Outcome::Critical);
             dealt = damage(dice, mod_, outcome, weapon.multiplier) + boost.damage + more;
+            // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.
+            let kind = self.weapon_damage_type(attacker);
+            dealt = self.adjust_damage(target, dealt, kind);
             // **Assumption:** difficulty scales what the party takes, by the `multiplier` of `difficultyopt.2da`.
             if target == self.pc || self.party.contains(&target) {
                 dealt = ((dealt as f32 * self.difficulty_multiplier()).round() as i32).max(1);

@@ -759,7 +759,21 @@ impl Host for Adapter<'_> {
                     .map_or(0, |o| o.appearance),
             )),
             // Immunities, force resistance, creature size and movement type are not modelled: fixed answers.
-            "ResistForce" | "GetIsLinkImmune" | "GetCreatureMovmentType" | "GetEffectType" => {
+            // **Assumption:** force resistance is the sum of `EffectForceResistanceIncrease` on the target, less the
+            // decreases, beaten when the caster's level plus a d20 reaches it (the d20 spell-resistance check).
+            "ResistForce" => {
+                let (caster, target) = (self.obj(caller, args, 0), self.obj(caller, args, 1));
+                let sr = self
+                    .world
+                    .effect_sum(target, "EffectForceResistanceIncrease", None)
+                    - self
+                        .world
+                        .effect_sum(target, "EffectForceResistanceDecrease", None);
+                let level = self.world.object(caster).map_or(1, |o| o.level);
+                let resisted = sr > 0 && self.world.roll(20) + level < sr;
+                Some(Value::Int(resisted as i32))
+            }
+            "GetIsLinkImmune" | "GetCreatureMovmentType" | "GetEffectType" => {
                 self.default_hit(name);
                 Some(Value::Int(0))
             }
