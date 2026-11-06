@@ -123,7 +123,7 @@ pub struct Game {
 /// Attack and flinch clips last 1.47 to 1.5 s and dodges 0.3 to 0.43 s in the humanoid supermodels (measured).
 const COMBAT_CLIP_SECONDS: f32 = 1.5;
 /// How long the `getupdead` clip plays when a push or knockdown ends. **Assumed**, not read from the model.
-const GET_UP_SECONDS: f32 = 2.0;
+const GET_UP_SECONDS: f32 = 3.0;
 const DODGE_CLIP_SECONDS: f32 = 0.43;
 /// How long a creature that took part in a fight keeps its combat stance after its last blow. A round is 3 s.
 ///

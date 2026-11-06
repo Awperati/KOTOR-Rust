@@ -69,11 +69,11 @@ fn a_pushed_creature_is_drawn_lying_down_and_then_getting_up() {
     }
     assert_eq!(clip(&g), Some("die"), "down for the push's three seconds");
     // The push lasts 3 s: after it the creature gets up, then stands.
-    for _ in 0..(2.2 * 60.0) as usize {
+    for _ in 0..(3.2 * 60.0) as usize {
         g.step_once();
     }
     assert_eq!(clip(&g), Some("getupdead"));
-    for _ in 0..(2.5 * 60.0) as usize {
+    for _ in 0..(3.2 * 60.0) as usize {
         g.step_once();
     }
     assert_ne!(clip(&g), Some("getupdead"));

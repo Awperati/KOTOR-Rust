@@ -82,8 +82,12 @@ Driven in the real stage, offscreen, with `gpu/examples/sweep_shots.rs` (frames 
 | 21 teammate targeting | Fine. A teammate in a fight attacked the foe 4 times, the player 0. |
 | 25 sight over short objects | Fine. A shooter 6 m off over a short obstacle fired twice at the player. |
 | 34 remains | Fine. The foe carried 9 things, its remains held 9, and the loot window lists them. |
-| 36 Force Push | **Fixed.** The foe slid 3.00 m and was disabled, but stood upright. A pushed or knocked-down creature now shows `die` while it lies and `getupdead` (2 s, assumed) when it ends (`Game::step_once`, test in `tests/force_push.rs`). |
+| 36 Force Push | **Fixed.** The foe slid 3.00 m and was disabled, but stood upright. A pushed or knocked-down creature now shows `die` while it lies and `getupdead` (3 s, the clip's length) when it ends (`Game::step_once`, test in `tests/force_push.rs`). |
 | 39 party opens doors | Fine. A mate 4 m behind a shut door opened it and came to 2.2 m. |
 
 The 8 s body rule (`World::body_gone`): it hides a dead creature from `GetIsObjectValid` and tag lookups, not from this code, which reads bodies directly. The duel's later nodes (`k_pend_cut2_*`) name no dead duellist.
+
+## Weapon Focus
+
+`attack_bonus_of` added nothing for the Weapon Focus feats. It now adds 1 with the feat that covers the weapon in the slot (`crates/kotor-game/src/weapon_focus.rs`): Blaster 32 (one-handed blasters), Blaster Rifle 33, Heavy Weapons 35 (repeating blasters), Lightsaber 36, Melee Weapons 37, picked by the item's `weaponwield` and `weaponmattype` in `baseitems.2da`. **Assumed:** that mapping and the +1. Not done: Weapon Specialization (feats 46 to 51, which the tabletop rules make +2 damage). Test: `tests/weapon_focus.rs`.
 

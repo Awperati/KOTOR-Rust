@@ -34,6 +34,7 @@ mod sheet;
 mod store;
 mod swoop;
 mod tutorial;
+mod weapon_focus;
 mod workbench;
 mod world;
 

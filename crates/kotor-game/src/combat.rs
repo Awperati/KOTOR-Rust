@@ -209,6 +209,7 @@ impl World {
         self.base_attack_of(id)
             + ability_mod(self.ability_score(id, ability))
             + self.gear_attack(id, slot)
+            + self.weapon_focus_bonus(id, slot)
             + self.effect_sum(id, "EffectAttackIncrease", None)
             - self.effect_sum(id, "EffectAttackDecrease", None)
     }
