@@ -44,6 +44,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Container title | the object's name | "Container Inventory" |
 | `fnt_console` at 4K | letters run together | the stock font: its upscaled picture was the cause |
 | What has not been seen of a map | all of it showed | a grid, as at 1:25:00 and 3:50:35: spacing and colours measured from those two frames, so close, not exact. Seen is a circle 14 of the picture's pixels round the player, with a soft edge |
+| Changing member | none | the small portraits at the foot of the equipment, inventory and character screens, as at 1:23:50, and the HUD's. The bag goes with whoever leads, and a level waits for each member. Frame: `character_party`. Tested in code, not clicked live: the driver has no party |
 | Interface sounds | none | `guisounds.2da`'s for entering, clicking, ticking, a refusal, a panel opening and closing, the slots and taking an item. Which goes with what is read from its labels. Heard in no comparison: I looked at the video's frames only, and tests check that a sound is sent, not how it sounds |
 | Advanced Graphics | a greyed button | the stock page with V-Sync working. The other boxes stay greyed and say why, since each needs the renderer. Not seen in the video. Frames: `opt_graphics_reason`, `opt_graphics_advanced` |
 | Key Mapping and Mouse Settings | greyed buttons | the stock pages. Keys start as the first keys here, the button called Original gives the table's, and only what is built is listed: see `gpu/src/keyscreen.rs`. Not seen in the video, so not compared. Tested in code; a changed key was not pressed live |
@@ -73,7 +74,6 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Map notes | circles with a small mark inside | plain circles | the mark's picture not found |
 | Main menu | Malak in 3D with moving fog on the left | the still picture | no 3D in menus |
 | Character sheet | the 3D figure on a glowing backdrop | the portrait | no 3D in menus |
-| Party portrait on sheets | a small portrait to change member, bottom left | none | party switching not built |
 | Tutorial pop-ups over the game | the HUD stays under the box | the HUD goes while it is up | the box is drawn as a screen |
 | Tutorial pop-up words | at 5:50 the words differ from the talk table's row 21 and 34 | the talk table's | where theirs come from not found |
 | Notice timing | not measured | 6 s, assumed | the video's are short and I sampled every 5 s |

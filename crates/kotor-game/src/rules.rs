@@ -410,7 +410,7 @@ impl World {
             return Vec::new();
         };
         o.xp += amount;
-        if hold && id == pc {
+        if hold && (id == pc || self.party.contains(&id)) {
             return Vec::new();
         }
         let xp = o.xp;

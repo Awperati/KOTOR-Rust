@@ -47,6 +47,8 @@ pub struct Ui<'a> {
     /// The small map and its frame are switched off.
     minimap_off: bool,
     floats: Vec<Float>,
+    /// How many portraits the HUD shows.
+    hud_party: usize,
     /// The game is paused, with the box at the top right if something paused it.
     paused: bool,
     pause_note: String,
@@ -160,6 +162,7 @@ impl<'a> Ui<'a> {
             notices: Vec::new(),
             minimap_off: false,
             floats: Vec::new(),
+            hud_party: 1,
             paused: false,
             pause_note: String::new(),
         }
@@ -744,6 +747,7 @@ impl<'a> Ui<'a> {
         action: &str,
         icon: &str,
     ) -> Option<Image> {
+        self.hud_party = party.len();
         let mut gui = self.gui(HUD_GUI)?;
         place_hud(&mut gui.panel, self.width, self.target_at);
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
@@ -1019,6 +1023,8 @@ impl<'a> Ui<'a> {
                 self.combat.slots[1].is_some() && self.target_at.is_some()
             }
             "BTN_MINIMAP" => !self.minimap_off,
+            "BTN_CHAR2" => self.hud_party >= 2,
+            "BTN_CHAR3" => self.hud_party >= 3,
             _ => true,
         };
         gui.panel
@@ -1242,7 +1248,7 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
-const HUD_BUTTONS: [&str; 21] = [
+const HUD_BUTTONS: [&str; 23] = [
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -1255,6 +1261,8 @@ const HUD_BUTTONS: [&str; 21] = [
     "BTN_CLEARONE",
     "BTN_CLEARONE2",
     "TB_PAUSE",
+    "BTN_CHAR2",
+    "BTN_CHAR3",
     "BTN_TARGET0",
     "BTN_TARGET1",
     "BTN_TARGETUP1",

@@ -274,6 +274,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "party", &out);
     s.escape();
 
+    // Someone else in the party: their portrait at the foot of the screen, and on the HUD.
+    s.game.world.available.insert(2, "end_trask".to_string());
+    s.game.world.choose_party(&[2], "");
+    s.update(0.05);
+    s.open_character();
+    shot(&mut gpu, &mut s, "character_party", &out);
+    s.escape();
+    s.game.world.choose_party(&[], "");
+    s.game.world.bench.clear();
+    s.update(0.05);
+
     // A tutorial pop-up over a screen and over the game, and the icons at the top.
     s.enable_tutorials(true);
     s.game.world.tutorial_seen.clear();

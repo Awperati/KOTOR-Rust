@@ -224,6 +224,15 @@ impl World {
             return false;
         }
         let old = self.pc;
+        // The party has one bag, as the inventory screen's words say: it goes with whoever leads.
+        let bag = self.carried(old);
+        if let Some(o) = self.objects.get_mut(&old) {
+            o.inventory.retain(|i| !bag.contains(i));
+        }
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.inventory.extend(bag);
+        }
+        self.combat_queue.clear();
         self.party.retain(|p| *p != id);
         self.party.push(old);
         if let Some(o) = self.objects.get_mut(&old) {

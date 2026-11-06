@@ -125,6 +125,10 @@ From the pause menu or the main menu's Options. Feedback has Hide Unequippable, 
 A tutorial pop-up comes up once in a game for what `tutorial.2da` names, or when a script calls `ShowTutorialWindow`. The game waits, and OK, Continue or Esc goes on. `tutorials=false` in the settings file turns them off, and `--no-tutorials` does for one run; `--autopilot` has none. Icons at the top of the HUD flash for a new journal entry, a change in credits, experience from a script, items gained or lost outside the screens, and a change of alignment. Experience from a kill has no icon.
 
 
+## Changing member
+The small portraits at the foot of the equipment, inventory and character screens, the HUD's small portraits, and Tab all change who leads. **Assumed:** the new leader goes on leading after the screen closes. The party has one bag, which goes with the leader, and each member's level waits for the screen when they lead. What each wears stays on them.
+
+
 ## Party
 `partyselection.gui` shows who is on offer, from `World::available`, with the file's dark pictures for who is not. A click shows someone, Add or Remove changes who comes along, up to two, and nothing happens until OK. A script asks for it with `ShowPartySelectionGUI`: those it forces are chosen already and stay, Cancel is greyed, and its exit script runs on OK. The map's button will open it too. The viewer's `--autopilot` has no screens, so forced members join straight away and levels are taken as they come. A member who is left behind is gone from the world and keeps their levels, abilities, skills, feats, powers and items for when they come back, through a save too. They gain no experience meanwhile. A save keeps the leader, the character the player made, and `min_one_hp`.
 

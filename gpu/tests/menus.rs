@@ -1769,6 +1769,85 @@ fn vsync_is_the_advanced_graphics_box_that_works_and_the_rest_say_why_not() {
     assert!(s.settings().vsync);
 }
 
+#[test]
+fn a_screen_or_the_hud_changes_to_another_member_with_the_bag() {
+    let Some((mut s, _)) = in_game("switch") else {
+        return;
+    };
+    let w = &mut s.game.world;
+    for id in w.party.clone() {
+        w.object_mut(id).unwrap().party_member = false;
+    }
+    w.party.clear();
+    w.npc_slots.clear();
+    w.available.clear();
+    w.available.insert(2, "n_calonord".to_string());
+    w.available.insert(6, "n_calonord".to_string());
+    let hero = w.pc;
+
+    // Alone there is nobody to change to.
+    s.open_inventory();
+    assert!(s.menu_pixel("BTN_CHANGE1", None, SIZE).is_none());
+    s.escape();
+
+    let w = &mut s.game.world;
+    w.choose_party(&[2, 6], "");
+    let (first, second) = (w.party[0], w.party[1]);
+    let medpack = w.spawn_item("g_i_medeqpmnt01");
+    w.carry(hero, medpack);
+    let bag = w.carried(hero);
+    assert!(!bag.is_empty());
+    let worn = w.spawn_item("g_a_class4001");
+    w.object_mut(hero).unwrap().equipped.insert(1, worn);
+
+    // Each of the three screens has the portraits, and a click changes to that member, bag and all.
+    s.open_inventory();
+    assert!(s.menu_pixel("BTN_CHANGE2", None, SIZE).is_some());
+    press(&mut s, "BTN_CHANGE1");
+    assert_eq!(s.game.world.pc, first);
+    let now = s.game.world.carried(first);
+    assert!(bag.iter().all(|i| now.contains(i)), "{now:?} has {bag:?}");
+    assert!(s.game.world.carried(hero).is_empty());
+    assert_eq!(s.menu_name(), "inventory");
+    s.open_equip();
+    press(&mut s, "BTN_INV_BODY");
+    press(&mut s, "BTN_CHANGE1");
+    assert_ne!(
+        s.game.world.pc, first,
+        "the list closes and the next one leads"
+    );
+    assert_eq!(s.menu_name(), "equip");
+    s.open_character();
+    assert_eq!(s.menu_name(), "character");
+    press(&mut s, "BTN_CHANGE1");
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+
+    // What is worn stays on who wears it.
+    assert_eq!(
+        s.game.world.object(hero).unwrap().equipped.get(&1),
+        Some(&worn)
+    );
+
+    // The HUD's small portraits do the same.
+    s.update(DT);
+    let leader = s.game.world.pc;
+    let portrait = s.hud_pixel("BTN_CHAR2", SIZE).unwrap();
+    s.click(portrait, SIZE);
+    assert_ne!(s.game.world.pc, leader);
+    s.update(DT);
+    assert!(s.game.world.party.contains(&leader));
+    let _ = second;
+
+    // A level waits for whoever earns it, leading or not.
+    let member = s.game.world.party[0];
+    let o = s.game.world.object_mut(member).unwrap();
+    (o.level, o.xp) = (1, 0);
+    s.game.world.grant_xp(member, 90000);
+    assert_eq!(s.game.world.object(member).unwrap().level, 1);
+    assert!(s.game.world.level_ready(member));
+}
+
 /// How many short sounds come out of the next update.
 fn sounds(s: &mut Stage) -> usize {
     let cues = s.update(DT);

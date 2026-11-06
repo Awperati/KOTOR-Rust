@@ -884,11 +884,10 @@ impl Stage {
             .map_or(String::new(), |o| format!("{}/{}", o.hp, o.max_hp))
     }
 
-    /// `inventory.gui`. Party switching is not built, so its buttons are hidden; quest items and using an item are
-    /// greyed.
+    /// `inventory.gui`. Quest items are greyed.
     fn inventory_view(&mut self) -> MenuView {
         let mut v = MenuView::new("inventory");
-        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2"]);
+        self.change_buttons(&mut v);
         v.inert(&["BTN_QUESTITEMS"]);
         let about_item = self.menus.about;
         let usable = about_item
@@ -919,7 +918,7 @@ impl Stage {
     /// OK and Cancel are at the foot. Party switching is not built, so its buttons are hidden.
     fn equip_view(&mut self) -> MenuView {
         let mut v = MenuView::new("equip");
-        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2"]);
+        self.change_buttons(&mut v);
         let picking = self.menus.slot;
         match picking {
             Some(_) => {
@@ -1176,7 +1175,8 @@ impl Stage {
     /// Scripts and party switching are not built. The level-up buttons show when a level is waiting.
     fn character_view(&mut self) -> MenuView {
         let mut v = MenuView::new("character");
-        v.hide(&["BTN_CHANGE1", "BTN_CHANGE2", "LBL_CLASS2", "LBL_LEVEL2"]);
+        self.change_buttons(&mut v);
+        v.hide(&["LBL_CLASS2", "LBL_LEVEL2"]);
         v.inert(&["BTN_SCRIPTS"]);
         v.fill("LBL_3DCHAR", self.portrait());
         let w = &mut self.game.world;
@@ -1251,6 +1251,31 @@ impl Stage {
         self.menus.hover_slot = None;
     }
 
+    /// The small portraits at the foot of the party's screens: the other members, a click changes to them.
+    fn change_buttons(&self, v: &mut MenuView) {
+        let w = &self.game.world;
+        for (n, tag) in ["BTN_CHANGE1", "BTN_CHANGE2"].iter().enumerate() {
+            match w.party.get(n).and_then(|id| w.object(*id)) {
+                Some(o) if !o.portrait.is_empty() => v.fill(tag, o.portrait.clone()),
+                Some(_) => {}
+                None => v.hide(&[tag]),
+            }
+        }
+    }
+
+    /// Change to another member, who then leads, on a screen or from the HUD. **Assumed:** they go on leading after the
+    /// screen closes. The video does not show which.
+    fn change_member(&mut self, n: usize) {
+        let w = &mut self.game.world;
+        let Some(id) = w.party.get(n).copied() else {
+            return;
+        };
+        w.switch_leader(id);
+        self.leave_slot();
+        self.menus.hover_slot = None;
+        self.menus.hover = None;
+    }
+
     /// What a click on the HUD sounds like.
     pub(super) fn hud_click_sound(&mut self, tag: &str) {
         self.effect(
@@ -1283,6 +1308,8 @@ impl Stage {
             "BTN_CHAR" => self.open_character(),
             "BTN_JOU" => self.open_journal(),
             "BTN_MAP" | "BTN_MINIMAP" => self.open_map(),
+            "BTN_CHAR2" => self.change_member(0),
+            "BTN_CHAR3" => self.change_member(1),
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "TB_PAUSE" => self.toggle_pause(),
             "BTN_TARGETUP1" | "BTN_TARGETDOWN1" | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => {
@@ -1686,6 +1713,12 @@ impl Stage {
                 self.menus.first = 0;
             }
             (Screen::Tutorial, "BTN_OK") => self.tutorial_next(),
+            (Screen::Inventory | Screen::Equip | Screen::Character, "BTN_CHANGE1") => {
+                self.change_member(0)
+            }
+            (Screen::Inventory | Screen::Equip | Screen::Character, "BTN_CHANGE2") => {
+                self.change_member(1)
+            }
             (Screen::Party, _) => self.party_press(tag),
             (Screen::Map, _) => self.map_press(tag),
             (Screen::Character, "BTN_LEVELUP") => self.start_level_up(),
