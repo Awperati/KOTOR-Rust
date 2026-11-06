@@ -329,7 +329,7 @@ impl Ui<'_> {
             }
         }
         for m in &view.marks {
-            if let Some(img) = self.texture(&m.picture).cloned() {
+            if let Some(img) = self.texture_shared(&m.picture) {
                 let shown = [
                     0,
                     0,
@@ -441,7 +441,7 @@ impl Ui<'_> {
             .unwrap_or(0);
         let point = point as f32 * w as f32 / iw.max(1) as f32;
         let beside = |y: f32| [r[0] + r[2] / 2 + 4, y as i32 - h / 2, w, h];
-        let Some(bar) = self.texture(&c.border.fill).cloned() else {
+        let Some(bar) = self.texture_shared(&c.border.fill) else {
             return beside(r[1] as f32 + r[3] as f32 * along);
         };
         let (bw, bh) = (bar.width as usize, bar.height as usize);
@@ -477,7 +477,7 @@ impl Ui<'_> {
         let (ox, oy) = self.panel_origin(&g.panel);
         let e = &c.extent;
         let r = [ox + e.left, oy + e.top, e.width, e.height];
-        let img = self.texture(c.thumb.as_deref()?).cloned()?;
+        let img = self.texture_shared(c.thumb.as_deref()?)?;
         let along = value.0.clamp(0, value.1.max(1)) as f32 / value.1.max(1) as f32;
         Some(self.needle_place(&c, r, &img, along))
     }
@@ -487,7 +487,7 @@ impl Ui<'_> {
         let track = c.hilight.as_ref().filter(|_| lit).unwrap_or(&c.border);
         self.draw_border(cv, track, r, None);
         let (cur, max) = patch.value.unwrap_or((c.cur_value, c.max_value));
-        let Some(img) = c.thumb.as_deref().and_then(|n| self.texture(n)).cloned() else {
+        let Some(img) = c.thumb.as_deref().and_then(|n| self.texture_shared(n)) else {
             return;
         };
         let along = cur.clamp(0, max.max(1)) as f32 / max.max(1) as f32;
@@ -521,7 +521,7 @@ impl Ui<'_> {
                     crate::glow::boxed(cv, box_);
                 }
                 let font = patch.font.as_deref().unwrap_or(&t.font);
-                let Some(f) = self.font(font).cloned() else {
+                let Some(f) = self.font_shared(font) else {
                     return;
                 };
                 let [x, y, w, _] = first_row;
@@ -580,7 +580,7 @@ impl Ui<'_> {
             let (text_rect, alignment) = match &row.icon {
                 Some(icon) => {
                     let side = r[3] - 4;
-                    if let Some(img) = self.texture(icon).cloned() {
+                    if let Some(img) = self.texture_shared(icon) {
                         let full = [0, 0, img.width as i32, img.height as i32];
                         let dst = [r[0] + 2, r[1] + 2, side, side];
                         cv.draw_image(&img, full, dst, [1.0; 3], 1.0, Default::default());
@@ -625,7 +625,7 @@ impl Ui<'_> {
         for (n, cell) in cells.iter().enumerate().take(rects.len()) {
             let at = rects[n];
             let tint = if cell.dim { [0.3; 3] } else { [1.0; 3] };
-            if let Some(img) = self.texture(&cell.icon).cloned() {
+            if let Some(img) = self.texture_shared(&cell.icon) {
                 let full = [0, 0, img.width as i32, img.height as i32];
                 cv.draw_image(&img, full, at, tint, 1.0, Default::default());
             }
@@ -646,7 +646,7 @@ impl Ui<'_> {
                 cv.fill_rect(x + w - 1, y, 1, h, c);
             }
             if n + 1 < cells.len() {
-                if let Some(img) = self.texture("lbl_rightminus").cloned() {
+                if let Some(img) = self.texture_shared("lbl_rightminus") {
                     let full = [0, 0, img.width as i32, img.height as i32];
                     let side = 14;
                     let x = (at[0] + at[2] + rects[n + 1][0] - side) / 2;

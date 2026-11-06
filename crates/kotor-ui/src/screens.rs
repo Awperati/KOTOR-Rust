@@ -11,6 +11,7 @@ use crate::gui::{Border, Control, Gui};
 use kotor_archive::Install;
 use kotor_image::Image;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// The layout space of every GUI file.
 pub const SCREEN: (u32, u32) = (640, 480);
@@ -46,8 +47,10 @@ pub struct Ui<'a> {
     action: String,
     /// The icon in the first action slot while there is a target.
     action_icon: String,
-    textures: HashMap<String, Option<Image>>,
-    fonts: HashMap<String, Option<Font>>,
+    textures: HashMap<String, Option<Rc<Image>>>,
+    fonts: HashMap<String, Option<Rc<Font>>>,
+    /// The screens' files, as read: a screen is drawn each time anything on it changes.
+    guis: HashMap<String, Option<Gui>>,
     /// The talk table, read the first time a control needs it.
     tlk: Option<Option<kotor_tables::Tlk>>,
     target_at: Option<(i32, i32)>,
@@ -198,6 +201,7 @@ impl<'a> Ui<'a> {
             fonts: HashMap::new(),
             tlk: None,
             target_at: None,
+            guis: HashMap::new(),
             minimap: None,
             combat: CombatHud::default(),
             notices: Vec::new(),
@@ -323,7 +327,13 @@ impl<'a> Ui<'a> {
     }
 
     pub fn gui(&mut self, name: &str) -> Option<Gui> {
-        Gui::parse(&self.inst.read(name, kotor_core::ResType(2047)).ok()?).ok()
+        let key = name.to_ascii_lowercase();
+        if !self.guis.contains_key(&key) {
+            let read = self.inst.read(name, kotor_core::ResType(2047)).ok();
+            let gui = read.and_then(|bytes| Gui::parse(&bytes).ok());
+            self.guis.insert(key.clone(), gui);
+        }
+        self.guis[&key].clone()
     }
 
     /// Whether a picture from `compose_seen_map` is here: changing the window's size forgets pictures.
@@ -341,7 +351,7 @@ impl<'a> Ui<'a> {
         cols: usize,
         rows: usize,
     ) {
-        let Some(img) = self.texture(picture).cloned() else {
+        let Some(img) = self.texture_shared(picture) else {
             return;
         };
         let (w, h) = (img.width as usize, img.height as usize);
@@ -372,11 +382,11 @@ impl<'a> Ui<'a> {
         }
         self.textures.insert(
             out.to_ascii_lowercase(),
-            Some(Image {
+            Some(Rc::new(Image {
                 width: img.width,
                 height: img.height,
                 rgba,
-            }),
+            })),
         );
     }
 
@@ -392,9 +402,15 @@ impl<'a> Ui<'a> {
             if let (Some(i), true) = (img.as_mut(), additive(self.inst, &key)) {
                 brightness_to_alpha(i);
             }
-            self.textures.insert(key.clone(), img);
+            self.textures.insert(key.clone(), img.map(Rc::new));
         }
-        self.textures[&key].as_ref()
+        self.textures[&key].as_deref()
+    }
+
+    /// A picture, to draw with while other things are asked of this.
+    pub(crate) fn texture_shared(&mut self, name: &str) -> Option<Rc<Image>> {
+        self.texture(name)?;
+        self.textures.get(&name.to_ascii_lowercase())?.clone()
     }
 
     /// Noto Sans or the game's own fonts, and glowing text boxes or the stock ones. Returns whether anything changed.
@@ -464,9 +480,15 @@ impl<'a> Ui<'a> {
                     });
                 }
             }
-            self.fonts.insert(key.clone(), f);
+            self.fonts.insert(key.clone(), f.map(Rc::new));
         }
-        self.fonts[&key].as_ref()
+        self.fonts[&key].as_deref()
+    }
+
+    /// A font, to draw with while other things are asked of this.
+    pub(crate) fn font_shared(&mut self, name: &str) -> Option<Rc<Font>> {
+        self.font(name)?;
+        self.fonts.get(&name.to_ascii_lowercase())?.clone()
     }
 
     /// Text from the talk table, `dialog.tlk` beside the game's data files.
@@ -491,7 +513,7 @@ impl<'a> Ui<'a> {
         fill: Option<&str>,
     ) {
         let fill = fill.unwrap_or(&b.fill).to_string();
-        if let Some(img) = self.texture(&fill).cloned() {
+        if let Some(img) = self.texture_shared(&fill) {
             let full = [0, 0, img.width as i32, img.height as i32];
             cv.draw_image(&img, full, r, b.color, 1.0, Orient::default());
         }
@@ -500,7 +522,7 @@ impl<'a> Ui<'a> {
             return;
         }
         let [x, y, w, h] = r;
-        if let Some(img) = self.texture(&b.edge).cloned() {
+        if let Some(img) = self.texture_shared(&b.edge) {
             let full = [0, 0, img.width as i32, img.height as i32];
             let sides = [
                 ([x + d, y, w - 2 * d, d], 0),
@@ -516,7 +538,7 @@ impl<'a> Ui<'a> {
                 cv.draw_image(&img, full, dst, b.color, 1.0, o);
             }
         }
-        if let Some(img) = self.texture(&b.corner).cloned() {
+        if let Some(img) = self.texture_shared(&b.corner) {
             let full = [0, 0, img.width as i32, img.height as i32];
             let corners = [
                 ([x, y, d, d], 0),
@@ -544,7 +566,7 @@ impl<'a> Ui<'a> {
         alignment: i32,
         color: [f32; 3],
     ) -> i32 {
-        let Some(f) = self.font(font).cloned() else {
+        let Some(f) = self.font_shared(font) else {
             return 0;
         };
         let lines = f.wrap(text, r[2]);
@@ -620,7 +642,7 @@ impl<'a> Ui<'a> {
                         255,
                     ];
                     cv.fill_rect(dst[0], dst[1], dst[2], dst[3], c);
-                } else if let Some(img) = self.texture(&fill.fill).cloned() {
+                } else if let Some(img) = self.texture_shared(&fill.fill) {
                     let full = [0, 0, img.width as i32, img.height as i32];
                     cv.draw_image(&img, full, dst, fill.color, 1.0, Orient::default());
                 }
@@ -766,7 +788,7 @@ impl<'a> Ui<'a> {
             let line_h = self.font(&t.font)?.line_height;
             // Scroll so the selected reply is visible, then draw the rows that fit.
             let rows: Vec<Vec<String>> = {
-                let f = self.font(&t.font)?.clone();
+                let f = self.font_shared(&t.font)?;
                 view.replies
                     .iter()
                     .enumerate()
@@ -798,7 +820,7 @@ impl<'a> Ui<'a> {
                 } else {
                     t.color
                 };
-                let f = self.font(&t.font)?.clone();
+                let f = self.font_shared(&t.font)?;
                 for l in lines {
                     f.draw_line(&mut cv, lx + proto.extent.left, y, l, color);
                     y += line_h;
@@ -818,7 +840,7 @@ impl<'a> Ui<'a> {
         let proto = list.proto_item.as_ref()?;
         let t = proto.text.as_ref()?;
         let width = proto.extent.width + (self.width - SCREEN.0) as i32;
-        let f = self.font(&t.font)?.clone();
+        let f = self.font_shared(&t.font)?;
         let (lx, mut y) = (
             p.extent.left + list.extent.left,
             p.extent.top + list.extent.top,
@@ -976,7 +998,7 @@ impl<'a> Ui<'a> {
             return;
         };
         cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 0, 255]);
-        if let Some(img) = self.texture(&m.picture).cloned() {
+        if let Some(img) = self.texture_shared(&m.picture) {
             let k = img.width as f32 / MINIMAP_FILE_WIDTH;
             let side = HUD_FILE_MINIMAP * k;
             let (left, top) = (m.at[0] * k - side / 2.0, m.at[1] * k - side / 2.0);
@@ -995,7 +1017,7 @@ impl<'a> Ui<'a> {
                 cv.draw_image(&img, region, dst, [1.0; 3], 1.0, Default::default());
             }
         }
-        if let Some(arrow) = self.texture(MINIMAP_ARROW).cloned() {
+        if let Some(arrow) = self.texture_shared(MINIMAP_ARROW) {
             let at = (
                 r[0] as f32 + r[2] as f32 / 2.0,
                 r[1] as f32 + r[3] as f32 / 2.0,

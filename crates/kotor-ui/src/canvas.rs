@@ -43,6 +43,9 @@ struct ScaledKey {
 /// What is kept is let go all at once past this many pixels: a quarter of a gigabyte.
 const SCALED_MOST_PIXELS: usize = 64 << 20;
 
+/// Where a picture's pixels are, how many bytes, and how wide.
+type PictureAt = (usize, usize, u32);
+
 #[derive(Default)]
 struct ScaledCache {
     pictures: HashMap<ScaledKey, Rc<Vec<[u8; 4]>>>,
@@ -51,23 +54,47 @@ struct ScaledCache {
 
 thread_local! {
     static SCALED: RefCell<ScaledCache> = RefCell::default();
+    static CONTENTS: RefCell<HashMap<PictureAt, (u64, u64)>> = RefCell::default();
 }
 
 /// What a picture holds, as a number. By content and not by address, since a picture dropped and another loaded can have the
 /// same one, as the slots' icons did. A large picture is taken in every sixteenth word, a font's once for each letter.
 fn content_of(img: &Image) -> u64 {
     const WHOLE_UP_TO: usize = 256 << 10;
-    let step = if img.rgba.len() <= WHOLE_UP_TO { 1 } else { 16 };
-    img.rgba
-        .as_chunks::<8>()
-        .0
-        .iter()
-        .step_by(step)
-        .fold(0xcbf2_9ce4_8422_2325, |h: u64, w| {
-            (h ^ u64::from_le_bytes(*w))
-                .wrapping_mul(0x0000_0100_0000_01b3)
-                .rotate_left(23)
-        })
+    /// Below this the sum is quicker than remembering it.
+    const REMEMBERED_FROM: usize = 4 << 10;
+    const REMEMBERED_MOST: usize = 4096;
+    const TASTES: usize = 64;
+    let words = img.rgba.as_chunks::<8>().0;
+    let sum = |step: usize| {
+        words
+            .iter()
+            .step_by(step.max(1))
+            .fold(0xcbf2_9ce4_8422_2325, |h: u64, w| {
+                (h ^ u64::from_le_bytes(*w))
+                    .wrapping_mul(0x0000_0100_0000_01b3)
+                    .rotate_left(23)
+            })
+    };
+    let whole = || sum(if img.rgba.len() <= WHOLE_UP_TO { 1 } else { 16 });
+    if img.rgba.len() < REMEMBERED_FROM {
+        return whole();
+    }
+    // A font's sheet is summed for every letter on the screen, which took 15 ms of a hover at 2560x1440. So a large picture
+    // is remembered by its address, as long as a few words taken across it are what they were.
+    let taste = sum(words.len() / TASTES);
+    let key = (img.rgba.as_ptr() as usize, img.rgba.len(), img.width);
+    CONTENTS.with_borrow_mut(|known| match known.get(&key) {
+        Some((t, content)) if *t == taste => *content,
+        _ => {
+            let content = whole();
+            if known.len() >= REMEMBERED_MOST {
+                known.clear();
+            }
+            known.insert(key, (taste, content));
+            content
+        }
+    })
 }
 
 /// A smooth sample of `region` at fractions `u`, `v` of it, staying inside it so that a font's cells do not bleed.
@@ -297,9 +324,29 @@ impl Canvas {
         }
         if self.scale != 1.0 || self.scale_x != 1.0 {
             let scaled = scaled_picture(img, region, [dw, dh], tint, alpha, orient);
-            for oy in 0..dh {
-                for ox in 0..dw {
-                    self.blend(dx + ox, dy + oy, scaled[(oy * dw + ox) as usize]);
+            // As `blend` has it, a row at a time: most of a window's pixels are all or nothing.
+            let (left, right) = (dx.max(0), (dx + dw).min(self.width as i32));
+            let (top, bottom) = (dy.max(0), (dy + dh).min(self.height as i32));
+            if left >= right {
+                return;
+            }
+            let across = (right - left) as usize;
+            for y in top..bottom {
+                let from = ((y - dy) * dw + left - dx) as usize;
+                let at = ((y as u32 * self.width + left as u32) * 4) as usize;
+                let (row, _) = self.rgba[at..at + across * 4].as_chunks_mut::<4>();
+                for (d, s) in row.iter_mut().zip(&scaled[from..from + across]) {
+                    let a = s[3] as u32;
+                    match a {
+                        0 => {}
+                        255 => *d = *s,
+                        _ => {
+                            for (d, s) in d.iter_mut().zip(s).take(3) {
+                                *d = ((*s as u32 * a + *d as u32 * (255 - a)) / 255) as u8;
+                            }
+                            d[3] = (a + d[3] as u32 * (255 - a) / 255) as u8;
+                        }
+                    }
                 }
             }
             return;
@@ -426,5 +473,31 @@ mod scaled_tests {
         img.rgba[0] = 0;
         img.rgba[1] = 255;
         assert_ne!(first, draw(&img, [1.0; 3]));
+    }
+}
+
+#[cfg(test)]
+mod remembered_tests {
+    use super::*;
+
+    fn picture(side: u32, seed: u8) -> Image {
+        Image {
+            width: side,
+            height: side,
+            rgba: (0..side * side * 4)
+                .map(|n| (n as u8).wrapping_mul(seed))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_large_picture_is_known_by_what_it_holds_at_the_same_address() {
+        let (mut a, b) = (picture(128, 3), picture(128, 5));
+        let first = content_of(&a);
+        assert_eq!(content_of(&a), first, "the same again");
+        assert_ne!(content_of(&b), first, "another picture");
+        // Another picture loaded where this one was: the same address and size, other words.
+        a.rgba.copy_from_slice(&b.rgba);
+        assert_eq!(content_of(&a), content_of(&b));
     }
 }
