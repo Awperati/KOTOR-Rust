@@ -5,17 +5,17 @@ param([string]$Shots, [string]$Size = "1280x720", [string]$Log)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures, -Log a file for the samples.
 . "$PSScriptRoot\drive_common.ps1"
 $W = @(0x57, 0x11); $SHIFT = @(0x10, 0x2A); $CTRL = @(0x11, 0x1D); $ENTER = @(0x0D, 0x1C); $ONE = @(0x31, 0x02)
-# Found by crates\kotor-render\examples\ledges.rs: Dantooine, a run-up to a drop of 4.4 m.
-$PLACE = "284.40,108.71,7.27,4.320"
+# Found by crates\kotor-render\examples\ledges.rs: Taris, a drop of 2.25 m with a walk back up.
+$LEDGE_MODULE = "tar_m10aa"; $PLACE = "106.01,129.28,2.25,1.963"; $LEDGE_Z = 2.25; $RUN_MODULE = "danm14aa"
 # Sprint is 1.25 times today's run of 5.4 m/s, and a walk is 1.7 m/s: see crates\kotor-game\src\movement.rs.
 $SPRINT = 6.75; $WALK = 1.7; $ROLL_METRES = 3.2
 
 function Down($k) { WatchFocus; [void][Drv]::PostMessage($h, 0x100, [IntPtr]$k[0], [IntPtr](1 -bor ($k[1] -shl 16))) }
 function Up($k) { $up = [long]0xC0000001 -bor ([long]$k[1] -shl 16); [void][Drv]::PostMessage($h, 0x101, [IntPtr]$k[0], [IntPtr][long]$up) }
-function Open($name, $extra) {
+function Open($name, $module, $extra) {
   $script:stateFile = "$scratch\kotor_move_$name.out"
   Remove-Item $script:stateFile -ErrorAction SilentlyContinue
-  $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","danm14aa","--skip-menu","--state-log","--size",$Size,"--frames","100000") + $extra
+  $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module",$module,"--skip-menu","--state-log","--size",$Size,"--frames","100000") + $extra
   $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList $argv -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_move_$name.err" -PassThru -NoNewWindow
   for ($i = 0; $i -lt 600 -and $script:v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $script:v.Refresh() }
   $script:h = $script:v.MainWindowHandle; [Drv]::NeverActive($script:h)
@@ -53,8 +53,8 @@ if ($Log) { Remove-Item $Log -ErrorAction SilentlyContinue }
 $tag = $Size -replace 'x.*', ''
 
 # The run: at full speed, then a stop, a walk and a roll, over 20 m of clear floor from the spawn.
-$s = Open "run" @("--place", "165.17,136.66,1.85,1.767")
-Report "In the module" ($s.module -eq "danm14aa") "module=$($s.module) pc=$($s.pc) z=$($s.pcz)"
+$s = Open "run" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767")
+Report "In the module" ($s.module -eq $RUN_MODULE) "module=$($s.module) pc=$($s.pc) z=$($s.pcz)"
 $m = Mark
 Down $W; Start-Sleep -Milliseconds 1100
 $s = State; Shot "move_sprint_$tag"
@@ -94,14 +94,14 @@ FocusReport
 Close
 
 # The ledge.
-$s = Open "ledge" @("--place", $PLACE)
-Report "At the ledge" ([Math]::Abs([double]$s.pcz - 7.27) -lt 0.2) "pc=$($s.pc) z=$($s.pcz)"
+$s = Open "ledge" $LEDGE_MODULE @("--place", $PLACE)
+Report "At the ledge" ([Math]::Abs([double]$s.pcz - $LEDGE_Z) -lt 0.2) "pc=$($s.pc) z=$($s.pcz)"
 $m = Mark
 $high = [double]$s.pcz
 Down $W; Start-Sleep -Milliseconds 950
 Shot "move_ledge_top_$tag"
 $until = (Get-Date).AddSeconds(6)
-do { $s = State; if ($s.air -eq "true" -and $Shots) { [Drv]::Save($h, "$Shots\move_fall_$tag.png") } } while ($s.air -eq "true" -or ((Get-Date) -lt $until -and [double]$s.pcz -gt 3))
+do { $s = State; if ($s.air -eq "true" -and $Shots) { [Drv]::Save($h, "$Shots\move_fall_$tag.png") } } while ($s.air -eq "true" -or ((Get-Date) -lt $until -and [double]$s.pcz -gt $LEDGE_Z - 1.8))
 Up $W
 Start-Sleep -Milliseconds 300
 Shot "move_landed_$tag"
@@ -110,7 +110,7 @@ $rows = @(Samples $m); Note "ledge" $rows
 $air = @($rows | Where-Object { $_.air -eq "true" })
 $low = ($rows | Measure-Object z -Minimum).Minimum
 Report "It fell" ($air.Count -ge 1) "$($air.Count) samples in the air, z $high to $low"
-Report "It landed below" ($low -lt 3 -and $rows[-1].air -eq "false") "z $($rows[-1].z), air=$($rows[-1].air)"
+Report "It landed below" ($high - $low -gt 1.8 -and $rows[-1].air -eq "false") "z $($rows[-1].z), air=$($rows[-1].air)"
 if ($air.Count -ge 3) {
   $falls = for ($i = 1; $i -lt $air.Count; $i++) { ($air[$i-1].z - $air[$i].z) / [Math]::Max($air[$i].t - $air[$i-1].t, 0.001) }
   Report "An arc: the fall quickens" ($falls[-1] -gt $falls[0]) "m/s down: $(($falls | ForEach-Object { [Math]::Round($_, 1) }) -join ', ')"
@@ -119,7 +119,7 @@ FocusReport
 Close
 # The roll at a tenth of the speed, for pictures through it.
 if ($Shots) {
-  $s = Open "slow" @("--place", "165.17,136.66,1.85,1.767", "--speed", "0.1")
+  $s = Open "slow" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767", "--speed", "0.1")
   Key $CTRL[0] $CTRL[1] 30
   for ($i = 1; $i -le 5; $i++) { Start-Sleep -Milliseconds 900; [Drv]::Save($h, "$Shots\move_roll_step$($i)_$tag.png") }
   FocusReport

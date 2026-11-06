@@ -47,6 +47,9 @@ impl Ground for NavGround<'_> {
     fn wall(&self, a: [f32; 3], b: [f32; 3]) -> bool {
         self.0.sight_blocked(a, b)
     }
+    fn way_back(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        self.0.same_island(a, b)
+    }
 }
 
 /// Ray from a camera through a pixel: `(origin, unit direction)`. The camera looks from `eye` to `target`

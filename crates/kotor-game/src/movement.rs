@@ -20,7 +20,7 @@ pub const SPRINT: f32 = RUN * SPRINT_RATIO;
 
 /// A gap in the floor is looked across in steps of this many metres, this many times. Assumed.
 const GAP_PROBE: f32 = 0.3;
-const GAP_PROBES: usize = 4;
+const GAP_PROBES: usize = 5;
 /// Height over the feet that a wall is looked for at, in metres. Assumed: a wall reaches it, a cliff below does not.
 const CHEST: f32 = 1.0;
 /// The least speed going out over a gap, so that nothing hangs over it. Assumed.
@@ -120,6 +120,10 @@ pub trait Ground {
     /// Whether a wall stands between two points.
     fn wall(&self, _a: [f32; 3], _b: [f32; 3]) -> bool {
         false
+    }
+    /// Whether a walk joins the floors under two points. Nobody falls where they could never walk back from.
+    fn way_back(&self, _a: [f32; 3], _b: [f32; 3]) -> bool {
+        true
     }
 }
 
@@ -370,7 +374,8 @@ impl Body {
             if let Some(f) = ground.floor(qx, qy, top) {
                 let chest = z + CHEST;
                 return f >= z - t.max_drop
-                    && !ground.wall([self.pos[0], self.pos[1], chest], [qx, qy, chest]);
+                    && !ground.wall([self.pos[0], self.pos[1], chest], [qx, qy, chest])
+                    && (!self.grounded || ground.way_back(self.pos, [qx, qy, f]));
             }
         }
         false
@@ -400,6 +405,7 @@ impl Body {
             }
             let clear = match here {
                 Some(f) if f < p[2] - t.max_drop => return None,
+                Some(f) if f < p[2] - t.step_down && !ground.way_back(p, [x, y, f]) => return None,
                 // Keep off the very edge of the floor, as the Classic steering does.
                 Some(_) => ground
                     .floor(x + u[0] * 0.3, y + u[1] * 0.3, reach)
@@ -878,6 +884,37 @@ mod tests {
         run_for(
             &mut b,
             &Walled,
+            Input {
+                dir: Some([1.0, 0.0]),
+                ..Input::default()
+            },
+            3.0,
+        );
+        assert!(
+            b.grounded && b.pos[0] < 3.0 && b.pos[2] == 0.0,
+            "{:?}",
+            b.pos
+        );
+    }
+
+    #[test]
+    fn a_floor_with_no_way_back_is_a_wall() {
+        struct Pit;
+        impl Ground for Pit {
+            fn floor(&self, x: f32, _: f32, max_z: f32) -> Option<f32> {
+                Some(if x < 3.0 { 0.0 } else { -2.0 }).filter(|f| *f <= max_z + 1e-4)
+            }
+            fn blocked(&self, _: [f32; 3], _: [f32; 3]) -> bool {
+                false
+            }
+            fn way_back(&self, _: [f32; 3], _: [f32; 3]) -> bool {
+                false
+            }
+        }
+        let mut b = Body::new([0.0; 3], 0.0);
+        run_for(
+            &mut b,
+            &Pit,
             Input {
                 dir: Some([1.0, 0.0]),
                 ..Input::default()

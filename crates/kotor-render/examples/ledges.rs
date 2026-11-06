@@ -55,11 +55,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 while d < 4.0 {
                     let (x, y) = (c[0] + dx * d, c[1] + dy * d);
                     let Some(f) = nav.height_at(x, y, z + STEP_UP) else {
+                        // The floor ends: over a gap, as a cliff leaves, the body looks 1.2 m on for a lower one.
+                        for k in 1..=4 {
+                            let s = k as f32 * 0.3;
+                            let (qx, qy) = (x + dx * s, y + dy * s);
+                            if let Some(low) = nav.height_at(qx, qy, z - STEP_DOWN) {
+                                let from = [x - dx * 0.4, y - dy * 0.4, z + 1.0];
+                                let clear = !nav.sight_blocked(from, [qx, qy, z + 1.0]);
+                                let back =
+                                    nav.same_island([x - dx * 0.2, y - dy * 0.2, z], [qx, qy, low]);
+                                if clear && back && z - low < MAX_DROP {
+                                    found.push((z - low, [c[0], c[1], c[2]], a));
+                                }
+                                break;
+                            }
+                        }
                         break;
                     };
                     let drop = z - f;
                     if drop > STEP_DOWN {
-                        if drop < MAX_DROP {
+                        if drop < MAX_DROP && nav.same_island([c[0], c[1], c[2]], [x, y, f]) {
                             // A run-up: back along the way it came, while the floor goes on.
                             let mut back = 0.0;
                             let mut spot = [c[0], c[1], c[2]];
@@ -83,6 +98,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         found.sort_by(|a, b| b.0.total_cmp(&a.0));
+        eprintln!(
+            "{module}: {} spots and headings with a drop over 0.5 m",
+            found.iter().filter(|f| f.0 > 0.5).count()
+        );
         for (drop, p, a) in found.iter().take(3) {
             println!(
                 "{module} {:.2} {:.2} {:.2} heading {a:.3} drop {drop:.2}",

@@ -35,6 +35,8 @@ pub struct NavMesh {
     /// Upright faces that are not floor (walls and the sides of obstacles), for sight, and the cells they touch.
     walls: Vec<[V3; 3]>,
     wall_cells: HashMap<(i32, i32), Vec<u32>>,
+    /// For each face, a number shared with every face a walk can reach from it.
+    islands: Vec<u32>,
 }
 
 /// Size of a cell in `NavMesh::cells`, in metres.
@@ -193,6 +195,22 @@ impl NavMesh {
                 }
             }
         }
+        let mut islands = vec![u32::MAX; tris.len()];
+        for start in 0..tris.len() {
+            if islands[start] != u32::MAX {
+                continue;
+            }
+            islands[start] = start as u32;
+            let mut open = vec![start];
+            while let Some(f) = open.pop() {
+                for l in &links[f] {
+                    if islands[l.to] == u32::MAX {
+                        islands[l.to] = start as u32;
+                        open.push(l.to);
+                    }
+                }
+            }
+        }
         let blocked = vec![0; tris.len()];
         let mut cells: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
         for (i, t) in tris.iter().enumerate() {
@@ -219,7 +237,17 @@ impl NavMesh {
             cells,
             walls,
             wall_cells,
+            islands,
         }
+    }
+
+    /// Whether a walk could go from the floor under `a` to the floor under `b`, doors counting as open.
+    pub fn same_island(&self, a: V3, b: V3) -> bool {
+        let island = |p: V3| {
+            self.locate(p[0], p[1], p[2] + 0.01)
+                .map(|f| self.islands[f.0])
+        };
+        matches!((island(a), island(b)), (Some(x), Some(y)) if x == y)
     }
 
     /// Number of upright non-floor faces kept for sight.

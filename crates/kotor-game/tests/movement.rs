@@ -188,13 +188,13 @@ fn classic_has_no_roll() {
 
 #[test]
 fn a_real_ledge_is_a_fall_with_an_arc_and_a_landing() {
-    // Dantooine: found by `kotor-render/examples/ledges.rs`, a run-up to a drop of 4.4 m.
-    let Some(mut w) = modern("danm14aa") else {
+    // Taris: found by `kotor-render/examples/ledges.rs`, a drop of 2.25 m with a walk back up.
+    let Some(mut w) = modern("tar_m10aa") else {
         return;
     };
     let t = Tuning::default();
-    let start = [284.40, 108.71, 7.27];
-    let heading = 4.320f32;
+    let start = [106.01, 129.28, 2.25];
+    let heading = 1.963f32;
     w.pc_mover.pos = start;
     w.steer = Some(([heading.cos(), heading.sin()], true));
     let (mut left, mut landed) = (false, None);
@@ -211,8 +211,12 @@ fn a_real_ledge_is_a_fall_with_an_arc_and_a_landing() {
         }
         landed = landed.or(cues.landed);
         let p = w.pc_mover.pos;
+        // Over the gap there is no floor at all. Anywhere else, it is on it or above it.
         let floor = w.nav.as_ref().unwrap().height_at(p[0], p[1], p[2] + 0.7);
-        assert!(floor.is_some(), "under the floor at {p:?}");
+        assert!(
+            floor.is_none_or(|f| p[2] >= f - t.snap_lag - 1e-3),
+            "under the floor {floor:?} at {p:?}"
+        );
     }
     assert!(left, "it never left the ground: {:?}", w.pc_mover.pos);
     let v = landed.expect("it never landed");

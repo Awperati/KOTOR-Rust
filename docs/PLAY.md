@@ -30,7 +30,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 
 Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG`, `--xp N`, `--pilot-until W`, `--autopilot` (a scripted player takes the controls and prints what stalls) and `--speed N` (`docs/FASTTEST.md`).
 
-`scripts/drive_move.ps1 -Shots folder -Log file [-Size 3840x2160]` walks, sprints, rolls and falls off a Dantooine cliff in the running window, and prints PASS or FAIL for the speeds and heights it records.
+`scripts/drive_move.ps1 -Shots folder -Log file [-Size 3840x2160]` walks, sprints, rolls and falls off a ledge on Taris in the running window, and prints PASS or FAIL for the speeds and heights it records.
 
 `scripts/drive_window.ps1` plays the running window with messages posted to its own handle only, with no global input and no focus change, and prints PASS or FAIL for replies, the footlocker, WASD and click-to-walk.
 
@@ -214,4 +214,4 @@ Options, Feedback, has the row. Modern is the default, and Classic is the walk a
 
 The supermodels have no roll, dive, jump or landing clip, so the whole body is turned over and pressed down around its middle, in the `getfromgnd` crouch. Dust is the game's `fx_step_dust`.
 
-A floor can end over a lower one, with a gap where the cliff is. The player falls there when the drop is at most 6 m and no wall face stands at chest height in the first 1.2 m. **A railing that is only in the room's model does not stop it.** `cargo run --release -p kotor-render --example ledges` lists the drops it finds.
+A floor can end over a lower one, with a gap where the cliff is. The player falls there when the drop is at most 6 m, no wall face stands at chest height in the first 1.5 m, and the walkmesh joins the two floors, so that there is always a way back (a locked door on that way counts as open). **A railing that is only in the room's model does not stop it.** `cargo run --release -p kotor-render --example ledges` lists the drops it finds.
