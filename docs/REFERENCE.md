@@ -93,6 +93,7 @@ Run speed assumes the camera sits 55 degrees wide vertically. That is `camerasty
 - **`creaturespeed.2da` per creature:** `moverate` and `WalkRate` in a creature's file can pick slower or faster rows. Everyone still uses one speed. `PLAYER` has a `walkrate` of 3.20, which I did not check against the hero.
 - **NPC turn rate:** still the assumed 4.0 radians a second.
 - **Kill experience:** the video shows one total only, so no kill can be read from it. The bridge total of 1,275 is a whole number of 25s, which a split with Trask would rarely give, and that is the only evidence for `award_kill`. I also do not know if Trask stood at those kills. Our pilot has 1,025 at the same place. It skips scripts that pay experience, such as `k_pend_chest01` and `k_pend_bridge04`, so the gap proves nothing yet.
+- **What a Force power costs:** assumed. The talk table, at 41887, says the further you stray from a side the more its powers cost, and the less the other side's. It gives no numbers, and I have no frame of a cost. `crates/kotor-game/src/alignment.rs` uses half for your own side and double for the other at 0 or 100, in a straight line from 1x at 50.
 - **Damage numbers:** the words floating over heads are too small here, "miss" is the only one I could read. The percentages above are of the bar. The target may be `n_sithsoldier003` with 15 hit points, which would make them 2.5, 5.1, 5.8. Those are not whole numbers, so either the target or the bar reading is off.
 
 ## What the game's files say about skin
