@@ -552,9 +552,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.enable_tutorials(!flag("--no-tutorials") && !flag("--autopilot"));
     stage.enable_auto_pause(!flag("--no-auto-pause") && !flag("--autopilot"));
     stage.enable_chargen(!flag("--no-chargen"));
-    stage.enable_early_force(
-        flag("--early-force") || (!flag("--no-early-force") && !flag("--autopilot")),
-    );
+    stage.enable_early_force(!flag("--no-early-force") && !flag("--autopilot"));
+    if flag("--early-force") {
+        stage.restart_with_early_force()?;
+    }
     if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }

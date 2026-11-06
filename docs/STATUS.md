@@ -145,7 +145,7 @@ Fixed on the way, earliest first, each with a test:
 
 Last run: **no wipe.** All 21 modules, the last by about 9,000 game seconds, level 5, 164 fights won and 10 not, 174 knock-outs of the main character, 26 medpacks bought and 19 grenades thrown. It stopped at 16,929 s because nothing new came for 8,000 s. Encounters now add fights too.
 
-Results move with the route. Before shops, one run was wiped in `tar_m10aa` at 4,628 s: out of medpacks, nothing else healing, walking into `VulkarPool` at 1 hit point. Another of the same kind reached all 21. So read this as "survivable with a party and medpacks", not as a measure of balance.
+Results move with the route. Before shops, one run was wiped in `tar_m10aa` at 4,628 s: out of medpacks, nothing else healing, walking into `VulkarPool` at 1 hit point. Another of the same kind reached all 21. So read this as "survivable with a party and medpacks, not balanced".
 
 **It lives on two things to doubt.** Everyone gets up with 1 hit point when a fight ends, which is an assumption, and the video gives no help: nobody was knocked out in the 562 frames sampled through Taris. Also, the pilot walks into the next fight at 1 hit point, so most of its losses are small ones.
 

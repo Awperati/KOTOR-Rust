@@ -134,6 +134,13 @@ impl Stage {
         self.menus.early_force_on = on;
     }
 
+    /// For a driver whose game began before anything could ask for the rule: the same new game, with it.
+    pub fn restart_with_early_force(&mut self) -> Result<(), String> {
+        self.menus.early_force_on = true;
+        let module = self.first_module.clone();
+        self.start_module(&module)
+    }
+
     pub fn enable_chargen(&mut self, on: bool) {
         self.menus.chargen_on = on;
     }
