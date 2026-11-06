@@ -518,7 +518,9 @@ impl Autopilot {
         };
         match goal {
             Goal::Fight(t) => {
-                let over = w.object(t).is_none_or(|o| o.dead || o.down);
+                // A foe can stop being one: the duel ring's fighters surrender.
+                let over =
+                    w.object(t).is_none_or(|o| o.dead || o.down) || w.reputation(w.pc, t) > 10;
                 if over {
                     self.kills += 1;
                     self.goal = None;
@@ -626,6 +628,8 @@ impl Autopilot {
                     self.note_use(w, id);
                     self.set_goal(Goal::Use(id, label));
                 } else {
+                    // Not `tried`: it has to be there when a door opens. The footlocker in `end_m01ab` lies behind one.
+                    self.tried.remove(&id);
                     self.unreachable.insert(id);
                 }
                 return;
@@ -682,7 +686,8 @@ impl Autopilot {
                     any = true;
                     break;
                 }
-                self.tried.insert(id);
+                // Still out of reach. A door opening later brings it back: the footlocker in `end_m01ab` lies behind one.
+                self.unreachable.insert(id);
             }
             if any {
                 return;

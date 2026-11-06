@@ -101,11 +101,21 @@ impl World {
         if pos == old {
             return;
         }
-        let blockers = self.blockers_for(self.pc);
+        let mut blockers = self.blockers_for(self.pc);
+        // Whoever stands on a corner of the route, the player can only get past by walking through. One at the end of it
+        // is who the player was walking up to, as in a fight.
+        let corner = self.pc_mover.next_corner();
+        if let Some(next) = corner {
+            blockers.retain(|c| (next[0] - c[0]).hypot(next[1] - c[1]) >= 2.0 * CREATURE_RADIUS);
+        }
         let Some(nav) = self.nav.as_ref() else {
             return;
         };
-        self.pc_mover.pos = slide_around(nav, old, pos, &blockers);
+        // So too with someone beside a wall, where going round leaves the floor.
+        let slid = slide_around(nav, old, pos, &blockers);
+        if slid != old || corner.is_none() {
+            self.pc_mover.pos = slid;
+        }
     }
 
     /// Walk each party member towards the player when it has fallen behind, keeping it out of other creatures.
@@ -140,7 +150,12 @@ impl World {
                 }
             }
             if m.has_route() {
-                m.step(nav, &self.move_params, dt);
+                // The party keeps up with a running player.
+                let params = kotor_walkmesh::MoveParams {
+                    speed: crate::RUN_SPEED,
+                    ..self.move_params
+                };
+                m.step(nav, &params, dt);
             }
             if m.pos != old {
                 let blockers = self.blockers_for(id);

@@ -8,8 +8,14 @@ use kotor_script::OBJECT_INVALID;
 use kotor_walkmesh::{parse_bwm, parse_lyt, Bwm, MoveParams, MoveStatus, Mover, NavMesh};
 use std::collections::HashSet;
 
-/// Radius of the navigation block a closed door puts around itself (metres). A doorway is about two metres wide.
+/// Half the width a closed door blocks when its model gives none (metres).
 pub const DOOR_BLOCK_RADIUS: f32 = 1.1;
+/// The line across its doorway that a closed door blocks.
+pub(crate) fn door_line(o: &Object) -> ([f32; 3], [f32; 3]) {
+    let ([dx, dy], h) = (o.door_axis, o.door_half_width);
+    let (x, y, z) = (o.position[0], o.position[1], o.position[2]);
+    ([x - dx * h, y - dy * h, z], [x + dx * h, y + dy * h, z])
+}
 /// How close the player must get before using a door, talking to a creature, or using a placeable.
 pub const DOOR_RANGE: f32 = 1.6;
 /// Seconds a door takes to open or close. Measured: `opening1` and `closing1` of door model DOR_LHR01 last 1.0 s, and
@@ -108,7 +114,8 @@ impl World {
             .values()
             .filter(|o| o.kind == Kind::Door && !o.open)
         {
-            nav.block_disc(o.position, DOOR_BLOCK_RADIUS);
+            let (a, b) = door_line(o);
+            nav.block_line(a, b);
         }
         self.nav = Some(nav);
         Ok(())
@@ -158,17 +165,17 @@ impl World {
     ) -> Option<Vec<[f32; 3]>> {
         let from = self.objects.get(&self.pc)?.position;
         // A closed door blocks its own doorway; lift that block while planning to reach the door itself.
-        let door_pos = lift_door
+        let door = lift_door
             .and_then(|d| self.objects.get(&d))
             .filter(|d| !d.open)
-            .map(|d| d.position);
+            .map(door_line);
         let nav = self.nav.as_mut()?;
-        if let Some(p) = door_pos {
-            nav.unblock_disc(p, DOOR_BLOCK_RADIUS);
+        if let Some((a, b)) = door {
+            nav.unblock_line(a, b);
         }
         let route = nav.find_path(from, to);
-        if let Some(p) = door_pos {
-            nav.block_disc(p, DOOR_BLOCK_RADIUS);
+        if let Some((a, b)) = door {
+            nav.block_line(a, b);
         }
         Some(trim_route(route?, stop))
     }
@@ -401,7 +408,7 @@ impl World {
         if !d.open || d.kind != Kind::Door {
             return;
         }
-        let (pos, on_closed) = (d.position, d.scripts.get("OnClosed").cloned());
+        let (line, on_closed) = (door_line(d), d.scripts.get("OnClosed").cloned());
         // A door still opening never freed its doorway, so there is nothing to block again.
         let was_passable = d.door == DoorState::Open;
         if let Some(d) = self.objects.get_mut(&id) {
@@ -410,7 +417,7 @@ impl World {
         }
         if was_passable {
             if let Some(n) = self.nav.as_mut() {
-                n.block_disc(pos, DOOR_BLOCK_RADIUS);
+                n.block_line(line.0, line.1);
             }
         }
         self.events.push(format!("{} closes", self.describe(id)));
@@ -539,7 +546,13 @@ impl World {
                 MoveStatus::Idle
             }
             (Some(nav), None) if self.pc_mover.has_route() => {
-                self.pc_mover.step(nav, &self.move_params, dt)
+                // The hero runs wherever the reference video was looked at, see `docs/REFERENCE.md`.
+                let params = MoveParams {
+                    speed: RUN_SPEED,
+                    turn_rate: STEER_TURN_RATE,
+                    ..self.move_params
+                };
+                self.pc_mover.step(nav, &params, dt)
             }
             _ => MoveStatus::Idle,
         };
@@ -676,19 +689,19 @@ impl World {
 
     /// A route that may pass closed doors that are not locked; `open_doors_near` opens them on the way.
     fn route_through_doors(&mut self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<[f32; 3]>> {
-        let doors: Vec<[f32; 3]> = self
+        let doors: Vec<([f32; 3], [f32; 3])> = self
             .objects
             .values()
             .filter(|o| o.kind == Kind::Door && !o.open && !o.locked)
-            .map(|o| o.position)
+            .map(door_line)
             .collect();
         let nav = self.nav.as_mut()?;
-        for d in &doors {
-            nav.unblock_disc(*d, DOOR_BLOCK_RADIUS);
+        for (a, b) in &doors {
+            nav.unblock_line(*a, *b);
         }
         let route = nav.find_path(from, to);
-        for d in &doors {
-            nav.block_disc(*d, DOOR_BLOCK_RADIUS);
+        for (a, b) in &doors {
+            nav.block_line(*a, *b);
         }
         route
     }
@@ -899,12 +912,12 @@ impl World {
             let Some(o) = self.objects.get_mut(&id) else {
                 continue;
             };
-            let pos = o.position;
+            let line = door_line(o);
             match o.door {
                 DoorState::Opening(t) if t + dt >= DOOR_ANIM_SECONDS => {
                     o.door = DoorState::Open;
                     if let Some(n) = self.nav.as_mut() {
-                        n.unblock_disc(pos, DOOR_BLOCK_RADIUS);
+                        n.unblock_line(line.0, line.1);
                     }
                 }
                 DoorState::Opening(t) => o.door = DoorState::Opening(t + dt),

@@ -164,6 +164,19 @@ fn experience_raises_levels_with_hit_points_skills_and_feats() {
 }
 
 #[test]
+fn a_surrender_ends_the_fight_on_both_sides() {
+    let Some(mut w) = world() else { return };
+    let (pc, foe) = (w.pc, soldier(&w));
+    w.attack(pc, foe);
+    w.attack(foe, pc);
+    assert!(w.reputation(pc, foe) <= 10);
+    w.surrender(foe);
+    assert!(!w.combat.in_combat(pc));
+    assert!(!w.combat.in_combat(foe));
+    assert!(w.reputation(pc, foe) > 10, "no longer an enemy");
+}
+
+#[test]
 fn kills_pay_the_party_and_party_members_are_knocked_out_not_killed() {
     let Some(mut w) = world() else { return };
     let (pc, foe) = (w.pc, soldier(&w));

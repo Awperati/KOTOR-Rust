@@ -112,6 +112,10 @@ pub struct Object {
     /// Doors: where the opening or closing animation is. `open` flips at once; the doorway only changes
     /// passability when the animation ends (opening) or at once (closing).
     pub door: DoorState,
+    /// Half a door's width across its doorway, in metres. A closed door blocks all of it.
+    pub door_half_width: f32,
+    /// The direction across a door's doorway, from `Bearing` in the area.
+    pub door_axis: [f32; 2],
     /// Doors and triggers that lead to another module: its name and the tag of the waypoint to arrive at.
     pub link_module: String,
     pub link_to: String,
@@ -207,6 +211,8 @@ impl Object {
             actions: VecDeque::new(),
             open: false,
             door: DoorState::Closed,
+            door_half_width: crate::DOOR_BLOCK_RADIUS,
+            door_axis: [1.0, 0.0],
             link_module: String::new(),
             link_to: String::new(),
             polygon: Vec::new(),
@@ -322,6 +328,7 @@ pub struct World {
     pub constant_defaults: BTreeMap<String, usize>,
     pub(crate) repute: Option<TwoDa>,
     pub(crate) exptable: Vec<i32>,
+    door_widths: HashMap<i64, Option<f32>>,
     pub(crate) plot: Option<TwoDa>,
     pub(crate) rng: u64,
     pub combat: crate::combat::CombatState,
@@ -496,6 +503,7 @@ impl World {
             constant_defaults: BTreeMap::new(),
             repute: None,
             exptable: Vec::new(),
+            door_widths: HashMap::new(),
             plot: None,
             rng: 0x2545_F491_4F6C_DD1D,
             combat: crate::combat::CombatState::new(),
@@ -654,6 +662,30 @@ impl World {
     }
 
     /// Fill an object from a GFF template and its placement in the GIT.
+    /// Half the width of a row of `genericdoors.2da`, from its model and read once.
+    fn door_half_width(&mut self, row: i64) -> Option<f32> {
+        if let Some(half) = self.door_widths.get(&row) {
+            return *half;
+        }
+        let model = self
+            .table("genericdoors")
+            .and_then(|t| t.get(row.max(0) as usize, "modelname").map(str::to_string));
+        let half = model.and_then(|m| {
+            let mdl = self.inst.read(&m, ResType::MDL).ok()?;
+            let mdx = self.inst.read(&m, ResType::MDX).unwrap_or_default();
+            // The model's own `bbox` is 5 m for every door, so this measures its rest pose.
+            let model = kotor_model::parse_model(&mdl, &mdx).ok()?;
+            let half = kotor_model::to_obj(&model)
+                .lines()
+                .filter(|l| l.starts_with("v "))
+                .filter_map(|l| l.split_whitespace().nth(1)?.parse::<f32>().ok())
+                .fold(0.0, |most: f32, x| most.max(x.abs()));
+            (half > 0.1).then_some(half)
+        });
+        self.door_widths.insert(row, half);
+        half
+    }
+
     pub(crate) fn fill_from_template(
         &mut self,
         id: ObjId,
@@ -670,6 +702,13 @@ impl World {
         let mut scripts = BTreeMap::new();
         let mut conversation = String::new();
         let mut tag = None;
+        if let Some(g) = utx.as_ref().filter(|_| ty == ResType(2042)) {
+            if let Some(half) = self.door_half_width(g.root.int("GenericType").unwrap_or(0)) {
+                if let Some(o) = self.objects.get_mut(&id) {
+                    o.door_half_width = half;
+                }
+            }
+        }
         if let Some(g) = &utx {
             let r = &g.root;
             if let Some(l) = r
@@ -735,6 +774,9 @@ impl World {
             ];
             if placement.float("XOrientation").is_some() {
                 o.facing = f("YOrientation").atan2(f("XOrientation")).to_degrees();
+            }
+            if placement.float("Bearing").is_some() {
+                o.door_axis = [f("Bearing").cos(), f("Bearing").sin()];
             }
             // A tag in the area beats the template's: every waypoint shares one template, as `end_jump_pc` shows.
             if placement.str("Tag").is_none_or(str::is_empty) {

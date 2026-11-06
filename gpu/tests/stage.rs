@@ -153,16 +153,16 @@ fn the_loop_plays_a_conversation_walks_opens_a_door_and_draws() {
     s.click(px, SIZE);
     assert!(s.game.world.pc_walking(), "the click started a walk");
     let still = bytes_of(&s.dynamic_scene());
-    for _ in 0..30 {
+    for _ in 0..4 {
         s.update(DT);
     }
     let after = s.game.world.object(s.game.world.pc).unwrap().position;
     let moved = ((after[0] - before[0]).powi(2) + (after[1] - before[1]).powi(2)).sqrt();
-    assert!(moved > 0.2, "walked {moved} m");
+    assert!(moved > 0.2, "ran {moved} m");
     assert_eq!(
         s.game.clip(s.game.world.pc).map(|c| c.name),
-        Some("walk"),
-        "the player plays its walk clip"
+        Some("run"),
+        "the player plays its run clip"
     );
     assert_ne!(bytes_of(&s.dynamic_scene()), still, "bodies move");
 

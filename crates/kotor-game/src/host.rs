@@ -1287,6 +1287,11 @@ impl Host for Adapter<'_> {
                 self.world.stop_attacking(caller);
                 None
             }
+            "SurrenderToEnemies" => {
+                self.world.surrender(caller);
+                self.record(name, args);
+                None
+            }
             "GetIsInCombat" => b(self.world.combat.in_combat(self.obj(caller, args, 0))),
             "GetAttackTarget" => Some(Value::Object(
                 self.world
@@ -1415,29 +1420,29 @@ impl Host for Adapter<'_> {
                 .world
                 .object(self.obj(caller, args, 0))
                 .is_some_and(|o| o.locked)),
-            // ---- variables
+            // ---- variables: their names ignore case, as `TAR_DUELOVER` and `Tar_DuelOver` in the duel ring's scripts show
             "GetGlobalNumber" => Some(Value::Int(
                 *self
                     .world
                     .global_numbers
-                    .get(&string(args, 0))
+                    .get(&string(args, 0).to_ascii_uppercase())
                     .unwrap_or(&0),
             )),
             "SetGlobalNumber" => {
                 self.world
                     .global_numbers
-                    .insert(string(args, 0), int(args, 1)?);
+                    .insert(string(args, 0).to_ascii_uppercase(), int(args, 1)?);
                 None
             }
             "GetGlobalBoolean" => b(*self
                 .world
                 .global_booleans
-                .get(&string(args, 0))
+                .get(&string(args, 0).to_ascii_uppercase())
                 .unwrap_or(&false)),
             "SetGlobalBoolean" => {
                 self.world
                     .global_booleans
-                    .insert(string(args, 0), int(args, 1)? != 0);
+                    .insert(string(args, 0).to_ascii_uppercase(), int(args, 1)? != 0);
                 None
             }
             "GetLocalNumber" => {

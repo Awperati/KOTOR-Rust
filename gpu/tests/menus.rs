@@ -1375,6 +1375,8 @@ fn the_other_slots_queue_feats_and_powers_and_blows_show_as_numbers() {
     let slot = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
     s.click(slot, SIZE);
     assert!(s.game.world.combat_queue.is_empty());
+    // A click there falls on the floor, and at a run that would take the player past the foe.
+    s.game.world.pc_mover.stop();
 
     // With two feats, the arrows go through them.
     let o = s.game.world.object_mut(pc).unwrap();

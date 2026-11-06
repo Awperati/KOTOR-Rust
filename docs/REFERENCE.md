@@ -59,6 +59,7 @@ Only the bare arms, bare legs and shorts support column a. No other column of th
 - `RUN_SPEED`: 3.96 m/s became 5.4 m/s. The old value is `rundist`, which is metres per run cycle. Over the 0.733 s cycle of `S_Male02` that is 5.40 m/s, and `runrate` in `creaturespeed.2da` says 5.40 too. High confidence: the video rules out 3.96.
 - `STEER_TURN_RATE`: 12 became 18.8 radians a second. Medium confidence: one turn counted.
 - `TURN_SPEED` in the viewer: 90 became 120 degrees a second. Medium confidence: one turn, and `camerastyle.2da` has 150 as `minturnrate`, whose meaning I do not know.
+- `step_pc`: a clicked hero runs too, at `RUN_SPEED`, not at the walking speed. The hero runs everywhere I looked, though I do not know which of those runs were clicked.
 - `speaker_camera`: holds the speaker while the line is said, then cuts to the player while the replies wait. Medium confidence: one conversation. Over-the-shoulder and wide shots are not copied.
 - `MoveParams::speed`: 1.6 became 1.7 m/s, from the tables and not the video. See below.
 - `award_kill`: each standing party member gets the whole kill, not a share. **Weak evidence, an assumption:** see below.

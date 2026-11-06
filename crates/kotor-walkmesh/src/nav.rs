@@ -169,6 +169,44 @@ impl NavMesh {
         n
     }
 
+    /// The faces a straight line on the floor crosses, on the level of `a`. For a closed door, as wide as it is.
+    fn faces_on_line(&self, a: V3, b: V3) -> Vec<usize> {
+        // More than a step, less than a storey: walkways pass over and under each other.
+        const LEVEL: f32 = 1.5;
+        let cross =
+            |p: V3, q: V3, r: V3| (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+        let meets = |p: V3, q: V3| {
+            cross(a, b, p) * cross(a, b, q) <= 0.0 && cross(p, q, a) * cross(p, q, b) <= 0.0
+        };
+        (0..self.tris.len())
+            .filter(|&i| {
+                let t = &self.tris[i];
+                (self.centroids[i][2] - a[2]).abs() <= LEVEL
+                    && (meets(t[0], t[1])
+                        || meets(t[1], t[2])
+                        || meets(t[2], t[0])
+                        || tri_height(t, a[0], a[1]).is_some())
+            })
+            .collect()
+    }
+
+    /// Block every face a line on the floor crosses. Undo with [`NavMesh::unblock_line`] using the same arguments.
+    pub fn block_line(&mut self, a: V3, b: V3) -> usize {
+        let faces = self.faces_on_line(a, b);
+        for &i in &faces {
+            self.blocked[i] = self.blocked[i].saturating_add(1);
+        }
+        faces.len()
+    }
+
+    pub fn unblock_line(&mut self, a: V3, b: V3) -> usize {
+        let faces = self.faces_on_line(a, b);
+        for &i in &faces {
+            self.blocked[i] = self.blocked[i].saturating_sub(1);
+        }
+        faces.len()
+    }
+
     /// Number of faces currently blocked.
     pub fn blocked_count(&self) -> usize {
         self.blocked.iter().filter(|&&b| b > 0).count()
@@ -229,7 +267,8 @@ impl NavMesh {
     }
 
     /// Faces from the face under `from` to the face under `to` (A* over face centres), if connected.
-    /// A point not on a face snaps to the nearest face centre within 1.5 m.
+    /// A point not on a face snaps to the nearest face centre within 1.5 m. The last face may be blocked, as a door's is
+    /// to whoever walks up to it, and two doors side by side can share one.
     pub fn face_path(&self, from: V3, to: V3) -> Option<Vec<usize>> {
         let (start, goal) = (self.face_near(from, 1.5)?, self.face_near(to, 1.5)?);
         let mut g = vec![f32::MAX; self.tris.len()];
@@ -249,7 +288,10 @@ impl NavMesh {
                 path.reverse();
                 return Some(path);
             }
-            for l in self.links[node].iter().filter(|l| self.blocked[l.to] == 0) {
+            for l in self.links[node]
+                .iter()
+                .filter(|l| self.blocked[l.to] == 0 || l.to == goal)
+            {
                 let ng = g[node] + dist(self.centroids[node], self.centroids[l.to]);
                 if ng < g[l.to] {
                     g[l.to] = ng;
@@ -437,6 +479,24 @@ mod tests {
         assert!(nav.find_path([1.0, 1.0, 0.0], [21.0, 1.0, 0.0]).is_none());
         // A point far from any floor does not snap.
         assert!(nav.find_path([1.0, 1.0, 0.0], [10.0, 1.0, 0.0]).is_none());
+    }
+
+    #[test]
+    fn a_blocked_line_cuts_routes_across_it_but_a_blocked_face_can_be_walked_up_to() {
+        let parts = [
+            [0.0, 0.0, 10.0, 4.0],
+            [10.0, 0.0, 20.0, 4.0],
+            [20.0, 0.0, 30.0, 4.0],
+        ];
+        let mut nav = NavMesh::from_meshes(&parts.map(|p| floor(&[p])));
+        let (from, on_it, past) = ([1.0, 2.0, 0.0], [11.0, 2.0, 0.0], [29.0, 2.0, 0.0]);
+        let (a, b) = ([15.0, -1.0, 0.0], [15.0, 5.0, 0.0]);
+        assert!(nav.block_line(a, b) > 0);
+        assert!(nav.find_path(from, past).is_none());
+        assert!(nav.find_path(from, on_it).is_some());
+        nav.unblock_line(a, b);
+        assert_eq!(nav.blocked_count(), 0);
+        assert!(nav.find_path(from, past).is_some());
     }
 
     #[test]

@@ -99,6 +99,11 @@ impl Mover {
         self.next < self.route.len()
     }
 
+    /// The waypoint being walked to, unless it is where the route ends.
+    pub fn next_corner(&self) -> Option<[f32; 3]> {
+        (self.next + 1 < self.route.len()).then(|| self.route[self.next])
+    }
+
     /// Metres of route left, measured through the remaining waypoints.
     pub fn remaining(&self) -> f32 {
         let mut p = self.pos;

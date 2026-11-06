@@ -25,6 +25,8 @@ use kotor_walkmesh::Mover;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const ROUND_SECONDS: f32 = 3.0;
+/// `STANDARD_FACTION_NEUTRAL`.
+const NEUTRAL_FACTION: i32 = 5;
 pub const HEARTBEAT_SECONDS: f32 = 6.0;
 pub const MELEE_REACH: f32 = 2.0;
 pub const RANGED_REACH: f32 = 12.0;
@@ -284,6 +286,27 @@ impl World {
     pub fn stop_attacking(&mut self, id: ObjId) {
         self.combat.target.remove(&id);
         self.combat.chasers.remove(&id);
+    }
+
+    /// `SurrenderToEnemies`: the fight with `id` is over on both sides, and it is no longer anyone's enemy. The duel ring's
+    /// fighters end on this (`k_ptar_dueler_ud`).
+    ///
+    /// **Assumption:** it goes back to the neutral faction, as the fighters started.
+    pub fn surrender(&mut self, id: ObjId) {
+        self.stop_attacking(id);
+        let foes: Vec<ObjId> = self
+            .combat
+            .target
+            .iter()
+            .filter(|(_, t)| **t == id)
+            .map(|(a, _)| *a)
+            .collect();
+        for foe in foes {
+            self.stop_attacking(foe);
+        }
+        if let Some(o) = self.objects.get_mut(&id) {
+            o.faction = NEUTRAL_FACTION;
+        }
     }
 
     fn reach_of(&mut self, id: ObjId) -> f32 {

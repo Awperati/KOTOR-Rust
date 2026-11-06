@@ -42,6 +42,19 @@ fn the_pilot_plays_off_the_endar_spire() {
     assert!(events.contains("Sith Apprentice (end_darkjedi01) dies"));
     assert!(events.contains("Trask (end_trask) leads the party"));
     assert!(g.world.stubbed.is_empty(), "{:?}", g.world.stubbed);
+    // The way on from the second module's start is a locked door. Its answer lies in a footlocker behind another door.
+    assert!(events.contains("used Footlocker (FootLker)"));
+    // `end_trask01` names `k_pend_carth11`, which only `end_m01ab` has. The talk has to carry on past that reply.
+    assert!(g
+        .world
+        .errors
+        .iter()
+        .any(|e| e == "script k_pend_carth11 not found"));
+    assert!(g
+        .world
+        .transcript
+        .iter()
+        .any(|l| l.dialogue == "end_trask01" && l.node == 35));
 }
 
 /// What must come out the same whatever the speed: the digests on the way, the last one, and a save file.

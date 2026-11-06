@@ -830,14 +830,14 @@ impl World {
             .list("NumberList")
             .unwrap_or_default()
             .iter()
-            .filter_map(|x| Some((x.str("Name")?.to_string(), x.int("Value")? as i32)))
+            .filter_map(|x| Some((x.str("Name")?.to_ascii_uppercase(), x.int("Value")? as i32)))
             .collect();
         self.global_booleans = globals
             .root
             .list("BooleanList")
             .unwrap_or_default()
             .iter()
-            .filter_map(|x| Some((x.str("Name")?.to_string(), x.int("Value")? != 0)))
+            .filter_map(|x| Some((x.str("Name")?.to_ascii_uppercase(), x.int("Value")? != 0)))
             .collect();
         let p = &party.root;
         self.journal = p
@@ -899,15 +899,15 @@ impl World {
         }
 
         // Rebuild what depends on the loaded state: doors in the navigation mesh, and the player's mover.
-        let open_doors: Vec<[f32; 3]> = self
+        let open_doors: Vec<([f32; 3], [f32; 3])> = self
             .objects
             .values()
             .filter(|o| o.kind == Kind::Door && o.door == DoorState::Open)
-            .map(|o| o.position)
+            .map(crate::play::door_line)
             .collect();
         if let Some(n) = self.nav.as_mut() {
-            for pos in open_doors {
-                n.unblock_disc(pos, crate::DOOR_BLOCK_RADIUS);
+            for (a, b) in open_doors {
+                n.unblock_line(a, b);
             }
         }
         let pos = match p.get("PT_PLAYER_POS") {

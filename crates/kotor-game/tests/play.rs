@@ -60,6 +60,57 @@ fn a_closed_door_cuts_the_route_and_opening_it_restores_it() {
 }
 
 #[test]
+fn a_closed_door_blocks_its_whole_width() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m02aa").unwrap();
+    // The upper city's west door is 3 m and more wide. The pilot walked round the middle of it when it was locked.
+    let d = door(&w, "ptar_lockde", 81.75);
+    let o = w.object(d).unwrap();
+    assert!(o.door_half_width > 1.5, "{}", o.door_half_width);
+    assert!(o.locked);
+    let nav = w.nav.as_ref().unwrap();
+    assert!(nav
+        .find_path([90.0, 112.5, 0.0], [74.0, 112.0, 0.0])
+        .is_none());
+}
+
+#[test]
+fn someone_standing_on_a_corner_of_the_route_does_not_hold_the_player() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m02ae").unwrap();
+    let id = w.by_tag("TarisMaleC021")[0];
+    let at = w.object(id).unwrap().position;
+    let pc = w.pc;
+    let from = [at[0], at[1] + 0.8, at[2]];
+    w.teleport(pc, from);
+    let end = [at[0], at[1] - 3.0, at[2]];
+    w.pc_mover.follow(vec![from, at, end]);
+    let t = run(&mut w, 5.0, |w| !w.pc_mover.has_route());
+    assert!(t < 5.0, "still at {:?}", w.pc_mover.pos);
+}
+
+#[test]
+fn the_names_of_globals_ignore_case() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m02ae").unwrap();
+    let pc = w.pc;
+    // `k_ptar_dueler_ud` sets `TAR_DUELOVER`. This condition reads `Tar_DuelOver`.
+    let won = |w: &mut World| w.run_script("k_ptar_duelanwin", pc).unwrap().stack[0].clone();
+    assert_eq!(won(&mut w), kotor_script::Value::Int(0));
+    w.global_booleans.insert("TAR_DUELOVER".into(), true);
+    assert_eq!(won(&mut w), kotor_script::Value::Int(1));
+}
+
+#[test]
 fn a_locked_door_does_not_open() {
     let Some(mut w) = world() else { return };
     let d = door(&w, "end_door02", 40.8);
@@ -90,8 +141,8 @@ fn clicking_a_door_walks_up_to_it_and_opens_it() {
         gap <= kotor_game::DOOR_RANGE + 0.3,
         "stopped {gap} m from the door"
     );
-    // About 5.7 m at 1.6 m/s, minus the range: a few seconds, not instant and not forever.
-    assert!(t > 1.0 && t < 12.0, "{t}s");
+    // About 5.7 m at a run, minus the range: not instant and not forever.
+    assert!(t > 0.5 && t < 12.0, "{t}s");
     assert!(
         w.events.iter().any(|e| e.ends_with("opens")),
         "{:?}",
@@ -504,7 +555,7 @@ fn the_fixed_step_loop_joins_movement_clips_and_poses() {
     );
     assert!(g.world.click(d));
     g.advance(0.1);
-    assert_eq!(g.clip(pc).map(|c| c.name), Some("walk"));
+    assert_eq!(g.clip(pc).map(|c| c.name), Some("run"));
     let start = g.world.time;
     let mut frames = 0;
     while !g.world.object(d).unwrap().open && frames < 1000 {
