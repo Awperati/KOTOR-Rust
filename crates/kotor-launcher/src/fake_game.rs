@@ -1,5 +1,6 @@
-//! A stand-in for the game. `behaviour.txt` beside it says `crash` or how many milliseconds to stay up; it notes in
-//! `ran.txt`, one level up beside the other builds, which build ran, its arguments and its update note.
+//! A stand-in for the game. `behaviour.txt` beside it says `crash`, `wait` to stay up until `release.txt` appears and then
+//! crash, or how many milliseconds to stay up; it notes in `ran.txt`, one level up beside the other builds, which build
+//! ran, its arguments and its update note.
 
 fn main() {
     let exe = std::env::current_exe().unwrap();
@@ -20,6 +21,12 @@ fn main() {
     }
     let behaviour = behaviour.trim();
     if behaviour == "crash" {
+        std::process::exit(3);
+    }
+    if behaviour == "wait" {
+        while !dir.join("release.txt").exists() {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         std::process::exit(3);
     }
     let ms = behaviour.parse().unwrap_or(0);

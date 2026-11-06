@@ -27,13 +27,18 @@ fn push(dir: &std::path::Path, sha: &str, behaviour: &str) {
     fs::write(dir.join("latest.txt"), format!("{sha}\n")).unwrap();
 }
 
-/// With time for a crash to be seen on a machine under load: 400 ms once failed a CI run, as a build that had not yet
-/// crashed counted as started. A build that exits comes back at once, whatever this is.
+/// Tests other than the one about the grace never reach it: a build that exits comes back at once, and 400 ms here once
+/// failed a CI run, as a build that had not yet crashed counted as started.
 fn launcher(dir: &std::path::Path) -> Launcher {
     Launcher {
         root: dir.to_path_buf(),
-        grace: Duration::from_secs(30),
+        grace: Duration::from_secs(3600),
     }
+}
+
+/// Whatever scans a new program may still hold it open, and a folder left in temp harms nothing.
+fn clean(dir: &std::path::Path) {
+    let _ = fs::remove_dir_all(dir);
 }
 
 fn ran(dir: &std::path::Path) -> Vec<String> {
@@ -68,7 +73,7 @@ fn the_newest_build_runs_and_says_it_is_new_once() {
         r#"bbb ["--mute"]"#,
         "nothing new to say"
     );
-    fs::remove_dir_all(&dir).unwrap();
+    clean(&dir);
 }
 
 #[test]
@@ -91,7 +96,7 @@ fn a_build_that_crashes_at_start_is_passed_over_and_then_skipped() {
     // The next push is tried as usual.
     push(&dir, "fixed", "0");
     assert_eq!(l.run(&[]), ran_build("fixed", 0));
-    fs::remove_dir_all(&dir).unwrap();
+    clean(&dir);
 }
 
 #[test]
@@ -101,11 +106,19 @@ fn a_crash_after_the_grace_period_is_not_held_against_a_build() {
         grace: Duration::from_millis(100),
         ..launcher(&dir)
     };
-    // Up past the grace, then ends well enough: the game's own affair from there.
-    push(&dir, "new", "700");
-    assert_eq!(l.run(&[]), ran_build("new", 0));
+    push(&dir, "new", "wait");
+    // It is let go only once the launcher has said it started, so no clock decides this.
+    let outcome = std::thread::scope(|s| {
+        let run = s.spawn(|| l.run(&[]));
+        while !dir.join("last_run.txt").exists() {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        fs::write(dir.join("builds").join("new").join("release.txt"), "").unwrap();
+        run.join().unwrap()
+    });
+    assert_eq!(outcome, ran_build("new", 3));
     assert!(!dir.join("bad.txt").exists());
-    fs::remove_dir_all(&dir).unwrap();
+    clean(&dir);
 }
 
 #[test]
@@ -116,12 +129,12 @@ fn when_every_build_fails_none_is_marked_bad() {
     assert!(matches!(l.run(&[]), Outcome::Failed(_)));
     assert!(!dir.join("bad.txt").exists());
     assert_eq!(l.candidates(), ["two", "one"]);
-    fs::remove_dir_all(&dir).unwrap();
+    clean(&dir);
 }
 
 #[test]
 fn no_builds_is_said_plainly() {
     let dir = root("none", &[]);
     assert!(matches!(launcher(&dir).run(&[]), Outcome::Failed(_)));
-    fs::remove_dir_all(&dir).unwrap();
+    clean(&dir);
 }
