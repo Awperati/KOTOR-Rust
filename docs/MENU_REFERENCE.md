@@ -44,6 +44,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Container title | the object's name | "Container Inventory" |
 | `fnt_console` at 4K | letters run together | the stock font: its upscaled picture was the cause |
 | What has not been seen of a map | all of it showed | a grid, as at 1:25:00 and 3:50:35: spacing and colours measured from those two frames, so close, not exact. Seen is a circle 14 of the picture's pixels round the player, with a soft edge |
+| 3D figure on the sheet and level-up panel | a portrait, an empty space | the leader, as at 1:23:50 and 22:20: only they are drawn, behind a hole in the picture. Frames: `character`, `level_panel`. Opening the sheet in the driver covers it live, but only a frame shows what it looks like |
 | Changing member | none | the small portraits at the foot of the equipment, inventory and character screens, as at 1:23:50, and the HUD's. The bag goes with whoever leads, and a level waits for each member. Frame: `character_party`. Tested in code, not clicked live: the driver has no party |
 | Interface sounds | none | `guisounds.2da`'s for entering, clicking, ticking, a refusal, a panel opening and closing, the slots and taking an item. Which goes with what is read from its labels. Heard in no comparison: I looked at the video's frames only, and tests check that a sound is sent, not how it sounds |
 | Advanced Graphics | a greyed button | the stock page with V-Sync working. The other boxes stay greyed and say why, since each needs the renderer. Not seen in the video. Frames: `opt_graphics_reason`, `opt_graphics_advanced` |
@@ -67,13 +68,12 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Bottom bar in a conversation | about 12% of the height | about 22% | our larger text needs the room |
 | Party figure | the 3D figure on a coloured backdrop | the portrait | no 3D in menus |
 | Party OK | asks "Are you sure this is the party composition you want?" at 3:12:00 | no question | I did not look for where it asks or for its string |
-| Level-up figure | the 3D figure on the panel | an empty space | no 3D in menus |
+| Figure backdrop | a glow that follows alignment, behind the figure at 22:20 and 1:23:50 | the renderer's dark colour | I found no picture for it |
 | Feat rows | about 22 pixels high at 1080p, so all fit | the file's 56 units, so they scroll | as list rows |
 | Feat button | "Add Feat", "Remove Feat" | "Add", "Remove", the file's words | I found no stock string with theirs |
 | Map picture | pixel-sized, small, placed low on the right at 3:50:35 | the map part, 440 of its 512 across, fills the file's place for it | as text size |
 | Map notes | circles with a small mark inside | plain circles | the mark's picture not found |
 | Main menu | Malak in 3D with moving fog on the left | the still picture | no 3D in menus |
-| Character sheet | the 3D figure on a glowing backdrop | the portrait | no 3D in menus |
 | Tutorial pop-ups over the game | the HUD stays under the box | the HUD goes while it is up | the box is drawn as a screen |
 | Tutorial pop-up words | at 5:50 the words differ from the talk table's row 21 and 34 | the talk table's | where theirs come from not found |
 | Notice timing | not measured | 6 s, assumed | the video's are short and I sampled every 5 s |

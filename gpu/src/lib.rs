@@ -168,6 +168,8 @@ pub struct GpuRenderer {
     white: Tex,
     tex_cache: HashMap<String, Option<Tex>>,
     static_draws: Vec<Draw>,
+    /// Draw only what each frame passes in: a figure on a screen.
+    figure_only: bool,
 }
 
 struct Draw {
@@ -414,6 +416,7 @@ impl GpuRenderer {
             white,
             tex_cache: HashMap::new(),
             static_draws: Vec::new(),
+            figure_only: false,
             device,
             queue,
             pipeline,
@@ -461,6 +464,19 @@ impl GpuRenderer {
     /// By default alpha cuts holes or blends. Off, everything is solid, as in the software renderer.
     pub fn set_transparency(&mut self, on: bool) {
         self.transparency = on;
+    }
+
+    /// Draw only what each frame passes in, leaving out the static scene, for a figure on a screen.
+    pub fn set_figure_only(&mut self, on: bool) {
+        self.figure_only = on;
+    }
+
+    fn statics(&self) -> &[Draw] {
+        if self.figure_only {
+            &[]
+        } else {
+            &self.static_draws
+        }
     }
 
     /// Keep `scene` on the GPU and draw it in every later frame, behind whatever each frame passes in.
@@ -648,7 +664,7 @@ impl GpuRenderer {
             })
             .collect();
         let sky_binds: Vec<(wgpu::BindGroup, &Draw)> = self
-            .static_draws
+            .statics()
             .iter()
             .chain(&draws)
             .filter(|_| self.sky_at_infinity)
@@ -716,7 +732,7 @@ impl GpuRenderer {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &globals_bind, &[]);
             for d in self
-                .static_draws
+                .statics()
                 .iter()
                 .chain(&draws)
                 .filter(|d| !d.blended && (!self.sky_at_infinity || d.sky.is_none()))
@@ -727,7 +743,7 @@ impl GpuRenderer {
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             let mut see_through: Vec<&Draw> = self
-                .static_draws
+                .statics()
                 .iter()
                 .chain(&draws)
                 .filter(|d| d.blended && (!self.sky_at_infinity || d.sky.is_none()))

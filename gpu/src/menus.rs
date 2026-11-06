@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "fightscreen.rs"]
 mod fightscreen;
+#[path = "figure.rs"]
+mod figure;
 #[path = "levelup.rs"]
 mod levelup;
 #[path = "mapscreen.rs"]
@@ -1171,14 +1173,14 @@ impl Stage {
         self.menus.first = 0;
     }
 
-    /// `character.gui`. The numbers come from the rules. There is no 3D figure yet, so the portrait stands in its place.
-    /// Scripts and party switching are not built. The level-up buttons show when a level is waiting.
+    /// `character.gui`. The numbers come from the rules, and the leader stands in a hole in the picture: see `figure.rs`.
+    /// Scripts are not built. The level-up buttons show when a level is waiting.
     fn character_view(&mut self) -> MenuView {
         let mut v = MenuView::new("character");
         self.change_buttons(&mut v);
         v.hide(&["LBL_CLASS2", "LBL_LEVEL2"]);
         v.inert(&["BTN_SCRIPTS"]);
-        v.fill("LBL_3DCHAR", self.portrait());
+        v.hole = Some("LBL_3DCHAR".to_string());
         let w = &mut self.game.world;
         let pc = w.pc;
         if !w.level_ready(pc) {

@@ -251,9 +251,13 @@ impl App {
             st.presenter.set_overlay(&st.gpu, stage.overlay());
         }
         if self.frames.is_multiple_of(self.render_every) {
-            let scene = stage.dynamic_scene();
-            let cam = stage.camera();
-            st.gpu.set_particles(stage.particles());
+            let (scene, cam, figure) = stage.frame_scene();
+            st.gpu.set_figure_only(figure);
+            st.gpu.set_particles(if figure {
+                Vec::new()
+            } else {
+                stage.particles()
+            });
             if let Err(e) = st
                 .gpu
                 .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)

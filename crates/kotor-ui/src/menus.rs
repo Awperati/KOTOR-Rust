@@ -108,6 +108,8 @@ pub struct MenuView {
     pub marks: Vec<Mark>,
     /// A box over it all that takes all the input.
     pub notice: Option<Notice>,
+    /// A control that is a hole in the picture, for a figure behind it.
+    pub hole: Option<String>,
 }
 
 impl MenuView {
@@ -269,7 +271,10 @@ impl Ui<'_> {
             if view.is_hidden(&c.tag) || c.kind == SCROLLBAR {
                 continue;
             }
-            if c.kind == LIST {
+            if view.hole.as_deref() == Some(c.tag.as_str()) {
+                let e = &c.extent;
+                cv.clear_rect(ox + e.left, oy + e.top, e.width, e.height);
+            } else if c.kind == LIST {
                 self.draw_list(cv, view, c, (ox, oy));
             } else {
                 let e = &c.extent;

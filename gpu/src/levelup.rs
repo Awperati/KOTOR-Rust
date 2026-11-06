@@ -126,17 +126,14 @@ impl Stage {
             .unwrap_or(ACCEPT_STEP)
     }
 
-    /// `maincg.gui` with `leveluppnl.gui` over it. There is no 3D figure yet.
+    /// `maincg.gui` with `leveluppnl.gui` over it, and the figure in a hole in the picture: see `figure.rs`.
     pub(super) fn level_panel_view(&mut self) -> MenuView {
         let mut v = MenuView::new("maincg");
         let title = self.ui.strref(STR_LEVEL_UP);
         v.text("MAIN_TITLE_LBL", title);
         v.fill("PORTRAIT_LBL", self.portrait());
+        v.hole = Some("MODEL_LBL".to_string());
         v.hide(&[
-            "MODEL_LBL",
-            "LBL_BEVEL_L",
-            "LBL_BEVEL_R",
-            "LBL_BEVEL_M",
             "OLD_VIT_LBL",
             "NEW_VIT_LBL",
             "VIT_ARROW_LBL",

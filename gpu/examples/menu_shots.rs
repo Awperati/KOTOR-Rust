@@ -14,8 +14,8 @@ fn shot(gpu: &mut GpuRenderer, s: &mut Stage, name: &str, out: &std::path::Path)
         gpu.resize(size.0, size.1);
         s.set_view(size);
         s.update(0.0);
-        let moving = s.dynamic_scene();
-        let cam = s.camera();
+        let (moving, cam, figure) = s.frame_scene();
+        gpu.set_figure_only(figure);
         let mut img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
         if let Some(o) = s.overlay() {
             composite(&mut img, o);

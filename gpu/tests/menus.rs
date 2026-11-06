@@ -1848,6 +1848,54 @@ fn a_screen_or_the_hud_changes_to_another_member_with_the_bag() {
     assert!(s.game.world.level_ready(member));
 }
 
+#[test]
+fn the_sheet_and_the_level_panel_have_a_figure_behind_a_hole() {
+    let Some((mut s, _)) = in_game("figure") else {
+        return;
+    };
+    s.update(DT);
+    assert!(s.figure_camera().is_none(), "not in the game");
+    let (_, _, alone) = s.frame_scene();
+    assert!(!alone);
+
+    // On the sheet the picture has a hole where the figure stands, and only the leader is drawn.
+    s.open_character();
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    let at = |x: u32, y: u32| ((y * o.width + x) * 4 + 3) as usize;
+    let (hx, hy) = (184 * SIZE.0 / 640, 257 * SIZE.1 / 480);
+    assert_eq!(o.rgba[at(hx, hy)], 0, "the middle of the hole");
+    assert_eq!(o.rgba[at(5 * SIZE.0 / 640 + 2, 2)], 255, "the rest stays");
+    let pc = s.game.world.pc;
+    let here = s.game.world.object(pc).unwrap().position;
+    let (scene, camera, alone) = s.frame_scene();
+    assert!(alone);
+    assert!(!scene.meshes.is_empty());
+    let whole = s.dynamic_scene();
+    assert!(scene.meshes.len() < whole.meshes.len(), "only the leader");
+    // The camera stands before them, away from their feet, and looks their way.
+    let away = (camera.eye[0] - here[0]).hypot(camera.eye[1] - here[1]);
+    assert!(away > 1.0, "{away}");
+    let looks = (camera.target[0] - here[0]).hypot(camera.target[1] - here[1]);
+    assert!(looks < away, "{looks} {away}");
+    s.escape();
+
+    // Other screens draw the game behind them as before.
+    s.open_inventory();
+    assert!(s.figure_camera().is_none());
+    s.escape();
+
+    // The level-up panel has one as well.
+    s.game.world.grant_xp(pc, 1000);
+    s.open_character();
+    press(&mut s, "BTN_LEVELUP");
+    assert!(s.figure_camera().is_some());
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    let (hx, hy) = (236 * SIZE.0 / 640, 182 * SIZE.1 / 480);
+    assert_eq!(o.rgba[((hy * o.width + hx) * 4 + 3) as usize], 0);
+}
+
 /// How many short sounds come out of the next update.
 fn sounds(s: &mut Stage) -> usize {
     let cues = s.update(DT);

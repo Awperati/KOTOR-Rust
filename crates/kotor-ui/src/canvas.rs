@@ -132,6 +132,17 @@ impl Canvas {
         }
     }
 
+    /// Leave nothing in a rectangle of layout units, for what lies behind the picture to show.
+    pub fn clear_rect(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        let [x, y, w, h] = self.to_pixels(x, y, w, h);
+        for yy in y.max(0)..(y + h).min(self.height as i32) {
+            for xx in x.max(0)..(x + w).min(self.width as i32) {
+                let i = ((yy as u32 * self.width + xx as u32) * 4) as usize;
+                self.rgba[i..i + 4].fill(0);
+            }
+        }
+    }
+
     /// Draw `region` (x, y, w, h in source pixels) of `img` into the rectangle `(x, y, w, h)` of layout units, scaling
     /// with nearest sampling at scale 1 and smoothly at any other. RGB is multiplied by `tint` (0..=1 per channel) and alpha by `alpha`.
     pub fn draw_image(
