@@ -36,5 +36,5 @@ fn a_duelist_with_a_blaster_in_its_bag_shoots_point_blank() {
     assert!(w.combat.log.iter().any(|l| l.attacker == duelist));
     // The fire clips are `b5a1`; the fist's is `g8a1`.
     assert!(clips.iter().any(|c| c.starts_with('b')), "{clips:?}");
-    assert!(!clips.iter().any(|c| *c == "g8a1"), "punched");
+    assert!(!clips.contains(&"g8a1"), "punched");
 }
