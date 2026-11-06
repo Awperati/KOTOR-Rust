@@ -111,6 +111,20 @@ Measured by `crates/kotor-render/tests/heads.rs`, average texture colour as red,
 
 So a body and its head do not match exactly in the files themselves. Column b has one body texture for all skin families, `PFBBM01` or `PMBBM01`, and its pale parts are the shirt.
 
+### What the reference underwear mod showed (read only, nothing copied)
+
+Studied 7 Nov 2026: `Unshod Underwear` (a K2 mod for `pfbam`: `pfbam.mdl`, `pfbam.mdx` and three 512 x 512 textures, one per skin family), looked at from the owner's `Projects\Mods`. Facts, not content:
+
+- It keeps the texture sheet's layout and paints one flat skin island with the bra and briefs drawn on it. Its belly and neck islands are within 6 of 255 of the game's own upper-arm tone per channel (a: 201, 140, 89 against 186, 131, 88; b: 135, 72, 41 against 133, 73, 47). It does not retint the body to match the head.
+- Its mesh is the K2 model layout, which this reader does not take (`mesh vertices run past MDX`). So its neck geometry was not compared.
+- So the mod does not solve the neck seam. The head's neck tone against the body is ours to solve, and a collar still hid it in the original game.
+
+What changed in our skin code from that and the owner's frame `44-neck-seam.png`:
+
+1. The head's neck ring was lit about a fifth brighter than the chest under it (209 against 169 of 255 in a live frame of row 91), because its normals point another way than the body's collar. The neck's normals now turn to the nearest body normal, wholly at the ring and not at all 7 cm above (`blend_neck_normals`). Same frame afterwards: 183 against 169.
+2. Cloth left on the sheet from 96 % of the torso's height up is the old top's collar, not the bra. It is cleared (`NECK_CLOTH`). That took away the black and grey slivers at the collar on rows 91 and 107.
+3. Not fixed: a darker band on the body just under the neck on the brown skins (82 against 93 of 255 on row 107). It is not the shape shading of the fill, which I switched off there to test.
+
 ## What the video cannot tell
 
 - A woman's body or neck in close-up: its hero is a man. Whether the owner's neck frame matches the original is still open.

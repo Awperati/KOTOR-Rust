@@ -45,6 +45,8 @@ pub struct Rig {
     /// The texture the body's meshes name themselves, which `appearance.2da` replaces: `PFBAM` names `pfbam01` however
     /// dark the skin of the row that wears it.
     replaces: Option<String>,
+    /// Whether the head's neck takes the body's shading where they meet: the conventional underwear style, for a woman.
+    neck_shading: bool,
 }
 
 impl Rig {
@@ -80,6 +82,7 @@ impl Rig {
             body_tex: body_texture.or_else(|| main_texture(&body_m)),
             head_tex: head_m.as_ref().and_then(main_texture),
             replaces: None,
+            neck_shading: false,
             body: body_m,
             head: head_m,
             sup,
@@ -94,6 +97,7 @@ impl Rig {
             crate::underwear::soften_shading(&mut self.body);
             if let (Some(head), Some(tex)) = (&mut self.head, &self.head_tex) {
                 crate::underwear::close_neck_gap(head, tex);
+                self.neck_shading = true;
             }
         }
     }
@@ -290,6 +294,7 @@ impl Rig {
                 }
             }
         }
+        let mut head_up = None;
         if let Some(head_m) = &self.head {
             let head_mats = head_m.world_matrices(None);
             // A creature's body has its own `head_g` to line the head's up with, and its bones bend the head too.
@@ -305,6 +310,7 @@ impl Rig {
                     // Rigid: bending the head by the body's bones melts the face, because the facial bones are only in
                     // the head's own skeleton.
                     let xf = mat_mul(&mb, &rigid_inverse(&mh));
+                    head_up = Some([xf[0][2], xf[1][2], xf[2][2]]);
                     self.add_head(&mut scene, head_m, face, &xf);
                 }
                 _ => {
@@ -315,9 +321,15 @@ impl Rig {
                             row[3] = 0.0;
                         }
                         let xf = mat_mul(&posed, &rigid_inverse(&turn));
+                        head_up = Some([xf[0][2], xf[1][2], xf[2][2]]);
                         self.add_head(&mut scene, head_m, face, &xf);
                     }
                 }
+            }
+        }
+        if self.neck_shading {
+            if let (Some(tex), Some(up)) = (&self.head_tex, head_up) {
+                crate::underwear::blend_neck_normals(&mut scene, tex, up);
             }
         }
         if scene.meshes.is_empty() {

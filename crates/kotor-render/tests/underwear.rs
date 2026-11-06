@@ -261,3 +261,63 @@ fn the_rule_works_at_any_size_of_texture() {
     let (s, b) = (changed(&base, &small), changed(&twice, &big));
     assert!((s - b).abs() < 0.02, "{s} and {b}");
 }
+
+/// Where a woman's neck meets her body the two are lit by the same normals, so the join shows no step in brightness.
+#[test]
+fn the_neck_is_lit_like_the_body_where_they_meet() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    for row in [91, 92, 93] {
+        let mut rig = kotor_render::rig_for_appearance(&mut inst, row, 1).unwrap();
+        let plain = rig.pose(None).unwrap();
+        rig.soften_underwear_shading();
+        let scene = rig.pose(None).unwrap();
+        let head = |n: &str| underwear::is_hero_head(n);
+        // The head's lowest vertices, and the nearest body normal to each.
+        let mut worst_before = 0.0f32;
+        let mut worst_after = 0.0f32;
+        for (which, worst) in [(&plain, &mut worst_before), (&scene, &mut worst_after)] {
+            let is = |m: &kotor_render::SceneMesh| m.texture.as_deref().is_some_and(head);
+            let low = which
+                .meshes
+                .iter()
+                .filter(|m| is(m))
+                .flat_map(|m| m.positions.iter())
+                .fold(f32::MAX, |b, p| b.min(p[2]));
+            let body: Vec<_> = which
+                .meshes
+                .iter()
+                .filter(|m| !is(m))
+                .flat_map(|m| m.positions.iter().zip(m.normals.iter()))
+                .collect();
+            for m in which.meshes.iter().filter(|m| is(m)) {
+                for (p, n) in m.positions.iter().zip(&m.normals) {
+                    if p[2] > low + 0.05 {
+                        continue;
+                    }
+                    let near = body
+                        .iter()
+                        .min_by(|a, b| dist2(a.0, p).total_cmp(&dist2(b.0, p)))
+                        .unwrap();
+                    if dist2(near.0, p) > 0.05 * 0.05 {
+                        continue;
+                    }
+                    let dot: f32 = (0..3).map(|k| n[k] * near.1[k]).sum();
+                    *worst = worst.max(1.0 - dot);
+                }
+            }
+        }
+        assert!(
+            worst_after < worst_before * 0.5 + 0.02,
+            "row {row}: {worst_before} -> {worst_after}"
+        );
+        assert!(worst_after < 0.2, "row {row}: {worst_after}");
+    }
+}
+
+fn dist2(a: &[f32; 3], b: &[f32; 3]) -> f32 {
+    (0..3).map(|k| (a[k] - b[k]).powi(2)).sum()
+}

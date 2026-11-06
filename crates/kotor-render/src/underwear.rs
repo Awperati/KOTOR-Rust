@@ -52,6 +52,8 @@ const CLOTH_SOFTEN: usize = 2;
 const CLOTH_RAMP: f32 = 5.0;
 /// Share of the torso's height from which it is the neck's ring, and how strongly the shape of the body shades the fill.
 const NECK_RING: f32 = 0.985;
+/// From this share of the torso's height up, any cloth left on the sheet is the old top's collar, not the bra.
+const NECK_CLOTH: f32 = 0.96;
 const SHAPE_SHADE: f32 = 0.12;
 const SHAPE_MOST: f32 = 0.5;
 /// How near two edges of the body are to be one seam, in metres.
@@ -841,6 +843,11 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
         let cloth = is_cloth(pixels[n], skin);
         if h < WAIST {
             marks[n] = if cloth { KEEP } else { SKIN };
+            return;
+        }
+        // The old top's collar ends at the neck, and nothing of the bra does: what is left of it there is cloth to go.
+        if cloth && h >= NECK_CLOTH {
+            marks[n] = CLEAR;
             return;
         }
         let part = bra_part(p[0], p[1], h, half);
@@ -1902,4 +1909,65 @@ fn bilinear(field: &[[f32; 3]], u: f32, v: f32) -> [f32; 3] {
 fn bilinear1(field: &[f32], u: f32, v: f32) -> f32 {
     let (at, weight) = corners(u, v);
     (0..4).map(|i| weight[i] * field[at[i]]).sum()
+}
+
+/// How far up the head's neck takes the body's shading where they meet, in metres, and how near a body vertex counts.
+const NECK_SHADE_METRES: f32 = 0.07;
+const NECK_SHADE_NEAR_METRES: f32 = 0.05;
+
+/// Where a head's neck meets the body, the two are lit by different normals, and the neck's lowest ring showed about a
+/// fifth brighter than the chest under it. The neck's normals turn to those of the nearest body vertex, wholly at the
+/// ring and not at all `NECK_SHADE_METRES` above it. `up` is the head's own up in the scene.
+pub fn blend_neck_normals(scene: &mut crate::scene::Scene, head: &str, up: [f32; 3]) {
+    let len = dot3(up, up).sqrt();
+    if len < 1e-6 {
+        return;
+    }
+    let up = up.map(|v| v / len);
+    let is_head = |m: &crate::scene::SceneMesh| {
+        m.texture
+            .as_deref()
+            .is_some_and(|t| t.eq_ignore_ascii_case(head))
+    };
+    let low = scene
+        .meshes
+        .iter()
+        .filter(|m| is_head(m))
+        .flat_map(|m| m.positions.iter())
+        .map(|p| dot3(up, *p))
+        .fold(f32::MAX, f32::min);
+    if low == f32::MAX {
+        return;
+    }
+    let body: Vec<([f32; 3], [f32; 3])> = scene
+        .meshes
+        .iter()
+        .filter(|m| !is_head(m))
+        .flat_map(|m| m.positions.iter().copied().zip(m.normals.iter().copied()))
+        .collect();
+    for m in scene.meshes.iter_mut().filter(|m| is_head(m)) {
+        for (p, n) in m.positions.iter().zip(m.normals.iter_mut()) {
+            let above = dot3(up, *p) - low;
+            if above >= NECK_SHADE_METRES {
+                continue;
+            }
+            let near = body
+                .iter()
+                .map(|(q, bn)| {
+                    let d = [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+                    (dot3(d, d), *bn)
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+            let Some((d2, bn)) = near else { continue };
+            if d2.sqrt() > NECK_SHADE_NEAR_METRES {
+                continue;
+            }
+            let w = 1.0 - above / NECK_SHADE_METRES;
+            let mixed = [0, 1, 2].map(|k| n[k] * (1.0 - w) + bn[k] * w);
+            let l = dot3(mixed, mixed).sqrt();
+            if l > 1e-6 {
+                *n = mixed.map(|v| v / l);
+            }
+        }
+    }
 }
