@@ -72,3 +72,18 @@ The owner: "you can die and it plays the animation but the character can keep pl
 - **Player down, someone else standing:** the player lies where it fell and cannot walk; the fight goes on; it stands up with 1 hit point when the fight is over. **A party member down alone** does the same.
 - **Assumed, not measured:** the 3 s and 2 s, the words "You have died.", and that Load Game opens the list rather than loading at once. The reference video has no death. Tests: `crates/kotor-game/tests/death.rs`, `gpu/tests/death.rs`. Frames: `gpu/examples/death_shots.rs`.
 
+## Live sweep of earlier fixes (7 Nov)
+
+Driven in the real stage, offscreen, with `gpu/examples/sweep_shots.rs` (frames `docs/shots/combat/sweep_*`, 720p and 2160p).
+
+| Bug | Result |
+|---|---|
+| 15 NPC and player collision | Fine. Pushing on a person 1.6 m ahead, the player stops at 0.80 m and slides round, 5.7 m on in 3 s. |
+| 21 teammate targeting | Fine. A teammate in a fight attacked the foe 4 times, the player 0. |
+| 25 sight over short objects | Fine. A shooter 6 m off over a short obstacle fired twice at the player. |
+| 34 remains | Fine. The foe carried 9 things, its remains held 9, and the loot window lists them. |
+| 36 Force Push | **Fixed.** The foe slid 3.00 m and was disabled, but stood upright. A pushed or knocked-down creature now shows `die` while it lies and `getupdead` (2 s, assumed) when it ends (`Game::step_once`, test in `tests/force_push.rs`). |
+| 39 party opens doors | Fine. A mate 4 m behind a shut door opened it and came to 2.2 m. |
+
+The 8 s body rule (`World::body_gone`): it hides a dead creature from `GetIsObjectValid` and tag lookups, not from this code, which reads bodies directly. The duel's later nodes (`k_pend_cut2_*`) name no dead duellist.
+
