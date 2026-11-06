@@ -19,6 +19,8 @@ use std::rc::Rc;
 mod menus;
 #[path = "racescreen.rs"]
 mod racescreen;
+#[path = "roomshell.rs"]
+mod roomshell;
 pub use menus::{about_words, default_saves_dir, default_settings_file, Settings};
 
 type Mat = [[f32; 4]; 4];
@@ -33,6 +35,8 @@ const DRAW_RANGE: f32 = 45.0;
 const FIRST_STUNT_ANIMATION: u32 = 1200;
 /// The follow camera: metres behind the player and above its feet, and the height it looks at. As `render_walk`.
 const CAMERA_FOV: f32 = 55.0;
+/// How far the camera keeps from a wall or ceiling (metres): its near plane is 0.05, and a frame needs some way past that.
+const CAMERA_OFF_SURFACE: f32 = 0.2;
 /// How near the camera's line may pass a closed door (metres): about half a door.
 const DOOR_CAMERA_MARGIN: f32 = 1.2;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
@@ -249,6 +253,8 @@ pub struct Stage {
     pub orbit: f32,
     module: String,
     floor: Option<Floor>,
+    /// The rooms, for the camera to stay inside.
+    shell: roomshell::RoomShell,
     static_scene: Scene,
     /// Goes up whenever `static_scene` is replaced.
     pub static_version: u64,
@@ -375,6 +381,7 @@ impl Stage {
             orbit: 0.0,
             module: String::new(),
             floor: None,
+            shell: Default::default(),
             static_scene: Scene::default(),
             static_version: 0,
             rigs: HashMap::new(),
@@ -489,6 +496,7 @@ impl Stage {
         } else {
             kotor_render::load_area(&mut self.inst, &area).map_err(e)?
         };
+        self.shell = roomshell::RoomShell::of(&scene);
         let chests = chest_templates(&mut self.inst, &area);
         if !turret {
             kotor_render::add_area_objects_except(
@@ -1039,6 +1047,11 @@ impl Stage {
             }
         }
         let d = d.max(0.8);
+        // Inside the room, however it is tilted. It keeps a little off the surface, and comes in to the player if it must.
+        let d = match self.shell.first_hit(target, back, d) {
+            Some(hit) => (hit - CAMERA_OFF_SURFACE).max(0.1),
+            None => d,
+        };
         Camera {
             eye: [
                 p[0] - dx * flat * d,

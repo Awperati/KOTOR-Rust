@@ -75,6 +75,28 @@ fn a_duel_in_another_room_cannot_be_heard_from_where_a_new_game_starts() {
     assert_eq!(heard, 0);
 }
 
+#[test]
+fn tilted_right_up_the_camera_stays_under_the_ceiling() {
+    let Some(mut s) = stage() else {
+        return;
+    };
+    s.enable_tutorials(false);
+    s.update(DT);
+    let length = |c: &kotor_render::Camera| {
+        (0..3)
+            .map(|i| (c.eye[i] - c.target[i]).powi(2))
+            .sum::<f32>()
+            .sqrt()
+    };
+    s.yaw = 0.0;
+    s.pitch = 1.2;
+    let high = s.camera();
+    // The Endar Spire's cabin: at this tilt the whole distance rose to 3 m, over the ceiling.
+    assert!(high.eye[2] < 2.7, "{high:?}");
+    assert!(length(&high) < s.distance - 0.1, "{high:?}");
+    assert!(length(&high) > 1.0, "still behind the player: {high:?}");
+}
+
 /// Finish whatever conversation is on, taking the first reply.
 fn play_out(s: &mut Stage, cues: &mut Vec<Cue>) {
     for _ in 0..6000 {
