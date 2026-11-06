@@ -59,6 +59,60 @@ fn every_body_and_skin_loses_cloth_and_keeps_its_size_and_its_lower_half() {
 }
 
 #[test]
+fn the_painted_skin_cannot_be_told_from_the_skin_beside_it_in_any_family() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    for body in ["pfbas", "pfbam", "pfbal"] {
+        let plan = underwear::plan_for(&mut inst, body).unwrap();
+        for family in ["", "a", "b"] {
+            let name = format!("{body}{family}01");
+            let mut t = load_texture(&mut inst, &name).unwrap();
+            plan.apply(&mut t);
+            let r = plan.seam_report(&t);
+            // Levels of 255. Skin's own painted shading is about 2 from one texel to the next.
+            assert!(r.edge < 3.0, "{name}: {r:?}");
+            assert!(r.wrap < 4.0, "{name}: {r:?}");
+            assert!(r.colour < 8.0, "{name}: {r:?}");
+            assert!(r.worst_colour < 22.0, "{name}: {r:?}");
+            assert!(r.cloth_left < 0.01, "{name}: {r:?}");
+        }
+    }
+}
+
+#[test]
+fn evening_out_the_shading_leaves_the_shape_and_the_lower_body() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let mdl = inst.read("pfbam", kotor_core::ResType::MDL).unwrap();
+    let mdx = inst.read("pfbam", kotor_core::ResType::MDX).unwrap();
+    let before = kotor_model::parse_model(&mdl, &mdx).unwrap();
+    let mut after = kotor_model::parse_model(&mdl, &mdx).unwrap();
+    underwear::soften_shading(&mut after);
+    let mesh =
+        |m: &'_ kotor_model::Model, name: &str| m.root.find(name).unwrap().mesh.clone().unwrap();
+    let (old, new) = (mesh(&before, "Torso"), mesh(&after, "Torso"));
+    assert_eq!(old.positions, new.positions);
+    assert_eq!(old.normals.len(), new.normals.len());
+    assert_ne!(old.normals, new.normals);
+    let same = old
+        .normals
+        .iter()
+        .zip(&new.normals)
+        .filter(|(a, b)| a == b)
+        .count();
+    assert!(same > 0, "what is below the waist stays");
+    for n in &new.normals {
+        let long = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        assert!((long - 1.0).abs() < 0.2, "{long}");
+    }
+}
+
+#[test]
 fn the_rule_works_at_any_size_of_texture() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

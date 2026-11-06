@@ -194,6 +194,14 @@ fn upscaled(dir: &std::path::Path, name: &str) -> Option<Image> {
     Some(img)
 }
 
+/// A rig as the underwear style has it.
+fn styled(mut rig: Rig, conventional: bool) -> Rc<Rig> {
+    if conventional {
+        rig.soften_underwear_shading();
+    }
+    Rc::new(rig)
+}
+
 /// The stock icon for a target's action, read from the texture names in `swpc_tex_gui.erf`.
 fn action_icon(action: &str) -> &'static str {
     match action {
@@ -1181,6 +1189,7 @@ impl Stage {
             self.conventional_underwear = on;
             self.textures
                 .retain(|name, _| kotor_render::underwear::body_of_texture(name).is_none());
+            self.rigs.clear();
             self.static_version += 1;
         }
     }
@@ -1403,12 +1412,13 @@ impl Stage {
     fn clothed_rig(&mut self, appearance: i32) -> Option<Rc<Rig>> {
         let key = (appearance, 1, Some(CLOTHES_LETTER));
         let inst = &mut self.inst;
+        let conventional = self.conventional_underwear;
         self.rigs
             .entry(key)
             .or_insert_with(|| {
                 kotor_render::rig_for_outfit(inst, appearance as usize, 1, Some(CLOTHES_LETTER))
                     .ok()
-                    .map(Rc::new)
+                    .map(|rig| styled(rig, conventional))
             })
             .clone()
     }
@@ -1438,12 +1448,13 @@ impl Stage {
         }
         let key = (appearance, var as u32, letter);
         let inst = &mut self.inst;
+        let conventional = self.conventional_underwear;
         self.rigs
             .entry(key)
             .or_insert_with(|| {
                 kotor_render::rig_for_outfit(inst, appearance as usize, var as u32, letter)
                     .ok()
-                    .map(Rc::new)
+                    .map(|rig| styled(rig, conventional))
             })
             .clone()
     }

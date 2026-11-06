@@ -1,6 +1,7 @@
-//! Before and after of the underwear rule, front and back, for a body: underwear_shots <appearance row> <out dir> [WxH]
+//! Before and after of the underwear rule, for a body: underwear_shots <appearance row> <out dir> [WxH]. Front, side,
+//! back and close, with the upscaled pictures when there are any, as the game uses them.
 use kotor_archive::Install;
-use kotor_render::{load_creature, load_texture, render, underwear, Camera};
+use kotor_render::{load_texture, render, rig_for_appearance, underwear, Camera};
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -15,21 +16,47 @@ fn main() {
     std::fs::create_dir_all(&out).unwrap();
     let mut inst = Install::open(kotor_core::install_dir().unwrap()).unwrap();
     inst.load_texture_packs().unwrap();
-    let scene = load_creature(&mut inst, row, 1, None).unwrap();
+    let scene = rig_for_appearance(&mut inst, row, 1)
+        .unwrap()
+        .pose(None)
+        .unwrap();
+    let soft_scene = {
+        let mut rig = rig_for_appearance(&mut inst, row, 1).unwrap();
+        rig.soften_underwear_shading();
+        rig.pose(None).unwrap()
+    };
     let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
     let height = scene.max[2] - scene.min[2];
     let upper = [mid[0], mid[1], scene.min[2] + height * 0.72];
+    let hd = std::env::var("LOCALAPPDATA")
+        .map(|d| std::path::PathBuf::from(d).join("kotor-rs").join("hd3d"))
+        .ok();
     for (style, on) in [("original", false), ("conventional", true)] {
-        for (side, sign) in [("front", 1.0f32), ("back", -1.0)] {
+        for (side, along, reach) in [
+            ("front", [0.0f32, 1.0], 0.75f32),
+            ("side", [1.0, 0.0], 0.75),
+            ("back", [0.0, -1.0], 0.75),
+            ("close", [0.35, 1.0], 0.35),
+        ] {
             let cam = Camera {
-                eye: [upper[0], upper[1] + sign * height * 0.75, upper[2]],
+                eye: [
+                    upper[0] + along[0] * height * reach,
+                    upper[1] + along[1] * height * reach,
+                    upper[2],
+                ],
                 target: upper,
                 fov: 40.0,
             };
             let img = render(
-                &scene,
+                if on { &soft_scene } else { &scene },
                 &mut |n| {
-                    let mut t = load_texture(&mut inst, n)?;
+                    let upscaled = hd
+                        .as_ref()
+                        .and_then(|d| {
+                            std::fs::read(d.join(format!("{}.png", n.to_lowercase()))).ok()
+                        })
+                        .and_then(|b| kotor_image::parse_png(&b));
+                    let mut t = upscaled.or_else(|| load_texture(&mut inst, n))?;
                     if on {
                         if let Some(body) = underwear::body_of_texture(n) {
                             if let Some(p) = underwear::plan_for(&mut inst, &body) {

@@ -86,6 +86,15 @@ impl Rig {
         })
     }
 
+    /// The body's shading for the conventional underwear style, if it is one of the bodies that style is for. See
+    /// [`crate::underwear::soften_shading`].
+    pub fn soften_underwear_shading(&mut self) {
+        let name = self.body_tex.as_deref().unwrap_or("");
+        if crate::underwear::body_of_texture(name).is_some() {
+            crate::underwear::soften_shading(&mut self.body);
+        }
+    }
+
     /// The body, then its chain of supermodels: a droid or a rakghoul carries its clips in its own model, with no chain.
     fn models(&self) -> impl Iterator<Item = &Model> {
         std::iter::once(&self.body).chain(&self.sup)
