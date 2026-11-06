@@ -24,7 +24,7 @@ The video's player runs at 16:9 with a mod or setting we cannot identify, so it 
 | Save and load screens | not found | `save_list`, `load_list`, `save_name` | **no** |
 | Gameplay, Graphics, Sound pages, main menu Options | not found | `opt_*`, `options` | **no** |
 
-**What "not found" means:** I sampled one keyframe every 5 seconds over the whole video, matched our screens against it, and looked at what follows the pause menu in 12 of its 88 appearances. A screen up for under 5 seconds, or cut from the video, would not show. So our save, load and option pages have nothing to be compared with.
+**What "not found" means:** I sampled one keyframe every 5 seconds over the whole video, matched our screens against it, and looked at 12 of the 88 moments the scan flagged just after the pause menu. A screen up for under 5 seconds, or cut from the video, would not show. So our save, load and option pages have nothing to be compared with.
 
 ## Changed to match
 Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
