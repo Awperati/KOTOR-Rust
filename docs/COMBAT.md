@@ -61,3 +61,12 @@ Frames: `docs/shots/combat` at 720p and 2160p, made by `gpu/examples/combat_shot
 - Melee swing and blow sounds use the item's `weaponmattype` in `baseitems.2da` as the `weaponsounds.2da` row. A stun baton was playing a blade (label guess), a long sword a small blade. Test: `gpu/tests/stage.rs`. Not known: what bug 33 meant for blasters. Their sounds are read from `ammunitiontypes.2da` and were not changed.
 - Live fight, `gpu/examples/resist_shots.rs`: a blaster rifle against a plain soldier did 4.9 a hit over 12 hits, against one with 75% blaster immunity 1.6 over 7.
 
+## The player's death
+
+The owner: "you can die and it plays the animation but the character can keep playing regardless and just lies on the floor".
+
+- **Whole party down** (`World::game_over`, set by `update_knockouts`): `World::step` runs `step_dead`. Input is dead (steer, clicks, containers, conversation), the fight is called off, and only the clock runs. `World::death_phase`: falling for 3 s, fading to black over 2 s, then over.
+- **Stage** (`gpu/src/deathscreen.rs`): the camera is held, the HUD goes, the picture fades, then `Screen::GameOver` (`confirm.gui`): Load Game (the save list, newest chosen) and Quit (main menu). Esc does not leave it. Loading clears `game_over`.
+- **Player down, someone else standing:** the player lies where it fell and cannot walk; the fight goes on; it stands up with 1 hit point when the fight is over. **A party member down alone** does the same.
+- **Assumed, not measured:** the 3 s and 2 s, the words "You have died.", and that Load Game opens the list rather than loading at once. The reference video has no death. Tests: `crates/kotor-game/tests/death.rs`, `gpu/tests/death.rs`. Frames: `gpu/examples/death_shots.rs`.
+

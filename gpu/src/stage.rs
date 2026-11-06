@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+#[path = "deathscreen.rs"]
+mod deathscreen;
 #[path = "menus.rs"]
 mod menus;
 #[path = "moving.rs"]
@@ -654,6 +656,9 @@ impl Stage {
         self.notices_tick();
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
+            return std::mem::take(&mut self.cues);
+        }
+        if self.death_tick(dt) {
             return std::mem::take(&mut self.cues);
         }
         if self.pause_tick() {

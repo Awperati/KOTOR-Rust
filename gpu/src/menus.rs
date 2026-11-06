@@ -193,6 +193,8 @@ pub(super) enum Screen {
     Pazaak,
     /// `confirm.gui`, asking about Solo Mode.
     Solo,
+    /// `confirm.gui` again, after the death sequence: Load Game or Quit. See `deathscreen.rs`.
+    GameOver,
     /// `upgradesel.gui`, `upgradeitems.gui` and `upgrade.gui`.
     BenchKinds,
     BenchItems,
@@ -461,6 +463,7 @@ impl Screen {
             Screen::Galaxy => "galaxy",
             Screen::Pazaak => "pazaak",
             Screen::Solo => "solo",
+            Screen::GameOver => "gameover",
             Screen::BenchKinds => "bench_kinds",
             Screen::BenchItems => "bench_items",
             Screen::Bench => "bench",
@@ -500,7 +503,7 @@ struct SaveFile {
 #[derive(Default)]
 pub(super) struct Menus {
     pub stack: Vec<Screen>,
-    hover: Option<Hit>,
+    pub(super) hover: Option<Hit>,
     message: String,
     /// Exit was pressed: the window should close.
     pub exit: bool,
@@ -509,7 +512,7 @@ pub(super) struct Menus {
     /// Saves, newest first.
     saves: Vec<SaveFile>,
     /// The chosen row of the save list, and the first row shown.
-    selected: Option<usize>,
+    pub(super) selected: Option<usize>,
     first: usize,
     /// Delete was pressed once on this file.
     delete_armed: Option<PathBuf>,
@@ -781,6 +784,7 @@ impl Stage {
             Screen::Galaxy => self.galaxy_view(),
             Screen::Pazaak => self.pazaak_view(),
             Screen::Solo => self.solo_view(),
+            Screen::GameOver => self.game_over_view(),
             Screen::BenchKinds => self.bench_kinds_view(),
             Screen::BenchItems => self.bench_items_view(),
             Screen::Bench => self.bench_view(),
@@ -1869,6 +1873,7 @@ impl Stage {
             (Screen::Galaxy, _) => self.galaxy_press(tag),
             (Screen::Pazaak, _) => self.pazaak_press(tag),
             (Screen::Solo, _) => self.solo_press(tag),
+            (Screen::GameOver, _) => self.game_over_press(tag),
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),
@@ -2065,7 +2070,7 @@ impl Stage {
     /// Esc: close what is open, back out of a screen, or in the game open the pause menu. The main menu stays.
     pub fn escape(&mut self) {
         match self.top() {
-            Some(Screen::Main) => {}
+            Some(Screen::Main | Screen::GameOver) => {}
             Some(Screen::Container) => self.game.world.close_container(),
             Some(Screen::Store) => self.store_escape(),
             Some(Screen::Galaxy) => self.galaxy_escape(),
@@ -2098,13 +2103,15 @@ impl Stage {
                 self.menus.hover = None;
             }
 
-            None if self.started => self.menus.stack.push(Screen::Pause),
+            None if self.started && self.game.world.death_phase().is_none() => {
+                self.menus.stack.push(Screen::Pause)
+            }
             None => {}
         }
     }
 
     /// The Exit Game button: back to the main menu, with the game gone.
-    fn quit_to_main(&mut self) {
+    pub(super) fn quit_to_main(&mut self) {
         match Stage::fresh_world(&self.dir, self.original) {
             Ok(world) => self.game = kotor_game::Game::new(world),
             Err(e) => {
@@ -2136,7 +2143,7 @@ impl Stage {
         fighting.then_some("You cannot save during combat.")
     }
 
-    fn open_saves(&mut self, mode: Mode) {
+    pub(super) fn open_saves(&mut self, mode: Mode) {
         self.reload_saves();
         self.menus.selected = (mode == Mode::Save).then_some(0);
         self.menus.first = 0;
