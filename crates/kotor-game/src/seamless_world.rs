@@ -281,26 +281,37 @@ impl World {
             // The floors on the two sides may stop a little short of the door line or run a little past it, so each
             // side is joined at the first floor found going out from the door.
             let mut k = -(a.half / 0.75).floor();
+            let mut found: Vec<(f32, f32, f32)> = Vec::new();
             while k * 0.75 <= a.half {
                 let lat = k * 0.75;
-                let pair = {
-                    let find = |sign: f32| {
-                        (1..=30).map(|i| sign * i as f32 * 0.1).find(|&d| {
-                            let p = at(d, lat);
-                            nav.locate_if(p[0], p[1], p[2] + 0.5, &|i| i < real)
-                                .is_some()
-                        })
-                    };
-                    (find(-1.0), find(1.0))
+                let find = |sign: f32| {
+                    (1..=30).map(|i| sign * i as f32 * 0.1).find(|&d| {
+                        let p = at(d, lat);
+                        nav.locate_if(p[0], p[1], p[2] + 0.5, &|i| i < real)
+                            .is_some()
+                    })
                 };
-                if let (Some(before), Some(after)) = pair {
-                    let portal = (at(0.0, lat - 0.4), at(0.0, lat + 0.4));
-                    // Through the strip, which covers the gap the two floors leave.
-                    let (floor, strip) = (&|i: usize| i < real, &|i: usize| i >= real);
-                    nav.bridge_between(at(before, lat), at(0.0, lat), portal, floor, strip);
-                    nav.bridge_between(at(0.0, lat), at(after, lat), portal, strip, floor);
+                if let (Some(before), Some(after)) = (find(-1.0), find(1.0)) {
+                    found.push((lat, before, after));
                 }
                 k += 1.0;
+            }
+            // The big faces on each side are the same ones all along the doorway, so they are joined once, and the join
+            // covers the whole stretch where floor was found on both sides: everyone crosses where they like, not through
+            // one narrow gap.
+            let (Some(lo), Some(hi)) = (
+                found.iter().map(|f| f.0).reduce(f32::min),
+                found.iter().map(|f| f.0).reduce(f32::max),
+            ) else {
+                continue;
+            };
+            let portal = (at(0.0, lo - 0.4), at(0.0, hi + 0.4));
+            let (floor, strip) = (&|i: usize| i < real, &|i: usize| i >= real);
+            for (lat, before, after) in found {
+                // Straight across, which is the way a path takes; the strip is the floor under it.
+                nav.bridge_between(at(before, lat), at(after, lat), portal, floor, floor);
+                nav.bridge_between(at(before, lat), at(0.0, lat), portal, floor, strip);
+                nav.bridge_between(at(0.0, lat), at(after, lat), portal, strip, floor);
             }
         }
         for o in self

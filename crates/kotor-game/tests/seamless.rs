@@ -420,3 +420,63 @@ fn a_save_made_with_a_neighbour_joined_loads_as_a_plain_module() {
     }
     assert!(w.errors.is_empty(), "{:?}", w.errors);
 }
+
+/// Every follower crossed through one narrow gap, and three of them took seconds to get round each other at the door.
+#[test]
+fn a_path_across_a_portal_doorway_goes_straight_from_anywhere_along_it() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "tar02_cantdoor")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).unwrap();
+    let door = w.link_door_at(site.at).unwrap();
+    let (rigid, out) = (att.rigid, att.out);
+    w.seamless_attach(door, att);
+    w.objects.get_mut(&door).unwrap().locked = false;
+    w.use_door(door);
+    for _ in 0..90 {
+        w.step(1.0 / 60.0);
+    }
+    let pc = w.pc;
+    w.teleport(
+        pc,
+        [
+            site.at[0] - out.cos() * 0.2,
+            site.at[1] - out.sin() * 0.2,
+            site.at[2],
+        ],
+    );
+    let q = rigid.inverse().apply(site.at);
+    for i in 0..40 {
+        let d = 0.1 * (i + 1) as f32;
+        let here = [
+            site.at[0] + out.cos() * d,
+            site.at[1] + out.sin() * d,
+            site.at[2],
+        ];
+        w.pc_mover.pos = here;
+        let pc = w.pc;
+        w.objects.get_mut(&pc).unwrap().position = here;
+        w.step(1.0 / 60.0);
+        if w.module != "tar_m02ac" {
+            break;
+        }
+    }
+    assert_eq!(w.module, "tar_m02ae");
+    let nav = w.nav.as_ref().unwrap();
+    for lat in [-2.5f32, -1.5, 0.0, 1.5, 2.5, 3.0] {
+        let from = [q[0] + 3.0, q[1] + lat, q[2]];
+        let to = [q[0] - 3.0, q[1], q[2]];
+        assert!(nav.walkable_at(from[0], from[1], from[2] + 0.5).is_some());
+        let path = nav.find_path(from, to).expect("a way across");
+        // Straight across: the start and the end, with at most one bend, not along the doorway to a gap at one end.
+        assert!(path.len() <= 3, "from lat {lat}: {path:?}");
+    }
+}
