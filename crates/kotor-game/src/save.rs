@@ -344,6 +344,7 @@ impl World {
                 ("PCNAME", s(&pc_name)),
                 ("SAVEGAMENAME", s(save_name)),
                 ("TIMEPLAYED", Value::Float(self.time)),
+                ("PartyAIStyle", Value::Int(self.party_ai_style)),
             ],
         )?;
         let mut numbers: Vec<_> = self.global_numbers.iter().collect();
@@ -936,6 +937,7 @@ impl World {
         }
         let module = nfo.root.str("LASTMODULE").unwrap_or_default().to_string();
         let time = nfo.root.float("TIMEPLAYED").unwrap_or(0.0) as f32;
+        let party_ai_style = nfo.root.int("PartyAIStyle").unwrap_or(0) as i32;
         let globals = read("globalvars")?;
         let party = read("partytable")?;
         let objects = read("objects")?;
@@ -981,6 +983,7 @@ impl World {
         self.effects.clear();
         self.load_module(&module)?;
         self.time = time;
+        self.party_ai_style = party_ai_style;
 
         let keys = self.keys();
         let keep: HashSet<ObjId> = std::iter::once(pc).collect();

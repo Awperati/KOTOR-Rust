@@ -144,3 +144,14 @@ fn the_party_ai_style_decides_who_joins_the_leaders_fight() {
     }
     assert!(!w.combat.target.contains_key(&mate));
 }
+
+#[test]
+fn the_party_ai_style_survives_a_save() {
+    let Some((mut w, _, _)) = world() else { return };
+    w.party_ai_style = 1;
+    let bytes = w.save_bytes("Style").unwrap();
+    let Some((mut b, _, _)) = world() else { return };
+    assert_eq!(b.party_ai_style, 0);
+    b.load_save(&bytes).unwrap();
+    assert_eq!(b.party_ai_style, 1);
+}
