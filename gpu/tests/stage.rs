@@ -1182,4 +1182,41 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
             .any(|t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfh")),
         "{worn:?}"
     );
+
+    // With FRAME_OUT set to a path, the hero in the variant, in full, is written there as a PNG; FRAME_SIZE (like 3840x2160)
+    // sizes it, and FRAME_PLAIN keeps the standard paint, for a frame beside it.
+    if let Ok(path) = std::env::var("FRAME_OUT") {
+        if std::env::var("FRAME_PLAIN").is_ok() {
+            s.game.world.set_player_underwear("");
+        }
+        let size = std::env::var("FRAME_SIZE").unwrap_or("1280x720".into());
+        let (w, h) = size.split_once('x').unwrap();
+        let (w, h): (u32, u32) = (w.parse().unwrap(), h.parse().unwrap());
+        s.set_view((w, h));
+        for _ in 0..400 {
+            s.update(DT);
+            if !s.game.world.in_dialogue() {
+                break;
+            }
+            s.game.world.dialogue_choose(0);
+        }
+        s.update(DT);
+        let at = s.game.world.object(pc).unwrap().position;
+        let heading = s.game.world.pc_mover.heading;
+        let cam = kotor_render::Camera {
+            eye: [
+                at[0] + heading.cos() * 3.2,
+                at[1] + heading.sin() * 3.2,
+                at[2] + 1.0,
+            ],
+            target: [at[0], at[1], at[2] + 0.95],
+            fov: 40.0,
+        };
+        let mut gpu = GpuRenderer::new(w, h).unwrap();
+        let still = s.static_scene().clone();
+        gpu.set_static_scene(&still, &mut |n| s.texture(n));
+        let moving = s.dynamic_scene();
+        let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+        std::fs::write(path, kotor_image::to_png(&img)).unwrap();
+    }
 }

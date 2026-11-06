@@ -322,41 +322,80 @@ fn dist2(a: &[f32; 3], b: &[f32; 3]) -> f32 {
     (0..3).map(|k| (a[k] - b[k]).powi(2)).sum()
 }
 
-/// A modder's underwear sheets, read from a local folder when it is there: only the middle body's three skins have one.
+/// The choices for a player's underwear: the standard paint and each mod folder, whose blues colour our own bra and briefs.
 #[test]
 fn the_variants_are_the_standard_paint_and_each_mod_folder() {
     let list = underwear::list_underwear_variants();
     assert_eq!(list[0].id, "", "the standard paint comes first");
     assert!(list[0].fits);
     for v in &list[1..] {
-        assert!(!v.id.is_empty() && !v.fits, "{v:?}");
+        assert!(!v.id.is_empty() && v.fits, "{v:?}");
         assert!(underwear::variant_dir(&v.id).is_some(), "{v:?}");
-    }
-    // Only the middle body's three skins have a sheet, and no name leaves the mods folder.
-    if let Some(v) = list.get(1) {
-        for (name, has) in [
-            ("pfbama01", true),
-            ("pfbamb03", true),
-            ("pfbam01", true),
-            ("pfbasa01", false),
-            ("pfbal01", false),
-            ("pmbam01", false),
-        ] {
-            assert_eq!(
-                underwear::variant_body_texture(&v.id, name).is_some(),
-                has,
-                "{name}"
-            );
-        }
-        assert!(underwear::variant_body_for_head(&v.id, "pfha01").is_some());
-        assert!(underwear::variant_body_for_head(&v.id, "pmha01").is_none());
+        assert!(underwear::variant_palette(&v.id).is_some(), "{v:?}");
     }
     assert!(underwear::variant_dir("..").is_none());
     assert!(underwear::variant_dir("a/b").is_none());
+    assert!(underwear::variant_palette("").is_none());
     assert_eq!(underwear::variant_texture_name("pfbam01", ""), "pfbam01");
     assert_eq!(
         underwear::split_variant("pfbam01@Blue"),
         ("pfbam01", "Blue")
     );
     assert_eq!(underwear::split_variant("pfbam01"), ("pfbam01", ""));
+}
+
+/// Our bra and briefs take the blues of a variant's sheet on every body and skin, and the skin stays as it was.
+#[test]
+fn a_variants_blues_colour_our_bra_and_briefs_and_leave_the_skin() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let Some(v) = underwear::list_underwear_variants().into_iter().nth(1) else {
+        return;
+    };
+    let palette = underwear::variant_palette(&v.id).unwrap();
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let blue =
+        |p: &[u8; 4]| i32::from(p[2]) > i32::from(p[0]) + 30 && i32::from(p[2]) > i32::from(p[1]);
+    for (body, name) in [
+        ("pfbas", "pfbasa01"),
+        ("pfbam", "pfbam01"),
+        ("pfbal", "pfbalb01"),
+    ] {
+        let plan = underwear::plan_for(&mut inst, body).unwrap();
+        let mut plain = load_texture(&mut inst, name).unwrap();
+        plan.apply(&mut plain);
+        let mut tinted = plain.clone();
+        plan.tint(&mut tinted, &palette);
+        let before = plain
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| blue(p))
+            .count();
+        let after = tinted
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| blue(p))
+            .count();
+        assert!(before < 1000, "{name}: {before} blue texels to start with");
+        assert!(after > 3000, "{name}: {after} blue texels once tinted");
+        // What is not cloth is where it was: most of the sheet is skin.
+        let same = plain
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(tinted.rgba.as_chunks::<4>().0)
+            .filter(|(a, b)| a == b)
+            .count();
+        assert!(
+            same > plain.rgba.len() / 4 / 2,
+            "{name}: only {same} texels kept"
+        );
+    }
 }

@@ -1535,10 +1535,6 @@ impl Stage {
             .entry(name.to_string())
             .or_insert_with(|| {
                 let name = plain.as_str();
-                // A player's chosen underwear, when its folder has a sheet for this body, stands in for our paint.
-                if let Some(sheet) = kotor_render::underwear::variant_body_texture(&variant, name) {
-                    return Some(sheet);
-                }
                 let mut img = hd
                     .and_then(|d| upscaled(&d, name))
                     .or_else(|| kotor_render::load_texture(inst, name))?;
@@ -1549,22 +1545,16 @@ impl Stage {
                         .or_insert_with(|| kotor_render::underwear::plan_for(inst, &body));
                     if let Some(plan) = plan {
                         plan.apply(&mut img);
+                        // A player's chosen underwear: our bra and briefs in the blues of its folder's sheet.
+                        if let Some(palette) = kotor_render::underwear::variant_palette(&variant) {
+                            plan.tint(&mut img, &palette);
+                        }
                     }
                 }
                 if conventional && kotor_render::underwear::is_hero_head(name) {
                     let plan = necks
-                        .entry(format!("{}@{variant}", name.to_ascii_lowercase()))
-                        .or_insert_with(|| {
-                            let plan = kotor_render::underwear::neck_plan_for(inst, name)?;
-                            // A neck fades to the tone of the body it goes with: the variant's, when that is worn.
-                            let tone =
-                                kotor_render::underwear::variant_body_for_head(&variant, name)
-                                    .and_then(|b| kotor_render::underwear::woman_tone_of(inst, &b));
-                            Some(match tone {
-                                Some(t) => plan.with_tone(t),
-                                None => plan,
-                            })
-                        });
+                        .entry(name.to_ascii_lowercase())
+                        .or_insert_with(|| kotor_render::underwear::neck_plan_for(inst, name));
                     if let Some(plan) = plan {
                         plan.apply(&mut img);
                     }

@@ -1694,13 +1694,7 @@ pub fn close_neck_gap(m: &mut Model, head: &str) {
 
 /// The tone of a woman's skin in a picture of the middle body: her upper arms.
 fn woman_tone(inst: &mut Install, texture: &str) -> Option<[f32; 3]> {
-    let picture = load_texture(inst, texture)?;
-    woman_tone_of(inst, &picture)
-}
-
-/// The same, of a picture given: a mod's, say.
-pub fn woman_tone_of(inst: &mut Install, picture: &Image) -> Option<[f32; 3]> {
-    let pixels = work_size(picture);
+    let pixels = work_size(&load_texture(inst, texture)?);
     let mdl = inst.read(MIDDLE_BODY, ResType::MDL).ok()?;
     let mdx = inst.read(MIDDLE_BODY, ResType::MDX).unwrap_or_default();
     let m = kotor_model::parse_model(&mdl, &mdx).ok()?;
@@ -1985,7 +1979,7 @@ pub struct UnderwearVariant {
     pub id: String,
     /// What the list shows.
     pub name: String,
-    /// Whether its sheets fit this game's bodies. A sheet for the sequel's layout does not, and is marked "needs fix".
+    /// Whether it fits this game's bodies. A sheet laid out for another body does not, and is marked "needs fix".
     pub fits: bool,
     /// Why not, or what it covers.
     pub note: String,
@@ -2033,14 +2027,17 @@ pub fn list_underwear_variants() -> Vec<UnderwearVariant> {
     let mut found: Vec<UnderwearVariant> = read
         .flatten()
         .filter(|e| e.path().is_dir())
-        .filter(|e| ['a', 'b', 'c'].iter().any(|f| sheet_file(&e.path(), *f).is_some()))
+        .filter(|e| {
+            ['a', 'b', 'c']
+                .iter()
+                .any(|f| sheet_file(&e.path(), *f).is_some())
+        })
         .filter_map(|e| e.file_name().into_string().ok())
         .map(|name| UnderwearVariant {
             id: name.clone(),
             name,
-            fits: false,
-            note: "Needs fix: its sheet is for the sequel's body, and the bra lands out of place on this one. Middle body only."
-                .to_string(),
+            fits: true,
+            note: "Our bra and briefs in the blues of its sheet, for every body".to_string(),
         })
         .collect();
     found.sort_by_key(|a| a.name.to_lowercase());
@@ -2057,37 +2054,6 @@ pub fn variant_dir(id: &str) -> Option<std::path::PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
-/// A body texture of the middle body's three skins as a variant paints it, if it has one. Only the middle body: the small and
-/// large bodies have other layouts of the sheet.
-pub fn variant_body_texture(id: &str, name: &str) -> Option<Image> {
-    let dir = variant_dir(id)?;
-    if body_of_texture(name)? != "pfbam" {
-        return None;
-    }
-    let n = name.to_ascii_lowercase();
-    let family = n
-        .strip_prefix("pfbam")?
-        .chars()
-        .next()
-        .filter(|c| "ab".contains(*c))
-        .unwrap_or('c');
-    let bytes = std::fs::read(sheet_file(&dir, family)?).ok()?;
-    kotor_image::parse_tga(&bytes).ok()
-}
-
-/// The variant's picture of the body a head goes with, for the tone its neck fades to.
-pub fn variant_body_for_head(id: &str, head: &str) -> Option<Image> {
-    variant_body_texture(id, &head_family(head)?)
-}
-
-impl NeckPlan {
-    /// The same plan for a body of another tone, such as a mod's.
-    pub fn with_tone(mut self, tone: [f32; 3]) -> NeckPlan {
-        self.tone = tone;
-        self
-    }
-}
-
 /// The name a texture goes by when a creature wears a variant: `pfbama01@Blue Undies-3-1`. The standard paint keeps its name.
 pub fn variant_texture_name(texture: &str, id: &str) -> String {
     if id.is_empty() {
@@ -2100,4 +2066,115 @@ pub fn variant_texture_name(texture: &str, id: &str) -> String {
 /// A texture's own name and its variant, from a name made by [`variant_texture_name`].
 pub fn split_variant(name: &str) -> (&str, &str) {
     name.split_once('@').unwrap_or((name, ""))
+}
+
+/// How far in levels (summed over red, green and blue) a texel must be from the skin beside it to count as cloth to recolour.
+const TINT_APART: f32 = 90.0;
+
+/// The blues of a variant's sheets: its dark, middle and light colours.
+pub type Palette = [[f32; 3]; 3];
+
+/// A variant's colours, read from the blue texels of its sheet at run time: the means of the darkest tenth, the middle fifth and
+/// the lightest tenth of them by brightness. None for the standard paint, a folder that is gone, or a sheet with no blue.
+pub fn variant_palette(id: &str) -> Option<Palette> {
+    let dir = variant_dir(id)?;
+    let bytes = ['a', 'b', 'c']
+        .iter()
+        .find_map(|f| std::fs::read(sheet_file(&dir, *f)?).ok())?;
+    let img = kotor_image::parse_tga(&bytes).ok()?;
+    let mut blues: Vec<([f32; 3], f32)> = img
+        .rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|p| {
+            i32::from(p[2]) > i32::from(p[0]) + 50 && i32::from(p[2]) > i32::from(p[1]) + 10
+        })
+        .map(|p| {
+            let c = [f32::from(p[0]), f32::from(p[1]), f32::from(p[2])];
+            (c, 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2])
+        })
+        .collect();
+    if blues.len() < 100 {
+        return None;
+    }
+    blues.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let mean = |from: f32, to: f32| {
+        let n = blues.len() as f32;
+        let part = &blues[(n * from) as usize..((n * to) as usize).max((n * from) as usize + 1)];
+        let mut s = [0.0f32; 3];
+        for (c, _) in part {
+            for k in 0..3 {
+                s[k] += c[k];
+            }
+        }
+        s.map(|v| v / part.len() as f32)
+    };
+    Some([mean(0.0, 0.1), mean(0.4, 0.6), mean(0.9, 1.0)])
+}
+
+impl Plan {
+    /// Turn the cloth that is left, the bra's cups, band and straps and the briefs, to the blues of `palette`: each texel's
+    /// brightness, against the brightest cloth, picks a colour on the way from dark through middle to light. Skin is not
+    /// touched. For a picture this plan was applied to, at its own size.
+    pub fn tint(&self, img: &mut Image, palette: &Palette) {
+        let (w, h) = (img.width as usize, img.height as usize);
+        let at = |x: usize, y: usize| (y * WORK / h.max(1)) * WORK + x * WORK / w.max(1);
+        // The sheet's skin, as it is now: what lies near that is skin whatever the marks say, as a shaded thigh may.
+        let skin = {
+            let (mut sum, mut count) = ([0.0f32; 3], 0.0f32);
+            for y in (0..h).step_by(3) {
+                for x in (0..w).step_by(3) {
+                    if self.marks[at(x, y)] == SKIN {
+                        for k in 0..3 {
+                            sum[k] += f32::from(img.rgba[(y * w + x) * 4 + k]);
+                        }
+                        count += 1.0;
+                    }
+                }
+            }
+            sum.map(|v| v / count.max(1.0))
+        };
+        let far = |p: &[u8]| {
+            (0..3)
+                .map(|k| (f32::from(p[k]) - skin[k]).abs())
+                .sum::<f32>()
+                > TINT_APART
+        };
+        let light =
+            |p: &[u8]| 0.3 * f32::from(p[0]) + 0.59 * f32::from(p[1]) + 0.11 * f32::from(p[2]);
+        let cloth = |x: usize, y: usize, rgba: &[u8]| {
+            matches!(self.marks[at(x, y)], KEEP | CUP | PAINT) && far(&rgba[(y * w + x) * 4..])
+        };
+        let mut lums = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                if cloth(x, y, &img.rgba) {
+                    lums.push(light(&img.rgba[(y * w + x) * 4..]));
+                }
+            }
+        }
+        if lums.is_empty() {
+            return;
+        }
+        lums.sort_by(f32::total_cmp);
+        let top = lums[(lums.len() * 98 / 100).min(lums.len() - 1)].max(1.0);
+        for y in 0..h {
+            for x in 0..w {
+                if !cloth(x, y, &img.rgba) {
+                    continue;
+                }
+                let p = (y * w + x) * 4;
+                let t = (light(&img.rgba[p..]) / top).clamp(0.0, 1.0);
+                let (a, b, f) = if t < 0.5 {
+                    (palette[0], palette[1], t * 2.0)
+                } else {
+                    (palette[1], palette[2], (t - 0.5) * 2.0)
+                };
+                for k in 0..3 {
+                    img.rgba[p + k] = (a[k] + (b[k] - a[k]) * f + 0.5).clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+    }
 }
