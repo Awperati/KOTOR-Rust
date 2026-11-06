@@ -73,6 +73,36 @@ fn log_of(w: &mut World, calls: &[(&str, Vec<Vec<u8>>)]) -> Vec<String> {
 }
 
 #[test]
+fn a_walk_inside_a_walk_leaves_the_outer_one_where_it_was() {
+    let Some(mut w) = world() else { return };
+    let shape = |size: f32, name: &'static str| -> Vec<(&'static str, Vec<Vec<u8>>)> {
+        vec![
+            ("", vec![ci(1), ci(0)]),
+            ("GetLocation", vec![co(0)]),
+            (name, vec![cf(size), ci(4)]),
+            ("GetTag/1", vec![]),
+            ("PrintString/1", vec![]),
+        ]
+    };
+    let with_count = |mut c: Vec<(&'static str, Vec<Vec<u8>>)>| {
+        c[2].0 = if c[2].0 == "GetFirstObjectInShape" {
+            "GetFirstObjectInShape/5"
+        } else {
+            "GetNextObjectInShape/5"
+        };
+        c
+    };
+    let mut calls = with_count(shape(40.0, "GetFirstObjectInShape"));
+    calls.extend(with_count(shape(0.01, "GetFirstObjectInShape")));
+    calls.extend(with_count(shape(0.01, "GetNextObjectInShape")));
+    calls.extend(with_count(shape(40.0, "GetNextObjectInShape")));
+    let out = log_of(&mut w, &calls);
+    let me = w.object(w.pc).unwrap().tag.clone();
+    assert_eq!(out[..3], [me.clone(), me.clone(), String::new()], "{out:?}");
+    assert!(!out[3].is_empty() && out[3] != me, "{out:?}");
+}
+
+#[test]
 fn string_routines_work_on_characters() {
     let Some(mut w) = world() else { return };
     let out = log_of(

@@ -398,9 +398,8 @@ pub struct World {
     pub trace: Option<Vec<String>>,
     /// Which spell cast each effect (`GetHasSpellEffect`).
     pub(crate) effect_spell: HashMap<u32, i32>,
-    pub(crate) shape_hits: Vec<ObjId>,
-    pub(crate) shape_next: usize,
-    pub(crate) shape_started: bool,
+    /// What is left of each `GetFirstObjectInShape` walk, by size and mask.
+    pub(crate) shape_walks: HashMap<(u32, i32), std::collections::VecDeque<ObjId>>,
     tables: HashMap<String, Option<Rc<TwoDa>>>,
     /// What the item screens read from UTI files, by template.
     pub(crate) item_templates: HashMap<String, Rc<crate::items::ItemTemplate>>,
@@ -552,9 +551,7 @@ impl World {
             conversation: None,
             trace: None,
             effect_spell: HashMap::new(),
-            shape_hits: Vec::new(),
-            shape_next: 0,
-            shape_started: false,
+            shape_walks: HashMap::new(),
             tables: HashMap::new(),
             item_templates: HashMap::new(),
         };

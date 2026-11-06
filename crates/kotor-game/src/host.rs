@@ -706,13 +706,15 @@ impl Host for Adapter<'_> {
                 // Shapes are all treated as a circle of radius `size` round the location (assumption), filtered by
                 // the object-type mask (1 creature, 2 item, 4 trigger, 8 door, 64 placeable).
                 // A Next with no First before it starts a new walk (the powers' scripts do this; assumption).
-                if name == "GetFirstObjectInShape" || !self.world.shape_started {
-                    self.world.shape_started = true;
+                // **Assumption:** each size and mask walks on its own. `k_ai_master` walks 4 m round each creature of a
+                // 40 m walk, and with one walk its outer Next began again for good.
+                let (r, mask) = (
+                    float(args, 1),
+                    if args.len() > 4 { int(args, 4)? } else { 1 },
+                );
+                let key = (r.to_bits(), mask);
+                if name == "GetFirstObjectInShape" || !self.world.shape_walks.contains_key(&key) {
                     let at = self.location(args.get(2)).map_or([0.0; 3], |l| l.0);
-                    let (r, mask) = (
-                        float(args, 1),
-                        if args.len() > 4 { int(args, 4)? } else { 1 },
-                    );
                     let mut c: Vec<(f32, ObjId)> = self
                         .world
                         .objects
@@ -731,13 +733,16 @@ impl Host for Adapter<'_> {
                         .map(|o| (dist2d(o.position, at), o.id))
                         .collect();
                     c.sort_by(|a, b| a.0.total_cmp(&b.0));
-                    self.world.shape_hits = c.into_iter().map(|x| x.1).collect();
-                    self.world.shape_next = 0;
+                    let hits = c.into_iter().map(|x| x.1).collect();
+                    self.world.shape_walks.insert(key, hits);
                 }
-                let hit = self.world.shape_hits.get(self.world.shape_next).copied();
-                self.world.shape_next += 1;
+                let hit = self
+                    .world
+                    .shape_walks
+                    .get_mut(&key)
+                    .and_then(|w| w.pop_front());
                 if hit.is_none() {
-                    self.world.shape_started = false;
+                    self.world.shape_walks.remove(&key);
                 }
                 Some(Value::Object(hit.unwrap_or(OBJECT_INVALID)))
             }

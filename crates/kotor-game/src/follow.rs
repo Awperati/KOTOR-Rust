@@ -109,8 +109,11 @@ impl World {
         let reach = 2.0 * CREATURE_RADIUS;
         let on = |c: &[f32; 2], p: [f32; 3]| (p[0] - c[0]).hypot(p[1] - c[1]) < reach;
         let next = self.pc_mover.next_waypoint();
-        if let Some(next) = next.filter(|_| self.pc_mover.on_last_leg()) {
-            // Who stands there is often who the player was walking up to, as in a fight.
+        // Not in a fight: its route ends in reach of the foe, and whoever stands there is someone else. A beaten duellist
+        // stood between the player and the next one's blaster for 90 s.
+        let fighting = self.combat.target.contains_key(&self.pc);
+        if let Some(next) = next.filter(|_| self.pc_mover.on_last_leg() && !fighting) {
+            // Who stands there is often who the player was walking up to.
             if blockers.iter().any(|c| on(c, next)) && dist2d(pos, next) < 2.0 * reach {
                 self.pc_mover.stop();
                 self.pc_mover.pos = old;

@@ -178,6 +178,45 @@ fn the_player_stops_at_someone_standing_where_its_route_ends() {
 }
 
 #[test]
+fn someone_standing_in_the_way_does_not_end_a_chase() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m02ae").unwrap();
+    let id = w.by_tag("TarisMaleC021")[0];
+    let at = w.object(id).unwrap().position;
+    let pc = w.pc;
+    let foe = w
+        .objects
+        .values()
+        .find(|o| o.kind == Kind::Creature && o.id != id && o.id != pc)
+        .unwrap()
+        .id;
+    // The chase's route ends 1.6 m short of the foe: on the bystander, as the beaten duellist stood in the ring.
+    let (near, far) = [[1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0]]
+        .iter()
+        .map(|d: &[f32; 2]| {
+            (
+                [at[0] - d[0] * 1.6, at[1] - d[1] * 1.6, at[2]],
+                [at[0] + d[0] * 3.0, at[1] + d[1] * 3.0, at[2]],
+            )
+        })
+        .find(|(a, b)| w.nav.as_ref().unwrap().find_path(*b, *a).is_some())
+        .unwrap();
+    w.teleport(foe, near);
+    w.teleport(pc, far);
+    w.attack(pc, foe);
+    run(&mut w, 8.0, |w| {
+        let (p, q) = (w.pc_mover.pos, w.object(foe).unwrap().position);
+        (p[0] - q[0]).hypot(p[1] - q[1]) <= kotor_game::MELEE_REACH
+    });
+    let (p, q) = (w.pc_mover.pos, w.object(foe).unwrap().position);
+    let gap = (p[0] - q[0]).hypot(p[1] - q[1]);
+    assert!(gap <= kotor_game::MELEE_REACH, "{gap} m away");
+}
+
+#[test]
 fn what_is_not_useable_is_never_offered() {
     let Some(mut w) = world() else { return };
     let props: Vec<(u32, [f32; 3])> = w
