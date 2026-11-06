@@ -92,6 +92,12 @@ impl World {
         }
     }
 
+    /// That column for this creature: under the early rules a non-Jedi goes by the strictest, a Guardian's.
+    fn power_column_for(&mut self, id: ObjId, class: i32) -> Option<&'static str> {
+        self.power_level_column(class)
+            .or_else(|| self.is_early(id).then_some("guardian"))
+    }
+
     /// The feats a class has anything to do with, as chains from a feat to what it leads to.
     pub fn feat_choices(&mut self, id: ObjId) -> Vec<Vec<Choice>> {
         let Some(class) = self.objects.get(&id).map(|o| o.class) else {
@@ -224,7 +230,8 @@ impl World {
         let Some(class) = self.objects.get(&id).map(|o| o.class) else {
             return Vec::new();
         };
-        let (Some(col), Some(t)) = (self.power_level_column(class), self.table("spells")) else {
+        let col = self.power_column_for(id, class);
+        let (Some(col), Some(t)) = (col, self.table("spells")) else {
             return Vec::new();
         };
         let listed: Vec<usize> = (0..t.row_count())
@@ -272,7 +279,8 @@ impl World {
         else {
             return false;
         };
-        let (Some(col), Some(t)) = (self.power_level_column(class), self.table("spells")) else {
+        let col = self.power_column_for(id, class);
+        let (Some(col), Some(t)) = (col, self.table("spells")) else {
             return false;
         };
         let row = power.max(0) as usize;

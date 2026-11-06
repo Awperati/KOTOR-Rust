@@ -417,7 +417,11 @@ impl World {
         let up = LevelUp {
             level,
             hp: self.hp_for_level(class, con, level),
-            force: self.force_for_level(class, level),
+            force: if self.is_early(id) {
+                self.early_points_a_level(id)
+            } else {
+                self.force_for_level(class, level)
+            },
             skill_points: self.skill_points_at(class, int, level),
             regular_feats: self.feat_slots_at(class, level).0,
             bonus_feats: self.feat_slots_at(class, level).1,
@@ -499,7 +503,7 @@ impl World {
 
     /// Whether the party and player are the only side still fighting alive: nobody hostile is attacking them or
     /// being attacked by them.
-    fn fight_is_over(&self) -> bool {
+    pub(crate) fn fight_is_over(&self) -> bool {
         let mine = |id: &ObjId| *id == self.pc || self.party.contains(id);
         !self.combat.target.iter().any(|(a, t)| {
             let alive = |id: &ObjId| self.objects.get(id).is_some_and(|o| !o.dead && !o.down);

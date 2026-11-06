@@ -83,7 +83,7 @@ impl Stage {
         };
         let Some(up) = w.level_up(who) else { return };
         let ability_points = w.ability_points_at(up.level);
-        let power_points = w.power_slots_at(before.class, up.level);
+        let power_points = w.power_slots_for(who, up.level);
         self.menus.level = Some(Draft {
             who,
             page: before.clone(),

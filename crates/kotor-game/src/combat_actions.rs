@@ -19,6 +19,8 @@ pub struct CombatChoice {
     pub action: CombatAction,
     pub name: u32,
     pub icon: String,
+    /// False when it is shown greyed: a power too dear for now.
+    pub usable: bool,
 }
 
 /// How a feat changes one attack.
@@ -134,6 +136,7 @@ impl World {
                     action: CombatAction::Feat(*feat),
                     name: t.int(row, "name").unwrap_or(0) as u32,
                     icon: t.get(row, "icon").unwrap_or("").to_ascii_lowercase(),
+                    usable: true,
                 },
             ));
         }
@@ -152,12 +155,15 @@ impl World {
         let mut out = Vec::new();
         for spell in known {
             let row = spell.max(0) as usize;
-            let cost = self.spell_cost_and_range(spell).map_or(i32::MAX, |c| c.0);
-            if t.int(row, "forcehostile").is_some() && cost <= force {
+            let cost = self.power_cost(id, spell).unwrap_or(i32::MAX);
+            // Under the early rules one too dear stays on its slot, greyed. As the game has it, it goes.
+            let usable = cost <= force;
+            if t.int(row, "forcehostile").is_some() && (usable || self.is_early(id)) {
                 out.push(CombatChoice {
                     action: CombatAction::Power(spell),
                     name: t.int(row, "name").unwrap_or(0) as u32,
                     icon: t.get(row, "iconresref").unwrap_or("").to_ascii_lowercase(),
+                    usable,
                 });
             }
         }

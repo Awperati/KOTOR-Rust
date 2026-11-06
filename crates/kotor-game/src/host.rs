@@ -1515,6 +1515,12 @@ impl Host for Adapter<'_> {
                     .converse(caller, target, &dlg, &mut crate::FirstReply)
                     .is_ok())
             }
+            "AddMultiClass" => {
+                let (class, id) = (int(args, 0)?, self.obj(caller, args, 1));
+                self.record(name, args);
+                self.world.add_multi_class(id, class);
+                None
+            }
             "SetPartyLeader" => {
                 let slot = int(args, 0)?;
                 let id = if slot < 0 {

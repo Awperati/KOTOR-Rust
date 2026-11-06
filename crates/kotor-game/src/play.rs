@@ -591,6 +591,7 @@ impl World {
         }
         self.update_triggers();
         self.update_encounters();
+        self.update_early_force(dt);
         if let Some((module, wp)) = self.transition_request.take() {
             if let Err(e) = self.transition(&module, &wp) {
                 self.errors.push(format!("transition to {module}: {e}"));

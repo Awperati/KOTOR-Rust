@@ -429,6 +429,7 @@ impl World {
                     list_of(self.bench.iter(), |(slot, b)| bench_struct(*slot, b)),
                 ),
                 ("PT_GOLD", Value::Int(self.gold)),
+                ("RS_EARLY_FORCE", Value::Int(self.early_force as i32)),
                 (
                     "RS_ENCOUNTERS",
                     Value::String(
@@ -1010,6 +1011,8 @@ impl World {
             .filter_map(|b| Some((b.int("Slot")? as i32, bench_from(b))))
             .collect();
         self.gold = p.int("PT_GOLD").unwrap_or(0) as i32;
+        // A save from before this has none: such a game began with the rule off.
+        self.early_force = p.int("RS_EARLY_FORCE").unwrap_or(0) != 0;
         self.spent_encounters = p
             .str("RS_ENCOUNTERS")
             .unwrap_or_default()

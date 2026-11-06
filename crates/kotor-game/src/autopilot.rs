@@ -464,6 +464,15 @@ impl Autopilot {
                 if id == pc {
                     self.log.push(format!("took level {}", up.level));
                 }
+                if w.is_early(id) {
+                    for _ in 0..w.power_slots_for(id, up.level) {
+                        if let Some(power) = w.recommended_power(id) {
+                            if let Some(o) = w.object_mut(id) {
+                                o.spells.insert(power);
+                            }
+                        }
+                    }
+                }
             }
             let Some(class) = w.object(id).map(|o| o.class) else {
                 continue;

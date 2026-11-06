@@ -402,6 +402,7 @@ impl Stage {
         let e = |e: kotor_core::Error| e.to_string();
         let mut world = Stage::fresh_world(&self.dir, self.original)?;
         world.load_module(module).map_err(e)?;
+        world.early_force = self.menus.early_force_on && self.settings().early_force;
         // **Assumption:** with no character made on the screens the player is the recommended Soldier.
         let spec = match self.take_new_character() {
             Some(spec) => spec,

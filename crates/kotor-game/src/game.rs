@@ -107,6 +107,10 @@ impl Game {
         self.world.step(self.dt);
         self.steps += 1;
         self.start_combat_clips();
+        // A power has its own gesture. A body without the clip keeps its idle.
+        for id in std::mem::take(&mut self.world.casts) {
+            self.play_once(id, "castout1", COMBAT_CLIP_SECONDS);
+        }
         let pc = self.world.pc;
         let ids: Vec<ObjId> = self
             .world

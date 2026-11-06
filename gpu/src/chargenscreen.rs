@@ -129,6 +129,11 @@ impl Draft {
 
 impl Stage {
     /// New Game goes through these screens. Off unless asked for, as a test wants a game at once.
+    /// Whether Settings' early Force choice counts: off for tests and the pilot, which play the game's own rules.
+    pub fn enable_early_force(&mut self, on: bool) {
+        self.menus.early_force_on = on;
+    }
+
     pub fn enable_chargen(&mut self, on: bool) {
         self.menus.chargen_on = on;
     }

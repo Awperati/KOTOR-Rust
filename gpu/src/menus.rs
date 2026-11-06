@@ -229,6 +229,8 @@ pub struct Settings {
     pub subtitles: bool,
     /// Underwear style: Conventional, or the game's own.
     pub conventional_underwear: bool,
+    /// Early Force sensitivity, for new games. A game keeps what it began with, in its save.
+    pub early_force: bool,
     pub minimap: bool,
     pub floating_numbers: bool,
     /// What pauses the game by itself.
@@ -262,6 +264,7 @@ impl Default for Settings {
             hide_unequippable: false,
             subtitles: true,
             conventional_underwear: true,
+            early_force: true,
             minimap: true,
             floating_numbers: true,
             pause_round: false,
@@ -282,7 +285,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -306,6 +309,7 @@ impl Settings {
             self.reverse_buttons,
             self.vsync,
             self.conventional_underwear,
+            self.early_force,
         )
     }
 
@@ -331,6 +335,7 @@ impl Settings {
                 "hide_unequippable" => s.hide_unequippable = v == "true",
                 "subtitles" => s.subtitles = v == "true",
                 "conventional_underwear" => s.conventional_underwear = v == "true",
+                "early_force" => s.early_force = v == "true",
                 "minimap" => s.minimap = v == "true",
                 "floating_numbers" => s.floating_numbers = v == "true",
                 "pause_round" => s.pause_round = v == "true",
@@ -505,6 +510,7 @@ pub(super) struct Menus {
     bench_turn: f32,
     /// New Game goes through the character's screens, the one being made, and the one made.
     chargen_on: bool,
+    pub(super) early_force_on: bool,
     chargen: Option<chargenscreen::Draft>,
     new_character: Option<kotor_game::CharacterSpec>,
     /// The mist of the screen it was made for.

@@ -2143,6 +2143,30 @@ fn the_main_menu_has_its_scene_behind_a_hole_and_it_moves() {
 }
 
 /// At the character's screens, from the main menu.
+#[test]
+fn a_new_game_has_early_force_when_the_viewer_allows_it_and_settings_say_so() {
+    let Some(mut s) = at_menu() else {
+        return;
+    };
+    s.enable_early_force(true);
+    press(&mut s, "BTN_NEWGAME");
+    let pc = s.game.world.pc;
+    assert!(s.game.world.early_force);
+    let o = s.game.world.object(pc).unwrap();
+    assert!(o.spells.contains(&kotor_game::FORCE_PUSH));
+    assert!(o.max_force >= 12);
+    assert!(!s.game.world.combat_powers(pc).is_empty());
+
+    // Tests and the pilot play the game's own rules, whatever Settings says.
+    let Some(mut s) = at_menu() else {
+        return;
+    };
+    press(&mut s, "BTN_NEWGAME");
+    assert!(!s.game.world.early_force);
+    let pc = s.game.world.pc;
+    assert_eq!(s.game.world.object(pc).unwrap().max_force, 0);
+}
+
 fn at_chargen(name: &str) -> Option<Stage> {
     let mut s = at_menu()?;
     temp_saves(&mut s, name);

@@ -311,6 +311,7 @@ impl World {
             o.feat_slots = (reg, bon);
             o.feats.extend(granted);
         }
+        self.start_early(pc);
         for (skill, ranks) in &spec.skills {
             for _ in 0..*ranks {
                 self.buy_skill_rank(pc, *skill)?;

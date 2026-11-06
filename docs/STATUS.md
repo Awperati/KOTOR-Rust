@@ -1,7 +1,7 @@
 # Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**368 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**380 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -132,6 +132,7 @@ Fixed on the way, earliest first, each with a test:
 20. **Talks did not move quests.** Their state is in `QuestEntry`, and the code read `PlotIndex`, which is nearly always -1. Only scripts moved quests before this.
 21. **The pilot took a reply a real player dies of.** `k_ptar_killpc` sets the plot guard at `tar03_underdoor`, who hits at +21, on the player. It now avoids a reply that can turn someone who cannot be hurt. **That this rule covers all such replies is an assumption.** It takes one only when nothing else is on offer.
 22. **`ActionUnlockObject` and `ActionLockObject` did nothing.** So the guard could not let anyone by, and the undercity's inside was out of reach. **That they always work, with no skill check, is an assumption.**
+27. **Early Force sensitivity,** the owner's change, off the story and on by default for new games: `docs/EARLYFORCE.md`. **`AddMultiClass` now works**, which Dantooine needs either way.
 26. **Shops, encounters, grenades.** `OpenStore` now opens a store from its `.utm`, with prices from `Cost` and `AddCost` and its mark-ups, and the pilot sells spares and buys medpacks. Encounters in an area's `Encounter List` bring out `RecCreatures`, once. `use_item_on` throws a grenade. **How the game scales encounters, and a shop's price formula, are assumptions.** The store screen is not built yet.
 25. **Droids, rakghouls and 24 other appearances stood in a T-pose.** 26 of the 125 appearances the 21 modules can field had no idle: 25 carry their clips in their own model and the code read only supermodels, and they name clips `cpause1` and `cwalk`, not `pause1` and `walk`. A body's own clips now count, and a person's clip names find a creature's. Which clip stands in for which is **an assumption**, read from the names.
 24. **A skill counts for the leader.** The pilot now sends whoever is best: Security for a plain lock, Computer Use for a terminal. A door with a say of its own still answers to who it answers to. It also takes skills and feats when immortal.

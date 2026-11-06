@@ -391,6 +391,11 @@ pub struct World {
     pub last_closed_by: ObjId,
     pub(crate) filled: std::collections::HashSet<ObjId>,
     pub(crate) conv: Option<crate::dialogue::ConvRun>,
+    /// The owner's early Force rules hold for this game. See `docs/EARLYFORCE.md`.
+    pub early_force: bool,
+    pub(crate) force_regen: f32,
+    /// Who has just cast a power, for the animation.
+    pub(crate) casts: Vec<ObjId>,
     /// The shop that is open, and what never runs out in any shop.
     pub store: Option<crate::store::StoreOpen>,
     pub(crate) store_infinite: BTreeSet<ObjId>,
@@ -519,6 +524,9 @@ impl World {
             effect_cursor: HashMap::new(),
             locations: Vec::new(),
             available: BTreeMap::new(),
+            early_force: false,
+            force_regen: 0.0,
+            casts: Vec::new(),
             store: None,
             store_infinite: BTreeSet::new(),
             encounters: Vec::new(),

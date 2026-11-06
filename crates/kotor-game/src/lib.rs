@@ -8,6 +8,7 @@ mod combat;
 mod combat_actions;
 mod cutscene;
 mod dialogue;
+mod earlyforce;
 mod encounters;
 mod follow;
 mod force;
@@ -40,6 +41,7 @@ pub use combat::{
 pub use combat_actions::{CombatAction, CombatChoice};
 pub use cutscene::{Beat, CameraShot, Conversation, LengthFrom, Lookup, Player, Step, Timeline};
 pub use dialogue::{Chooser, FirstReply, Line, LineKind};
+pub use earlyforce::FORCE_PUSH;
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use game::{Clip, Game, Pose};

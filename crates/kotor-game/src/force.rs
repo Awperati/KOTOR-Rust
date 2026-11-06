@@ -217,9 +217,10 @@ impl World {
         target: ObjId,
         cheat: bool,
     ) -> Result<(), String> {
-        let (cost, range) = self
+        let (_, range) = self
             .spell_cost_and_range(spell)
             .ok_or_else(|| format!("no power {spell}"))?;
+        let cost = self.power_cost(caster, spell).unwrap_or(0);
         let Some(c) = self.objects.get(&caster) else {
             return Err("no caster".into());
         };
@@ -251,6 +252,7 @@ impl World {
             }
         }
         self.combat.casters.insert(caster);
+        self.casts.push(caster);
         self.events.push(format!(
             "{} casts power {spell} on {}",
             self.describe(caster),
