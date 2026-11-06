@@ -68,6 +68,13 @@ pub enum Action {
 }
 
 /// A command scheduled by `DelayCommand`.
+/// How many actions one object may finish in one tick.
+const ACTIONS_PER_TICK: u32 = 64;
+/// How long a conversation may wait on an `ActionPauseConversation`.
+pub(crate) const PAUSE_LIMIT_SECONDS: f32 = 60.0;
+/// How long a walk that was already over takes.
+const STAND_SECONDS: f32 = 0.5;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Delayed {
     pub due: f32,
@@ -89,6 +96,10 @@ pub struct Object {
     pub hp: i32,
     pub dead: bool,
     pub party_member: bool,
+    /// Damage stops at one hit point: `k_pend_cut19` holds the dark Jedi up this way until the duel may end.
+    pub min_one_hp: bool,
+    /// Its spawn script has run.
+    pub spawned: bool,
     pub locked: bool,
     pub level: i32,
     /// Event scripts by field name (`ScriptDialogue`, `OnEnter`, `OnUsed`, ...).
@@ -184,6 +195,8 @@ impl Object {
             hp: 10,
             dead: false,
             party_member: false,
+            min_one_hp: false,
+            spawned: false,
             locked: false,
             level: 1,
             scripts: BTreeMap::new(),
@@ -311,6 +324,12 @@ pub struct World {
     pub(crate) effect_expiry: HashMap<u32, f32>,
     /// Every player-side creature is knocked out.
     pub game_over: bool,
+    /// An `ActionPauseConversation` ran and its resume has not yet.
+    pub(crate) conv_paused: bool,
+    /// When the pause in force began.
+    pub(crate) conv_paused_at: Option<f32>,
+    /// The character the player made: `SetPartyLeader(-1)` hands control back to it.
+    pub hero: ObjId,
     /// Conversations wait for the player instead of running to the end (see `World::dialogue_view`).
     pub interactive_dialogue: bool,
     /// The direction the player is being steered this step, and whether at a run.
@@ -452,6 +471,9 @@ impl World {
             spell: crate::force::SpellContext::default(),
             effect_expiry: HashMap::new(),
             game_over: false,
+            conv_paused: false,
+            conv_paused_at: None,
+            hero: 1,
             interactive_dialogue: false,
             steer: None,
             opened: None,
@@ -518,6 +540,10 @@ impl World {
 
     /// Objects with this tag, lowest id first.
     pub fn by_tag(&self, tag: &str) -> Vec<ObjId> {
+        // **Assumption:** scripts ask for the player with an empty tag. `k_pend_traskdl40` sends Trask to tag "".
+        if tag.is_empty() {
+            return vec![self.pc];
+        }
         self.objects
             .values()
             .filter(|o| o.tag.eq_ignore_ascii_case(tag))
@@ -651,8 +677,11 @@ impl World {
             if placement.float("XOrientation").is_some() {
                 o.facing = f("YOrientation").atan2(f("XOrientation")).to_degrees();
             }
-            if let Some(t) = tag.filter(|t| !t.is_empty()) {
-                o.tag = t;
+            // A tag in the area beats the template's: every waypoint shares one template, as `end_jump_pc` shows.
+            if placement.str("Tag").is_none_or(str::is_empty) {
+                if let Some(t) = tag.filter(|t| !t.is_empty()) {
+                    o.tag = t;
+                }
             }
             if let Some(g) = &utx {
                 creature_defaults(o, &g.root);
@@ -661,6 +690,7 @@ impl World {
                 o.base_item = g.root.int("BaseItem").unwrap_or(0) as i32;
                 o.stack = g.root.int("StackSize").unwrap_or(1).max(1) as i32;
                 o.plot = g.root.int("Plot").is_some_and(|p| p != 0);
+                o.min_one_hp = g.root.int("Min1HP").is_some_and(|m| m != 0);
             }
             if let Some(p) = perception {
                 o.perception = p as f32;
@@ -879,11 +909,17 @@ impl World {
         let ids: Vec<ObjId> = self.objects.keys().copied().collect();
         for id in ids {
             let mut budget = dt;
+            // A queue that keeps adding to itself goes on next tick, and cannot hang this one.
+            let mut left = ACTIONS_PER_TICK;
             while let Some(head) = self
                 .objects
                 .get_mut(&id)
                 .and_then(|o| o.actions.front_mut())
             {
+                if left == 0 {
+                    break;
+                }
+                left -= 1;
                 match head {
                     Action::Wait(left) => {
                         if *left > budget {
@@ -896,12 +932,17 @@ impl World {
                         }
                     }
                     Action::MoveTo { .. } => {
+                        let from = self.objects.get(&id).map(|o| o.position);
                         if !self.step_move(id, budget) {
                             break;
                         }
                         budget = 0.0;
                         if let Some(o) = self.objects.get_mut(&id) {
                             o.actions.pop_front();
+                            // Patrols in `tar_m02ac` send a creature to where it already stands and then do it again.
+                            if from == Some(o.position) {
+                                o.actions.push_front(Action::Wait(STAND_SECONDS));
+                            }
                         }
                     }
                     _ => {
@@ -933,11 +974,20 @@ impl World {
                 cheat,
             } => {
                 if let Err(e) = self.cast_spell(id, spell, target, cheat) {
+                    // The round still ends, or the AI would never choose again.
+                    self.combat.casters.insert(id);
                     self.events
                         .push(format!("{} cannot cast {spell}: {e}", self.describe(id)));
                 }
             }
-            Action::Recorded(what) => self.events.push(format!("{}: {what}", self.describe(id))),
+            Action::Recorded(what) => {
+                match what.as_str() {
+                    "ActionPauseConversation" => self.conv_paused = true,
+                    "ActionResumeConversation" => self.conv_paused = false,
+                    _ => {}
+                }
+                self.events.push(format!("{}: {what}", self.describe(id)));
+            }
             Action::DoCommand { script, state } => {
                 let _ = self.run_saved(&script, &state, id);
             }
@@ -1036,12 +1086,16 @@ impl World {
         ) else {
             return 50;
         };
-        // Rows are factions by id; each faction's column is named after its row label.
-        let label = table
-            .get(t.faction.max(0) as usize, "label")
-            .map(str::to_ascii_lowercase);
-        label
-            .and_then(|l| table.int(s.faction.max(0) as usize, &l))
+        // Rows are factions by id; each faction's column is named after its row label. There is no `player` column, so
+        // how anyone sees the player comes from the player's row, read the other way. Without this no enemy fights back.
+        let label = |f: i32| {
+            table
+                .get(f.max(0) as usize, "label")
+                .map(str::to_ascii_lowercase)
+        };
+        let seen = |from: i32, of: i32| label(of).and_then(|l| table.int(from.max(0) as usize, &l));
+        seen(s.faction, t.faction)
+            .or_else(|| seen(t.faction, s.faction))
             .map_or(50, |v| v as i32)
     }
 
@@ -1109,8 +1163,28 @@ impl World {
         self.events.iter().any(|e| e.starts_with(prefix))
     }
 
+    /// A creature's `ScriptSpawn`, once. This is where it gets its AI flags and listening patterns: `k_pend_sith_9`
+    /// keeps the soldiers behind the first door from fighting until their cutscene turns them on.
+    pub(crate) fn run_spawn_script(&mut self, id: ObjId) {
+        if let Some(o) = self.objects.get_mut(&id) {
+            if !o.spawned {
+                o.spawned = true;
+                self.run_event(id, "ScriptSpawn");
+            }
+        }
+    }
+
     /// Run the area's `OnEnter` script with the player as the entering object, as when a module is entered.
     pub fn enter_area(&mut self) {
+        let waiting: Vec<ObjId> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Creature && !o.spawned)
+            .map(|o| o.id)
+            .collect();
+        for id in waiting {
+            self.run_spawn_script(id);
+        }
         self.entering = self.pc;
         let area = self.area;
         let script = self

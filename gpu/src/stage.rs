@@ -648,6 +648,9 @@ impl Stage {
         } else {
             self.beat_time += dt;
         }
+        if self.game.world.conversation_paused() {
+            return;
+        }
         if let Some(left) = self.line_left.as_mut() {
             *left -= dt;
             if *left <= 0.0 {
@@ -996,6 +999,13 @@ impl Stage {
         if n >= 1 && n <= count {
             self.line_left = None;
             self.game.world.dialogue_choose(n - 1);
+        }
+    }
+
+    /// Tab: the next party member takes over.
+    pub fn next_leader(&mut self) {
+        if !self.game.world.in_dialogue() {
+            self.game.world.next_leader();
         }
     }
 

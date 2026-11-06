@@ -352,6 +352,8 @@ fn effects_jumps_factions_and_experience_levels_work() {
     let Some(mut w) = world() else { return };
     let trask = w.by_tag("end_trask")[0];
     let pc = w.pc;
+    // His template keeps him at one hit point; scripts lift that first too, as `k_pend_cut20` does for the Jedi.
+    w.object_mut(trask).unwrap().min_one_hp = false;
     // ApplyEffectToObject(nDurationType, eEffect, oTarget, fDuration): EffectDeath() is made between the pushes.
     let prog = call_program(
         &w,

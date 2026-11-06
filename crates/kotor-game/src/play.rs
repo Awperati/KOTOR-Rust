@@ -16,6 +16,8 @@ pub const DOOR_RANGE: f32 = 1.6;
 pub const DOOR_ANIM_SECONDS: f32 = 1.0;
 pub const TALK_RANGE: f32 = 1.8;
 pub const USE_RANGE: f32 = 1.6;
+/// The row of `skills.2da` for Security.
+const SKILL_SECURITY: usize = 6;
 /// Running speed: `rundist` of a human body in `appearance.2da`, per second (an assumption, as for walking).
 pub const RUN_SPEED: f32 = 3.96;
 /// When steered, the player keeps this far from the edge of the walkmesh, so that it does not stand in a wall.
@@ -200,6 +202,41 @@ impl World {
         true
     }
 
+    /// Hand control to a party member, as the game does when the player changes character: that creature is now the one
+    /// `GetFirstPC` and the mouse act on, and the old leader follows. Returns whether anything changed.
+    pub fn switch_leader(&mut self, id: ObjId) -> bool {
+        if id == self.pc || !self.party.contains(&id) {
+            return false;
+        }
+        let old = self.pc;
+        self.party.retain(|p| *p != id);
+        self.party.push(old);
+        if let Some(o) = self.objects.get_mut(&old) {
+            o.party_member = true;
+        }
+        let (pos, facing) = match self.objects.get_mut(&id) {
+            Some(o) => {
+                o.party_member = false;
+                (o.position, o.facing.to_radians())
+            }
+            None => return false,
+        };
+        self.pc = id;
+        self.pc_mover = kotor_walkmesh::Mover::new(pos, facing);
+        self.pending = None;
+        self.events
+            .push(format!("{} leads the party", self.describe(id)));
+        true
+    }
+
+    /// Hand control to the next party member. Returns whether anything changed.
+    pub fn next_leader(&mut self) -> bool {
+        match self.party.first().copied() {
+            Some(id) => self.switch_leader(id),
+            None => false,
+        }
+    }
+
     /// Walk the player to a point on the floor (no interaction).
     pub fn walk_to(&mut self, to: [f32; 3]) -> bool {
         let from = self.objects[&self.pc].position;
@@ -253,7 +290,63 @@ impl World {
         if d.open {
             self.close_door(id);
         } else {
+            if d.locked {
+                self.try_lock(id);
+            }
             self.open_door(id);
+        }
+    }
+
+    /// The player tries a locked door: a carried key opens it, or else a Security check against its `OpenLockDC`. A door
+    /// that names `KeyRequired`, or has no DC, opens only by key or script.
+    ///
+    /// **Assumption:** a check needs no security tunneler and can be tried again.
+    fn try_lock(&mut self, id: ObjId) {
+        let Some(template) = self.objects.get(&id).map(|d| d.template.clone()) else {
+            return;
+        };
+        let Some(utd) = self
+            .inst
+            .read(&template, ResType(2042))
+            .ok()
+            .and_then(|b| kotor_gff::Gff::parse(&b).ok())
+        else {
+            return;
+        };
+        let key = utd.root.str("KeyName").unwrap_or("").to_ascii_lowercase();
+        let pc = self.pc;
+        let has_key = !key.is_empty()
+            && self.objects.get(&pc).is_some_and(|o| {
+                o.inventory.iter().any(|i| {
+                    self.objects
+                        .get(i)
+                        .is_some_and(|it| it.tag.eq_ignore_ascii_case(&key))
+                })
+            });
+        let dc = utd.root.int("OpenLockDC").unwrap_or(0) as i32;
+        let key_only = utd.root.int("KeyRequired").unwrap_or(0) != 0;
+        let opened = if has_key {
+            self.events
+                .push(format!("{} opens with a key", self.describe(id)));
+            true
+        } else if dc > 0 && !key_only {
+            let c = self.skill_check(pc, SKILL_SECURITY, dc);
+            self.events.push(format!(
+                "security {} + {} against {} on {}: {}",
+                c.roll,
+                c.bonus,
+                dc,
+                self.describe(id),
+                if c.passed { "picked" } else { "failed" }
+            ));
+            c.passed
+        } else {
+            false
+        };
+        if opened {
+            if let Some(d) = self.objects.get_mut(&id) {
+                d.locked = false;
+            }
         }
     }
 
@@ -297,12 +390,16 @@ impl World {
             return;
         }
         let (pos, on_closed) = (d.position, d.scripts.get("OnClosed").cloned());
+        // A door still opening never freed its doorway, so there is nothing to block again.
+        let was_passable = d.door == DoorState::Open;
         if let Some(d) = self.objects.get_mut(&id) {
             d.open = false;
             d.door = DoorState::Closing(0.0);
         }
-        if let Some(n) = self.nav.as_mut() {
-            n.block_disc(pos, DOOR_BLOCK_RADIUS);
+        if was_passable {
+            if let Some(n) = self.nav.as_mut() {
+                n.block_disc(pos, DOOR_BLOCK_RADIUS);
+            }
         }
         self.events.push(format!("{} closes", self.describe(id)));
         if let Some(s) = on_closed {
@@ -415,6 +512,7 @@ impl World {
     /// interaction waiting at the end of it, trigger enter/exit, and any requested module change.
     pub fn step(&mut self, dt: f32) {
         self.tick(dt);
+        self.resume_conversation();
         self.update_doors(dt);
         let before = self.pc_mover.pos;
         let status = match (
@@ -679,6 +777,16 @@ impl World {
         }
         if let Some(p) = self.objects.get_mut(&pc) {
             p.inventory.push(item);
+        }
+        // `k_pend_chest02` moves the tutorial on from here.
+        if let Some(c) = self.opened {
+            if let Some(s) = self
+                .objects
+                .get(&c)
+                .and_then(|o| o.scripts.get("OnInvDisturbed").cloned())
+            {
+                let _ = self.run_script(&s, c);
+            }
         }
     }
 

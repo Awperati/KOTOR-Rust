@@ -16,7 +16,7 @@
 //!
 //! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
-//! Space: end a line, or close a container. Wheel: zoom. Esc: quit.
+//! Tab: the next party member takes over. Space: end a line, or close a container. Wheel: zoom. Esc: quit.
 use kotor_audio::Audio;
 use kotor_audio_out::{decode_any, AudioOut};
 use kotor_gpu::stage::{Cue, Stage};
@@ -115,6 +115,9 @@ struct App {
     hidden: bool,
     max_frames: Option<u32>,
     state_log: bool,
+    /// A scripted player at the controls (`--autopilot`).
+    pilot: Option<kotor_game::Autopilot>,
+    pilot_seen: usize,
     frames: u32,
     started: std::time::Instant,
     last: std::time::Instant,
@@ -204,6 +207,13 @@ impl App {
             axis(self.keys[3], self.keys[2]),
             self.keys[4],
         );
+        if let Some(p) = self.pilot.as_mut() {
+            p.step(&mut self.stage.game, dt);
+            for l in &p.log[self.pilot_seen..] {
+                println!("pilot: {l}");
+            }
+            self.pilot_seen = p.log.len();
+        }
         for c in self.stage.update(dt) {
             self.sound.cue(c);
         }
@@ -262,6 +272,7 @@ impl App {
             KeyCode::KeyD => self.keys[3] = pressed,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys[4] = pressed,
             KeyCode::KeyE if pressed => self.stage.interact(),
+            KeyCode::Tab if pressed => self.stage.next_leader(),
             KeyCode::ArrowLeft => {
                 self.turning = if pressed { TURN_SPEED } else { 0.0 };
             }
@@ -420,6 +431,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hidden: flag("--hidden"),
         max_frames: opt("--frames").and_then(|n| n.parse().ok()),
         state_log: flag("--state-log"),
+        pilot: flag("--autopilot").then(|| {
+            let mut p = kotor_game::Autopilot::new();
+            p.read_lines = true;
+            p
+        }),
+        pilot_seen: 0,
         frames: 0,
         started: std::time::Instant::now(),
         last: std::time::Instant::now(),

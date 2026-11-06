@@ -28,6 +28,15 @@ pub struct NavMesh {
     /// Faces covered by a closed door or other obstacle; routes cannot enter them. A count, so
     /// overlapping obstacles can be lifted independently.
     blocked: Vec<u16>,
+    /// Faces by the grid cells their bounds touch, so that finding the face under a point need not try them all.
+    cells: HashMap<(i32, i32), Vec<u32>>,
+}
+
+/// Size of a cell in `NavMesh::cells`, in metres.
+const CELL: f32 = 4.0;
+
+fn cell(x: f32, y: f32) -> (i32, i32) {
+    ((x / CELL).floor() as i32, (y / CELL).floor() as i32)
 }
 
 fn key(p: V3) -> [i32; 3] {
@@ -111,11 +120,28 @@ impl NavMesh {
             }
         }
         let blocked = vec![0; tris.len()];
+        let mut cells: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for (i, t) in tris.iter().enumerate() {
+            let low = cell(
+                t[0][0].min(t[1][0]).min(t[2][0]) - 1e-3,
+                t[0][1].min(t[1][1]).min(t[2][1]) - 1e-3,
+            );
+            let high = cell(
+                t[0][0].max(t[1][0]).max(t[2][0]) + 1e-3,
+                t[0][1].max(t[1][1]).max(t[2][1]) + 1e-3,
+            );
+            for cx in low.0..=high.0 {
+                for cy in low.1..=high.1 {
+                    cells.entry((cx, cy)).or_default().push(i as u32);
+                }
+            }
+        }
         NavMesh {
             tris,
             centroids,
             links,
             blocked,
+            cells,
         }
     }
 
@@ -165,15 +191,9 @@ impl NavMesh {
     /// Walkable face under `(x, y)` at or below `max_z`, choosing the highest one, and its height.
     pub fn locate(&self, x: f32, y: f32, max_z: f32) -> Option<(usize, f32)> {
         let mut best: Option<(usize, f32)> = None;
-        for (i, t) in self.tris.iter().enumerate() {
-            if x < t[0][0].min(t[1][0]).min(t[2][0]) - 1e-3
-                || x > t[0][0].max(t[1][0]).max(t[2][0]) + 1e-3
-                || y < t[0][1].min(t[1][1]).min(t[2][1]) - 1e-3
-                || y > t[0][1].max(t[1][1]).max(t[2][1]) + 1e-3
-            {
-                continue;
-            }
-            if let Some(z) = tri_height(t, x, y) {
+        for &i in self.cells.get(&cell(x, y)).into_iter().flatten() {
+            let i = i as usize;
+            if let Some(z) = tri_height(&self.tris[i], x, y) {
                 if z <= max_z && best.is_none_or(|(_, bz)| z > bz) {
                     best = Some((i, z));
                 }

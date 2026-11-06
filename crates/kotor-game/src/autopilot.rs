@@ -236,6 +236,21 @@ impl Autopilot {
         if free != self.doors_free {
             self.doors_free = free;
             self.forget_doors(w);
+            // Someone who has spoken may have more to say now: Carth does once `end_door04` opens.
+            let pc = w.pc;
+            let friends: Vec<ObjId> = self
+                .tried
+                .iter()
+                .copied()
+                .filter(|id| {
+                    w.object(*id)
+                        .is_some_and(|o| o.kind == Kind::Creature && !o.conversation.is_empty())
+                        && w.reputation(pc, *id) > 10
+                })
+                .collect();
+            for f in friends {
+                self.tried.remove(&f);
+            }
         }
         while self.errors_seen < w.errors.len() {
             let e = w.errors[self.errors_seen].clone();
@@ -274,7 +289,11 @@ impl Autopilot {
             let detail = format!(
                 "{} says {view:?}{}",
                 w.dialogue_conversation().map_or(String::new(), |c| c.name),
-                if w.conversation_paused() { ", paused" } else { "" }
+                if w.conversation_paused() {
+                    ", paused"
+                } else {
+                    ""
+                }
             );
             self.stall(w, "conversation", "end the conversation", detail);
             self.talk_time = 0.0;
@@ -381,13 +400,17 @@ impl Autopilot {
         let mask = |w: &mut World, item: ObjId| {
             let base = w.object(item).map_or(0, |i| i.base_item);
             w.table("baseitems")
-                .and_then(|t| t.get(base.max(0) as usize, "equipableslots").map(str::to_string))
+                .and_then(|t| {
+                    t.get(base.max(0) as usize, "equipableslots")
+                        .map(str::to_string)
+                })
                 .and_then(|m| i64::from_str_radix(m.trim_start_matches("0x"), 16).ok())
                 .unwrap_or(0)
         };
-        let melee = left.into_iter().chain(carried).find(|i| {
-            mask(w, *i) & (1 << RIGHT) != 0 && !ranged(w, *i)
-        });
+        let melee = left
+            .into_iter()
+            .chain(carried)
+            .find(|i| mask(w, *i) & (1 << RIGHT) != 0 && !ranged(w, *i));
         let Some(melee) = melee else {
             return;
         };
@@ -400,8 +423,11 @@ impl Autopilot {
             }
             o.inventory.push(right);
         }
-        let name = w.object(melee).map_or(String::new(), |i| i.template.clone());
-        self.log.push(format!("took up {name} instead of a ranged weapon"));
+        let name = w
+            .object(melee)
+            .map_or(String::new(), |i| i.template.clone());
+        self.log
+            .push(format!("took up {name} instead of a ranged weapon"));
     }
 
     /// Is the current goal done, or stuck?
@@ -585,7 +611,12 @@ impl Autopilot {
             return;
         }
         if let Some(label) = no_way_out {
-            self.stall(w, "transition", &label, "no route to the way out".to_string());
+            self.stall(
+                w,
+                "transition",
+                &label,
+                "no route to the way out".to_string(),
+            );
         }
         self.give_up(w);
     }

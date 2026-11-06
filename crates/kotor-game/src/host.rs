@@ -39,11 +39,9 @@ const PRESENTATION: &[&str] = &[
     "SetNPCAIStyle",
     "SetTutorialWindowsEnabled",
     "ShowTutorialWindow",
-    "SetMinOneHP",
     "SetFacingPoint",
     "SetPartyLeader",
     "PlayAnimation",
-    "CutsceneAttack",
     "MusicBattleStop",
     "RevealMap",
     "SetCurrentAction",
@@ -65,7 +63,6 @@ const PRESENTATION: &[&str] = &[
     "SetPlanetSelectable",
     "SetPlanetAvailable",
     "SetLightsaberPowered",
-    "ShowPartySelectionGUI",
     "ShowUpgradeScreen",
     "OpenStore",
     "EndGame",
@@ -83,9 +80,13 @@ const PRESENTATION: &[&str] = &[
     "AdjustReputation",
 ];
 
+/// The side a party member fights on. `repute.2da` has the player's row hostile to `Hostile_1` and friendly to this one.
+///
+/// **Assumption:** Trask's template says neutral, which would leave him out of every fight, so joining must change it.
+const PARTY_FACTION: i32 = 2;
+
 /// Routines that become queued actions with no effect on the headless world.
 const RECORDED_ACTIONS: &[&str] = &[
-    "ActionPlayAnimation",
     "ActionMoveToObject",
     "ActionMoveToLocation",
     "ActionJumpToObject",
@@ -557,12 +558,17 @@ impl Host for Adapter<'_> {
                 })
             }
             "GetCreatureTalentRandom" | "GetCreatureTalentBest" => {
-                // The category is ignored: the creature's first known force power, else an invalid talent.
+                // The category is ignored: the first force power it can pay for, else an invalid talent, so that a
+                // creature out of Force points goes back to its weapon.
                 let who = self.obj(caller, args, if name.ends_with("Best") { 2 } else { 1 });
-                let first = self
-                    .world
-                    .object(who)
-                    .and_then(|o| o.spells.iter().next().copied());
+                let (known, force) = self.world.object(who).map_or((Vec::new(), 0), |o| {
+                    (o.spells.iter().copied().collect::<Vec<_>>(), o.force)
+                });
+                let first = known.into_iter().find(|s| {
+                    self.world
+                        .spell_cost_and_range(*s)
+                        .is_some_and(|(cost, _)| cost <= force)
+                });
                 self.default_hit(name);
                 Some(Value::Engine(3, first.map_or(0, |s| (1 << 24) | s as u32)))
             }
@@ -740,6 +746,14 @@ impl Host for Adapter<'_> {
             "GetSpellTargetObject" | "GetSpellTarget" => {
                 Some(Value::Object(self.world.spell.target))
             }
+            // **Assumption:** a power aimed at a place is aimed at the object there, as grenades in `k_pend_cut2_3` are.
+            "GetSpellTargetLocation" => {
+                let rec = self
+                    .world
+                    .object(self.world.spell.target)
+                    .map_or(([0.0; 3], 0.0), |o| (o.position, o.facing));
+                Some(self.new_location(rec))
+            }
             "GetLastSpellCaster" => Some(Value::Object(self.world.spell.caster)),
             "GetSpellSaveDC" => Some(Value::Int(
                 self.world.spell_save_dc(self.world.spell.caster),
@@ -810,7 +824,14 @@ impl Host for Adapter<'_> {
                     match args.first() {
                         // A talent handle: kind 0 is a Force power.
                         Some(Value::Engine(_, h)) if h >> 24 == 1 => {
-                            ((h & 0xFF_FFFF) as i32, self.obj(caller, args, 1), false)
+                            let spell = (h & 0xFF_FFFF) as i32;
+                            // An item's ability needs no knowing: `k_pend_cut2_3` throws a grenade with one.
+                            let item = self.world.table("spells").is_some_and(|t| {
+                                t.get(spell.max(0) as usize, "label").is_some_and(|l| {
+                                    l.starts_with("ITEM_") || l.starts_with("PLOT_")
+                                })
+                            });
+                            (spell, self.obj(caller, args, 1), item)
                         }
                         _ => {
                             self.record(name, args);
@@ -1000,6 +1021,7 @@ impl Host for Adapter<'_> {
                     self.world.party.push(id);
                     if let Some(o) = self.world.object_mut(id) {
                         o.party_member = true;
+                        o.faction = PARTY_FACTION;
                     }
                 }
                 None
@@ -1021,6 +1043,7 @@ impl Host for Adapter<'_> {
                         if let Some(o) = self.world.object_mut(id) {
                             o.facing = facing;
                         }
+                        self.world.run_spawn_script(id);
                         id
                     }
                     None => OBJECT_INVALID,
@@ -1185,12 +1208,70 @@ impl Host for Adapter<'_> {
                 let slot = int(args, 0)?;
                 b(self.world.available.remove(&slot).is_some())
             }
+            // **Assumption:** until there is a screen, the members a script forces join and the screen counts as closed.
+            // `k_pend_traskdl29` adds Trask this way and `k_pend_reset` carries on from there.
+            "ShowPartySelectionGUI" => {
+                self.record(name, args);
+                let beside = self
+                    .world
+                    .object(caller)
+                    .filter(|o| o.kind == Kind::Creature)
+                    .map_or(self.world.pc, |o| o.id);
+                let (at, facing) = self
+                    .world
+                    .object(beside)
+                    .map_or(([0.0; 3], 0.0), |o| (o.position, o.facing));
+                for i in [1, 2] {
+                    let slot = if args.len() > i { int(args, i)? } else { -1 };
+                    let template = self.world.available.get(&slot).cloned();
+                    let Some(t) = template.filter(|_| !self.world.npc_slots.contains_key(&slot))
+                    else {
+                        continue;
+                    };
+                    let id = self.world.spawn(Kind::Creature, &t, ResType(2027), at);
+                    self.world.party.push(id);
+                    self.world.npc_slots.insert(slot, id);
+                    if let Some(o) = self.world.object_mut(id) {
+                        o.party_member = true;
+                        o.faction = PARTY_FACTION;
+                        o.facing = facing;
+                    }
+                    self.world.run_spawn_script(id);
+                }
+                let pc = self.world.pc;
+                let script = string(args, 0);
+                if !script.is_empty() {
+                    let _ = self.world.run_script(&script, pc);
+                }
+                None
+            }
             "ShipBuild" => Some(Value::Int(1)),
+            // The AI asks who it is walking to; nothing it does with the answer matters while it has no target.
+            "GetAttemptedMovementTarget" => Some(Value::Object(OBJECT_INVALID)),
             // ---- combat
             "ActionAttack" => {
                 let t = self.obj(caller, args, 0);
                 self.world.queue(caller, Action::Attack(t));
                 self.record(name, args);
+                None
+            }
+            "SetMinOneHP" => {
+                self.record(name, args);
+                let (id, on) = (self.obj(caller, args, 0), int(args, 1)? != 0);
+                if let Some(o) = self.world.object_mut(id) {
+                    o.min_one_hp = on;
+                }
+                None
+            }
+            "GetMinOneHP" => b(self
+                .world
+                .object(self.obj(caller, args, 0))
+                .is_some_and(|o| o.min_one_hp)),
+            "CutsceneAttack" => {
+                self.record(name, args);
+                let (target, result, amount) =
+                    (self.obj(caller, args, 0), int(args, 2)?, int(args, 3)?);
+                self.world.scripted_attack(caller, target, result, amount);
                 None
             }
             "CancelCombat" => {
@@ -1399,6 +1480,16 @@ impl Host for Adapter<'_> {
                     .converse(caller, target, &dlg, &mut crate::FirstReply)
                     .is_ok())
             }
+            "SetPartyLeader" => {
+                let slot = int(args, 0)?;
+                let id = if slot < 0 {
+                    Some(self.world.hero)
+                } else {
+                    self.world.npc_slots.get(&slot).copied()
+                };
+                self.record(name, args);
+                b(id.is_some_and(|id| self.world.switch_leader(id)))
+            }
             "GetTotalDamageDealt" => Some(Value::Int(
                 self.world
                     .combat
@@ -1430,6 +1521,7 @@ impl Host for Adapter<'_> {
                     o.facing = facing;
                 }
                 self.record("CreateObject", args);
+                self.world.run_spawn_script(id);
                 Some(Value::Object(id))
             }
             "CreateItemOnObject" => {
@@ -1438,13 +1530,18 @@ impl Host for Adapter<'_> {
                 } else {
                     caller
                 };
+                self.record("CreateItemOnObject", args);
+                // Scripts ask for items that do not exist, such as the empty template in `k_pend_area01`.
+                let template = string(args, 0);
+                if template.is_empty() || !self.world.inst.contains(&template, ResType(2025)) {
+                    return Ok(Some(Value::Object(OBJECT_INVALID)));
+                }
                 let id = self
                     .world
-                    .spawn(Kind::Item, &string(args, 0), ResType(2025), [0.0; 3]);
+                    .spawn(Kind::Item, &template, ResType(2025), [0.0; 3]);
                 if let Some(o) = self.world.object_mut(target) {
                     o.inventory.push(id);
                 }
-                self.record("CreateItemOnObject", args);
                 Some(Value::Object(id))
             }
             "DestroyObject" => {
@@ -1592,6 +1689,7 @@ impl Host for Adapter<'_> {
                     self.world.npc_slots.insert(slot, id);
                     if let Some(o) = self.world.object_mut(id) {
                         o.party_member = true;
+                        o.faction = PARTY_FACTION;
                     }
                 }
                 b(self.valid(id))
@@ -1702,6 +1800,18 @@ impl Host for Adapter<'_> {
                         run,
                         walker: None,
                     },
+                );
+                None
+            }
+            // An animation takes time, and a creature that idles queues the next one straight after it.
+            // **Assumption:** a second for one with no duration; clip lengths are not known here.
+            "ActionPlayAnimation" => {
+                self.record(name, args);
+                self.world.queue(caller, Action::Recorded(name.to_string()));
+                let seconds = float(args, 2);
+                self.world.queue(
+                    caller,
+                    Action::Wait(if seconds > 0.0 { seconds } else { 1.0 }),
                 );
                 None
             }

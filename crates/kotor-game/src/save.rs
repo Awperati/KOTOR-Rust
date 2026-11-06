@@ -495,6 +495,7 @@ impl World {
             o.hp = e.int("HP").unwrap_or(0) as i32;
             o.dead = flag("Dead");
             o.party_member = flag("PartyMember");
+            o.spawned = true;
             o.locked = flag("Locked");
             o.level = e.int("Level").unwrap_or(1) as i32;
             o.open = flag("Open");

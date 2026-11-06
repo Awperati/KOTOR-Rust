@@ -149,6 +149,57 @@ impl World {
         self.conv.as_ref().map(|c| c.visited)
     }
 
+    /// Whether an `ActionPauseConversation` is in force or waiting in someone's queue.
+    pub fn conversation_paused(&self) -> bool {
+        self.conv_paused
+            || self.objects.values().any(|o| {
+                o.actions
+                    .iter()
+                    .any(|a| matches!(a, crate::world::Action::Recorded(r) if r == "ActionPauseConversation"))
+            })
+    }
+
+    /// A pause nobody will lift, because whoever was to do it has died or lost its queue, must not end the game.
+    ///
+    /// **Assumption:** no cutscene means to wait this long; `tar03_cutdlg` is the case that runs into it.
+    fn end_stale_pause(&mut self) {
+        if self.conv.is_none() || !self.conversation_paused() {
+            self.conv_paused_at = None;
+            return;
+        }
+        let since = *self.conv_paused_at.get_or_insert(self.time);
+        if self.time - since < crate::world::PAUSE_LIMIT_SECONDS {
+            return;
+        }
+        self.conv_paused_at = None;
+        self.conv_paused = false;
+        for o in self.objects.values_mut() {
+            o.actions.retain(|a| {
+                !matches!(a, crate::world::Action::Recorded(r) if r == "ActionPauseConversation")
+            });
+        }
+        let name = self.conv.as_ref().map_or(String::new(), |c| c.name.clone());
+        self.errors
+            .push(format!("dialogue {name}: a pause ran out"));
+    }
+
+    /// Pick a conversation up again once its pause is over.
+    pub(crate) fn resume_conversation(&mut self) {
+        self.end_stale_pause();
+        let waiting = self.conv.as_ref().is_some_and(|c| c.waiting);
+        if !waiting || self.conversation_paused() {
+            return;
+        }
+        let Some(mut run) = self.conv.take() else {
+            return;
+        };
+        if self.conv_drive(&mut run, None, None) {
+            self.conv_finish(run);
+        } else {
+            self.conv = Some(run);
+        }
+    }
+
     /// Who a held conversation belongs to.
     pub fn dialogue_owner(&self) -> Option<ObjId> {
         self.conv.as_ref().map(|c| c.owner)
@@ -161,6 +212,9 @@ impl World {
 
     /// Answer a held conversation: reply number `k` (ignored when the line only needs acknowledging).
     pub fn dialogue_choose(&mut self, k: usize) {
+        if self.conversation_paused() {
+            return;
+        }
         let Some(mut run) = self.conv.take() else {
             return;
         };
@@ -240,6 +294,7 @@ impl World {
             before,
             steps: Vec::new(),
             held: None,
+            waiting: false,
         })
     }
 
@@ -253,6 +308,16 @@ impl World {
     ) -> bool {
         let (owner, name) = (run.owner, run.name.clone());
         loop {
+            // A live conversation waits while an `ActionPauseConversation` is in force: someone is walking somewhere.
+            if chooser.is_none()
+                && run.held.is_none()
+                && run.next.is_some()
+                && self.conversation_paused()
+            {
+                run.waiting = true;
+                return false;
+            }
+            run.waiting = false;
             let (options, shown, k): (Vec<(usize, String)>, Vec<String>, usize) =
                 if let Some(h) = run.held.take() {
                     (h.options, h.shown, resume.take().unwrap_or(0))
@@ -422,6 +487,8 @@ pub struct ConvRun {
     before: usize,
     steps: Vec<crate::cutscene::Step>,
     held: Option<Held>,
+    /// Stopped between nodes for a pause.
+    waiting: bool,
 }
 
 /// A spoken line waiting for the player.

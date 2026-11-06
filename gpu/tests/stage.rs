@@ -568,15 +568,24 @@ fn the_area_smokes_and_fights_make_sounds_and_bolts() {
     let at = s.game.world.object(foe).unwrap().position;
     let pc = s.game.world.pc;
     s.game.world.teleport(pc, [at[0] - 5.0, at[1], at[2]]);
-    s.game.world.attack(foe, pc);
+    // The player shoots: the AI of a soldier this close puts its rifle away for a blade.
+    let rifle = s.game.world.spawn_item("g_w_blstrrfl001");
+    s.game
+        .world
+        .object_mut(pc)
+        .unwrap()
+        .equipped
+        .insert(4, rifle);
+    s.game.world.attack(pc, foe);
     let mut saw_bolt = false;
-    for _ in 0..900 {
-        cues.extend(s.update(DT));
+    // Short frames: the soldier comes close, and at normal length a bolt lands within the frame it is fired in.
+    for _ in 0..3600 {
+        cues.extend(s.update(DT / 4.0));
         s.continue_line();
         s.number_key(1);
         saw_bolt |= s.effects.bolt_count() > 0;
     }
-    assert!(saw_bolt, "the soldier's rifle fires bolts");
+    assert!(saw_bolt, "the rifle fires bolts");
     let sounds: Vec<&Vec<u8>> = cues
         .iter()
         .filter_map(|c| match c {

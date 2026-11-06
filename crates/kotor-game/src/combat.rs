@@ -36,6 +36,9 @@ pub const STR: usize = 0;
 pub const DEX: usize = 1;
 
 /// Ability modifier of a score: (score - 10) / 2, rounded down.
+/// Seconds from the start of a scripted attack to its blow.
+const SWING_SECONDS: f32 = 0.6;
+
 pub fn ability_mod(score: i32) -> i32 {
     (score - 10).div_euclid(2)
 }
@@ -108,6 +111,10 @@ pub struct AttackLog {
 /// Everything combat remembers between steps.
 #[derive(Clone, Debug, Default)]
 pub struct CombatState {
+    /// Who used a power since the last round ended.
+    pub(crate) casters: BTreeSet<ObjId>,
+    /// Blows a script has decided on, still in the air: when, who, whom and how hard.
+    swings: Vec<(f32, ObjId, ObjId, i32)>,
     /// Who is attacking whom (set by `ActionAttack`, cleared when the target dies or the actions are cleared).
     pub target: BTreeMap<ObjId, ObjId>,
     /// (watcher, watched) pairs that have already been noticed.
@@ -304,6 +311,42 @@ impl World {
         }
     }
 
+    /// A round a script has decided in advance: it looks like an attack and deals what it says, and a death it causes
+    /// runs as usual. `k_pend_cut1_1` waits for such a death before its conversation goes on.
+    pub(crate) fn scripted_attack(
+        &mut self,
+        attacker: ObjId,
+        target: ObjId,
+        result: i32,
+        amount: i32,
+    ) {
+        if !self.objects.contains_key(&target) {
+            return;
+        }
+        let outcome = match result {
+            1 | 3 => Outcome::Hit,
+            2 => Outcome::Critical,
+            _ => Outcome::Miss,
+        };
+        // The blow lands partway through the swing: `k_pend_cut2_2` lifts the target's one hit point after it starts.
+        // **Assumption:** clip timing is not known here, so every swing lands after the same time.
+        self.combat
+            .swings
+            .push((self.time + SWING_SECONDS, attacker, target, amount));
+        let target_hp = self.objects.get(&target).map_or(0, |t| t.hp);
+        self.combat.log.push(AttackLog {
+            round: self.combat.round,
+            attacker,
+            target,
+            roll: 0,
+            bonus: 0,
+            defense: 0,
+            outcome,
+            damage: amount,
+            target_hp,
+        });
+    }
+
     /// Take `amount` hit points off `target`. At 0 a party member is knocked out and anyone else dies (their
     /// death script runs and the party earns the kill's experience). Returns whether the target fell.
     pub(crate) fn hurt(&mut self, source: ObjId, target: ObjId, amount: i32) -> bool {
@@ -318,6 +361,9 @@ impl World {
             return false;
         }
         t.hp -= amount;
+        if t.min_one_hp {
+            t.hp = t.hp.max(1);
+        }
         if t.hp > 0 {
             return false;
         }
@@ -358,6 +404,14 @@ impl World {
 
     /// Advance combat by `dt` seconds: heartbeats, perception, movement towards targets, and rounds.
     pub(crate) fn update_combat(&mut self, dt: f32) {
+        let now = self.time;
+        let (due, later) = std::mem::take(&mut self.combat.swings)
+            .into_iter()
+            .partition::<Vec<_>, _>(|s| s.0 <= now);
+        self.combat.swings = later;
+        for (_, attacker, target, amount) in due {
+            self.hurt(attacker, target, amount);
+        }
         self.combat.heartbeat_clock += dt;
         while self.combat.heartbeat_clock >= HEARTBEAT_SECONDS {
             self.combat.heartbeat_clock -= HEARTBEAT_SECONDS;
@@ -505,7 +559,9 @@ impl World {
 
     fn run_round(&mut self) {
         let pairs: Vec<(ObjId, ObjId)> = self.combat.target.iter().map(|(a, t)| (*a, *t)).collect();
-        let mut involved: BTreeSet<ObjId> = BTreeSet::new();
+        // A power takes up the round too, and the AI picks its next move when a round ends. Without this a Jedi who casts
+        // never acts again, and the duel in `end_cut04` never finishes.
+        let mut involved: BTreeSet<ObjId> = std::mem::take(&mut self.combat.casters);
         for (a, t) in pairs {
             let alive = |w: &World, id: ObjId| w.objects.get(&id).is_some_and(|o| !o.dead);
             if !alive(self, a) || !alive(self, t) {

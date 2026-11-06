@@ -62,7 +62,10 @@ fn need(args: &[String], i: usize) -> Result<&str> {
 fn open() -> Result<Install> {
     let dir = kotor_core::install_dir()
         .ok_or_else(|| Error::NotFound("KotOR install (set KOTOR_DIR)".into()))?;
-    Install::open(dir)
+    let mut inst = Install::open(dir)?;
+    // KOTOR_ORIGINAL=1 reads a module's own .rim pair even when an installed mod left a .mod beside it.
+    inst.set_prefer_rim(std::env::var_os("KOTOR_ORIGINAL").is_some());
+    Ok(inst)
 }
 
 fn run(args: &[String]) -> Result<()> {

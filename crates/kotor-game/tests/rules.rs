@@ -170,6 +170,9 @@ fn kills_pay_the_party_and_party_members_are_knocked_out_not_killed() {
     let trask = w.by_tag("end_trask")[0];
     w.party.push(trask);
     w.object_mut(trask).unwrap().party_member = true;
+    // The opening keeps both at one hit point (`Min1HP`, `k_pend_area01`); this is about going down.
+    w.object_mut(trask).unwrap().min_one_hp = false;
+    w.object_mut(pc).unwrap().min_one_hp = false;
     let kill = effect(&mut w, "EffectDamage", &[1000.0, 0.0, 0.0]);
     let worth = w.kill_xp(foe);
     assert!(worth > 0);

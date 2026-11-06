@@ -161,9 +161,8 @@ impl Game {
         let n = self.world.combat.log.len();
         let new: Vec<_> = self.world.combat.log[self.log_seen.min(n)..].to_vec();
         self.log_seen = n;
-        for l in new {
-            let swing = self.style_clip(l.attacker, Move::Attack);
-            self.play_once(l.attacker, swing, COMBAT_CLIP_SECONDS);
+        // Two who fight each other strike in the same step: a swing is not to be replaced by the flinch at the other's.
+        for l in &new {
             if l.outcome == crate::combat::Outcome::Miss {
                 let dodge = self.style_clip(l.target, Move::Dodge);
                 self.play_once(l.target, dodge, DODGE_CLIP_SECONDS);
@@ -171,6 +170,10 @@ impl Game {
                 let hit = self.style_clip(l.target, Move::Hit);
                 self.play_once(l.target, hit, COMBAT_CLIP_SECONDS);
             }
+        }
+        for l in &new {
+            let swing = self.style_clip(l.attacker, Move::Attack);
+            self.play_once(l.attacker, swing, COMBAT_CLIP_SECONDS);
         }
     }
 

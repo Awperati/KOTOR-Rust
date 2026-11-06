@@ -250,6 +250,7 @@ impl World {
                 c.force -= cost;
             }
         }
+        self.combat.casters.insert(caster);
         self.events.push(format!(
             "{} casts power {spell} on {}",
             self.describe(caster),
