@@ -37,6 +37,14 @@ The 900 s runs cross six modules. `gpu/tests/fast.rs` repeats the check at 1x an
 
 The first comparison failed. The window turned the speaker and the player to each other once per frame, and the player's heading steers its next walk. That now happens inside a fixed step, in `Game::face_speaker`.
 
+## Door locks, skills, powers, fights and saves
+
+`crates/kotor-game/tests/systems_at_speed.rs` runs these with no window, on the Endar Spire's own doors, panels and soldiers:
+
+- **Locks and powers:** an untrained hero fails a door's Security check, a trained one picks it, two Force powers run out on game time, then a fight. Digest, event log and save file match with steps grouped in 1, 16 and 1024.
+- **Computer Use:** a panel in `end_m01ab` opens its conversation for a hero with ranks. It does not yet check what the ranks change in that conversation.
+- **In bulk:** 300 game seconds of fighting (491 blows) took 2.7 to 3.9 wall seconds in a test build with other tests running. Twenty saves and loads in a row took 0.25 to 0.37 and give back the same save.
+
 ## What it does not speed up
 
 - **Drawing.** It is why a window tops out near 180x. Do not judge frame rate or how motion looks at speed.

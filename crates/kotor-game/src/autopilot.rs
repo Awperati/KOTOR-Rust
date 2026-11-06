@@ -331,6 +331,11 @@ impl Autopilot {
             self.errors_seen += 1;
             let w2: &World = w;
             let position = w2.object(w2.pc).map_or([0.0; 3], |o| o.position);
+            // Conversations name scripts the game's files do not have, such as `k_pend_carth11`. Nothing waits on them.
+            if e.starts_with("script ") && e.ends_with(" not found") {
+                self.log.push(format!("note: {e}"));
+                continue;
+            }
             self.log.push(format!("STALL script error: {e}"));
             self.stalls.push(Stall {
                 kind: "script",
