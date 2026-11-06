@@ -384,7 +384,7 @@ impl World {
             }
         }
         self.combat.casters.insert(caster);
-        self.casts.push(caster);
+        self.casts.push((caster, spell));
         self.events.push(format!(
             "{} casts power {spell} on {}",
             self.describe(caster),

@@ -9,7 +9,23 @@ use std::collections::HashMap;
 pub struct Clip {
     pub name: &'static str,
     pub time: f32,
+    /// The clip this one took over from, while it still shows through.
+    pub fade: Option<Fade>,
 }
+
+/// The clip a new one is blending in from: it goes on playing, and its weight drops from 1 to 0 over [`BLEND_SECONDS`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fade {
+    pub name: &'static str,
+    pub time: f32,
+    /// 1 as the new clip starts, 0 when the old one is gone.
+    pub weight: f32,
+}
+
+/// How long one clip takes to give way to the next, for walking, running and standing.
+///
+/// **Assumed:** the game's value. The owner saw no smoothing at all; a fifth of a second is a short, common blend.
+pub const BLEND_SECONDS: f32 = 0.2;
 
 /// What a renderer needs to draw one object this frame.
 #[derive(Clone, Debug, PartialEq)]
@@ -32,8 +48,10 @@ pub struct Game {
     last_pos: HashMap<ObjId, [f32; 3]>,
     /// Where each creature was before the last step, to draw it between steps.
     before_step: HashMap<ObjId, [f32; 3]>,
-    /// A clip playing once over everything else but death: name and seconds left.
-    once: HashMap<ObjId, (&'static str, f32)>,
+    /// Clips playing once over everything else but death, the one playing first: name and seconds left.
+    once: HashMap<ObjId, Vec<(&'static str, f32)>>,
+    /// Until what step a creature that fought keeps its combat stance.
+    ready_until: HashMap<ObjId, u64>,
     log_seen: usize,
     names: HashMap<String, &'static str>,
     headings: HashMap<ObjId, f32>,
@@ -43,9 +61,16 @@ pub struct Game {
     pub steps: u64,
 }
 
-/// Attack and flinch clips last 1.5 s and dodges about 0.3 s in the humanoid supermodels (measured).
+/// Attack and flinch clips last 1.47 to 1.5 s and dodges 0.3 to 0.43 s in the humanoid supermodels (measured).
 const COMBAT_CLIP_SECONDS: f32 = 1.5;
-const DODGE_CLIP_SECONDS: f32 = 0.4;
+const DODGE_CLIP_SECONDS: f32 = 0.43;
+/// How long a creature that took part in a fight keeps its combat stance after its last blow. A round is 3 s.
+///
+/// **Assumed:** the game keeps the stance for as long as the fight lasts. This covers the gap between two rounds.
+/// `throwgren` and the first stretch of a cast clip (`castout1` to `3`), measured in the humanoid supermodel.
+const THROW_SECONDS: f32 = 1.5;
+const CAST_START_SECONDS: f32 = 0.333;
+const STANCE_HOLD_SECONDS: f32 = 3.5;
 
 #[derive(Clone, Copy)]
 enum Move {
@@ -71,6 +96,7 @@ impl Game {
             last_pos: HashMap::new(),
             before_step: HashMap::new(),
             once: HashMap::new(),
+            ready_until: HashMap::new(),
             log_seen: 0,
             names: HashMap::new(),
             headings: HashMap::new(),
@@ -119,8 +145,8 @@ impl Game {
         self.steps += 1;
         self.start_combat_clips();
         // A power has its own gesture. A body without the clip keeps its idle.
-        for id in std::mem::take(&mut self.world.casts) {
-            self.play_once(id, "castout1", COMBAT_CLIP_SECONDS);
+        for (id, spell) in std::mem::take(&mut self.world.casts) {
+            self.play_cast(id, spell);
         }
         let pc = self.world.pc;
         let ids: Vec<ObjId> = self
@@ -150,19 +176,27 @@ impl Game {
                     self.headings.insert(id, dy.atan2(dx));
                 }
             }
-            let once = self.once.get_mut(&id).and_then(|o| {
-                o.1 -= self.dt;
-                (o.1 > 0.0).then_some(o.0)
+            let dt = self.dt;
+            let once = self.once.get_mut(&id).and_then(|q| {
+                while let Some(first) = q.first_mut() {
+                    first.1 -= dt;
+                    if first.1 > 0.0 {
+                        return Some(first.0);
+                    }
+                    // What the clip overran by is lost: a step is short.
+                    q.remove(0);
+                }
+                None
             });
             if once.is_none() {
                 self.once.remove(&id);
             }
-            let ready = self
-                .world
-                .combat
-                .target
-                .contains_key(&id)
-                .then(|| self.style_clip(id, Move::Ready));
+            if self.world.combat.target.contains_key(&id) {
+                self.ready_until
+                    .insert(id, self.steps + (STANCE_HOLD_SECONDS / self.dt) as u64);
+            }
+            let in_stance = self.ready_until.get(&id).is_some_and(|u| *u > self.steps);
+            let ready = in_stance.then(|| self.style_clip(id, Move::Ready));
             let rolling = id == pc && self.world.pc_body.rolling();
             let want = if down {
                 "die"
@@ -178,9 +212,19 @@ impl Game {
             } else {
                 ready.unwrap_or("pause1")
             };
+            let dt = self.dt;
             let c = self.clips.entry(id).or_insert(Clip {
                 name: want,
                 time: (id % 7) as f32 * 0.37,
+                fade: None,
+            });
+            c.fade = c.fade.and_then(|f| {
+                let weight = f.weight - dt / BLEND_SECONDS;
+                (weight > 0.0).then_some(Fade {
+                    time: f.time + dt,
+                    weight,
+                    ..f
+                })
             });
             if c.name == want {
                 // A sprint plays the run faster, so the feet keep to the floor: `rundist` is 3.96 m a cycle.
@@ -190,11 +234,18 @@ impl Game {
                 } else {
                     1.0
                 };
-                c.time += self.dt * rate;
+                c.time += dt * rate;
             } else {
+                // A dead body does not blend: it falls as its own clip says.
+                let fade = (want != "die").then_some(Fade {
+                    name: c.name,
+                    time: c.time + dt,
+                    weight: 1.0,
+                });
                 *c = Clip {
                     name: want,
                     time: 0.0,
+                    fade,
                 };
             }
         }
@@ -207,7 +258,10 @@ impl Game {
         let new: Vec<_> = self.world.combat.log[self.log_seen.min(n)..].to_vec();
         self.log_seen = n;
         // Two who fight each other strike in the same step: a swing is not to be replaced by the flinch at the other's.
+        let hold = self.steps + (STANCE_HOLD_SECONDS / self.dt) as u64;
         for l in &new {
+            self.ready_until.insert(l.attacker, hold);
+            self.ready_until.insert(l.target, hold);
             if l.outcome == crate::combat::Outcome::Miss {
                 let dodge = self.style_clip(l.target, Move::Dodge);
                 self.play_once(l.target, dodge, DODGE_CLIP_SECONDS);
@@ -216,15 +270,59 @@ impl Game {
                 self.play_once(l.target, hit, COMBAT_CLIP_SECONDS);
             }
         }
+        // A swing waits for a flinch or dodge in progress, so that being hit is always seen to the end.
         for l in &new {
             let swing = self.style_clip(l.attacker, Move::Attack);
-            self.play_once(l.attacker, swing, COMBAT_CLIP_SECONDS);
+            self.queue_once(l.attacker, swing, COMBAT_CLIP_SECONDS);
         }
     }
 
+    /// Play a clip at once, over what is playing.
     fn play_once(&mut self, id: ObjId, name: &'static str, seconds: f32) {
-        self.clips.remove(&id);
-        self.once.insert(id, (name, seconds));
+        // The same clip again starts over.
+        if let Some(c) = self.clips.get_mut(&id).filter(|c| c.name == name) {
+            c.time = 0.0;
+        }
+        self.once.insert(id, vec![(name, seconds)]);
+    }
+
+    /// Play a clip after the one playing, which may be a flinch. One waits at most: a newer one replaces it.
+    fn queue_once(&mut self, id: ObjId, name: &'static str, seconds: f32) {
+        match self.once.get_mut(&id) {
+            Some(q) if !q.is_empty() => {
+                q.truncate(1);
+                q.push((name, seconds));
+            }
+            _ => self.play_once(id, name, seconds),
+        }
+    }
+
+    /// The gesture of a power or a thrown grenade, from the spell's `conjanim` and `castanim` in `spells.2da`: a throw is
+    /// `throwgren`, and a power is the first stretch of its cast clip and then its loop, each once.
+    ///
+    /// **Assumed:** which of the three cast clips (`castout1` to `3`) goes with which `conjanim` (`hand` 1, `head` 2),
+    /// and that the loop clip plays once.
+    fn play_cast(&mut self, id: ObjId, spell: i32) {
+        let (conj, cast) = {
+            let t = self.world.table("spells");
+            let get = |c: &str| {
+                t.as_ref()
+                    .and_then(|t| t.get(spell.max(0) as usize, c))
+                    .unwrap_or("")
+                    .to_ascii_lowercase()
+            };
+            (get("conjanim"), get("castanim"))
+        };
+        if conj == "throw" || cast == "throw" {
+            self.play_once(id, "throwgren", THROW_SECONDS);
+            return;
+        }
+        let (start, hold, a, b) = match conj.as_str() {
+            "head" => ("castout2", "castoutlp2", CAST_START_SECONDS, 1.167),
+            _ => ("castout1", "castoutlp1", CAST_START_SECONDS, 0.933),
+        };
+        self.play_once(id, start, a);
+        self.queue_once(id, hold, b);
     }
 
     /// The clip for a move with the weapon a creature holds.
@@ -349,18 +447,22 @@ impl Game {
                         DoorState::Closed => Clip {
                             name: "closed",
                             time: 0.0,
+                            fade: None,
                         },
                         DoorState::Opening(t) => Clip {
                             name: "opening1",
                             time: t,
+                            fade: None,
                         },
                         DoorState::Open => Clip {
                             name: "opened1",
                             time: 0.0,
+                            fade: None,
                         },
                         DoorState::Closing(t) => Clip {
                             name: "closing1",
                             time: t,
+                            fade: None,
                         },
                     }),
                     _ => self.clips.get(&o.id).cloned().map(|c| Clip {

@@ -1,6 +1,6 @@
 //! A head stays on its body, and a hero's skin matches between the two.
 use kotor_archive::Install;
-use kotor_render::{rig_for_outfit, Scene};
+use kotor_render::{rig_for_outfit, Rig, Scene};
 
 /// Women and men of the three skin families.
 const ROWS: [usize; 6] = [92, 107, 122, 137, 152, 167];
@@ -162,6 +162,50 @@ fn a_hero_with_nothing_on_has_the_arms_of_their_own_skin_family() {
         assert!(
             bright(b.2) < bright(a.2) && bright(b.2) < bright(c.2),
             "family B has the darkest neck: {group:?}"
+        );
+    }
+}
+
+/// Item 9 of the owner's list of 6 Nov: faces never moved. A head carries clips of its own, and a face in one is not
+/// the face at rest, yet the head stays the size it was.
+#[test]
+fn a_face_moves_with_the_clip_and_stays_whole() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    // Bastila's head carries clips of its own. The hero's heads carry none: they would need the lip files, not built.
+    let rig = Rig::load(&mut inst, "P_BastilaBB", Some("P_BastilaH"), None).unwrap();
+    let head_tex = rig.head_texture().unwrap().to_string();
+    let face = rig.sample_face("tlknorm", 3.0).expect("the head talks");
+    let rest = rig.posed(None).unwrap();
+    let talking = rig.posed_with_face(None, Some(&face)).unwrap();
+    let extent = |s: &Scene| {
+        let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+        for (i, m) in s.meshes.iter().enumerate() {
+            if is_head(s, i, &head_tex) {
+                for p in &m.positions {
+                    for k in 0..3 {
+                        lo[k] = lo[k].min(p[k]);
+                        hi[k] = hi[k].max(p[k]);
+                    }
+                }
+            }
+        }
+        (lo, hi)
+    };
+    let moved = rest
+        .meshes
+        .iter()
+        .zip(&talking.meshes)
+        .enumerate()
+        .any(|(i, (a, b))| is_head(&rest, i, &head_tex) && a.positions != b.positions);
+    assert!(moved, "the face differs from the rest pose");
+    let (a, b) = (extent(&rest), extent(&talking));
+    for k in 0..3 {
+        assert!(
+            ((b.1[k] - b.0[k]) - (a.1[k] - a.0[k])).abs() < 0.08,
+            "axis {k}: {a:?} against {b:?}"
         );
     }
 }

@@ -125,6 +125,28 @@ pub struct NodePose {
 /// Per-node pose keyed by lower-case node name.
 pub type Pose = HashMap<String, NodePose>;
 
+/// `from` turned into `to` by `weight_to` (0 to 1): positions in a line, orientations along the shorter arc.
+/// A node only one of them has stays as it is.
+pub fn blend(from: &Pose, to: &Pose, weight_to: f32) -> Pose {
+    let w = weight_to.clamp(0.0, 1.0);
+    let mut out = to.clone();
+    for (name, a) in from {
+        if let Some(b) = to.get(name) {
+            out.insert(
+                name.clone(),
+                NodePose {
+                    position: [0, 1, 2]
+                        .map(|i| a.position[i] + (b.position[i] - a.position[i]) * w),
+                    orientation: slerp(a.orientation, b.orientation, w),
+                },
+            );
+        } else {
+            out.insert(name.clone(), *a);
+        }
+    }
+    out
+}
+
 impl Animation {
     /// Sample every node this animation animates at time `t` (seconds; clamped to the first/last key).
     /// A node whose animation has no position or orientation key takes `rest` for that channel.
@@ -252,6 +274,23 @@ mod tests {
                 && q[2].abs() < 1e-3
                 && q[3].abs() < 1e-3
         );
+    }
+
+    #[test]
+    fn blend_goes_from_one_pose_to_the_other() {
+        let id = [1.0, 0.0, 0.0, 0.0];
+        let at = |x: f32| NodePose {
+            position: [x, 0.0, 0.0],
+            orientation: id,
+        };
+        let (a, b) = (
+            Pose::from([("n".to_string(), at(0.0)), ("only_a".to_string(), at(5.0))]),
+            Pose::from([("n".to_string(), at(2.0))]),
+        );
+        assert_eq!(blend(&a, &b, 0.0)["n"].position[0], 0.0);
+        assert_eq!(blend(&a, &b, 0.5)["n"].position[0], 1.0);
+        assert_eq!(blend(&a, &b, 1.0)["n"].position[0], 2.0);
+        assert!(blend(&a, &b, 0.5).contains_key("only_a"));
     }
 
     #[test]

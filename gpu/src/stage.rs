@@ -95,6 +95,37 @@ fn placement_flat(p: [f32; 3], angle: f32) -> Mat {
     ]
 }
 
+/// Ids from here are rows of `dialoganimations.2da`, in a conversation node's `AnimList`.
+const DIALOGUE_ANIMATION_BASE: u32 = 10000;
+
+/// The clip a `dialoganimations.2da` label asks for. Labels with no clip here make no gesture.
+fn dialogue_clip_name(label: &str) -> Option<&'static str> {
+    Some(match label.to_ascii_lowercase().as_str() {
+        "talk_normal" => "tlknorm",
+        "talk_pleading" => "tlkplead",
+        "talk_forceful" => "tlkforce",
+        "talk_laughing" => "tlklaugh",
+        "talk_sad" => "tlksad",
+        "listen" => "listen",
+        "use_computer_lp" => "usecomplp",
+        "use_computer" => "usecomp",
+        "greeting" => "greeting",
+        "taunt" => "taunt",
+        "salute" => "salute",
+        "bow" => "bow",
+        "victory" => "victory",
+        "inject" => "inject",
+        "flirt" => "flirt",
+        "persuade" => "persuade",
+        "sleep" => "sleep",
+        "horror" => "horror",
+        "activate" => "activate",
+        "scratch_head" => "pause2",
+        "dead" => "dead",
+        _ => return None,
+    })
+}
+
 /// The `CameraList` of an area. A camera stands `Height` above its `Position`, turned about z by `Orientation`, and
 /// tilted up from straight down by `Pitch` degrees.
 ///
@@ -320,6 +351,11 @@ pub struct Stage {
     beat_time: f32,
     camera_model: String,
     stunts: Vec<(String, String)>,
+    /// Seconds of real time: what bodies shown on screens with no game running (the character picker, the party screen)
+    /// idle by.
+    idle_clock: f32,
+    /// The `name` of each row of `dialoganimations.2da`.
+    dialogue_labels: Vec<String>,
     models: HashMap<String, Option<Rc<Model>>>,
     /// The area's fixed cameras by `CameraID`.
     fixed_cameras: HashMap<i32, Camera>,
@@ -437,6 +473,8 @@ impl Stage {
             beat_time: 0.0,
             camera_model: String::new(),
             stunts: Vec::new(),
+            idle_clock: 0.0,
+            dialogue_labels: Vec::new(),
             models: HashMap::new(),
             fixed_cameras: HashMap::new(),
             line_left: None,
@@ -530,6 +568,19 @@ impl Stage {
         self.doors.clear();
         self.events_seen = 0;
         self.fixed_cameras = fixed_cameras(&mut self.inst, &area);
+        if self.dialogue_labels.is_empty() {
+            self.dialogue_labels = self
+                .inst
+                .read("dialoganimations", ResType::TWODA)
+                .ok()
+                .and_then(|b| TwoDa::parse(&b).ok())
+                .map(|t| {
+                    (0..t.row_count())
+                        .map(|r| t.get(r, "name").unwrap_or("").to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
         if turret {
             self.effects = Default::default();
         } else {
@@ -572,6 +623,7 @@ impl Stage {
 
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
+        self.idle_clock += dt;
         self.main_scene_tick(dt);
         self.chargen_mist_tick(dt);
         self.figure_mist_tick(dt);
@@ -871,7 +923,11 @@ impl Stage {
                 self.model(&n);
             }
             let seconds = self.beat.as_ref().map_or(1.5, |b| b.length + b.hold);
-            self.line_left = replies.is_empty().then_some(seconds);
+            // A node whose only replies say nothing is a cutscene's: it moves on by itself, when its voice-over ends.
+            self.line_left = replies
+                .iter()
+                .all(|r| r.trim().is_empty())
+                .then_some(seconds);
         } else {
             self.beat_time += dt;
         }
@@ -975,6 +1031,59 @@ impl Stage {
             target: [at[0], at[1], at[2] + 1.5],
             fov: 40.0,
         })
+    }
+
+    /// A body standing and breathing on a screen, `nth` of those shown, each at its own point of the idle clip.
+    pub(crate) fn idling(&self, nth: usize) -> Option<Clip> {
+        Some(Clip {
+            name: "pause1",
+            time: self.idle_clock + nth as f32 * 1.7,
+            fade: None,
+        })
+    }
+
+    /// The clip a creature plays in a conversation: what its node's `AnimList` names (`dialoganimations.2da`, ids from
+    /// 10000), and else the owner talking and the player listening. `None` outside a conversation, and for a body
+    /// that a cutscene's stunt animates.
+    ///
+    /// **Assumed:** the clip each `dialoganimations.2da` label stands for (`dialogue_clip_name`), and that everyone else
+    /// stands still.
+    pub fn dialogue_clip(&self, id: ObjId) -> Option<Clip> {
+        let w = &self.game.world;
+        if !w.in_dialogue() {
+            return None;
+        }
+        let o = w.object(id)?;
+        let named = self.beat.as_ref().and_then(|b| {
+            b.step.animations.iter().find_map(|(who, anim)| {
+                let mine = (id == w.pc && who.eq_ignore_ascii_case("PLAYER"))
+                    || who.eq_ignore_ascii_case(&o.tag);
+                let row = anim.checked_sub(DIALOGUE_ANIMATION_BASE)?;
+                (mine && *anim >= DIALOGUE_ANIMATION_BASE)
+                    .then(|| self.dialogue_label(row as usize))
+                    .flatten()
+            })
+        });
+        let name = named.or_else(|| {
+            if Some(id) == w.dialogue_owner() && id != w.pc && !self.answering() {
+                Some("tlknorm")
+            } else if id == w.pc {
+                Some("listen")
+            } else {
+                None
+            }
+        })?;
+        Some(Clip {
+            name,
+            time: self.beat_time,
+            fade: None,
+        })
+    }
+
+    /// The clip of row `row` of `dialoganimations.2da`, by its label.
+    fn dialogue_label(&self, row: usize) -> Option<&'static str> {
+        let label = self.dialogue_labels.get(row)?;
+        dialogue_clip_name(label)
     }
 
     /// The pose a creature's cutscene stunt puts it in this beat.
@@ -1799,27 +1908,21 @@ impl Stage {
                         }
                         continue;
                     }
+                    let clip = self.dialogue_clip(pose.id).or_else(|| pose.clip.clone());
                     if let Some(tilt) = self.body_tilt(pose.id, pose.position, pose.heading) {
                         let mut alone = Scene::default();
                         self.add_creature(
                             &mut alone,
                             &rig,
                             &hands,
-                            &pose.clip,
+                            &clip,
                             pose.position,
                             pose.heading,
                         );
                         scene.append_transformed(&alone, &tilt);
                         continue;
                     }
-                    self.add_creature(
-                        &mut scene,
-                        &rig,
-                        &hands,
-                        &pose.clip,
-                        pose.position,
-                        pose.heading,
-                    );
+                    self.add_creature(&mut scene, &rig, &hands, &clip, pose.position, pose.heading);
                 }
                 Kind::Placeable => {
                     let Some(body) = self.chest_body(pose.id) else {
@@ -1884,8 +1987,18 @@ impl Stage {
         let t = len
             .filter(|l| *l > 0.0)
             .map_or(0.0, |l| if name == "die" { t.min(l) } else { t % l });
-        let pose = len.and_then(|_| rig.sample(name, t));
-        let Ok(mut body) = rig.posed(pose.as_ref()) else {
+        let mut pose = len.and_then(|_| rig.sample(name, t));
+        // The clip this one took over from still shows through, fading out.
+        if let (Some(f), Some(now)) = (clip.as_ref().and_then(|c| c.fade), pose.as_ref()) {
+            if let Some(l) = rig.animation_length(f.name).filter(|l| *l > 0.0) {
+                if let Some(old) = rig.sample(f.name, f.time % l) {
+                    pose = Some(kotor_model::blend(&old, now, 1.0 - f.weight));
+                }
+            }
+        }
+        // The face moves with the clip when the head has a clip of that name: breathing, talking, listening.
+        let face = len.and_then(|_| rig.sample_face(name, t));
+        let Ok(mut body) = rig.posed_with_face(pose.as_ref(), face.as_ref()) else {
             return;
         };
         for (node, item) in hands {

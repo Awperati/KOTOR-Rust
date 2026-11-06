@@ -187,7 +187,8 @@ impl Stage {
             None => self.benched_rig(slot),
         };
         if let Some(rig) = rig {
-            self.add_creature(&mut scene, &rig, &[], &None, at, heading);
+            let clip = self.idling(0);
+            self.add_creature(&mut scene, &rig, &[], &clip, at, heading);
         }
         scene
     }

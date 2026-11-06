@@ -215,7 +215,8 @@ impl Rig {
     /// skinned head is blended by the body's bones (see `SkinCtx`).
     pub fn pose(&self, animation: Option<(&str, f32)>) -> Result<Scene> {
         let pose = animation.and_then(|(name, t)| self.sample(name, t));
-        self.posed(pose.as_ref())
+        let face = animation.and_then(|(name, t)| self.sample_face(name, t));
+        self.posed_with_face(pose.as_ref(), face.as_ref())
     }
 
     /// A named animation sampled at `t`, from the nearest supermodel that has it.
@@ -238,8 +239,25 @@ impl Rig {
         }
     }
 
+    /// The head's own animation of this name (`pause1`, `talk`, `tlknorm`, `listen`) sampled at `t`: the face moving. A
+    /// head carries these the way a body's supermodel does, and a body with no head or a head without the clip has none.
+    pub fn sample_face(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
+        let head = self.head.as_ref()?;
+        let a = head.animation(name)?;
+        Some(a.sample(head, if a.length > 0.0 { t % a.length } else { 0.0 }))
+    }
+
     /// The character in a pose sampled elsewhere, such as a cutscene's stunt model.
     pub fn posed(&self, pose: Option<&kotor_model::Pose>) -> Result<Scene> {
+        self.posed_with_face(pose, None)
+    }
+
+    /// Like [`Rig::posed`], with the head in a pose of its own (see [`Rig::sample_face`]).
+    pub fn posed_with_face(
+        &self,
+        pose: Option<&kotor_model::Pose>,
+        face: Option<&kotor_model::Pose>,
+    ) -> Result<Scene> {
         let mut scene = Scene {
             min: [f32::MAX; 3],
             max: [f32::MIN; 3],
@@ -287,7 +305,7 @@ impl Rig {
                     // Rigid: bending the head by the body's bones melts the face, because the facial bones are only in
                     // the head's own skeleton.
                     let xf = mat_mul(&mb, &rigid_inverse(&mh));
-                    scene.add_model_with(head_m, None, &xf, &[], self.head_tex.as_deref(), None);
+                    self.add_head(&mut scene, head_m, face, &xf);
                 }
                 _ => {
                     if let (Some(posed), Some(mut turn)) =
@@ -297,14 +315,7 @@ impl Rig {
                             row[3] = 0.0;
                         }
                         let xf = mat_mul(&posed, &rigid_inverse(&turn));
-                        scene.add_model_with(
-                            head_m,
-                            None,
-                            &xf,
-                            &[],
-                            self.head_tex.as_deref(),
-                            None,
-                        );
+                        self.add_head(&mut scene, head_m, face, &xf);
                     }
                 }
             }
@@ -313,6 +324,42 @@ impl Rig {
             return Err(Error::format("character has no drawable meshes"));
         }
         Ok(scene)
+    }
+}
+
+impl Rig {
+    /// The head at `xf`, its face in `face` if there is one: the skin then follows the head's own bones, in the head's
+    /// own space, and the whole is placed after.
+    fn add_head(
+        &self,
+        scene: &mut Scene,
+        head: &Model,
+        face: Option<&kotor_model::Pose>,
+        xf: &Mat,
+    ) {
+        let Some(f) = face else {
+            scene.add_model_with(head, None, xf, &[], self.head_tex.as_deref(), None);
+            return;
+        };
+        let skin = SkinCtx::new(
+            &head.world_matrices(None),
+            &head.world_matrices(Some(f)),
+            crate::scene::IDENTITY,
+        );
+        let mut alone = Scene {
+            min: [f32::MAX; 3],
+            max: [f32::MIN; 3],
+            ..Scene::default()
+        };
+        alone.add_model_with(
+            head,
+            Some(f),
+            &crate::scene::IDENTITY,
+            &[],
+            self.head_tex.as_deref(),
+            Some(&skin),
+        );
+        scene.append_transformed(&alone, xf);
     }
 }
 

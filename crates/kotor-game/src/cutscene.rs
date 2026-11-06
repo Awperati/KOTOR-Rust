@@ -182,8 +182,11 @@ pub struct Timeline {
     pub total: f32,
 }
 
-const READING_CHARS_PER_SECOND: f32 = 15.0;
-const MINIMUM_READING_SECONDS: f32 = 1.5;
+/// A line with no voice-over is held for `READING_SECONDS_PER_CHAR` a character, at least 2 s and at most 8 s (the owner's rule,
+/// 6 Nov 2026).
+const READING_SECONDS_PER_CHAR: f32 = 0.06;
+const MINIMUM_READING_SECONDS: f32 = 2.0;
+const MAXIMUM_READING_SECONDS: f32 = 8.0;
 
 /// Seconds a pause holds for: the `ActionWait` amounts recorded between a pause and its resume, where
 /// `pending` carries a pause still open from earlier nodes.
@@ -241,8 +244,8 @@ impl Timeline {
                 None => match (s.delay, s.text.is_empty()) {
                     (Some(d), _) => (d, LengthFrom::Delay),
                     (None, false) => (
-                        (s.text.chars().count() as f32 / READING_CHARS_PER_SECOND)
-                            .max(MINIMUM_READING_SECONDS),
+                        (s.text.chars().count() as f32 * READING_SECONDS_PER_CHAR)
+                            .clamp(MINIMUM_READING_SECONDS, MAXIMUM_READING_SECONDS),
                         LengthFrom::Text,
                     ),
                     (None, true) => (0.0, LengthFrom::Nothing),

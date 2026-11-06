@@ -781,9 +781,10 @@ impl Stage {
         let holes: Vec<[f32; 4]> = figures.iter().map(|f| f.1).collect();
         let (places, camera) = self.places_in_holes(&holes);
         let mut scene = Scene::default();
-        for ((appearance, _), at) in figures.iter().zip(places) {
+        for (nth, ((appearance, _), at)) in figures.iter().zip(places).enumerate() {
             if let Some(rig) = self.clothed_rig(*appearance) {
-                self.add_creature(&mut scene, &rig, &[], &None, at, FACING_CAMERA);
+                let clip = self.idling(nth);
+                self.add_creature(&mut scene, &rig, &[], &clip, at, FACING_CAMERA);
             }
         }
         (scene, camera)

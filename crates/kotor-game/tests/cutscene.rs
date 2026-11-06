@@ -61,7 +61,7 @@ fn a_beat_lasts_as_long_as_its_longest_animation_voice_delay_or_reading_time() {
     let mut stretched = step("");
     stretched.camera_animation = Some(1200);
     stretched.delay = Some(7.5);
-    let text = step(&"x".repeat(60)); // 60 characters at 15 a second
+    let text = step(&"x".repeat(60)); // 60 characters at 0.06 s each
     let short = step("hi");
     let empty = step("");
     let t = Timeline::build(
@@ -77,8 +77,8 @@ fn a_beat_lasts_as_long_as_its_longest_animation_voice_delay_or_reading_time() {
             (6.0, LengthFrom::Voice),
             (3.0, LengthFrom::Delay),
             (7.5, LengthFrom::Delay),
-            (4.0, LengthFrom::Text),
-            (1.5, LengthFrom::Text),
+            (3.6, LengthFrom::Text),
+            (2.0, LengthFrom::Text),
             (0.0, LengthFrom::Nothing),
         ]
     );
@@ -86,7 +86,7 @@ fn a_beat_lasts_as_long_as_its_longest_animation_voice_delay_or_reading_time() {
     for w in t.beats.windows(2) {
         assert!((w[1].start - (w[0].start + w[0].length + w[0].hold)).abs() < 1e-6);
     }
-    assert!((t.total - 28.5).abs() < 1e-5, "{}", t.total);
+    assert!((t.total - 28.6).abs() < 1e-4, "{}", t.total);
 }
 
 #[test]

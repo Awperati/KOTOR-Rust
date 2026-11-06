@@ -928,3 +928,72 @@ fn the_jedi_duel_ends_without_any_click() {
     assert!(ended.is_some(), "end_cut04 waits for a click");
     assert!(ev.iter().any(|e| e.contains("end_darkjedi01) dies")));
 }
+
+/// Item 10 of the owner's list of 6 Nov: whoever talks in a conversation gestures, and the player listens.
+#[test]
+fn the_owner_of_a_conversation_talks_and_the_player_listens() {
+    let Some(mut s) = stage() else { return };
+    let mut seen = Vec::new();
+    for _ in 0..(120.0 / DT) as usize {
+        s.update(DT);
+        let w = &s.game.world;
+        if let Some(owner) = w.dialogue_owner().filter(|o| *o != w.pc) {
+            let (pc, tag) = (w.pc, w.object(owner).unwrap().tag.clone());
+            let o = s.dialogue_clip(owner).map(|c| c.name);
+            let p = s.dialogue_clip(pc).map(|c| c.name);
+            seen.push((tag, o, p));
+        }
+        s.continue_line();
+        s.number_key(1);
+        if seen.len() > 400 {
+            break;
+        }
+    }
+    assert!(!seen.is_empty(), "a conversation happened");
+    // Outside a conversation nothing is overridden.
+    assert!(s.dialogue_clip(s.game.world.pc).is_none() || s.game.world.in_dialogue());
+    assert!(
+        seen.iter()
+            .any(|(_, o, _)| o.is_some_and(|n| n.starts_with("tlk"))),
+        "the speaker makes talking gestures: {:?}",
+        &seen[..seen.len().min(5)]
+    );
+    assert!(
+        seen.iter().any(|(_, _, p)| *p == Some("listen")),
+        "the player listens"
+    );
+}
+
+/// The opening cutscene moves on by itself, each node after the length of its animation (`docs/CUTSCENE.md`: 4.97, 3.87,
+/// 4.87 and 4.13 s), with no click.
+#[test]
+fn a_cutscene_advances_by_itself_when_its_clip_ends() {
+    let Some(mut s) = stage() else { return };
+    let mut last = None;
+    let mut at = 0.0;
+    let mut gaps = Vec::new();
+    for f in 0..(30.0 / DT) as usize {
+        s.update(DT);
+        let now = f as f32 * DT;
+        let key = s.game.world.dialogue_serial();
+        if key != last {
+            if last.is_some() {
+                gaps.push(now - at);
+            }
+            at = now;
+            last = key;
+        }
+        if s.game
+            .world
+            .dialogue_view()
+            .is_some_and(|v| !v.3.is_empty())
+        {
+            break;
+        }
+    }
+    let expected = [4.97, 3.87, 4.87, 4.13];
+    assert!(gaps.len() >= 4, "{gaps:?}");
+    for (g, e) in gaps.iter().zip(expected) {
+        assert!((g - e).abs() < 0.15, "{gaps:?}");
+    }
+}

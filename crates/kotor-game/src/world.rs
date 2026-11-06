@@ -448,7 +448,7 @@ pub struct World {
     pub early_force: bool,
     pub(crate) force_regen: f32,
     /// Who has just cast a power, for the animation.
-    pub(crate) casts: Vec<ObjId>,
+    pub(crate) casts: Vec<(ObjId, i32)>,
     /// The shop that is open, and what never runs out in any shop.
     pub store: Option<crate::store::StoreOpen>,
     pub(crate) store_infinite: BTreeSet<ObjId>,

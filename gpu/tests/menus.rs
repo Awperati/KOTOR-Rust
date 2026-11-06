@@ -3773,3 +3773,28 @@ fn the_font_and_box_rows_change_the_picture_and_the_file_keeps_them() {
     s.hover(top, SIZE);
     assert!(frame(&mut s) != back, "the list starts from the top again");
 }
+
+/// Item 3 of the owner's list of 6 Nov: figures shown on screens with no game running stood in the rest pose.
+#[test]
+fn figures_on_the_party_screen_breathe() {
+    let Some((mut s, _)) = in_game("party_idle") else {
+        return;
+    };
+    s.game.world.available.insert(2, "end_trask".to_string());
+    s.open_party();
+    press(&mut s, "BTN_NPC2");
+    s.update(DT);
+    let (first, _, _) = s.frame_scene();
+    for _ in 0..45 {
+        s.update(DT);
+    }
+    let (later, _, _) = s.frame_scene();
+    assert!(
+        first
+            .meshes
+            .iter()
+            .zip(&later.meshes)
+            .any(|(a, b)| a.positions != b.positions),
+        "the figure idles"
+    );
+}
