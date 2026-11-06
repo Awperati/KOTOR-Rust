@@ -221,6 +221,25 @@ impl Body {
         self.vel[0].hypot(self.vel[1])
     }
 
+    /// Carry the body over a change of space, a turn of `yaw` about the vertical and then a shift, as a seamless
+    /// crossing makes: where it is, which way it faces and moves, and where it last stood, so a roll or a fall goes on.
+    pub fn carry(&mut self, yaw: f32, shift: [f32; 3]) {
+        let (s, c) = yaw.sin_cos();
+        let spin = |v: [f32; 2]| [c * v[0] - s * v[1], s * v[0] + c * v[1]];
+        let put = |p: [f32; 3]| {
+            let q = spin([p[0], p[1]]);
+            [q[0] + shift[0], q[1] + shift[1], p[2] + shift[2]]
+        };
+        self.pos = put(self.pos);
+        self.last_stood = put(self.last_stood);
+        self.vel = spin(self.vel);
+        self.heading = wrap(self.heading + yaw);
+        self.fall_from += shift[2];
+        if let Some(r) = self.roll.as_mut() {
+            r.dir = spin(r.dir);
+        }
+    }
+
     pub fn rolling(&self) -> bool {
         self.roll.is_some()
     }

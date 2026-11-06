@@ -1894,7 +1894,12 @@ impl Stage {
             .iter()
             .find(|d| (at(d, "X") - pos[0]).abs() + (at(d, "Y") - pos[1]).abs() < 0.01)
             .map_or(0.0, |d| at(d, "Bearing"));
-        let utd = Gff::parse(&self.inst.read(&template, ResType(2042)).ok()?).ok()?;
+        self.door_model(&template, pos, bearing)
+    }
+
+    /// The model of a door of this template, standing at `pos` turned `bearing`.
+    fn door_model(&mut self, template: &str, pos: [f32; 3], bearing: f32) -> Option<DoorBody> {
+        let utd = Gff::parse(&self.inst.read(template, ResType(2042)).ok()?).ok()?;
         let table = TwoDa::parse(&self.inst.read("genericdoors", ResType::TWODA).ok()?).ok()?;
         let name = table
             .get(utd.root.int("GenericType")? as usize, "modelname")?
@@ -1903,6 +1908,26 @@ impl Stage {
             model: load_model(&mut self.inst, &name)?,
             xf: placement(pos, bearing),
         })
+    }
+
+    /// A door's bearing in an area's GIT, at the door's position.
+    fn door_bearing(&mut self, area: &str, pos: [f32; 3]) -> f32 {
+        let Some(git) = self
+            .inst
+            .read(area, ResType::GIT)
+            .ok()
+            .and_then(|b| Gff::parse(&b).ok())
+        else {
+            return 0.0;
+        };
+        let at = |s: &kotor_gff::Struct, l: &str| s.float(l).unwrap_or(0.0) as f32;
+        git.root
+            .list("Door List")
+            .and_then(|l| {
+                l.iter()
+                    .find(|d| (at(d, "X") - pos[0]).abs() + (at(d, "Y") - pos[1]).abs() < 0.01)
+            })
+            .map_or(0.0, |d| at(d, "Bearing"))
     }
 
     /// Everything that moves, posed for this frame: creatures near the player and every door.

@@ -6,7 +6,7 @@ use super::{chest_templates, Stage};
 use crate::Aperture;
 use kotor_archive::Install;
 use kotor_game::seamless::{prepare, Fallback, Sketch};
-use kotor_game::{Attached, Kind};
+use kotor_game::{Attached, Figure, Kind, Scenery};
 use kotor_render::Scene;
 use kotor_walkmesh::seamless::{wrap, Rigid};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -17,6 +17,21 @@ const PRELOAD_RANGE: f32 = 24.0;
 
 fn spot(at: [f32; 3]) -> (i32, i32) {
     ((at[0] * 10.0) as i32, (at[1] * 10.0) as i32)
+}
+
+/// A neighbour's creatures and doors, drawn one at a time so that no frame pays for them all.
+struct Still {
+    scene: Scene,
+    figures: Vec<Figure>,
+    doors: Vec<(String, [f32; 3])>,
+    area: String,
+    doorway: [f32; 3],
+}
+
+impl Still {
+    fn done(&self) -> bool {
+        self.figures.is_empty() && self.doors.is_empty()
+    }
 }
 
 /// A neighbour as the thread loaded it.
@@ -50,6 +65,11 @@ pub(super) struct Seam {
     portal: Option<(Scene, Aperture)>,
     portal_key: Option<(String, Rigid, Aperture)>,
     pub portal_version: u64,
+    /// The still creatures and doors of each module that is joined, in its own space, by module name.
+    figures: HashMap<String, Still>,
+    /// Goes up when a module's figures are all drawn, so that the picture is stitched again.
+    figure_version: u64,
+    stitched_figures: u64,
     /// Why links fell back to the old way, for logs and tests.
     pub notes: Vec<String>,
 }
@@ -62,6 +82,7 @@ impl Seam {
         self.failed.clear();
         self.parts.clear();
         self.portal_key = None;
+        self.figures.clear();
     }
 }
 
@@ -206,8 +227,95 @@ impl Stage {
         }
     }
 
+    /// Draw one more of a neighbour's creatures or doors, as a still picture in its own space, leaving out the door
+    /// that is the doorway to us: ours stands there already.
+    fn scenery_step(&mut self) {
+        let Some(module) = self
+            .seam
+            .figures
+            .iter()
+            .find(|(_, s)| !s.done())
+            .map(|(m, _)| m.clone())
+        else {
+            return;
+        };
+        let still = self.seam.figures.get_mut(&module).expect("just found");
+        let figure = still.figures.pop();
+        let door = if figure.is_none() {
+            still.doors.pop()
+        } else {
+            None
+        };
+        let (area, doorway) = (still.area.clone(), still.doorway);
+        let mut scene = Scene::default();
+        if let Some(f) = figure {
+            if let Some(rig) = self.rig_for(f.appearance, &f.template, f.armour.clone()) {
+                self.add_creature(&mut scene, &rig, &[], &None, f.at, f.heading);
+            }
+        }
+        if let Some((template, pos)) = door {
+            if (pos[0] - doorway[0]).hypot(pos[1] - doorway[1]) >= 1.5 {
+                let bearing = self.door_bearing(&area, pos);
+                if let Some(b) = self.door_model(&template, pos, bearing) {
+                    scene.add_model_with(&b.model, None, &b.xf, &[], None, None);
+                }
+            }
+        }
+        let still = self.seam.figures.get_mut(&module).expect("just found");
+        still.scene.append(scene);
+        if still.done() {
+            self.seam.figure_version += 1;
+        }
+    }
+
     /// Make the picture show this module and whatever is joined to it.
     fn seamless_stitch(&mut self) {
+        let missing: Vec<(String, Scenery, [f32; 3])> = self
+            .game
+            .world
+            .seamless
+            .attached
+            .values()
+            .filter(|a| !self.seam.figures.contains_key(&a.module))
+            .map(|a| {
+                (
+                    a.module.clone(),
+                    a.scenery.clone(),
+                    a.rigid.inverse().apply(a.at),
+                )
+            })
+            .collect();
+        for (module, scenery, doorway) in missing {
+            let empty = scenery.figures.is_empty() && scenery.doors.is_empty();
+            self.seam.figures.insert(
+                module,
+                Still {
+                    scene: Scene::default(),
+                    figures: scenery.figures,
+                    doors: scenery.doors,
+                    area: scenery.area,
+                    doorway,
+                },
+            );
+            if empty {
+                self.seam.figure_version += 1;
+            }
+        }
+        self.scenery_step();
+        let joined: Vec<String> = self
+            .game
+            .world
+            .seamless
+            .attached
+            .values()
+            .map(|a| a.module.clone())
+            .collect();
+        self.seam.figures.retain(|m, _| joined.contains(m));
+        let figures_ready = self.seam.figures.values().all(Still::done);
+        if !figures_ready {
+            // Nothing is stitched until the creatures are drawn, so the picture changes once, not once for each.
+            return;
+        }
         let attached = &self.game.world.seamless.attached;
         let want: Vec<(String, Rigid)> = attached
             .values()
@@ -226,10 +334,15 @@ impl Stage {
                 },
             )
         });
-        if door != self.seam.portal_key {
-            let ready = door
-                .as_ref()
-                .and_then(|(m, r, a)| Some((self.seam.cache.get(m)?.0.moved(r.yaw, r.shift), *a)));
+        let figures_new = self.seam.figure_version != self.seam.stitched_figures;
+        if door != self.seam.portal_key || figures_new {
+            let ready = door.as_ref().and_then(|(m, r, a)| {
+                let mut s = self.seam.cache.get(m)?.0.moved(r.yaw, r.shift);
+                if let Some(f) = self.seam.figures.get(m) {
+                    s.append(f.scene.moved(r.yaw, r.shift));
+                }
+                Some((s, *a))
+            });
             // A neighbour whose picture has not come yet is waited for, not shown half.
             if door.is_none() || ready.is_some() {
                 self.seam.portal = ready;
@@ -237,13 +350,17 @@ impl Stage {
                 self.seam.portal_version += 1;
             }
         }
-        if want == self.seam.parts {
+        self.seam.stitched_figures = self.seam.figure_version;
+        if want == self.seam.parts && !figures_new {
             return;
         }
         let mut scene = self.seam.base.clone();
         for (m, r) in &want {
             if let Some((s, _)) = self.seam.cache.get(m) {
                 scene.append(s.moved(r.yaw, r.shift));
+                if let Some(f) = self.seam.figures.get(m) {
+                    scene.append(f.scene.moved(r.yaw, r.shift));
+                }
             }
         }
         self.static_scene = scene;

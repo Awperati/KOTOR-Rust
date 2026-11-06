@@ -159,7 +159,10 @@ pub fn move_tris(t: &[Tri], r: &Rigid) -> Vec<Tri> {
 /// A walkmesh moved by `r`, for building a navigation mesh. Its search tree is dropped, which `NavMesh` does not use.
 pub fn move_bwm(m: &Bwm, r: &Rigid) -> Bwm {
     let mut out = m.clone();
-    out.vertices = m.vertices.iter().map(|p| r.apply(*p)).collect();
+    // Vertices that the navigation mesh welds, because they round to one point of its grid, are put on that point
+    // before the move, so that they stay one point whatever the turn does to the last digits.
+    let snap = |p: V3| p.map(|v| (v / WELD).round() * WELD);
+    out.vertices = m.vertices.iter().map(|p| r.apply(snap(*p))).collect();
     out.position = r.apply(m.position);
     for f in &mut out.faces {
         f.normal = r.apply_dir(f.normal);

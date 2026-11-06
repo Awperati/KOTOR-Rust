@@ -959,6 +959,8 @@ impl World {
         player.actions.clear();
         player.effects.clear();
         self.objects.insert(pc, player);
+        // Neighbours joined through doors are not part of a save: the module loads on its own.
+        self.seamless.forget_neighbours();
         self.delayed.clear();
         self.transcript.clear();
         self.followers.clear();

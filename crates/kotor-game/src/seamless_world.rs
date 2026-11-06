@@ -7,6 +7,26 @@ use kotor_walkmesh::seamless::{beyond, move_bwm, wrap, Rigid};
 use kotor_walkmesh::{parse_bwm, parse_lyt, Bwm, Mover, NavMesh};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A creature standing in a module, as much as is needed to draw it where it stands.
+#[derive(Clone, Debug)]
+pub struct Figure {
+    pub appearance: i32,
+    pub template: String,
+    /// The armour it wears: its base item and template.
+    pub armour: Option<(i32, String)>,
+    pub at: [f32; 3],
+    pub heading: f32,
+}
+
+/// What stands in a module besides its floor, in its own space, for drawing it before the party gets there: its
+/// creatures and its doors (template and position). Still, not simulated.
+#[derive(Clone, Debug, Default)]
+pub struct Scenery {
+    pub area: String,
+    pub figures: Vec<Figure>,
+    pub doors: Vec<(String, [f32; 3])>,
+}
+
 /// A neighbour joined to the loaded module through one of its doors, ready to be walked into.
 #[derive(Clone)]
 pub struct Attached {
@@ -24,6 +44,8 @@ pub struct Attached {
     pub cut_theirs: Vec<usize>,
     /// This is the module the party has just come from.
     pub behind: bool,
+    /// Its creatures and doors, for drawing.
+    pub scenery: Scenery,
     /// The two modules overlap in plan. Each is walkable only near the door (`far_*` are the faces left out) and the
     /// other is drawn through the doorway alone, never as a neighbour.
     pub portal: bool,
@@ -48,6 +70,16 @@ pub struct State {
     pub crossed: Option<Crossing>,
     base: Vec<Bwm>,
     base_module: String,
+}
+
+impl State {
+    /// Drop everything joined and any crossing not yet taken, for a world that is loaded afresh.
+    pub fn forget_neighbours(&mut self) {
+        self.attached.clear();
+        self.crossed = None;
+        self.base.clear();
+        self.base_module.clear();
+    }
 }
 
 /// How far into the module it has just entered the party must be before the one behind is let go, in metres.
@@ -130,6 +162,39 @@ impl World {
             .iter()
             .filter_map(|r| parse_bwm(&self.inst.read(&r.model, ResType::WOK).ok()?).ok())
             .collect()
+    }
+
+    /// The creatures (not the party) and doors of the loaded module, where they stand.
+    pub fn scenery(&self) -> Scenery {
+        let area = self
+            .object(self.area)
+            .map(|a| a.tag.clone())
+            .unwrap_or_default();
+        let mut s = Scenery {
+            area,
+            ..Scenery::default()
+        };
+        for o in self.objects.values() {
+            match o.kind {
+                Kind::Creature if !o.dead && o.id != self.pc && !self.party.contains(&o.id) => {
+                    let armour = o
+                        .equipped
+                        .get(&1)
+                        .and_then(|i| self.object(*i))
+                        .map(|i| (i.base_item, i.template.clone()));
+                    s.figures.push(Figure {
+                        appearance: o.appearance,
+                        template: o.template.clone(),
+                        armour,
+                        at: o.position,
+                        heading: o.facing.to_radians(),
+                    });
+                }
+                Kind::Door => s.doors.push((o.template.clone(), o.position)),
+                _ => {}
+            }
+        }
+        s
     }
 
     /// The link door of this module standing at `at`.
@@ -271,6 +336,7 @@ impl World {
             self.room_bwms()
         };
         let old_module = self.module.clone();
+        let old_scenery = self.scenery();
         self.seamless.attached.clear();
         if let Err(e) = self.transition(&a.module, "") {
             self.errors
@@ -287,6 +353,9 @@ impl World {
         let pc = self.pc;
         let at = self.objects.get(&pc).map_or([0.0; 3], |o| o.position);
         self.pc_mover = Mover::new(at, wrap(heading + inv.yaw));
+        // Modern movement keeps a body with momentum, a roll or a fall under way: it goes on across the crossing.
+        self.pc_body.carry(inv.yaw, inv.shift);
+        self.body_mark = at;
         self.seamless.base = a.bwms.clone();
         self.seamless.base_module = a.module.clone();
         // The neighbour's own door, now standing where ours was: open, because the party has just come through it.
@@ -313,6 +382,7 @@ impl World {
                     cut_ours: a.cut_theirs.clone(),
                     cut_theirs: a.cut_ours.clone(),
                     behind: true,
+                    scenery: old_scenery,
                     portal: a.portal,
                     far_ours: a.far_theirs.clone(),
                     far_theirs: a.far_ours.clone(),

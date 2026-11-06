@@ -18,10 +18,11 @@ A door that leads to another module used to load it and put the party at a waypo
 
 Two areas often cannot stand side by side: the Cantina's floor would lie under the Upper City South plaza. When the whole floors overlap, the link is still taken as a **portal** (`Attached::portal`, `Fallback::Overlaps` only when the parts near the door overlap too):
 
-- **Walkable near the door only.** Each side keeps just the faces within 20 m of the door (`PORTAL_REACH`; faces beyond are `far_ours` and `far_theirs`). Both near parts are tested against the other module's whole floor, so after the crossing nobody stands on a face that overlaps.
+- **Walkable near the door only.** Each side keeps just the faces within 20 m of the door (`PORTAL_REACH`; faces beyond are `far_ours` and `far_theirs`). A crowded street that still overlaps is tried again at 10 m and at 6 m (`PORTAL_REACHES`). The neighbour's floor on our side of the doorway, a pocket outside its own door, is given up like a stub. Both near parts are tested against the other module's whole floor, so after the crossing nobody stands on a face that overlaps.
 - **Seen through the doorway only.** The neighbour is never stitched on to the picture. `GpuRenderer::set_portal` keeps its draws apart, and the shader cuts them to the view through the doorway: five planes, one for the door's plane and one through the eye and each side of the opening (`Aperture`, 3.6 m high). Our own picture has that view cut out, so the two never mix. After the crossing the roles swap on which side the camera is on, so the picture does not change at the swap.
+- **Modern movement.** The body the movement builder keeps (momentum, a roll, a fall) is turned and shifted with everything else at the crossing (`Body::carry`), or it would be rebuilt standing still. A roll begun 1.2 m before a door goes on through the crossing.
 - **Ghosts.** Doors and creatures of the module just entered that stand beyond the doorway (where the other module is drawn) are not blockers for the nav or the party (`World::beyond_the_portal`).
-- **Weld grid.** A placed module is turned by a whole quarter turn and shifted by whole 2 cm cells where it can be, so that room seams on the nav weld the same as in the module's own space (`join`).
+- **Weld grid.** The nav welds room seams where vertices round to one point of a 2 cm grid. A moved module has its vertices put on that grid before the move (`move_bwm`), and a quarter turn is shifted by whole cells (`join`), so seams stay closed at any turn. Without this followers were cut off by invisible breaks in the street.
 
 ## What stays as it was
 
@@ -33,11 +34,13 @@ Two areas often cannot stand side by side: the Cantina's floor would lie under t
 ## Assumptions and limits
 
 - **Triggers do not go seamless.** A trigger link has no door to open, so it loads the old way. The planner can place one, but nothing draws it.
-- **The neighbour's lights, fog and creatures are not shown before the crossing.** Only its floor and static objects are. Its door models and lights appear at the crossing.
-- **Closed door models of the neighbour** are not drawn before the crossing; the opened door shows the neighbour's rooms behind it.
+- **The neighbour's creatures and door models are shown before the crossing, standing still.** They are drawn once, one a frame so that no frame pays for all (`Stage::scenery_step`), at the spot and heading they have in the neighbour's own module, in the armour they wear, with the default idle pose. They do not move, talk or react until the crossing, when the real ones take over. The neighbour's own door back to us is left out, because ours stands there.
+- **Lights and fog** need nothing: this engine lights areas with baked lightmaps, which are part of the neighbour's picture, and has no area fog to carry.
 - **Minimap and map notes** switch at the crossing, not before.
 - **Uploading the stitched picture** costs a frame when a neighbour joins or leaves (worst update 30 to 100 ms measured, median 0.1 ms).
 - **A portal shows one doorway at a time**, the first loaded.
+- **Elevators** (`tar04_elevdoor`, `tar10_elev02`, `tar05_elevator`, `ptar_secdoor` of the Lower City and others) still load. Their door gives no clear outside: the module behind is a lift car whose floor is on both sides of the door line, or the arrival waypoint faces the other way (the two directions disagree by 180 degrees). A lift is also a change of level and of place by design: the old game hides it behind the loading screen on purpose.
+- **Saves** do not record what is joined. A save made with a neighbour joined, before or after the crossing, loads as a plain module (`State::forget_neighbours`), and joining begins again by itself near a door.
 - **A portal's neighbour is a still picture** until the crossing, with no creatures or lights, as for a joined one. Creatures of the module just entered that stand beyond the doorway are in the world and can be targeted, though they are not drawn.
 - A stub is assumed to be a dead end. If a stub holds floor the player needs, that link would have to fall back; the survey does not check it.
 - **One-way links** (the neighbour has no door back) fall back, so that the area left can stay in view.
@@ -61,17 +64,24 @@ Run `cargo run --release -p kotor-game --example seamless_survey -- tar_m02aa ta
 | tar_m02ab | tar02_lowdoor | (130.1, 131.2) | tar_m03aa (Lower City) | falls back: overlaps at (135, 93) |
 | tar_m02ab | UpperSouth | (221.2, 60.9) | tar_m02ac | **portal** shift (33.8, -56.8), turn 0, miss 0.21 m |
 | tar_m02ae | ptar_stnddr | (141.7, 110.0) | tar_m02ac | **portal** shift (116.8, 200.0), turn -90, miss 0.18 m |
-| tar_m03aa | 6 doors | | tar_m02ab, m03ab, m03ad, m03ae, m10aa, m11aa | all fall back: overlaps |
+| tar_m03aa (Lower City) | tar04_elevdoor | (402.6, 134.8) | tar_m02ab | **portal** shift (533.8, 4.7, 8.2), turn 90 |
+| tar_m03aa | tar03_blkdoor | (464.0, 150.1) | tar_m10aa | **portal** shift (407.0, 303.3, 6.0), turn -90, miss 0.72 m and 11 deg |
+| tar_m03aa | tar03_bekdoor | (359.0, 197.6) | tar_m11aa | **portal** shift (325.0, 265.4, 8.3), turn -85 |
+| tar_m03ae | TarisDoor2 | (141.7, 110.0) | tar_m03aa | **portal** shift (-222.8, -32.3, -8.2), turn -5 |
+| tar_m03aa | tar04_stddoor (two), tar03_javydoor | (402.6, 165.0), (307.1, 208.7), (350.7, 173.6) | tar_m03ad, m03ab, m03ae | fall back: the shop's floor overlaps the street at (404, 162), (306, 212), (346, 174) even within 6 m of the door |
 | tar_m03aa | tar04_elevdoor | (189.2, 221.2) | tar_m04aa | falls back: no clear side of the door |
-| tar_m03ab, m03ad, m03ae | shop doors | | tar_m03aa | fall back: overlaps |
+| tar_m03ab, m03ad | shop doors | | tar_m03aa | fall back: overlaps near the door |
 | tar_m04aa | tar04_elevdoor | (179.6, 166.3) | tar_m03aa | falls back: the two arrival waypoints disagree by 38 deg |
 | tar_m04aa | TarisDoor3, trigger tar04_goto05aa10 | | tar_m05aa | fall back: no door back |
-| tar_m05aa, m05ab | forcefield, swoop and elevator doors | | tar_m05ab, m05aa, m10aa | fall back: overlap or no clear side |
+| tar_m05aa | tar05_forcefield | (281.8, 130.8) | tar_m05ab | **portal** shift (-27.3, -83.2, -2.0), turn -45 |
+| tar_m05ab | swoop and elevator doors | | tar_m05aa, m10aa | fall back: no clear side |
+| tar_m10aa | tar10_elev03 | (196.2, 144.3) | tar_m05ab | **portal** shift (-114.4, 433.3, -21.5), turn -90 |
+| tar_m11aa | ptar_secdoor | (70.5, 97.5) | tar_m11ab | **portal** shift (47.3, 66.7, -2.2) |
 | tar_m09aa | ptar_elevdoor | (36.7, -13.9) | tar_m09ab | falls back: the door names no arrival waypoint |
-| tar_m10aa, m10ac | elevators | | tar_m10ac, m05ab, m03aa | fall back: arrival points face opposite ways, or overlap |
+| tar_m10aa, m10ac, m11aa | elevators, `ptar_secdoor` | | tar_m10ac, m03aa | fall back: arrival points face opposite ways, or no clear side |
 | end_m01aa (Endar Spire) | end_door10 | (47.4, 120.1) | end_m01ab | falls back: end_m01ab has no door back |
 
-**Reading the table.** The doors of Taris that most people think of, Upper City to Apartments, to the Sith base, to the shop `tar_m02ad` and to the Cantina, join. The Apartments, the Sith base and `tar_m02ad` stand beside the street. The Cantina and the two Upper City street links (north and south) overlap it, so they are portals. The Lower City still overlaps near its door and keeps the loading screen; the survey names the place. The Endar Spire's one link is one-way.
+**Reading the table.** The doors of Taris that most people think of, Upper City to Apartments, to the Sith base, to the shop `tar_m02ad` and to the Cantina, join. The Apartments, the Sith base and `tar_m02ad` stand beside the street. The Cantina and the two Upper City street links (north and south) overlap it, so they are portals. Of the Lower City's doors the street doors that lead to a shop whose floor reaches the street itself (three of them) and the elevators keep the loading screen; the survey names the place. The Endar Spire's one link is one-way.
 
 ## Tests and the driver
 
@@ -79,6 +89,9 @@ Run `cargo run --release -p kotor-game --example seamless_survey -- tar_m02aa ta
 - `kotor-game` `seamless.rs`: planner on two synthetic rooms: placed side by side, overlap falls back, no door back falls back, a waypoint facing the wrong way falls back, two colliding neighbours leave the second on the old way, a missing waypoint falls back.
 - `crates/kotor-game/tests/seamless.rs`, on the real game: the player walks from Upper City South through the open Apartments door and on; the module changes with no step larger than the 10 cm walked, the module behind is joined and then let go; and the Apartments fit while the Cantina is a portal; a party of four (the leader and three companions) goes through the Cantina doorway with nobody moving more than a metre in a frame and all four within 4.5 m of the leader afterwards. Skipped when the game is not installed.
 - `gpu/tests/seamless_boot.rs` (the boot smoke test): a save made in Upper City South with a party of four is loaded from the main menu with a settings file in the old format (no `seamless_areas` line, which reads as on), the Cantina joins, the party walks through, no menu shows, no error is logged. It uses a folder of its own, never the player's settings or saves.
+- A sprint and a roll through the Apartments door and through the Cantina portal: the roll is still under way at the crossing, the biggest step is 0.145 m a frame, and the body is on the floor afterwards (modern movement).
+- A save made with a neighbour joined, before and after the crossing, loads into the same world with nothing joined, the player where they were and standing on the floor.
+- A party of four through a Lower City door turned 85 degrees.
 - `gpu/tests/menus.rs`: the Seamless areas row of the Feedback page flips, is saved, and turns joining off and on.
 - The shader cut is checked by eye, in the frames below; no test reads pixels.
 - `scripts/drive_seamless.ps1` (runs `gpu/examples/seamless_drive.rs`): no window, frames drawn offscreen, so it cannot take focus or capture a screen. Checks: the area loads in the background, the player walks up, using the door opens it without a module change, walking through changes module, **no step larger than 1.6 times a frame's run** across the crossing, no menu or loading screen on any frame, the party on the new floor, and back out of the same door. `-Door tar02_cantdoor` runs the Cantina portal (the script unlocks that door for the run: it starts locked). Writes frames of the door opening and the walk to `docs/shots/seamless` at 1280x720 and 3840x2160 (not committed: they hold the game's textures).
@@ -89,7 +102,7 @@ Cantina portal, same day: largest step 0.113 m against 0.144 m, 0 jumps, no menu
 
 ## Not done
 
-- The Lower City, the elevators and other links that overlap near the door or have no clear side still load the old way.
-- Lights, fog and the neighbour's creatures before the crossing.
+- The elevators, three Lower City shop doors and other links that overlap near the door or have no clear side still load the old way.
+- The neighbour's creatures stand still before the crossing.
 - Triggers.
 - Every module outside Taris and the Endar Spire has not been surveyed.

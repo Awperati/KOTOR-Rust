@@ -22,6 +22,9 @@ pub const JAMB: f32 = 1.5;
 /// When two modules overlap, each is walkable only this far (metres) from the door that joins them, and the other is
 /// drawn through the doorway alone. See `Attached::portal`.
 pub const PORTAL_REACH: f32 = 20.0;
+/// Tried in turn, widest first: a crowded street takes a portal only close to the door. The party keeps within a few
+/// metres of the leader, so the smallest still holds it.
+pub const PORTAL_REACHES: [f32; 3] = [PORTAL_REACH, 10.0, 6.0];
 
 /// A door or trigger that leads to another module.
 #[derive(Clone, Debug)]
@@ -258,10 +261,14 @@ pub fn plan_link(
     cut: &BTreeSet<usize>,
     placed: &[(String, Vec<Tri>)],
 ) -> Result<Placed, Fallback> {
-    match plan_with(from, site, neighbour, cut, placed, false) {
-        Err(Fallback::Overlaps(_)) => plan_with(from, site, neighbour, cut, placed, true),
-        r => r,
+    let mut r = plan_with(from, site, neighbour, cut, placed, None);
+    for reach in PORTAL_REACHES {
+        if !matches!(r, Err(Fallback::Overlaps(_))) {
+            break;
+        }
+        r = plan_with(from, site, neighbour, cut, placed, Some(reach));
     }
+    r
 }
 
 fn plan_with(
@@ -270,8 +277,10 @@ fn plan_with(
     neighbour: &Sketch,
     cut: &BTreeSet<usize>,
     placed: &[(String, Vec<Tri>)],
-    portal: bool,
+    reach: Option<f32>,
 ) -> Result<Placed, Fallback> {
+    let portal = reach.is_some();
+    let reach = reach.unwrap_or(f32::MAX);
     let (wp, facing) = *neighbour
         .waypoints
         .get(&site.to_waypoint)
@@ -312,7 +321,7 @@ fn plan_with(
     }
     let near = |t: &Tri, at: [f32; 3]| {
         let c = [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
-        (c[0] - at[0]).hypot(c[1] - at[1]) <= PORTAL_REACH
+        (c[0] - at[0]).hypot(c[1] - at[1]) <= reach
     };
     let far = |tris: &[Tri], at: [f32; 3]| -> Vec<usize> {
         if !portal {
@@ -322,18 +331,30 @@ fn plan_with(
     };
     let far_ours = far(&from.tris, site.at);
     let far_theirs = far(&neighbour.tris, back.at);
+    // A portal gives up what the neighbour's floor has on our side of the doorway as well, which is a pocket outside
+    // its own door and not floor anyone walks: it would stand on our street.
+    let mut back_stub = back.stub.clone();
+    if portal {
+        for (i, t) in neighbour.tris.iter().enumerate() {
+            let c = [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
+            let (along, _) = beyond(site.at, out, forward.apply(c));
+            if along < -JAMB && !back_stub.contains(&i) {
+                back_stub.push(i);
+            }
+        }
+    }
     let theirs_full: Vec<Tri> = neighbour
         .tris
         .iter()
         .enumerate()
-        .filter(|(i, _)| !back.stub.contains(i))
+        .filter(|(i, _)| !back_stub.contains(i))
         .map(|(_, t)| *t)
         .collect();
     let theirs_near: Vec<Tri> = neighbour
         .tris
         .iter()
         .enumerate()
-        .filter(|(i, _)| !back.stub.contains(i) && !far_theirs.contains(i))
+        .filter(|(i, _)| !back_stub.contains(i) && !far_theirs.contains(i))
         .map(|(_, t)| *t)
         .collect();
     // The doorway itself is where the two meet: both floors run a little into the other's wall, and that is not an
@@ -402,7 +423,7 @@ fn plan_with(
         back_at: back.at,
         back_out,
         back_half: back.half,
-        back_stub: back.stub.clone(),
+        back_stub,
         portal,
         far_ours,
         far_theirs,
@@ -443,13 +464,13 @@ pub fn prepare(
     site: &Site,
     cut: &BTreeSet<usize>,
 ) -> Result<(crate::Attached, Sketch), Fallback> {
-    let load = || -> Result<(Sketch, Vec<kotor_walkmesh::Bwm>), String> {
+    let load = || -> Result<(Sketch, Vec<kotor_walkmesh::Bwm>, crate::Scenery), String> {
         let inst = kotor_archive::Install::open(dir).map_err(|e| e.to_string())?;
         let mut w = World::new(inst).map_err(|e| e.to_string())?;
         w.load_module(&site.to_module).map_err(|e| e.to_string())?;
-        Ok((w.sketch(), w.room_bwms()))
+        Ok((w.sketch(), w.room_bwms(), w.scenery()))
     };
-    let (sketch, bwms) = load().map_err(Fallback::Unloadable)?;
+    let (sketch, bwms, scenery) = load().map_err(Fallback::Unloadable)?;
     let p = plan_link(from, site, &sketch, cut, &[])?;
     Ok((
         crate::Attached {
@@ -462,6 +483,7 @@ pub fn prepare(
             cut_ours: site.stub.clone(),
             cut_theirs: p.back_stub,
             behind: false,
+            scenery,
             portal: p.portal,
             far_ours: p.far_ours,
             far_theirs: p.far_theirs,

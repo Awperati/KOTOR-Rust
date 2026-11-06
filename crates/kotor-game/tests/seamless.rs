@@ -172,21 +172,15 @@ fn in_first(w: &World, first: &str, rigid: kotor_walkmesh::seamless::Rigid, who:
     }
 }
 
-#[test]
-fn a_party_of_four_goes_through_a_doorway_that_is_only_a_portal_without_anyone_jumping() {
-    let Some(mut w) = world("tar_m02ac") else {
-        return;
-    };
+/// The leader and three companions walk from `module` through the link door `tag`, which leads to `expect`: nobody jumps
+/// by more than a doorway's shoulder-barging, and all four end near the leader. `None` when the game is not installed.
+fn party_of_four_through(module: &str, tag: &str, expect: &str) -> Option<()> {
+    let mut w = world(module)?;
     let sketch: Sketch = w.sketch();
-    let site = sketch
-        .sites
-        .iter()
-        .find(|s| s.tag == "tar02_cantdoor")
-        .unwrap()
-        .clone();
+    let site = sketch.sites.iter().find(|s| s.tag == tag)?.clone();
     let dir = kotor_core::install_dir().unwrap();
-    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("a portal");
-    assert!(att.portal);
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default())
+        .unwrap_or_else(|e| panic!("{tag} joins: {e}"));
     let door = w.link_door_at(site.at).unwrap();
     let (rigid, out) = (att.rigid, att.out);
     w.seamless_attach(door, att);
@@ -222,9 +216,8 @@ fn a_party_of_four_goes_through_a_doorway_that_is_only_a_portal_without_anyone_j
     let (mut jumps, mut biggest) = (0, 0.0f32);
     let mut p = start;
     for i in 0..900 {
-        // The leader walks 5.5 m, as far as the Cantina's entrance hall goes before its inner door, then stands while the
-        // others catch up.
-        if i < 55 {
+        // The leader walks 4 m past the door, then stands while the others catch up.
+        if i < 70 {
             p = [p[0] + out.cos() * 0.1, p[1] + out.sin() * 0.1, p[2]];
             let here = if w.module == first {
                 p
@@ -251,13 +244,179 @@ fn a_party_of_four_goes_through_a_doorway_that_is_only_a_portal_without_anyone_j
         jumps, 0,
         "nobody jumps; the biggest step was {biggest:.2} m"
     );
-    assert_eq!(
-        w.module, "tar_m02ae",
-        "through the doorway into the Cantina"
-    );
+    assert_eq!(w.module, expect, "through the doorway");
     let lead = w.objects[&w.pc].position;
     for id in &w.party {
         let d = dist(lead, w.objects[id].position);
         assert!(d < 4.5, "{id} is {d:.1} m from the leader");
     }
+    Some(())
+}
+
+#[test]
+fn a_party_of_four_goes_through_the_cantina_portal_without_anyone_jumping() {
+    let _ = party_of_four_through("tar_m02ac", "tar02_cantdoor", "tar_m02ae");
+}
+
+#[test]
+fn a_party_of_four_goes_through_a_lower_city_door_turned_85_degrees() {
+    let _ = party_of_four_through("tar_m03aa", "tar03_bekdoor", "tar_m11aa");
+}
+
+/// Sprint at a joined door, roll as the door is reached, and carry on through: the roll goes on across the crossing, nobody
+/// is flung or falls, and the player ends standing on the new floor.
+fn sprint_and_roll_through(module: &str, tag: &str, expect: &str) -> Option<()> {
+    use kotor_game::MovementMode;
+    let mut w = world(module)?;
+    let sketch: Sketch = w.sketch();
+    let site = sketch.sites.iter().find(|s| s.tag == tag)?.clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default())
+        .unwrap_or_else(|e| panic!("{tag} joins: {e}"));
+    let door = w.link_door_at(site.at).unwrap();
+    let (rigid, out) = (att.rigid, att.out);
+    w.seamless_attach(door, att);
+    if let Some(o) = w.objects.get_mut(&door) {
+        o.locked = false;
+    }
+    w.use_door(door);
+    for _ in 0..90 {
+        w.step(1.0 / 60.0);
+    }
+    w.movement = MovementMode::Modern;
+    let pc = w.pc;
+    w.teleport(
+        pc,
+        [
+            site.at[0] - out.cos() * 7.0,
+            site.at[1] - out.sin() * 7.0,
+            site.at[2],
+        ],
+    );
+    w.step(1.0 / 60.0);
+    let first = w.module.clone();
+    let space = |w: &World| {
+        if w.module == first {
+            w.pc_mover.pos
+        } else {
+            rigid.apply(w.pc_mover.pos)
+        }
+    };
+    let mut last = space(&w);
+    let (mut biggest, mut rolled, mut rolling_at_crossing) = (0.0f32, false, false);
+    let mut crossed_at = None;
+    for i in 0..360 {
+        w.steer = Some(([out.cos(), out.sin()], true));
+        let here = space(&w);
+        if !rolled && dist(here, site.at) < 1.2 {
+            w.roll_request = true;
+            rolled = true;
+        }
+        w.step(1.0 / 60.0);
+        let now = space(&w);
+        biggest = biggest.max(dist(last, now));
+        last = now;
+        if crossed_at.is_none() && w.module != first {
+            crossed_at = Some(i);
+            rolling_at_crossing = w.pc_body.rolling();
+        }
+    }
+    assert!(rolled, "the roll was asked for");
+    assert!(crossed_at.is_some(), "crossed into {expect}");
+    assert_eq!(w.module, expect);
+    assert!(
+        biggest < 0.45,
+        "no frame flung the player: the biggest step was {biggest:.2} m"
+    );
+    assert!(
+        rolling_at_crossing,
+        "the roll was under way as the crossing came"
+    );
+    assert!(w.pc_body.grounded, "standing on the new floor, not falling");
+    let z = w.pc_mover.pos[2];
+    let want = rigid.inverse().apply(site.at)[2];
+    assert!(
+        (z - want).abs() < 1.5,
+        "still on the floor's level: {z} against {want}"
+    );
+    eprintln!(
+        "roll at crossing: {rolling_at_crossing}, biggest step {biggest:.3} m, crossed at frame {crossed_at:?}"
+    );
+    Some(())
+}
+
+#[test]
+fn a_sprint_and_roll_through_the_apartments_door_goes_on_across_the_crossing() {
+    let _ = sprint_and_roll_through("tar_m02ac", "Apartments", "tar_m02aa");
+}
+
+#[test]
+fn a_sprint_and_roll_through_the_cantina_portal_goes_on_across_the_crossing() {
+    let _ = sprint_and_roll_through("tar_m02ac", "tar02_cantdoor", "tar_m02ae");
+}
+
+/// A game saved while a neighbour is joined, before the crossing and after it, loads as a plain module: nothing joined, the
+/// player where they were, standing on the floor, and joining starts again by itself.
+#[test]
+fn a_save_made_with_a_neighbour_joined_loads_as_a_plain_module() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "Apartments")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("fits");
+    let door = w.link_door_at(site.at).unwrap();
+    let (rigid, out) = (att.rigid, att.out);
+    w.seamless_attach(door, att);
+    w.use_door(door);
+    for _ in 0..90 {
+        w.step(1.0 / 60.0);
+    }
+    // Before the crossing: the neighbour is joined.
+    let before = w.save_bytes("before").unwrap();
+    let pc = w.pc;
+    let at = w.objects[&pc].position;
+    // Walk through.
+    let start = [site.at[0] - out.cos(), site.at[1] - out.sin(), site.at[2]];
+    walk_through(&mut w, start, out, rigid, 40);
+    assert_eq!(w.module, "tar_m02aa");
+    assert!(
+        !w.seamless.attached.is_empty(),
+        "the Cantina side is joined behind"
+    );
+    let after = w.save_bytes("after").unwrap();
+    let there = w.objects[&w.pc].position;
+
+    // Load each into this very world, with the neighbours still joined.
+    w.load_save(&before).unwrap();
+    assert_eq!(w.module, "tar_m02ac");
+    assert!(
+        w.seamless.attached.is_empty(),
+        "nothing is joined after a load"
+    );
+    assert!(dist(w.objects[&w.pc].position, at) < 0.5);
+    w.step(1.0 / 60.0);
+    w.load_save(&after).unwrap();
+    assert_eq!(w.module, "tar_m02aa");
+    assert!(w.seamless.attached.is_empty());
+    assert!(dist(w.objects[&w.pc].position, there) < 0.5);
+    let p = w.pc_mover.pos;
+    assert!(
+        w.nav
+            .as_ref()
+            .unwrap()
+            .walkable_at(p[0], p[1], p[2] + 0.5)
+            .is_some(),
+        "standing on the floor"
+    );
+    for _ in 0..60 {
+        w.step(1.0 / 60.0);
+    }
+    assert!(w.errors.is_empty(), "{:?}", w.errors);
 }

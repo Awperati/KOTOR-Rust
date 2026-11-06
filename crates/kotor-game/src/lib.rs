@@ -76,7 +76,9 @@ pub use rules::{
     DEATH_FALL_SECONDS,
 };
 pub use save::{read_save_info, SaveInfo, SAVE_VERSION};
-pub use seamless_world::{Attached, Crossing, State as SeamlessState, LET_GO, THRESHOLD};
+pub use seamless_world::{
+    Attached, Crossing, Figure, Scenery, State as SeamlessState, LET_GO, THRESHOLD,
+};
 pub use sheet::{CannotUse, Sheet};
 pub use store::{CannotTrade, StoreLine, StoreOpen};
 pub use swoop::{
