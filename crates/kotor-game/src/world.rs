@@ -368,6 +368,10 @@ pub struct World {
     pub party_request: Option<crate::party::PartyRequest>,
     /// A script has asked for the upgrade bench.
     pub upgrade_screen: bool,
+    /// The galaxy map is up, what the story allows of each planet, and the one chosen: -1 for none.
+    pub galaxy: Option<crate::galaxy::GalaxyOpen>,
+    pub planet_lines: BTreeMap<i32, crate::galaxy::PlanetLine>,
+    pub selected_planet: i32,
     /// What has been seen of each map, by its picture: `SEEN_COLS` by `SEEN_ROWS` cells.
     pub explored: BTreeMap<String, Vec<bool>>,
     /// Rows of `tutorial.2da` that have come up in this game, and those scripts have asked for.
@@ -555,6 +559,9 @@ impl World {
             party_screen: false,
             party_request: None,
             upgrade_screen: false,
+            galaxy: None,
+            planet_lines: BTreeMap::new(),
+            selected_planet: -1,
             explored: BTreeMap::new(),
             tutorial_seen: BTreeSet::new(),
             tutorial_requests: Vec::new(),

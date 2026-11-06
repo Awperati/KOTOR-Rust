@@ -106,7 +106,8 @@ with Add Card.
 ## The galaxy map
 
 `galaxymap.gui`, compared with the video at 8:29:45. The galaxy is the emitters of `galaxy.mdl`, and the planet is the row's
-model, which zooms in and then turns. **Not connected:** the rules are not built, so nothing in a game opens it yet. Frames:
+model, which zooms in and then turns. The console on the Ebon Hawk opens it, and Travel runs the stock `k_sup_galaxymap`.
+Live in `drive_galaxy.ps1`, from a window started on the ship at the story's point where the planets open. Frames:
 `galaxy`, `galaxy_tatooine`. **Assumed:** the planet's shade, from the left, by eye. One camera draws both windows, so what
 would rise past the top of the planet's window is laid along that edge. **Assumed:** a click picks a planet, and one you cannot go to can be looked at, with Travel greyed.
 

@@ -19,7 +19,7 @@ use std::rc::Rc;
 mod menus;
 pub use menus::{
     about_words, default_saves_dir, default_settings_file, PazaakCard, PazaakMove, PazaakSide,
-    PazaakView, PlanetLine, Settings,
+    PazaakView, Settings,
 };
 
 type Mat = [[f32; 4]; 4];
@@ -514,6 +514,7 @@ impl Stage {
         self.bench_tick(dt);
         self.take_bench_request();
         self.take_party_request();
+        self.take_galaxy_request();
         self.notices_tick();
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();

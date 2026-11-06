@@ -35,7 +35,6 @@ mod notices;
 mod optionpages;
 #[path = "partyscreen.rs"]
 mod partyscreen;
-pub use galaxyscreen::PlanetLine;
 #[path = "pazaakscreen.rs"]
 mod pazaakscreen;
 pub use pazaakscreen::{PazaakCard, PazaakMove, PazaakSide, PazaakView};

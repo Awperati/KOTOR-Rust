@@ -20,6 +20,7 @@
 //!     --give NAME     give the player this item when a game starts, for a test driver
 //!     --gold N        give the player these credits when a game starts, for a test driver
 //!     --store TAG     open this store when a game starts, as its script would, for a test driver
+//!     --global NAME=N set this global number when a game starts, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --appearance N  the player has this row of `appearance.2da` when a game starts, for a test driver
 //!     --original-underwear  the game's own underwear style, whatever Settings says, for a test driver
@@ -151,6 +152,7 @@ struct App {
     give: Option<String>,
     gold: Option<i32>,
     store: Option<String>,
+    global: Option<String>,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -243,6 +245,20 @@ impl App {
             }
             if let Some(gold) = self.gold.take() {
                 self.stage.game.world.gold += gold;
+            }
+            if let Some((name, value)) = self
+                .global
+                .take()
+                .as_deref()
+                .and_then(|g| g.split_once('='))
+            {
+                if let Ok(value) = value.parse() {
+                    self.stage
+                        .game
+                        .world
+                        .global_numbers
+                        .insert(name.to_ascii_uppercase(), value);
+                }
             }
             if let Some(tag) = self.store.take() {
                 let w = &mut self.stage.game.world;
@@ -638,6 +654,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         give: opt("--give"),
         gold: opt("--gold").and_then(|n| n.parse().ok()),
         store: opt("--store"),
+        global: opt("--global"),
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,

@@ -3049,28 +3049,19 @@ fn pazaaks_screens_show_their_view_and_say_what_was_pressed() {
 
 fn at_galaxy(name: &str) -> Option<Stage> {
     let (mut s, _) = in_game(name)?;
-    let line = |row, available, selectable| kotor_gpu::stage::PlanetLine {
-        row,
-        available,
-        selectable,
-    };
-    // Taris, where we are, Dantooine and Tatooine to go to, Kashyyyk not yet, and Manaan not on the map.
-    s.open_galaxy(
-        1,
-        vec![
-            line(1, true, true),
-            line(3, true, true),
-            line(4, true, true),
-            line(5, true, false),
-            line(6, false, false),
-        ],
-    );
+    // Taris, where we are, Dantooine and Tatooine to go to, and Kashyyyk not yet. Manaan is not on the map.
+    let w = &mut s.game.world;
+    for (row, selectable) in [(1, true), (3, true), (4, true), (5, false)] {
+        w.set_planet_available(row, true);
+        w.set_planet_selectable(row, selectable);
+    }
+    w.galaxy = Some(kotor_game::GalaxyOpen { current: 1 });
     s.update(DT);
     Some(s)
 }
 
 #[test]
-fn the_galaxy_map_shows_what_the_story_allows_and_says_what_was_chosen() {
+fn the_galaxy_map_shows_what_the_story_allows_and_travel_runs_the_stock_script() {
     let Some(mut s) = at_galaxy("galaxy") else {
         return;
     };
@@ -3085,7 +3076,7 @@ fn the_galaxy_map_shows_what_the_story_allows_and_says_what_was_chosen() {
     assert!(s.menu_pixel("LBL_Planet_Korriban", None, SIZE).is_none());
     press(&mut s, "BTN_ACCEPT");
     assert_eq!(s.menu_name(), "galaxy");
-    assert_eq!(s.take_galaxy_choice(), None);
+    assert_eq!(s.game.world.selected_planet, -1);
 
     // A click shows a planet, with its words.
     let taris = frame(&mut s);
@@ -3102,14 +3093,19 @@ fn the_galaxy_map_shows_what_the_story_allows_and_says_what_was_chosen() {
     press(&mut s, "BTN_ACCEPT");
     assert_eq!(s.menu_name(), "galaxy");
 
-    // Travel says where.
+    // Travel chooses it, closes the map, and `k_sup_galaxymap` starts a module.
     press(&mut s, "LBL_Planet_Tatooine");
+    s.game.world.transition_request = None;
     press(&mut s, "BTN_ACCEPT");
     assert_eq!(s.menu_name(), "-");
-    assert_eq!(s.take_galaxy_choice(), Some(Some(4)));
-    assert_eq!(s.take_galaxy_choice(), None, "once");
-    s.update(DT);
-    assert!(s.game.world.time > time);
+    assert_eq!(s.game.world.selected_planet, 4);
+    assert!(s.game.world.galaxy.is_none());
+    let w = &s.game.world;
+    assert!(
+        w.transition_request.is_some(),
+        "the script went somewhere: {:?}",
+        w.errors.last()
+    );
 }
 
 #[test]
@@ -3119,13 +3115,17 @@ fn cancel_and_esc_leave_the_galaxy_map_with_nothing_chosen() {
     };
     press(&mut s, "BTN_BACK");
     assert_eq!(s.menu_name(), "-");
-    assert_eq!(s.take_galaxy_choice(), Some(None));
+    assert_eq!(s.game.world.selected_planet, -1);
+    assert!(s.game.world.galaxy.is_none());
+    assert!(s.game.world.transition_request.is_none());
     let Some(mut s) = at_galaxy("galaxy_esc") else {
         return;
     };
     s.escape();
     assert_eq!(s.menu_name(), "-");
-    assert_eq!(s.take_galaxy_choice(), Some(None));
+    assert!(s.game.world.galaxy.is_none());
+    s.update(DT);
+    assert_eq!(s.menu_name(), "-", "it does not come back");
 }
 
 /// A shop with a cheap thing and a dear one, and some credits.

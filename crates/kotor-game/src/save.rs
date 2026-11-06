@@ -360,6 +360,16 @@ impl World {
                     }),
                 ),
                 (
+                    "PlanetList",
+                    list_of(self.planet_lines.values(), |p| {
+                        st(vec![
+                            ("Row", Value::Int(p.row)),
+                            ("Available", Value::Byte(p.available as u8)),
+                            ("Selectable", Value::Byte(p.selectable as u8)),
+                        ])
+                    }),
+                ),
+                (
                     "BooleanList",
                     list_of(bools, |(k, v)| {
                         st(vec![("Name", s(k)), ("Value", Value::Byte(*v as u8))])
@@ -969,6 +979,24 @@ impl World {
             .unwrap_or_default();
 
         // Globals, journal, party.
+        self.planet_lines = globals
+            .root
+            .list("PlanetList")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| {
+                let row = x.int("Row")? as i32;
+                Some((
+                    row,
+                    crate::galaxy::PlanetLine {
+                        row,
+                        available: x.int("Available")? != 0,
+                        selectable: x.int("Selectable")? != 0,
+                    },
+                ))
+            })
+            .collect();
+        self.galaxy = None;
         self.global_numbers = globals
             .root
             .list("NumberList")

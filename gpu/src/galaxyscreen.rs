@@ -4,7 +4,7 @@
 //!
 //! **Measured from the video:** the stars of `galaxy.mdl` lie 533 layout units from the middle for each unit of distance
 //! they are off the line of sight, so that is the camera's focal length. **Assumed:** a planet's model has the same.
-//! The rules are not built, so `open_galaxy` is told what to show and `take_galaxy_choice` says what was chosen.
+//! The rules are `kotor_game::galaxy`: a script asks for the map, and Travel runs the script that goes.
 
 use super::{Screen, Stage};
 use crate::effects::{Effects, ParticleBatch};
@@ -41,16 +41,6 @@ const START_SECONDS: f32 = 6.0;
 const STEP_SECONDS: f32 = 1.0 / 30.0;
 const NOT_A_PLANET: [&str; 2] = ["", "****"];
 
-/// A row of `planetary.2da`, and what the story allows of it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PlanetLine {
-    pub row: i32,
-    /// It is on the map.
-    pub available: bool,
-    /// It can be travelled to.
-    pub selectable: bool,
-}
-
 /// A row as the table has it.
 #[derive(Clone)]
 struct PlanetFile {
@@ -65,7 +55,6 @@ struct PlanetFile {
 pub(super) struct Galaxy {
     current: i32,
     shown: i32,
-    lines: Vec<PlanetLine>,
     files: Vec<PlanetFile>,
     effects: Effects,
     camera: Option<Camera>,
@@ -74,7 +63,6 @@ pub(super) struct Galaxy {
     time: f32,
     /// How far off the line of sight a planet's model has its own camera, and how much farther than the galaxy's.
     planet_scale: f32,
-    chosen: Option<Option<i32>>,
 }
 
 fn table_int(t: &kotor_tables::TwoDa, row: usize, column: &str) -> u32 {
@@ -91,12 +79,23 @@ impl Stage {
         Some(at[0][3])
     }
 
+    /// A script has asked for the map. A pilot has nobody to choose, so for it the map closes again.
+    pub(in crate::stage) fn take_galaxy_request(&mut self) {
+        let Some(open) = self.game.world.galaxy else {
+            return;
+        };
+        if self.pilot.is_some() {
+            self.game.world.galaxy_close();
+        } else if self.top() != Some(Screen::Galaxy) {
+            self.open_galaxy(open.current);
+        }
+    }
+
     /// The map comes up, on `current`. What each planet may do comes from the story.
-    pub fn open_galaxy(&mut self, current: i32, lines: Vec<PlanetLine>) {
+    fn open_galaxy(&mut self, current: i32) {
         let mut g = Galaxy {
             current,
             shown: current,
-            lines,
             ..Galaxy::default()
         };
         let table = self
@@ -173,11 +172,6 @@ impl Stage {
         }
     }
 
-    /// What the map's user chose, once: a planet, or nothing for Cancel. `None` while nothing has been said.
-    pub fn take_galaxy_choice(&mut self) -> Option<Option<i32>> {
-        self.menus.galaxy.as_mut()?.chosen.take()
-    }
-
     /// The planet on show.
     pub fn galaxy_shown(&self) -> Option<i32> {
         self.menus.galaxy.as_ref().map(|g| g.shown)
@@ -193,7 +187,7 @@ impl Stage {
         };
         let (shown, current) = (g.shown, g.current);
         let files = g.files.clone();
-        let lines = g.lines.clone();
+        let lines = self.game.world.planets();
         for file in files
             .iter()
             .filter(|f| !f.tag.is_empty() && f.tag != "****")
@@ -224,19 +218,23 @@ impl Stage {
     }
 
     fn close_galaxy(&mut self, chosen: Option<i32>) {
-        if let Some(g) = self.menus.galaxy.as_mut() {
-            g.chosen = Some(chosen);
-        }
+        self.menus.galaxy = None;
         self.menus.stack.pop();
         self.menus.hover = None;
+        let w = &mut self.game.world;
+        match chosen {
+            Some(row) => w.galaxy_choose(row, w.pc),
+            None => w.galaxy_close(),
+        }
     }
 
     pub(super) fn galaxy_press(&mut self, tag: &str) {
         match tag {
             "BTN_BACK" => self.close_galaxy(None),
             "BTN_ACCEPT" => {
+                let lines = self.game.world.planets();
                 let chosen = self.menus.galaxy.as_ref().and_then(|g| {
-                    let line = g.lines.iter().find(|l| l.row == g.shown)?;
+                    let line = lines.iter().find(|l| l.row == g.shown)?;
                     (line.selectable && g.shown != g.current).then_some(g.shown)
                 });
                 if chosen.is_some() {
@@ -244,9 +242,10 @@ impl Stage {
                 }
             }
             _ => {
+                let lines = self.game.world.planets();
                 let row = self.menus.galaxy.as_ref().and_then(|g| {
                     let row = g.files.iter().position(|f| f.tag == tag)? as i32;
-                    let line = g.lines.iter().find(|l| l.row == row)?;
+                    let line = lines.iter().find(|l| l.row == row)?;
                     line.available.then_some(row)
                 });
                 if let Some(row) = row {

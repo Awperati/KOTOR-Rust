@@ -59,8 +59,6 @@ const PRESENTATION: &[&str] = &[
     "SoundObjectFadeAndStop",
     "SoundObjectSetVolume",
     "SetMapPinEnabled",
-    "SetPlanetSelectable",
-    "SetPlanetAvailable",
     "SetLightsaberPowered",
     "EndGame",
     "SetEncounterActive",
@@ -1007,6 +1005,27 @@ impl Host for Adapter<'_> {
                 self.record(name, args);
                 None
             }
+            // ---- the galaxy map
+            "ShowGalaxyMap" => {
+                self.world.galaxy = Some(crate::galaxy::GalaxyOpen {
+                    current: int(args, 0)?,
+                });
+                self.record(name, args);
+                None
+            }
+            "SetPlanetSelectable" => {
+                self.world
+                    .set_planet_selectable(int(args, 0)?, int(args, 1)? != 0);
+                None
+            }
+            "SetPlanetAvailable" => {
+                self.world
+                    .set_planet_available(int(args, 0)?, int(args, 1)? != 0);
+                None
+            }
+            "GetPlanetSelectable" => b(self.world.planet_line(int(args, 0)?).selectable),
+            "GetPlanetAvailable" => b(self.world.planet_line(int(args, 0)?).available),
+            "GetSelectedPlanet" => Some(Value::Int(self.world.selected_planet)),
             // ---- module, party and area queries
             "StartNewModule" => {
                 self.world.transition_request = Some((string(args, 0), string(args, 1)));

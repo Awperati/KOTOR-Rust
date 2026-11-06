@@ -12,6 +12,7 @@ mod earlyforce;
 mod encounters;
 mod follow;
 mod force;
+mod galaxy;
 mod game;
 mod host;
 mod items;
@@ -44,6 +45,7 @@ pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use earlyforce::FORCE_PUSH;
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
+pub use galaxy::{GalaxyOpen, PlanetLine};
 pub use game::{Clip, Game, Pose};
 pub use host::RoutineStatus;
 pub use items::{
