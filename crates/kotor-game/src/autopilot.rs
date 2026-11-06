@@ -181,6 +181,8 @@ pub struct Autopilot {
     links: BTreeMap<String, BTreeSet<String>>,
     /// How often it has stood in a module with a way out to each module it has not reached since the last news.
     chased: BTreeMap<String, u32>,
+    /// The rows of `planetary.2da` it has set off for.
+    planets: BTreeSet<i32>,
     /// The journal as it last looked. A new entry is news: someone it has met may have more to say.
     journal_seen: BTreeMap<String, i32>,
     /// The modules it has been to since then.
@@ -237,6 +239,19 @@ impl Default for Autopilot {
 
 /// A race: shift when the meter is full, as the reference video's rider does, over the pads and round the buoys. A gear
 /// allows it lower, but pays less for each second in the next.
+/// The middle of a trigger's outline, or where a thing stands.
+fn polygon_middle(o: &crate::world::Object) -> [f32; 3] {
+    if o.polygon.len() < 3 {
+        return o.position;
+    }
+    let n = o.polygon.len() as f32;
+    [
+        o.polygon.iter().map(|p| p[0]).sum::<f32>() / n,
+        o.polygon.iter().map(|p| p[1]).sum::<f32>() / n,
+        o.position[2],
+    ]
+}
+
 fn drive_race(w: &mut World) {
     const STEP: f32 = 1.0 / 60.0;
     const SHIFT_ABOVE: [f32; 5] = [-1.0, 67.5, 105.0, 156.0, 217.5];
@@ -296,6 +311,7 @@ impl Autopilot {
             grenade_wait: 0.0,
             links: BTreeMap::new(),
             chased: BTreeMap::new(),
+            planets: BTreeSet::new(),
             journal_seen: BTreeMap::new(),
             since_news: BTreeSet::new(),
             exits: BTreeMap::new(),
@@ -371,6 +387,39 @@ impl Autopilot {
         let w = &mut g.world;
         if w.in_race() {
             drive_race(w);
+            return;
+        }
+        // The galaxy map: the next planet it can go to and has not.
+        if w.galaxy.is_some() {
+            let next = w
+                .planets()
+                .iter()
+                .find(|p| p.available && p.selectable && !self.planets.contains(&p.row))
+                .map(|p| p.row);
+            let pc = w.pc;
+            match next {
+                Some(row) => {
+                    self.planets.insert(row);
+                    self.log.push(format!("travels to planet {row}"));
+                    w.galaxy_choose(row, pc);
+                }
+                None => w.galaxy_close(),
+            }
+            return;
+        }
+        if let Some(game) = w.minigame.as_mut() {
+            // The turret: at the nearest fighter still flying, guns going.
+            let (at, _) = game.camera();
+            let target = game
+                .enemies
+                .iter()
+                .filter(|e| e.dying.is_none() && !e.gone)
+                .map(|e| e.at)
+                .min_by(|a, b| dist2d(*a, at).total_cmp(&dist2d(*b, at)));
+            if let Some(target) = target {
+                game.point_at(target);
+                game.firing = true;
+            }
             return;
         }
         self.spend_what_levels_give(w);
@@ -1176,19 +1225,7 @@ impl Autopilot {
                     && matches!(o.kind, Kind::Door | Kind::Trigger)
                     && !self.tried.contains(&o.id)
             })
-            .map(|o| {
-                let at = if o.polygon.len() >= 3 {
-                    let n = o.polygon.len() as f32;
-                    [
-                        o.polygon.iter().map(|p| p[0]).sum::<f32>() / n,
-                        o.polygon.iter().map(|p| p[1]).sum::<f32>() / n,
-                        o.position[2],
-                    ]
-                } else {
-                    o.position
-                };
-                (o.id, o.kind, at, o.link_module.clone())
-            })
+            .map(|o| (o.id, o.kind, polygon_middle(o), o.link_module.clone()))
             .collect();
         let module = &self.module;
         ways.extend(
@@ -1230,6 +1267,39 @@ impl Autopilot {
             }
             // Doors may yet open: this only counts once nothing else is left.
             no_way_out.get_or_insert(label);
+        }
+        // A module with no door out may have a script for one: the Ebon Hawk's ramp is a trigger that asks for a party.
+        if !way_out {
+            let next = w
+                .objects
+                .values()
+                .filter(|o| {
+                    o.kind == Kind::Trigger
+                        && o.polygon.len() >= 3
+                        && o.scripts.contains_key("ScriptOnEnter")
+                        && !self.tried.contains(&o.id)
+                })
+                .map(|o| (o.id, o.tag.clone(), polygon_middle(o)))
+                .min_by(|a, b| dist2d(a.2, here).total_cmp(&dist2d(b.2, here)));
+            if let Some((id, tag, middle)) = next {
+                self.tried.insert(id);
+                // The ramp's trigger runs on past the floor, and its middle with it: try towards each corner.
+                let corners = w.object(id).map_or(Vec::new(), |o| o.polygon.clone());
+                let inside = corners.iter().map(|c| {
+                    [
+                        (middle[0] + c[0]) / 2.0,
+                        (middle[1] + c[1]) / 2.0,
+                        middle[2],
+                    ]
+                });
+                let at = std::iter::once(middle)
+                    .chain(inside)
+                    .find(|at| w.walk_to(*at));
+                if let Some(at) = at {
+                    self.set_goal(Goal::Walk(at, format!("walk into {tag}")));
+                    return;
+                }
+            }
         }
         // 4. Nothing new: what is left unreachable or locked may have opened up, once.
         if !self.unreachable.is_empty() && self.doors_opened > 0 {

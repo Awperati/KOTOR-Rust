@@ -2,14 +2,19 @@ use kotor_archive::Install;
 use kotor_game::{Autopilot, Game, Kind, World};
 
 fn world() -> Option<World> {
+    let mut w = world_before_entering("end_m01aa")?;
+    w.enter_area();
+    Some(w)
+}
+
+fn world_before_entering(module: &str) -> Option<World> {
     let mut inst = Install::open(kotor_core::install_dir()?).ok()?;
     inst.set_prefer_rim(true);
     let mut w = World::new(inst).ok()?;
     w.interactive_dialogue = true;
-    w.load_module("end_m01aa").ok()?;
+    w.load_module(module).ok()?;
     let spec = w.recommended_character("Player", 0, 1)?;
     w.create_character(&spec).ok()?;
-    w.enter_area();
     Some(w)
 }
 
@@ -372,4 +377,84 @@ fn a_creature_that_idles_on_its_own_queue_takes_its_time() {
         .filter(|e| e.contains("ActionPlayAnimation"))
         .count();
     assert!(n < 60, "{n} animations in ten seconds");
+}
+
+/// Aboard the Ebon Hawk, with Dantooine reached: `K_CURRENT_PLANET` is what `k_pebn_exithawk` goes by.
+fn aboard_the_hawk() -> Option<World> {
+    let mut w = world_before_entering("ebo_m12aa")?;
+    w.global_numbers.insert("K_CURRENT_PLANET".to_string(), 15);
+    w.global_numbers.insert("K_KOTOR_MASTER".to_string(), 10);
+    w.enter_area();
+    Some(w)
+}
+
+#[test]
+fn the_pilot_walks_down_the_ramp_of_the_ebon_hawk() {
+    let Some(w) = aboard_the_hawk() else {
+        return;
+    };
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    while p.time < 900.0 && !p.finished && g.world.module == "ebo_m12aa" {
+        p.run_steps(&mut g, 60);
+    }
+    assert_eq!(g.world.module, "danm13", "{:?}", p.stalls.last());
+}
+
+#[test]
+fn the_pilot_goes_to_each_planet_on_the_map_once() {
+    let Some(mut w) = aboard_the_hawk() else {
+        return;
+    };
+    let pc = w.pc;
+    w.global_numbers.insert("K_KOTOR_MASTER".to_string(), 15);
+    w.run_script("k_pebn_galaxy", pc).unwrap();
+    assert!(w.galaxy.is_some());
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    p.step(&mut g, 0.05);
+    assert!(g.world.galaxy.is_none(), "it chose");
+    assert_eq!(
+        g.world.global_numbers.get("K_FUTURE_PLANET"),
+        Some(&15),
+        "Dantooine first, as the table has it"
+    );
+    g.world.galaxy = Some(kotor_game::GalaxyOpen { current: 3 });
+    p.step(&mut g, 0.05);
+    assert_eq!(
+        g.world.global_numbers.get("K_FUTURE_PLANET"),
+        Some(&35),
+        "then Tatooine"
+    );
+    for _ in 0..3 {
+        g.world.galaxy = Some(kotor_game::GalaxyOpen { current: 3 });
+        p.step(&mut g, 0.05);
+    }
+    let last = g.world.global_numbers.get("K_FUTURE_PLANET").copied();
+    g.world.galaxy = Some(kotor_game::GalaxyOpen { current: 3 });
+    p.step(&mut g, 0.05);
+    assert!(g.world.galaxy.is_none(), "nowhere left: it closes the map");
+    assert_eq!(g.world.global_numbers.get("K_FUTURE_PLANET").copied(), last);
+}
+
+#[test]
+fn the_pilot_shoots_down_a_fighter_from_the_turret() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("M12ab").unwrap();
+    w.enter_area();
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    let hit = |g: &Game| {
+        g.world
+            .minigame
+            .as_ref()
+            .is_some_and(|m| m.enemies.iter().any(|e| e.dying.is_some() || e.gone))
+    };
+    while p.time < 120.0 && !hit(&g) {
+        p.run_steps(&mut g, 60);
+    }
+    assert!(hit(&g), "none down after {} s", p.time);
 }
