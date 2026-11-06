@@ -863,3 +863,45 @@ fn the_underwear_style_reaches_what_a_conversation_draws() {
         "and its shading evened out"
     );
 }
+
+#[test]
+fn the_jedi_duel_ends_without_any_click() {
+    let Some(mut s) = stage() else { return };
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    s.pilot = Some(kotor_game::Autopilot::new());
+    let began = |s: &Stage| {
+        s.game
+            .world
+            .events
+            .iter()
+            .any(|e| e.contains("conversation end_cut04 begins"))
+    };
+    for _ in 0..(900.0 / DT) as usize {
+        if began(&s) {
+            break;
+        }
+        s.update(DT);
+    }
+    assert!(began(&s), "the pilot never reached the duel");
+    // From here nobody clicks.
+    s.pilot = None;
+    s.steer = (0.0, 0.0, false);
+    let mut cues = Vec::new();
+    let mut ended = None;
+    for i in 0..(150.0 / DT) as usize {
+        cues.extend(s.update(DT));
+        if s.game
+            .world
+            .events
+            .iter()
+            .any(|e| e.contains("conversation end_cut04 ends"))
+        {
+            ended = Some(i as f32 * DT);
+            break;
+        }
+    }
+    let ev = &s.game.world.events;
+    assert!(ended.is_some(), "end_cut04 waits for a click");
+    assert!(ev.iter().any(|e| e.contains("end_darkjedi01) dies")));
+}
