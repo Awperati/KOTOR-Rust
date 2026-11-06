@@ -426,8 +426,10 @@ impl World {
         let tough = self.toughness_of(id);
         let o = self.objects.get_mut(&id)?;
         o.level = level;
+        // A level heals whoever takes it: the reference video's bar stands at 82% before the level at about 650 s, and
+        // the sheet reads 26/26 after it.
         o.max_hp += up.hp + tough;
-        o.hp += up.hp + tough;
+        o.hp = o.max_hp;
         o.max_force += up.force;
         o.force += up.force;
         o.skill_points += up.skill_points;

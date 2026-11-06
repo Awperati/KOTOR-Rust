@@ -60,17 +60,18 @@ Most to least blocking, all absent unless stated:
 ## How far the autopilot gets
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 6000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 14,000 game seconds in 46 wall seconds, level 4 with 6,210 experience, 85 kills. `end_m01aa` -> `end_m01ab` -> `tar_m02af` (about 450 s) -> the upper city, cantina and duel ring, `tar_m02ad` -> `tar_m03aa`, the lower city (1,574 s) -> `tar_m03ab`, `tar_m03ae`, the hidden Bek base `tar_m11aa`, `tar_m03ad` -> the Black Vulkar base `tar_m10aa` (3,761 s) -> the sewers `tar_m05ab` (5,960 s), `tar_m05aa`, and the undercity `tar_m04aa` (6,818 s).
+Last run: 3,675 game seconds, 54 kills, experience 3,410. `end_m01aa` -> `end_m01ab` -> `tar_m02af` -> the upper city and cantina -> `tar_m03aa`, the lower city -> `tar_m03ab`, `tar_m03ae`, the hidden Bek base `tar_m11aa`, `tar_m03ad` -> `tar_m09aa`, the Sith base.
 
-The pilot takes the way out it has used least, so it finds things by itself. I do not know that this is the intended order of the story. It does not reach the Sith base in this run, because the run below goes elsewhere now that each module runs its own scripts.
+The pilot takes the way out it has used least, so it finds things by itself. I do not know that this is the intended order of the story, and small changes move its route: an earlier run reached the Black Vulkar base `tar_m10aa`, the sewers `tar_m05ab` and the undercity `tar_m04aa`, and went back and forth at the locked `tar04_maingate`.
 
-**Where it stops: going back and forth between `tar_m04aa` and `tar_m05aa`** from 6,803 s. It tries `tar04_maingate`, which stays locked, 481 times. It leaves `tar_m05aa` about a second after arriving. I have not read why, nor what opens the gate.
+**Where it stops: `tar_m09aa`.** `ptar_elevdoor` and `ptar_armdoor` stay locked, with no route to `tar_m09ab`. I have not read what opens them.
 
-Other things logged on the way, by first appearance. I have not read the causes:
-- **`k_ptar_dancefar`, `k_ptar_dancenea2`, `k_ptar_dancenea3` in `tar_m03ae`:** a routine reads argument 0 as a number and gets an object.
-- **Fights given up after 90 s:** `tar03_vulkguard`, `tar10_ptdrd03`, `BouncerDroid`, `VulkarPool`, `tar05_stampy`.
-- **Pauses that ran out:** `tar04_sithpatrol`, `tar04_cand043`.
-- **Locked and tried:** `tar03_underdoor`, `tar10_elev01`, `ptar_security`, `tar03_matdoor`, among others.
+Read, and not faults:
+- **Long fights.** `tar10_thermturret` at 3 hit points and `tar05_stampy` at 76 outlast 90 s because a level 4 hero that has done no quests misses them. Both hit back. Fights that used to stand idle were scripts ending the attack with `CancelCombat`. The pilot now attacks again, as a person would.
+
+Not read yet:
+- **Pauses that ran out:** `tar04_sithpatrol`, on an earlier run.
+- **Fights given up after 90 s:** `g_sithcomm02`, `guarddroid`, `BouncerDroid`.
 
 Fixed on the way, earliest first, each with a test:
 1. **A closed door blocked only a 1.1 m disc.** The pilot walked round it, past locked doors. It is now a line as wide as its model's mesh, which nothing crosses and which sight stops at. Faces would not do: a door's faces can reach metres to either side.
@@ -83,15 +84,18 @@ Fixed on the way, earliest first, each with a test:
 8. **Every module ran the first copy of a script it met.** Scripts were remembered by name across modules, and modules have their own copies. So the last room's troopers in `end_m01ab` ran `end_m01aa`'s `k_pend_sith_9`, which turned their AI off, and a script missing from one module stayed missing in the next. This is the biggest fix here: every module after the first was running some wrong scripts.
 9. **Modules forgot.** A module now stays as the player left it, through a save and load too. The dead stay dead, doors stay as they were, containers stay emptied.
 10. **Going round people.** When that gets the player no nearer for half a second it walks through them. When someone stands where its route ends it stops there. A click on the floor, and the pilot's next goal, end a fight.
-11. **Plot creatures could be killed**, such as `tar03_turret`. They now take no harm, and the pilot leaves them alone. **That no harm is an assumption.**
+11. **A walk went on during a conversation.** The player reached the panel in `end_m01ab` during Carth's talk, and the panel could not start its own. A talk now holds the walk.
+12. **`GetAbilityScore` read its arguments the wrong way round,** which stopped the dance in `tar_m03ae`.
+13. **Things that are not `Useable`** were offered as targets, such as a cutscene prop beside the first Sith. The menus builder found this one.
+14. **Plot creatures could be killed**, such as `tar03_turret`. They now take no harm, and the pilot leaves them alone. **That no harm is an assumption.**
 
 ## A pilot that can die
 
 `AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, takes a medpack below half its hit points at most once a round, and a party that is down ends the run. A leader knocked out hands over to someone standing. Each fight is logged as `FIGHT won` or `FIGHT lost`.
 
-Last run: 16 fights won, 1 lost, 280 game seconds. **It dies in `end_m01ab` at (80, 62)**, level 2 with 24 hit points, to the last room's troopers, now that they fight back: five at once, d20 + 4 against Defense 16, up to 8 a hit. That room is meant to be dealt with first: the panel's overload does 128 damage to enemies, and the droid can go in. This pilot talks to the droid, opens the door and runs in. So this is the pilot's choice as much as a hard fight.
+Last run: 19 fights won, none lost, 1,193 game seconds. 13 in `end_m01aa`, 3 in `end_m01ab`, 2 in `tar_m02ac`, 1 in `tar_m02ae`. It looks round before it talks and takes `[`skill`]` replies first, so in `end_m01ab` it finds the spikes and overloads the panel, which kills the last room's troopers and opens the door. That is what the reference video's player does at about 781 s. **It dies in `tar_m09aa` at (1, -10)**, level 2 with 24 hit points, 15 seconds after walking into the Sith base with no quests done. I did not read which fight killed it.
 
-Balance still cannot be judged. Nobody can rest, so only medpacks heal, and I do not know how the original heals out of combat. The player's feats are the class's recommended ones, not what the video's player chose.
+Balance still cannot be judged. Only medpacks and a new level heal. The video shows no healing over 30 s out of combat, but it does not rule out a rest button. The player's feats are the class's recommended ones, not what the video's player chose.
 
 What is left, by how early it matters:
 1. **Item use and level-up by hand.** Nothing can use a medpac, so `Mod_OnActvtItem` (`k_pend_activate`) never fires. Experience levels the hero by itself, with no choices.

@@ -7,7 +7,6 @@
 use crate::follow::dist2d;
 use crate::game::Game;
 use crate::world::{DoorState, Kind, ObjId, World};
-use kotor_core::ResType;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 /// Fixed steps between two entries of [`Autopilot::digests`].
@@ -114,6 +113,8 @@ const LOCK_TRIES: u32 = 8;
 /// A mortal pilot takes a medpack below half its hit points, at most one a round.
 const MEDPACK_SECONDS: f32 = 3.0;
 const GEAR_SECONDS: f32 = 1.0;
+/// Taken off how far a placeable is when a mortal pilot picks what to do next: more than across any module.
+const LOOK_FIRST: f32 = 10_000.0;
 const SLOT_ARMOUR: i32 = 1;
 const SLOT_RIGHT_HAND: i32 = 4;
 const SLOT_LEFT_HAND: i32 = 5;
@@ -627,9 +628,16 @@ impl Autopilot {
         // Once everything has been said, take them in a scattered order: one leads out of the loop, and plain turns
         // can keep missing it when menus of different sizes take turns.
         self.reply_turn = self.reply_turn.wrapping_mul(2_654_435_761).wrapping_add(11);
-        let pick = replies
-            .iter()
-            .position(|r| !self.replies.contains(r))
+        // A mortal pilot takes what its skills and tools offer first: `end_securitycomp`'s overload clears a room for it.
+        let skilled = (!self.immortal)
+            .then(|| {
+                replies
+                    .iter()
+                    .position(|r| r.starts_with('[') && !self.replies.contains(r))
+            })
+            .flatten();
+        let pick = skilled
+            .or_else(|| replies.iter().position(|r| !self.replies.contains(r)))
             .unwrap_or((self.reply_turn >> 8) % replies.len().max(1));
         if let Some(r) = replies.get(pick) {
             self.replies.insert(r.clone());
@@ -756,7 +764,13 @@ impl Autopilot {
                     self.end_fight(w, true);
                     self.kills += 1;
                     self.goal = None;
-                } else if self.goal_time > FIGHT_SECONDS {
+                } else if self.goal_time <= FIGHT_SECONDS {
+                    // A script can end the attack with `CancelCombat`, and a person would click on the foe again.
+                    let pc = w.pc;
+                    if w.combat.target.get(&pc) != Some(&t) && !w.in_dialogue() {
+                        w.attack(pc, t);
+                    }
+                } else {
                     self.end_fight(w, false);
                     let name = w.object(t).map_or(String::new(), |o| o.tag.clone());
                     self.stall(
@@ -1006,14 +1020,8 @@ impl Autopilot {
             .collect();
         let mut best: Option<(f32, ObjId)> = None;
         for (id, d) in candidates {
-            let usable = match w.object(id).map(|o| (o.kind, o.template.clone())) {
-                Some((Kind::Placeable, template)) => w
-                    .inst
-                    .read(&template, ResType(2044))
-                    .ok()
-                    .and_then(|b| kotor_gff::Gff::parse(&b).ok())
-                    .and_then(|g| g.root.int("Useable"))
-                    .is_some_and(|u| u != 0),
+            let usable = match w.object(id).map(|o| (o.kind, o.useable)) {
+                Some((Kind::Placeable, useable)) => useable,
                 Some((Kind::Creature, _)) => w.reputation(pc, id) > 10,
                 _ => true,
             };
@@ -1021,6 +1029,11 @@ impl Autopilot {
                 self.tried.insert(id);
                 continue;
             }
+            // A mortal pilot looks round first: a talk can open a door on what it is not ready for, as the damaged droid
+            // in `end_m01ab` does, and the footlocker and panel near it are the way to be ready.
+            let look_first =
+                !self.immortal && w.object(id).is_some_and(|o| o.kind == Kind::Placeable);
+            let d = if look_first { d - LOOK_FIRST } else { d };
             if best.is_none_or(|b| d < b.0) {
                 best = Some((d, id));
             }

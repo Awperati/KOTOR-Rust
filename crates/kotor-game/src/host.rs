@@ -778,8 +778,8 @@ impl Host for Adapter<'_> {
                 ))
             }
             "GetAbilityScore" => Some(Value::Int(self.world.ability_score(
-                self.obj(caller, args, 1),
-                int(args, 0)?.clamp(0, 5) as usize,
+                self.obj(caller, args, 0),
+                int(args, 1)?.clamp(0, 5) as usize,
             ))),
             "GetAbilityModifier" => {
                 let who = if args.len() > 1 {

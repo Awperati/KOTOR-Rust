@@ -114,6 +114,8 @@ pub struct Object {
     pub door: DoorState,
     /// Half a door's width across its doorway, in metres. A closed door blocks all of it.
     pub door_half_width: f32,
+    /// `Useable` of a placeable's template. Scenery and cutscene props have it off, and nothing else can be used.
+    pub useable: bool,
     /// The direction across a door's doorway, from `Bearing` in the area.
     pub door_axis: [f32; 2],
     /// Doors and triggers that lead to another module: its name and the tag of the waypoint to arrive at.
@@ -212,6 +214,7 @@ impl Object {
             open: false,
             door: DoorState::Closed,
             door_half_width: crate::DOOR_BLOCK_RADIUS,
+            useable: true,
             door_axis: [1.0, 0.0],
             link_module: String::new(),
             link_to: String::new(),
@@ -708,6 +711,12 @@ impl World {
         let mut scripts = BTreeMap::new();
         let mut conversation = String::new();
         let mut tag = None;
+        if let Some(g) = utx.as_ref().filter(|_| ty == ResType(2044)) {
+            let on = g.root.int("Useable").is_some_and(|u| u != 0);
+            if let Some(o) = self.objects.get_mut(&id) {
+                o.useable = on;
+            }
+        }
         if let Some(g) = utx.as_ref().filter(|_| ty == ResType(2042)) {
             if let Some(half) = self.door_half_width(g.root.int("GenericType").unwrap_or(0)) {
                 if let Some(o) = self.objects.get_mut(&id) {

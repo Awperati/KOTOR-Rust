@@ -43,6 +43,8 @@ Read by eye from contact sheets of one frame every 5 minutes, so each time is go
 | Experience | 1,275, level 2, needing 3,000 | 657 s, the bridge | Read off the character screen | Exact |
 | The hero then | Str 16, Dex 11, Con 14, Int 12, Wis 10, Cha 13. 26/26 vitality, defense 14, saves 5, 0, 0 | 657 s | Same | Exact |
 | Hit points per level | The whole die: (10 + 2 + 1) x 2 = 26 for this Soldier with Toughness at level 2. Half a die gives 22 | 643 s for the feat's words, 657 s for 26/26 | Read off the level-up and character screens | Exact for this one sheet |
+| Healing outside combat | None seen: the bar beside the portrait holds at 27 to 28 px of about 85 for 30 s, and at 70 to 71 px for 24 s | 395 to 425 s, 613 to 637 s | That bar measured once a second | 1 px, about 0.3 hit points, so under 0.02 hit points a second |
+| Healing by a level | The bar stands at 70 of 85 before the level and the sheet reads 26/26 after it | 637 s, 657 s | Same, and the character screen | One level |
 | Dialogue cuts | 13 shots in 78.9 s, 0.9 to 11.0 s each, mean 6.1 s, black bars above and below | 1,705.2 to 1,784.1 s | Picture changes between frames at 10 a second, then one frame of each shot | 0.1 s |
 | Who has the shot | All 5 shots with replies up show the hero. 7 of the other 8 show the speaker, and 1 is wide | Same | Looked at those 13 frames | Clear in the frames. One conversation only |
 
@@ -62,6 +64,8 @@ Only the bare arms, bare legs and shorts support column a. No other column of th
 - `TURN_SPEED` in the viewer: 90 became 120 degrees a second. Medium confidence: one turn, and `camerastyle.2da` has 150 as `minturnrate`, whose meaning I do not know.
 - `step_pc`: a clicked hero runs too, at `RUN_SPEED`, not at the walking speed. The hero runs everywhere I looked, though I do not know which of those runs were clicked.
 - `hp_for_level`: every level pays the whole hit die, and Toughness now pays one a level. Medium confidence: one sheet, Soldier only. Force points are still half a die after level 1, not measured.
+- `level_up`: a level heals whoever takes it. Medium confidence: one level.
+- Nothing heals outside combat, as before. The video does not show how its hero gets from 28 of 85 at 425 s to full by 1,605 s, as those stretches hold cutscenes, menus and medpacks that I did not go through. So a rest may exist that I have not seen.
 - `speaker_camera`: holds the speaker while the line is said, then cuts to the player while the replies wait. Medium confidence: one conversation. Over-the-shoulder and wide shots are not copied.
 - `MoveParams::speed`: 1.6 became 1.7 m/s, from the tables and not the video. See below.
 - `award_kill`: each standing party member gets the whole kill, not a share. **Weak evidence, an assumption:** see below.

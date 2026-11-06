@@ -178,6 +178,57 @@ fn the_player_stops_at_someone_standing_where_its_route_ends() {
 }
 
 #[test]
+fn what_is_not_useable_is_never_offered() {
+    let Some(mut w) = world() else { return };
+    let props: Vec<(u32, [f32; 3])> = w
+        .objects
+        .values()
+        .filter(|o| o.kind == Kind::Placeable && !o.useable)
+        .map(|o| (o.id, o.position))
+        .collect();
+    assert!(!props.is_empty(), "the first module has scenery");
+    let pc = w.pc;
+    for (id, at) in props {
+        w.teleport(pc, at);
+        assert_ne!(w.nearest_usable(0.5), Some(id));
+        assert!(!w.click(id));
+    }
+}
+
+#[test]
+fn get_ability_score_takes_the_creature_first() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m03ae").unwrap();
+    let pc = w.pc;
+    w.run_script("k_ptar_dancefar", pc).unwrap();
+    for _ in 0..40 {
+        w.step(0.05);
+    }
+    assert!(w.errors.is_empty(), "{:?}", w.errors);
+}
+
+#[test]
+fn a_conversation_holds_the_players_walk() {
+    let Some(mut w) = world() else { return };
+    w.interactive_dialogue = true;
+    let pc = w.pc;
+    let from = w.object(pc).unwrap().position;
+    let trask = w.by_tag("end_trask")[0];
+    w.talk_to(trask);
+    assert!(w.in_dialogue());
+    w.pc_mover
+        .follow(vec![from, [from[0] + 3.0, from[1], from[2]]]);
+    for _ in 0..20 {
+        w.step(0.05);
+    }
+    assert_eq!(w.object(pc).unwrap().position, from);
+    assert!(w.pc_mover.has_route(), "it goes on afterwards");
+}
+
+#[test]
 fn a_locked_door_does_not_open() {
     let Some(mut w) = world() else { return };
     let d = door(&w, "end_door02", 40.8);

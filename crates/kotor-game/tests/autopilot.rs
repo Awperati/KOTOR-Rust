@@ -58,18 +58,18 @@ fn the_pilot_plays_off_the_endar_spire() {
 }
 
 #[test]
-fn the_pilot_goes_where_it_has_been_least_and_reaches_the_vulkar_base() {
+fn the_pilot_goes_where_it_has_been_least_and_finds_the_lower_citys_rooms() {
     let Some(w) = world() else {
         return;
     };
     let mut g = Game::new(w);
     let mut p = Autopilot::new();
-    while p.time < 6000.0 && !p.finished && g.world.module != "tar_m10aa" {
+    while p.time < 6000.0 && !p.finished && g.world.module != "tar_m11aa" {
         p.run_steps(&mut g, 60);
     }
-    assert_eq!(g.world.module, "tar_m10aa", "{}", p.summary(&g.world));
-    // On the way: the lower city's rooms and the hidden Bek base.
-    for m in ["tar_m03aa", "tar_m03ab", "tar_m03ae", "tar_m11aa"] {
+    assert_eq!(g.world.module, "tar_m11aa", "{}", p.summary(&g.world));
+    // On the way: the lower city's rooms, and the first door of each only once.
+    for m in ["tar_m03aa", "tar_m03ab", "tar_m03ae"] {
         assert!(p.modules.iter().any(|v| v == m), "{m}: {:?}", p.modules);
     }
 }

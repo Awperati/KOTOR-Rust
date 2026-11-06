@@ -214,6 +214,16 @@ fn the_reference_videos_soldier_has_26_hit_points_at_level_2() {
 }
 
 #[test]
+fn a_level_heals_whoever_takes_it() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    w.object_mut(pc).unwrap().hp = 1;
+    w.level_up(pc).unwrap();
+    let o = w.object(pc).unwrap();
+    assert_eq!(o.hp, o.max_hp);
+}
+
+#[test]
 fn a_plot_creature_takes_no_harm() {
     let Some(mut w) = world() else { return };
     let (pc, foe) = (w.pc, soldier(&w));

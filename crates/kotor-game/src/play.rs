@@ -127,7 +127,7 @@ impl World {
         for o in self
             .objects
             .values()
-            .filter(|o| o.id != self.pc && (!o.dead || self.lootable(o.id)))
+            .filter(|o| o.id != self.pc && (!o.dead || self.lootable(o.id)) && o.useable)
         {
             let Some((c, r)) = pick_sphere(o) else {
                 continue;
@@ -189,6 +189,7 @@ impl World {
         if !matches!(o.kind, Kind::Creature | Kind::Door | Kind::Placeable)
             || (o.dead && !self.lootable(target))
             || target == self.pc
+            || !o.useable
         {
             return false;
         }
@@ -562,7 +563,8 @@ impl World {
                 self.steer_pc(dir, run, dt);
                 MoveStatus::Idle
             }
-            (Some(nav), None) if self.pc_mover.has_route() => {
+            // A conversation holds the walk: the panel in `end_m01ab` was reached during a talk and could not start its own.
+            (Some(nav), None) if self.pc_mover.has_route() && self.conv.is_none() => {
                 // The hero runs wherever the reference video was looked at, see `docs/REFERENCE.md`.
                 let params = MoveParams {
                     speed: RUN_SPEED,
@@ -754,6 +756,7 @@ impl World {
                     && o.id != self.pc
                     && (!o.dead || self.lootable(o.id))
                     && !o.party_member
+                    && o.useable
             })
             .map(|o| (dist2d(o.position, here), o.id))
             .filter(|(d, _)| *d <= reach)
