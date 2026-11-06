@@ -1975,7 +1975,8 @@ impl Stage {
             .filter_map(|id| w.object(id))
             .take(3)
             .map(|o| HudMember {
-                portrait: if o.portrait.is_empty() {
+                // Only a player with no character made has no picture of their own.
+                portrait: if o.portrait.is_empty() && o.id == w.pc {
                     "po_pfha2".to_string()
                 } else {
                     o.portrait.clone()

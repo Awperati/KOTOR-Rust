@@ -803,9 +803,11 @@ impl World {
             .as_ref()
             .and_then(|g| g.root.int("PerceptionRange"))
             .and_then(|r| self.table("ranges")?.int(r as usize, "primaryrange"));
+        let portrait = utx.as_ref().map(|g| self.creature_portrait(&g.root));
         let f = |l: &str| placement.float(l).unwrap_or(0.0) as f32;
         if let Some(o) = self.objects.get_mut(&id) {
             o.template = template.to_string();
+            o.portrait = portrait.unwrap_or_default();
             o.name = name;
             o.conversation = conversation;
             o.scripts = scripts;

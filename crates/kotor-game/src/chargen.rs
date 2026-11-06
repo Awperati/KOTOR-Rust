@@ -147,6 +147,29 @@ impl World {
             .collect()
     }
 
+    /// The picture a creature's file names: `PortraitId`, a row of `portraits.2da`. Row 0 is blank, and then it is the
+    /// row of the body it has. **Assumed:** that finding never gives a player's head, which only a file can name.
+    pub(crate) fn creature_portrait(&mut self, utc: &kotor_gff::Struct) -> String {
+        let id = utc.int("PortraitId").unwrap_or(0).max(0) as usize;
+        let body = utc.int("Appearance_Type");
+        let Some(t) = self.table("portraits") else {
+            return String::new();
+        };
+        let name = |row: usize| t.get(row, "baseresref").unwrap_or("").to_ascii_lowercase();
+        if !name(id).is_empty() {
+            return name(id);
+        }
+        let has_body = |row: &usize| {
+            t.int(*row, "forpc") != Some(1)
+                && ["appearancenumber", "appearance_s", "appearance_l"]
+                    .iter()
+                    .any(|c| body.is_some() && t.int(*row, c) == body)
+        };
+        (0..t.row_count())
+            .find(has_body)
+            .map_or(String::new(), name)
+    }
+
     /// The `appearance.2da` row a portrait has in a body size.
     pub fn portrait_appearance(&mut self, portrait: i32, body: BodySize) -> Option<i32> {
         let t = self.table("portraits")?;

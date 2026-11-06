@@ -5,7 +5,7 @@ param([string]$Shots)
 # The pilot plays up to the first fight at its own speed and hands over when an enemy is seen. It writes no saves.
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_fight.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--power","23","--give","g_w_fraggren01","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight","--power","23","--give","g_w_adhsvgren001","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
@@ -79,7 +79,7 @@ $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ([int]$s.queue -le $queued -and (Get-Date) -lt $until)
 Report "The middle slot queues the power" ([int]$s.queue -gt $queued) "queue $queued -> $($s.queue) slot1=$($s.slot1)"
 Shot "fight_queued"
-# The right slot: the grenade given for this run goes at once.
+# The right slot: the grenade given for this run goes at once. An adhesive one, or a frag grenade kills this Sith first.
 $s = State
 $carried = [int]$s.inv
 ClickSlot $s "slot2"

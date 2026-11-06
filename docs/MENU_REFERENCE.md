@@ -95,6 +95,14 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Transitions | not compared | none | I looked at frames only, one every 5 seconds |
 
+## Portraits
+
+A creature's picture is the row of `portraits.2da` its file's `PortraitId` names: `po_ptrask` for Trask. It was only read
+for a character the player made, so anyone who joined showed a player's head. In the 21 modules 334 creature files name
+a row: 185 name T3-M4's and 63 Carth's, which only shows if one of them joins. 83 name row 0, which is blank. They then
+take the row of the body they have, and never a player's head. Our screens show portraits only for the party, as the
+video does: a conversation and the target's bar have none. Frame: `hud_trask`.
+
 ## The mist behind a figure
 
 The character sheet and the party screen have the emitters of `charmain_light.mdl` behind the figure, as at 1:23:50 and

@@ -399,6 +399,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.update(0.1);
     shot(&mut gpu, &mut s, "hud_minimap", &out);
 
+    // Trask at the player's side has his own picture.
+    let trask = s.game.world.spawn_creature("end_trask", [0.0; 3]);
+    s.game.world.party.push(trask);
+    s.update(0.1);
+    shot(&mut gpu, &mut s, "hud_trask", &out);
+    s.game.world.party.retain(|m| *m != trask);
+    s.game.world.objects.remove(&trask);
+    s.update(0.1);
+
     // Who can come along: the party.
     for (slot, template) in [(2, "end_trask"), (6, "n_calonord"), (8, "n_calonord")] {
         s.game.world.available.insert(slot, template.to_string());

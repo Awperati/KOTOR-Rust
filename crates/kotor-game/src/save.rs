@@ -836,6 +836,26 @@ impl World {
                 .collect();
             o.actions.clear();
         }
+        // A save from before creatures had their portraits read has them blank.
+        let blank: Vec<(ObjId, String)> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Creature && o.portrait.is_empty() && !o.template.is_empty())
+            .map(|o| (o.id, o.template.clone()))
+            .collect();
+        for (id, template) in blank {
+            let file = self
+                .inst
+                .read(&template, kotor_core::ResType(2027))
+                .ok()
+                .and_then(|b| kotor_gff::Gff::parse(&b).ok());
+            if let Some(file) = file {
+                let portrait = self.creature_portrait(&file.root);
+                if let Some(o) = self.objects.get_mut(&id) {
+                    o.portrait = portrait;
+                }
+            }
+        }
         (map, leader)
     }
 
