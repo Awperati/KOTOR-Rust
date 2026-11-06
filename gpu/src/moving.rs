@@ -2,13 +2,16 @@
 //! pose, and their dust and sound. The body itself is `kotor_game::Body`.
 //!
 //! **Assumed:** every number here is a feel choice. There is no roll or landing clip in the game's supermodels, so the
-//! body is turned over and pressed down whole around its hips.
+//! joints are bent here: knees to the chest in a roll, a crouch in a landing. A droid has none of these joints and only turns.
 
-use super::{Mat, Stage};
+use super::{placement, Mat, Stage};
 use kotor_core::ResType;
-use kotor_game::{MovementMode, ObjId};
+use kotor_game::{Clip, MovementMode, ObjId};
+use kotor_model::{Model, Pose};
+use kotor_render::{Rig, Scene};
 use kotor_tables::TwoDa;
 use std::f32::consts::TAU;
+use std::rc::Rc;
 
 /// Seconds the camera's focus is behind the player, at speed.
 const LAG_SECONDS: f32 = 0.07;
@@ -24,12 +27,36 @@ const FOV_KICK: f32 = 6.0;
 const FOV_RATE: f32 = 5.0;
 /// From this speed the view begins to widen, metres per second.
 const FOV_FROM: f32 = 2.0;
-/// The body turns over around its middle, this high when it stands, metres. Pressed down around it to the same share, the
-/// head never reaches further from the middle than the feet do, so a turned body stays out of the floor.
-const TUCK_HEIGHT: f32 = 0.9;
-/// How far a roll presses the body down at its middle, and a landing at its start.
-const ROLL_SQUASH: f32 = 0.55;
-const LAND_SQUASH: f32 = 0.22;
+/// A body in a tight tuck turns around this point of its standing pose, metres forward and up from the feet.
+const TUCK_FORWARD: f32 = 0.15;
+const TUCK_UP: f32 = 1.15;
+/// And that point is this high over the floor at the middle of a roll: as far as the head and feet reach from it.
+const TUCK_RADIUS: f32 = 0.85;
+/// Share of a roll spent going into the tuck, and coming out of it.
+const TUCK_IN: f32 = 0.18;
+const TUCK_OUT: f32 = 0.22;
+/// The joints in a full tuck, by how many degrees they turn forward: knees to the chest, the back curled, the arms round
+/// the shins. A joint turns about the side to side line of the joint above it.
+const TUCK: [(&str, f32); 12] = [
+    ("lthigh_g", 125.0),
+    ("rthigh_g", 125.0),
+    ("lshin_g", -140.0),
+    ("rshin_g", -140.0),
+    ("lfoot_g", 25.0),
+    ("rfoot_g", 25.0),
+    ("torso_g", -30.0),
+    ("torsoupr_g", -30.0),
+    ("necklwr_g", -20.0),
+    ("neck_g", -15.0),
+    ("lbicep_g", 55.0),
+    ("rbicep_g", 55.0),
+];
+const TUCK_ELBOWS: [(&str, f32); 2] = [("lforearm_g", 85.0), ("rforearm_g", 85.0)];
+/// A hard landing bends the knees this many degrees at its deepest, with the feet staying on the floor.
+const LAND_KNEES: f32 = 55.0;
+/// Thigh and shin lengths of the humanoid skeleton, metres (`S_Male01`).
+const THIGH: f32 = 0.45;
+const SHIN: f32 = 0.39;
 /// A stock effect model of the game.
 const DUST: &str = "fx_step_dust";
 /// Slower landings make no sound.
@@ -175,47 +202,186 @@ impl Stage {
         [p[0] + l[0], p[1] + l[1], p[2] + l[2]]
     }
 
-    /// How the player's body is turned over and pressed down now, in the world. None when it is not.
-    pub(super) fn body_tilt(&self, id: ObjId, at: [f32; 3], heading: f32) -> Option<Mat> {
+    /// What the player's body is doing that no clip has, now.
+    fn body_bend(&self, id: ObjId) -> Option<Bend> {
         let w = &self.game.world;
         if id != w.pc || w.movement != MovementMode::Modern {
             return None;
         }
         let body = &w.pc_body;
-        let (over, squash) = if body.rolling() {
-            roll_pose(body.roll_progress(&w.tuning))
+        if body.rolling() {
+            Some(Bend::Roll(body.roll_progress(&w.tuning)))
         } else if body.landing() {
-            (0.0, LAND_SQUASH * body.land_dip())
+            Some(Bend::Land(body.land_dip()))
         } else {
-            return None;
+            None
+        }
+    }
+
+    /// Draw the player tucked or crouching, if it is. Otherwise false, and nothing is drawn.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn add_bent_body(
+        &self,
+        scene: &mut Scene,
+        id: ObjId,
+        rig: &Rig,
+        hands: &[(&'static str, Rc<Model>)],
+        clip: &Option<Clip>,
+        at: [f32; 3],
+        heading: f32,
+    ) -> bool {
+        let Some(bend) = self.body_bend(id) else {
+            return false;
         };
-        Some(tilt_matrix(at, heading, over, squash))
+        let name = clip.as_ref().map_or("pause1", |c| c.name);
+        let t = clip.as_ref().map_or(0.0, |c| c.time);
+        let sampled = rig
+            .animation_length(name)
+            .filter(|l| *l > 0.0)
+            .and_then(|l| rig.sample(name, t % l));
+        // A clip that was playing shows through as the bend comes and goes.
+        let Some(mut pose) = sampled.or_else(|| rig.sample("pause1", 0.0)) else {
+            return false;
+        };
+        // The clip's swing goes as the bend comes, or the legs would scissor in the tuck.
+        let rest = rig.sample("pause1", 0.0);
+        let mut settle = |share: f32| {
+            if let Some(r) = &rest {
+                pose = kotor_model::blend(&pose, r, share);
+            }
+        };
+        let xf = match bend {
+            Bend::Roll(p) => {
+                let (over, tuck) = roll_pose(p);
+                settle(tuck);
+                bend_joints(&mut pose, tuck);
+                tilt_matrix(at, heading, over, tuck)
+            }
+            Bend::Land(dip) => {
+                settle(dip);
+                crouch(&mut pose, dip);
+                tilt_matrix(at, heading, 0.0, 0.0)
+            }
+        };
+        let Ok(mut body) = rig.posed(Some(&pose)) else {
+            return false;
+        };
+        for (node, item) in hands {
+            rig.attach(&mut body, Some(&pose), node, item);
+        }
+        let angle = heading - std::f32::consts::FRAC_PI_2;
+        scene.append_transformed(&body, &times(&xf, &placement(at, angle)));
+        true
+    }
+
+    /// How far under its feet the player's body reaches now, for a test: `None` when it is not tucked or crouching.
+    pub fn bent_body_sinks(&mut self) -> Option<f32> {
+        let pc = self.game.world.pc;
+        let pose = self.game.poses().into_iter().find(|p| p.id == pc)?;
+        let rig = self.rig_of(pc)?;
+        let hands = self.hands(pc);
+        let mut alone = Scene::default();
+        self.add_bent_body(
+            &mut alone,
+            pc,
+            &rig,
+            &hands,
+            &pose.clip,
+            pose.position,
+            pose.heading,
+        )
+        .then_some(())?;
+        let lowest = alone
+            .meshes
+            .iter()
+            .flat_map(|m| m.positions.iter().map(|p| p[2]))
+            .fold(f32::MAX, f32::min);
+        Some(pose.position[2] - lowest)
     }
 }
 
-/// How far a roll has turned the body over and pressed it down, `p` of the way through it.
-fn roll_pose(p: f32) -> (f32, f32) {
-    let eased = p * p * (3.0 - 2.0 * p);
-    (eased * TAU, ROLL_SQUASH * (p * TAU / 2.0).sin())
+/// What the player's body is doing: how far through a roll, or how deep in a landing.
+#[derive(Clone, Copy)]
+enum Bend {
+    Roll(f32),
+    Land(f32),
 }
 
-/// Around the middle of a body at `at` facing `heading`: `over` radians over the shoulder, and pressed down by `squash`.
-fn tilt_matrix(at: [f32; 3], heading: f32, over: f32, squash: f32) -> Mat {
+fn smooth(x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
+}
+
+/// How far a roll has turned the body over, in radians, and how tucked it is, 0 to 1, `p` of the way through it.
+fn roll_pose(p: f32) -> (f32, f32) {
+    (
+        smooth(p) * TAU,
+        smooth(p / TUCK_IN) * smooth((1.0 - p) / TUCK_OUT),
+    )
+}
+
+/// `[w, x, y, z]` of a turn about the x axis, the body's side to side line.
+fn about_x(degrees: f32) -> [f32; 4] {
+    let (s, c) = (degrees.to_radians() / 2.0).sin_cos();
+    [c, s, 0.0, 0.0]
+}
+
+fn quat_times(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    [
+        a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+        a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+        a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+        a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0],
+    ]
+}
+
+/// A joint a share of the way from what the clip has to the turn from the standing pose, about its parent's side to side line.
+fn turn_joint(pose: &mut Pose, joint: &str, degrees: f32) {
+    if let Some(n) = pose.get_mut(joint) {
+        n.orientation = quat_times(about_x(degrees), n.orientation);
+    }
+}
+
+/// Knees to the chest, the back curled and the arms in, `share` of the way there.
+fn bend_joints(pose: &mut Pose, share: f32) {
+    for (joint, degrees) in TUCK.iter().chain(&TUCK_ELBOWS) {
+        turn_joint(pose, joint, degrees * share);
+    }
+}
+
+/// The knees bent, `dip` of the way to the deepest, with the feet flat and the body lowered so that they stay on the floor.
+fn crouch(pose: &mut Pose, dip: f32) {
+    let a = LAND_KNEES * dip;
+    for (joint, degrees) in [
+        ("lthigh_g", a),
+        ("rthigh_g", a),
+        ("lshin_g", -2.0 * a),
+        ("rshin_g", -2.0 * a),
+        ("lfoot_g", a),
+        ("rfoot_g", a),
+        ("torso_g", -0.4 * a),
+    ] {
+        turn_joint(pose, joint, degrees);
+    }
+    if let Some(root) = pose.get_mut("rootdummy") {
+        root.position[2] -= (THIGH + SHIN) * (1.0 - a.to_radians().cos());
+    }
+}
+
+/// A body at `at` facing `heading`, turned `over` radians over the shoulder around its middle, which comes down from its
+/// standing height to `TUCK_RADIUS` over the floor as it tucks, so that the head and feet clear the floor as they come round.
+fn tilt_matrix(at: [f32; 3], heading: f32, over: f32, tuck: f32) -> Mat {
     // Models face +y at rest.
     let angle = heading - std::f32::consts::FRAC_PI_2;
-    let press = [
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0 - squash, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ];
-    let hips = [at[0], at[1], at[2] + TUCK_HEIGHT * (1.0 - squash)];
+    // Late, so that the body only comes down once the legs have folded.
+    let height = TUCK_UP + (TUCK_RADIUS - TUCK_UP) * tuck * tuck;
+    let middle = [at[0], at[1], at[2] + height];
     let inner = times(
-        &times(&turn_over(over), &press),
-        &times(&shift([0.0, 0.0, -TUCK_HEIGHT]), &turn_z(-angle)),
+        &times(&shift([0.0, TUCK_FORWARD, 0.0]), &turn_over(over)),
+        &times(&shift([0.0, -TUCK_FORWARD, -TUCK_UP]), &turn_z(-angle)),
     );
     times(
-        &times(&shift(hips), &turn_z(angle)),
+        &times(&shift(middle), &turn_z(angle)),
         &times(&inner, &shift([-at[0], -at[1], -at[2]])),
     )
 }
@@ -242,44 +408,44 @@ mod tests {
     }
 
     #[test]
-    fn the_hips_stay_put_through_a_turn() {
+    fn a_whole_turn_at_the_end_of_a_roll_is_no_turn() {
         let at = [3.0, -2.0, 1.0];
-        let hips = [at[0], at[1], at[2] + TUCK_HEIGHT];
-        let m = tilt_matrix(at, 0.7, 1.9, 0.0);
-        assert!(near(apply(&m, hips), hips));
+        let (over, tuck) = roll_pose(1.0);
+        assert_eq!(tuck, 0.0);
+        let m = tilt_matrix(at, 0.7, over, tuck);
+        let p = [3.0, -2.0, 2.8];
+        assert!(near(apply(&m, p), p), "{:?}", apply(&m, p));
     }
 
     #[test]
     fn a_quarter_turn_puts_the_head_forward_along_the_heading() {
         let heading = 0.7f32;
-        let at = [0.0; 3];
-        let m = tilt_matrix(at, heading, std::f32::consts::FRAC_PI_2, 0.0);
-        let head = apply(&m, [0.0, 0.0, TUCK_HEIGHT + 1.0]);
-        assert!((head[0] - heading.cos()).abs() < 1e-4, "{head:?}");
-        assert!((head[1] - heading.sin()).abs() < 1e-4, "{head:?}");
-        assert!((head[2] - TUCK_HEIGHT).abs() < 1e-4, "{head:?}");
+        let m = tilt_matrix([0.0; 3], heading, std::f32::consts::FRAC_PI_2, 0.0);
+        let (c, s) = (heading.cos(), heading.sin());
+        let head = apply(&m, [c * TUCK_FORWARD, s * TUCK_FORWARD, TUCK_UP + 1.0]);
+        let ahead = 1.0 + TUCK_FORWARD;
+        assert!((head[0] - heading.cos() * ahead).abs() < 1e-4, "{head:?}");
+        assert!((head[1] - heading.sin() * ahead).abs() < 1e-4, "{head:?}");
+        assert!((head[2] - TUCK_UP).abs() < 1e-4, "{head:?}");
     }
 
     #[test]
-    fn a_turned_body_stays_out_of_the_floor_all_through_a_roll() {
-        let at = [2.0, -1.0, 3.0];
-        for k in 0..=100 {
-            let (over, squash) = roll_pose(k as f32 / 100.0);
-            let m = tilt_matrix(at, 0.4, over, squash);
-            // Along the body, from the feet to the top of a 1.8 m head.
-            for h in 0..=18 {
-                let z = apply(&m, [at[0], at[1], at[2] + h as f32 * 0.1])[2];
-                assert!(z >= at[2] - 1e-3, "{z} at {k}% and height {h}");
-            }
-        }
+    fn a_roll_tucks_in_and_comes_out() {
+        assert_eq!(roll_pose(0.0).1, 0.0);
+        assert_eq!(roll_pose(0.5).1, 1.0);
+        assert_eq!(roll_pose(1.0).1, 0.0);
     }
 
     #[test]
-    fn pressing_down_keeps_the_feet_on_the_floor() {
-        let at = [1.0, 1.0, 2.0];
-        let m = tilt_matrix(at, 0.3, 0.0, 0.2);
-        assert!(near(apply(&m, at), at));
-        let head = apply(&m, [1.0, 1.0, 3.8]);
-        assert!((head[2] - (2.0 + 1.8 * 0.8)).abs() < 1e-4, "{head:?}");
+    fn turning_a_joint_turns_a_shin_forward() {
+        // A point below a joint turned forward by 90 degrees about x comes out in front of it.
+        let q = about_x(90.0);
+        let (w, x) = (q[0], q[1]);
+        // The y of (0, 0, -1) under this turn is 2 w x.
+        assert!((2.0 * w * x - 1.0).abs() < 1e-5);
+        assert!(near(
+            [quat_times(q, about_x(-90.0))[0], 0.0, 0.0],
+            [1.0, 0.0, 0.0]
+        ));
     }
 }

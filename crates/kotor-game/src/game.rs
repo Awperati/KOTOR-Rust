@@ -270,12 +270,8 @@ impl Game {
             }
             let in_stance = self.ready_until.get(&id).is_some_and(|u| *u > self.steps);
             let ready = in_stance.then(|| self.style_clip(id, Move::Ready));
-            let rolling = id == pc && self.world.pc_body.rolling();
             let want = if down {
                 "die"
-            } else if rolling {
-                // No roll in the supermodels: this crouch is the nearest, and the window turns the body over.
-                "getfromgnd"
             } else if let Some(o) = once {
                 o
             } else if ran {

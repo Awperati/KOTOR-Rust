@@ -1941,17 +1941,15 @@ impl Stage {
                         continue;
                     }
                     let clip = self.dialogue_clip(pose.id).or_else(|| pose.clip.clone());
-                    if let Some(tilt) = self.body_tilt(pose.id, pose.position, pose.heading) {
-                        let mut alone = Scene::default();
-                        self.add_creature(
-                            &mut alone,
-                            &rig,
-                            &hands,
-                            &clip,
-                            pose.position,
-                            pose.heading,
-                        );
-                        scene.append_transformed(&alone, &tilt);
+                    if self.add_bent_body(
+                        &mut scene,
+                        pose.id,
+                        &rig,
+                        &hands,
+                        &clip,
+                        pose.position,
+                        pose.heading,
+                    ) {
                         continue;
                     }
                     self.add_creature(&mut scene, &rig, &hands, &clip, pose.position, pose.heading);

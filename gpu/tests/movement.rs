@@ -99,7 +99,16 @@ fn the_roll_key_rolls_with_dust_a_sound_and_a_turned_body() {
     assert!(s.game.world.pc_body.rolling(), "the key rolled");
     assert!(s.effects_playing() > dust, "the dust is there");
     run(&mut s, 12);
-    // It is still drawn: the turn itself is tested beside `tilt_matrix`.
+    // The feet and the head come round without going through the floor.
+    let mut sank = 0.0f32;
+    for _ in 0..40 {
+        if let Some(d) = s.bent_body_sinks() {
+            sank = sank.max(d);
+        }
+        s.update(DT);
+    }
+    assert!(sank < 0.03, "the tucked body went {sank} m into the floor");
+    // It is still drawn.
     assert!(!s.dynamic_scene().meshes.is_empty());
     run(&mut s, 60);
     assert!(!s.game.world.pc_body.rolling());

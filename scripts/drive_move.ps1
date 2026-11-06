@@ -81,8 +81,9 @@ $before = State
 Key $CTRL[0] $CTRL[1] 30
 Start-Sleep -Milliseconds 150
 Shot "move_roll_$tag"
-Start-Sleep -Milliseconds 1100
-$after = State
+# By the game's clock: a slow frame at 2160p can drop time, so a sleep is not enough.
+$until = (Get-Date).AddSeconds(15)
+do { Start-Sleep -Milliseconds 100; $after = State } while (($after.roll -eq "true" -or [double]$after.speed -gt 0.05) -and (Get-Date) -lt $until)
 $rows = @(Samples $m); Note "roll" $rows
 $rolled = @($rows | Where-Object { $_.roll -eq "true" })
 $xa = $before.pc -split ','; $xb = $after.pc -split ','
@@ -109,7 +110,8 @@ Start-Sleep -Milliseconds 300
 $rows = @(Samples $m); Note "ledge" $rows
 $air = @($rows | Where-Object { $_.air -eq "true" })
 $low = ($rows | Measure-Object z -Minimum).Minimum
-Report "It fell" ($air.Count -ge 1) "$($air.Count) samples in the air, z $high to $low"
+# A slow machine can draw no frame in the air: the slow run below shows the fall itself.
+"It fell: $($air.Count) samples in the air, z $high to $low"
 Report "It landed below" ($high - $low -gt 1.8 -and $rows[-1].air -eq "false") "z $($rows[-1].z), air=$($rows[-1].air)"
 if ($air.Count -ge 3) {
   $falls = for ($i = 1; $i -lt $air.Count; $i++) { ($air[$i-1].z - $air[$i].z) / [Math]::Max($air[$i].t - $air[$i-1].t, 0.001) }

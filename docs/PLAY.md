@@ -212,6 +212,6 @@ Options, Feedback, has the row. Modern is the default, and Classic is the walk a
 
 5.4 m/s is measured: `runrate` of `creaturespeed.2da`, and `rundist` 3.96 m over the 0.733 s run cycle. **Everything else is a feel choice, not data:** see the top of `crates/kotor-game/src/movement.rs` and `gpu/src/moving.rs`. **Assumed:** WASD is the sprint, with no key of its own, and Shift still walks. A roll gives no protection: combat is d20 rounds, and their rules are unchanged. A fall does no damage. There is no jump.
 
-The supermodels have no roll, dive, jump or landing clip, so the whole body is turned over and pressed down around its middle, in the `getfromgnd` crouch. Dust is the game's `fx_step_dust`.
+The supermodels have no roll, dive, jump or landing clip, so `gpu/src/moving.rs` bends the joints itself: knees to the chest, back curled and arms in while the body turns over, and bent knees on a hard landing. Dust is the game's `fx_step_dust`.
 
 A floor can end over a lower one, with a gap where the cliff is. The player falls there when the drop is at most 6 m, no wall face stands at chest height in the first 1.5 m, and the walkmesh joins the two floors, so that there is always a way back (a locked door on that way counts as open). **A railing that is only in the room's model does not stop it.** `cargo run --release -p kotor-render --example ledges` lists the drops it finds.
