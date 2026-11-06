@@ -773,7 +773,15 @@ impl Host for Adapter<'_> {
                 let resisted = sr > 0 && self.world.roll(20) + level < sr;
                 Some(Value::Int(resisted as i32))
             }
-            "GetIsLinkImmune" | "GetCreatureMovmentType" | "GetEffectType" => {
+            "GetIsLinkImmune" => {
+                let target = self.obj(caller, args, 0);
+                let eff = match args.get(1) {
+                    Some(Value::Engine(_, h)) => *h,
+                    _ => 0,
+                };
+                Some(Value::Int(self.world.is_link_immune(target, eff) as i32))
+            }
+            "GetCreatureMovmentType" | "GetEffectType" => {
                 self.default_hit(name);
                 Some(Value::Int(0))
             }

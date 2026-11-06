@@ -87,3 +87,39 @@ fn reduction_takes_something_off_every_blow() {
     put(&mut w, foe, "EffectDamageReduction", &[3.0, 0.0, 0.0]);
     assert_eq!(hit(&mut w, pc, foe, 10.0, FIRE), 7);
 }
+
+#[test]
+fn an_immune_creature_shrugs_off_the_effect_it_is_immune_to() {
+    let Some((mut w, pc, foe)) = world() else {
+        return;
+    };
+    const STUN: f32 = 12.0;
+    let stun = |w: &mut World| {
+        let mut e = EffectRec::new("EffectStunned");
+        e.nums = vec![];
+        w.effects.push(e);
+        let h = w.effects.len() as u32;
+        w.apply_effect(pc, foe, h, DURATION_PERMANENT, 0.0);
+        h
+    };
+    let h = {
+        let mut e = EffectRec::new("EffectStunned");
+        w.effects.push(e.clone());
+        e.nums.clear();
+        w.effects.len() as u32
+    };
+    assert!(!w.is_link_immune(foe, h));
+    stun(&mut w);
+    assert!(w.is_disabled(foe), "an unprotected creature is stunned");
+    w.object_mut(foe).unwrap().effects.clear();
+    put(&mut w, foe, "EffectImmunity", &[STUN]);
+    assert!(w.is_link_immune(foe, h));
+    stun(&mut w);
+    assert!(!w.is_disabled(foe), "stun immunity stops the stun");
+    let mut e = EffectRec::new("EffectParalyze");
+    e.nums = vec![];
+    w.effects.push(e);
+    let p = w.effects.len() as u32;
+    w.apply_effect(pc, foe, p, DURATION_PERMANENT, 0.0);
+    assert!(w.is_disabled(foe), "stun immunity does not stop paralysis");
+}

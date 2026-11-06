@@ -27,6 +27,32 @@ pub const DURATION_INSTANT: i32 = 0;
 pub const DURATION_TEMPORARY: i32 = 1;
 pub const DURATION_PERMANENT: i32 = 2;
 
+/// The `IMMUNITY_TYPE_*` (from the install's `nwscript.nss`) that guards against an effect, if any.
+/// **Assumed:** droid stun counts as stun, horror as fear, choke as paralysis, a push as knockdown.
+fn immunity_type(effect: &str) -> Option<i32> {
+    Some(match effect {
+        "EffectPoison" => 2,
+        "EffectFrightened" | "EffectHorrified" | "EffectCutSceneHorrified" => 4,
+        "EffectParalyze" | "EffectChoke" | "EffectCutSceneParalyze" => 6,
+        "EffectMovementSpeedDecrease" => 24,
+        "EffectEntangle" => 10,
+        "EffectStunned" | "EffectDroidStun" | "EffectCutSceneStunned" => 12,
+        "EffectSleep" => 13,
+        "EffectConfused" => 16,
+        "EffectAbilityDecrease" => 19,
+        "EffectAttackDecrease" => 20,
+        "EffectDamageDecrease" => 21,
+        "EffectDamageImmunityDecrease" => 22,
+        "EffectACDecrease" => 23,
+        "EffectSavingThrowDecrease" => 25,
+        "EffectForceResistanceDecrease" => 26,
+        "EffectSkillDecrease" => 27,
+        "EffectKnockdown" | "EffectForcePushed" => 28,
+        "EffectDeath" => 32,
+        _ => return None,
+    })
+}
+
 /// Effects that stop a creature acting while they last.
 const DISABLING: &[&str] = &[
     "EffectStunned",
@@ -149,6 +175,30 @@ impl World {
         })
     }
 
+    /// Whether `target` carries an `EffectImmunity` for `kind` (an `IMMUNITY_TYPE_*`).
+    pub fn is_immune(&self, target: ObjId, kind: i32) -> bool {
+        self.objects.get(&target).is_some_and(|o| {
+            o.effects
+                .iter()
+                .filter_map(|h| self.effects.get(h.wrapping_sub(1) as usize))
+                .any(|e| {
+                    e.name == "EffectImmunity" && e.nums.first().is_some_and(|n| *n as i32 == kind)
+                })
+        })
+    }
+
+    /// Whether `target` is immune to the effect `handle` or any effect linked to it (`GetIsLinkImmune`).
+    pub fn is_link_immune(&self, target: ObjId, handle: u32) -> bool {
+        let Some(rec) = handle
+            .checked_sub(1)
+            .and_then(|i| self.effects.get(i as usize))
+        else {
+            return false;
+        };
+        immunity_type(&rec.name).is_some_and(|k| self.is_immune(target, k))
+            || rec.links.iter().any(|l| self.is_link_immune(target, *l))
+    }
+
     /// Apply an effect (and the effects linked to it) to `target`. Instant kinds act at once; others are attached for
     /// `seconds` (temporary) or for good (permanent).
     pub fn apply_effect(
@@ -171,6 +221,9 @@ impl World {
         }
         for l in &rec.links {
             self.apply_effect(creator, target, *l, duration, seconds);
+        }
+        if immunity_type(&rec.name).is_some_and(|k| self.is_immune(target, k)) {
+            return;
         }
         let n0 = rec.nums.first().copied().unwrap_or(0.0) as i32;
         match rec.name.as_str() {
