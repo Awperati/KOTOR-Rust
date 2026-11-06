@@ -25,6 +25,7 @@
 //!     --pazaak MAX    start a game of Pazaak with this most to wager when a game starts, for a test driver
 //!     --alignment N   the player's alignment when a game starts, for a test driver
 //!     --auto-aim      the turret points itself at the next fighter, for a test driver
+//!     --grenadier     when the first fight starts, the nearest enemy has grenades and throws them, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --appearance N  the player has this row of `appearance.2da` when a game starts, for a test driver
 //!     --original-underwear  the game's own underwear style, whatever Settings says, for a test driver
@@ -169,6 +170,7 @@ struct App {
     global: Option<String>,
     pazaak: Option<i32>,
     alignment: Option<i32>,
+    grenadier: bool,
     turret_cursor: bool,
     /// The turret has seen where the cursor is: till then, how far it has come means nothing.
     turret_cursor_known: bool,
@@ -332,6 +334,10 @@ impl App {
             if self.stage.pilot_arrived() {
                 self.stage.take_over_from_pilot(self.auto_pause);
                 self.stage.keep_player_standing(until == "level");
+                if self.grenadier {
+                    self.grenadier = false;
+                    self.stage.arm_nearest_enemy();
+                }
                 if until == "level" {
                     self.stage.one_kill_short_of_a_level();
                 }
@@ -727,6 +733,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         global: opt("--global"),
         pazaak: opt("--pazaak").and_then(|n| n.parse().ok()),
         alignment: opt("--alignment").and_then(|n| n.parse().ok()),
+        grenadier: flag("--grenadier"),
         turret_cursor: false,
         turret_cursor_known: false,
         pilot_until: opt("--pilot-until"),

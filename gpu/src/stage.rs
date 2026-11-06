@@ -289,6 +289,8 @@ pub struct Stage {
     ui_width: u32,
     overlay: Option<Image>,
     overlay_key: String,
+    /// A test driver has given someone this: `--grenadier`.
+    pub armed: Option<ObjId>,
     /// A test driver has the turret aim for it.
     pub turret_assist: bool,
     /// Goes up whenever the overlay changes.
@@ -402,6 +404,7 @@ impl Stage {
             ui_width: 853,
             overlay: None,
             overlay_key: String::new(),
+            armed: None,
             turret_assist: false,
             overlay_version: 0,
             cues: Vec::new(),
@@ -592,6 +595,7 @@ impl Stage {
         }
         self.scan_music_events();
         self.play_world_sounds(dt_game);
+        self.play_effects_at();
         if let Some(id) = self.game.world.opened {
             self.lids.entry(id).or_insert(0.0);
         }
@@ -656,6 +660,25 @@ impl Stage {
             .and_then(|n| n.trim_end_matches(')').parse::<ObjId>().ok());
         if let (Some(h), Some(t)) = (handle, target) {
             self.effect_visual(h, t, 0);
+        }
+    }
+
+    /// What has been put down at a place: a grenade's burst.
+    fn play_effects_at(&mut self) {
+        for (handle, at) in std::mem::take(&mut self.game.world.effects_at) {
+            let rec = handle
+                .checked_sub(1)
+                .and_then(|i| self.game.world.effects.get(i as usize));
+            let row = rec
+                .filter(|r| r.name == "EffectVisualEffect")
+                .and_then(|r| r.nums.first())
+                .map(|r| *r as i32);
+            let Some((_, Some((model, up)))) = row.and_then(|r| self.visual_row(r)) else {
+                continue;
+            };
+            if let Some(m) = self.model(&model) {
+                self.effects.play_model(&m, [at[0], at[1], at[2] + up]);
+            }
         }
     }
 
@@ -2014,6 +2037,11 @@ impl Stage {
         let row1 = at(self.menu_pixel("LB_ITEMS", Some(1), (640, 480)));
         let pc = self.game.world.pc;
         let solo = self.game.world.solo_mode;
+        // What the one armed by a test driver has left.
+        let grenades = self
+            .armed
+            .and_then(|i| self.game.world.object(i))
+            .map_or("-".to_string(), |o| o.stack.to_string());
         // The turret's hit points, how many fighters are flying, and how far round it is.
         let turret = self
             .game
@@ -2041,7 +2069,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} race={race} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} race={race} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

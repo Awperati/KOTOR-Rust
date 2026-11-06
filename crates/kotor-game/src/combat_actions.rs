@@ -147,6 +147,13 @@ impl World {
         out.into_iter().map(|(_, c)| c).collect()
     }
 
+    /// What a creature carries that has this power.
+    pub fn carried_power(&mut self, id: ObjId, power: i32) -> Option<ObjId> {
+        self.carried(id)
+            .into_iter()
+            .find(|i| self.item_view(*i).is_some_and(|v| v.power == Some(power)))
+    }
+
     /// What a creature carries that it can throw at an enemy with `use_item_on`. One with no power cannot be used: the
     /// flash grenade's file has none.
     pub fn combat_throwables(&mut self, id: ObjId) -> Vec<ObjId> {

@@ -286,6 +286,38 @@ impl Stage {
 
     /// Space: goes on with a line or a container, or else pauses. It never pauses in a conversation, nor just after
     /// one: a player going through its lines presses once more than there are.
+    /// For a test driver: the nearest enemy has grenades, and throws them.
+    pub fn arm_nearest_enemy(&mut self) {
+        const COUNT: i32 = 5;
+        const GRENADE: &str = "g_w_fraggren01";
+        const THROWS: i32 = 4;
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        let at = w.object(pc).map_or([0.0; 3], |o| o.position);
+        let near = w
+            .objects
+            .values()
+            .filter(|o| !o.dead && o.id != pc && o.kind == kotor_game::Kind::Creature)
+            .filter(|o| w.reputation(o.id, pc) <= 10)
+            .min_by(|a, b| {
+                let far =
+                    |o: &&kotor_game::Object| (o.position[0] - at[0]).hypot(o.position[1] - at[1]);
+                far(a).total_cmp(&far(b))
+            })
+            .map(|o| o.id);
+        if let Some(near) = near {
+            let item = w.spawn_item(GRENADE);
+            w.carry(near, item);
+            if let Some(o) = w.object_mut(item) {
+                o.stack = COUNT;
+            }
+            if let Some(o) = w.object_mut(near) {
+                o.ai_style = THROWS;
+            }
+            self.armed = Some(item);
+        }
+    }
+
     pub fn space_key(&mut self) {
         if !self.menu_open() && self.race_fire() {
             return;

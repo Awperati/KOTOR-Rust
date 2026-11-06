@@ -476,6 +476,19 @@ impl World {
     }
 
     /// Fire trigger enter and exit scripts for the player and party as they cross trigger outlines.
+    /// Who stands in a trigger now, nearest its first corner first.
+    pub(crate) fn inside_trigger(&self, trigger: ObjId) -> std::collections::VecDeque<ObjId> {
+        let Some(poly) = self.objects.get(&trigger).map(|t| &t.polygon) else {
+            return Default::default();
+        };
+        self.objects
+            .values()
+            .filter(|o| o.kind == Kind::Creature && !o.dead)
+            .filter(|o| inside_polygon([o.position[0], o.position[1]], poly))
+            .map(|o| o.id)
+            .collect()
+    }
+
     fn update_triggers(&mut self) {
         let who: Vec<ObjId> = std::iter::once(self.pc)
             .chain(self.party.iter().copied())

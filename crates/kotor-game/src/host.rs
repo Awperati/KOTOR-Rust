@@ -36,7 +36,6 @@ const PRESENTATION: &[&str] = &[
     "SetLockOrientationInDialog",
     "SetLockHeadFollowInDialog",
     "SetPartyAIStyle",
-    "SetNPCAIStyle",
     "SetTutorialWindowsEnabled",
     "SetFacingPoint",
     "SetPartyLeader",
@@ -50,7 +49,6 @@ const PRESENTATION: &[&str] = &[
     "CancelCombat",
     "PauseGame",
     "DisplayFeedBackText",
-    "ApplyEffectAtLocation",
     "SetDialogPlaceableCamera",
     "HoldWorldFadeInForDialog",
     "MusicBattlePlay",
@@ -531,6 +529,17 @@ impl Host for Adapter<'_> {
             }
             "GetCreatureHasTalent" => {
                 let who = self.obj(caller, args, 1);
+                // What a creature carries it can use: a grenade is its item's power, as the AI asks for it.
+                if let Some(Value::Engine(_, h)) = args.first() {
+                    if h >> 24 == 1
+                        && self
+                            .world
+                            .carried_power(who, (h & 0xFF_FFFF) as i32)
+                            .is_some()
+                    {
+                        return Ok(Some(Value::Int(1)));
+                    }
+                }
                 b(match args.first() {
                     Some(Value::Engine(_, h)) if *h != 0 => {
                         let id = (h & 0xFF_FFFF) as i32;
@@ -581,6 +590,40 @@ impl Host for Adapter<'_> {
                     o.effects.clear();
                 }
                 None
+            }
+            "ApplyEffectAtLocation" => {
+                let at = self.location(args.get(2)).map_or([0.0; 3], |l| l.0);
+                if let Some(Value::Engine(_, h)) = args.get(1) {
+                    self.world.effects_at.push((*h, at));
+                }
+                self.record(name, args);
+                None
+            }
+            "GetNPCAIStyle" => Some(Value::Int(
+                self.world
+                    .object(self.obj(caller, args, 0))
+                    .map_or(0, |o| o.ai_style),
+            )),
+            "SetNPCAIStyle" => {
+                let (who, style) = (self.obj(caller, args, 0), int(args, 1)?);
+                if let Some(o) = self.world.object_mut(who) {
+                    o.ai_style = style;
+                }
+                self.record(name, args);
+                None
+            }
+            "GetFirstInPersistentObject" | "GetNextInPersistentObject" => {
+                let place = self.obj(caller, args, 0);
+                if name == "GetFirstInPersistentObject" {
+                    let inside = self.world.inside_trigger(place);
+                    self.world.persistent_walks.insert(place, inside);
+                }
+                let next = self
+                    .world
+                    .persistent_walks
+                    .get_mut(&place)
+                    .and_then(|w| w.pop_front());
+                Some(Value::Object(next.unwrap_or(OBJECT_INVALID)))
             }
             "ApplyEffectToObject" => {
                 let (dur, target, secs) =
@@ -1637,7 +1680,6 @@ impl Host for Adapter<'_> {
             | "GetUserActionsPending"
             | "GetIsDebilitated"
             | "GetPartyAIStyle"
-            | "GetNPCAIStyle"
             | "GetIsEncounterCreature"
             | "GetSubScreenID" => {
                 self.default_hit(name);

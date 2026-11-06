@@ -95,6 +95,12 @@ impl World {
         let spell = spell.ok_or(CannotUse::NoPower)?;
         self.cast_spell(who, spell, at, true)
             .map_err(|_| CannotUse::Failed)?;
+        self.spend_one(who, item);
+        Ok(())
+    }
+
+    /// One comes off a stack, and the last is gone.
+    pub(crate) fn spend_one(&mut self, who: ObjId, item: ObjId) {
         let last = self.objects.get(&item).is_some_and(|o| o.stack <= 1);
         if last {
             if let Some(o) = self.objects.get_mut(&who) {
@@ -104,6 +110,5 @@ impl World {
         } else if let Some(o) = self.objects.get_mut(&item) {
             o.stack -= 1;
         }
-        Ok(())
     }
 }

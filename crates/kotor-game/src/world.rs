@@ -133,6 +133,8 @@ pub struct Object {
     pub base_item: i32,
     /// Items: the `upgrade.2da` row in each slot of the upgrade bench.
     pub upgrades: BTreeMap<i32, i32>,
+    /// `SetNPCAIStyle`: 4 throws grenades, 5 supports with the Force. Most is 0.
+    pub ai_style: i32,
     /// Items: a script says it cannot go on (`SetItemNonEquippable`).
     pub non_equippable: bool,
     /// Waypoints: what a script has said of the map note here (`SetMapPinEnabled`), over what the area's file says.
@@ -259,6 +261,7 @@ impl Object {
             stack: 1,
             plot: false,
             upgrades: BTreeMap::new(),
+            ai_style: 0,
             non_equippable: false,
             map_note: None,
             alignment: 50,
@@ -384,6 +387,10 @@ pub struct World {
     pub pazaak: Option<crate::pazaak::PazaakGame>,
     /// The room a script has set going, and the number of its `scriptloop`.
     pub room_animation: Option<(String, i32)>,
+    /// Effects put down at a place, for what shows them to take, with the place.
+    pub effects_at: Vec<(u32, [f32; 3])>,
+    /// What each trigger's walk has left of who is in it (`GetNextInPersistentObject`).
+    pub(crate) persistent_walks: BTreeMap<ObjId, std::collections::VecDeque<ObjId>>,
     /// The turret, while its area is the one here.
     pub minigame: Option<Box<crate::minigame::MiniGame>>,
     /// The party does not follow the leader (`SetSoloMode`, and the Solo Mode key).
@@ -588,6 +595,8 @@ impl World {
             planet_lines: BTreeMap::new(),
             selected_planet: -1,
             pazaak: None,
+            effects_at: Vec::new(),
+            persistent_walks: BTreeMap::new(),
             room_animation: None,
             minigame: None,
             solo_mode: false,
@@ -1201,6 +1210,10 @@ impl World {
                 target,
                 cheat,
             } => {
+                // What is thrown goes from the hand. A script that gives the power has nothing to spend.
+                if let Some(item) = self.carried_power(id, spell).filter(|_| cheat) {
+                    self.spend_one(id, item);
+                }
                 if let Err(e) = self.cast_spell(id, spell, target, cheat) {
                     // The round still ends, or the AI would never choose again.
                     self.combat.casters.insert(id);

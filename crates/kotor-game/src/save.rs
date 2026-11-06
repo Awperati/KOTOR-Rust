@@ -569,6 +569,7 @@ impl World {
                     st(vec![("Slot", Value::Int(*slot)), ("Row", Value::Int(*row))])
                 }),
             ),
+            ("AIStyle", Value::Int(o.ai_style)),
             ("NonEquippable", Value::Byte(o.non_equippable as u8)),
             ("MapNote", Value::Int(o.map_note.map_or(-1, i32::from))),
             ("XP", Value::Int(o.xp)),
@@ -794,6 +795,7 @@ impl World {
                 .iter()
                 .filter_map(|x| Some((x.str("Field")?.to_string(), x.str("Script")?.to_string())))
                 .collect();
+            o.ai_style = e.int("AIStyle").unwrap_or(0) as i32;
             o.non_equippable = e.int("NonEquippable").unwrap_or(0) != 0;
             o.map_note = match e.int("MapNote").unwrap_or(-1) {
                 -1 => None,
