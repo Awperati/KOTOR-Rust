@@ -21,6 +21,8 @@
 //!     --gold N        give the player these credits when a game starts, for a test driver
 //!     --store TAG     open this store when a game starts, as its script would, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
+//!     --appearance N  the player has this row of `appearance.2da` when a game starts, for a test driver
+//!     --original-underwear  the game's own underwear style, whatever Settings says, for a test driver
 //!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
 //!                     gives a level (`level`), for a test driver
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
@@ -144,6 +146,7 @@ struct App {
     /// What a test driver asked for once a game has started, from the menu or at once.
     near: Option<String>,
     xp: Option<i32>,
+    appearance: Option<i32>,
     power: Option<i32>,
     give: Option<String>,
     gold: Option<i32>,
@@ -259,6 +262,13 @@ impl App {
                     o.spells.insert(power);
                     o.max_force = o.max_force.max(DRIVER_FORCE);
                     o.force = o.max_force;
+                }
+            }
+            if let Some(row) = self.appearance.take() {
+                let w = &mut self.stage.game.world;
+                let pc = w.pc;
+                if let Some(o) = w.object_mut(pc) {
+                    o.appearance = row;
                 }
             }
             if let Some(xp) = self.xp.take() {
@@ -566,6 +576,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.enable_auto_pause(!flag("--no-auto-pause") && !flag("--autopilot"));
     stage.enable_chargen(!flag("--no-chargen"));
     stage.enable_early_force(!flag("--no-early-force") && !flag("--autopilot"));
+    if flag("--original-underwear") {
+        stage.set_conventional_underwear(false);
+    }
     if flag("--early-force") {
         stage.restart_with_early_force()?;
     }
@@ -620,6 +633,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|s| s * 60),
         near: opt("--near"),
         xp: opt("--xp").and_then(|n| n.parse().ok()),
+        appearance: opt("--appearance").and_then(|n| n.parse().ok()),
         power: opt("--power").and_then(|n| n.parse().ok()),
         give: opt("--give"),
         gold: opt("--gold").and_then(|n| n.parse().ok()),

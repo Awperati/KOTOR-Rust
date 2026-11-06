@@ -78,7 +78,105 @@ fn the_painted_skin_cannot_be_told_from_the_skin_beside_it_in_any_family() {
             assert!(r.colour < 8.0, "{name}: {r:?}");
             assert!(r.worst_colour < 22.0, "{name}: {r:?}");
             assert!(r.cloth_left < 0.01, "{name}: {r:?}");
+            // Down the middle of the belly, where the middle body had its centre bar.
+            assert!(r.midline < 8.0, "{name}: {r:?}");
+            // Neither flat nor rougher than the skin beside it.
+            let ratio = r.grain / r.skin_grain;
+            assert!((1.0 / 3.0..3.0).contains(&ratio), "{name}: {r:?}");
         }
+    }
+}
+
+#[test]
+fn the_edge_of_the_bra_is_crisp_at_any_size() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    for body in ["pfbas", "pfbam", "pfbal"] {
+        let plan = underwear::plan_for(&mut inst, body).unwrap();
+        // In texels of the game's own picture: two at most, whatever the size of the upscaled one.
+        for size in [512, 1024] {
+            let width = plan.bra_edge_width(size, size);
+            assert!(width <= 2.01, "{body} at {size}: {width}");
+        }
+    }
+}
+
+#[test]
+fn a_head_meets_each_body_of_its_skin_at_the_same_colour() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let plans: Vec<_> = ["pfbas", "pfbam", "pfbal"]
+        .iter()
+        .map(|b| (*b, underwear::plan_for(&mut inst, b).unwrap()))
+        .collect();
+    for (letter, family) in [("a", "a"), ("b", "b"), ("c", "")] {
+        for (body, plan) in &plans {
+            let name = format!("{body}{family}01");
+            let mut skin = load_texture(&mut inst, &name).unwrap();
+            plan.apply(&mut skin);
+            let at_body = plan.neck_colour(&skin);
+            for number in 1..=5 {
+                let head = format!("pfh{letter}{number:02}");
+                let Some(mut face) = load_texture(&mut inst, &head) else {
+                    continue;
+                };
+                let neck = underwear::neck_plan_for(&mut inst, &head).unwrap();
+                neck.apply(&mut face);
+                let at_head = neck.ring_colour(&face);
+                let step = (0..3).map(|k| (at_head[k] - at_body[k]).abs()).sum::<f32>() / 3.0;
+                assert!(
+                    step < NECK_LIMIT,
+                    "{head} on {name}: {at_head:?} and {at_body:?}"
+                );
+            }
+        }
+    }
+}
+
+/// Levels of 255, as a mean over red, green and blue.
+const NECK_LIMIT: f32 = 3.0;
+
+#[test]
+fn the_neck_reaches_down_and_the_rest_of_the_head_stays() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let mdl = inst.read("pfha01", kotor_core::ResType::MDL).unwrap();
+    let mdx = inst.read("pfha01", kotor_core::ResType::MDX).unwrap();
+    let before = kotor_model::parse_model(&mdl, &mdx).unwrap();
+    let mut after = kotor_model::parse_model(&mdl, &mdx).unwrap();
+    underwear::close_neck_gap(&mut after, "pfha01");
+    let mesh = |m: &'_ kotor_model::Model| m.root.find("head").unwrap().mesh.clone().unwrap();
+    let (old, new) = (mesh(&before), mesh(&after));
+    let moved = old
+        .positions
+        .iter()
+        .zip(&new.positions)
+        .filter(|(a, b)| a != b)
+        .count();
+    assert!(moved > 0, "the lowest of the neck moves");
+    assert!(
+        moved * 4 < old.positions.len(),
+        "{moved} of {}",
+        old.positions.len()
+    );
+    assert_eq!(old.uvs, new.uvs);
+}
+
+#[test]
+fn only_a_heros_head_has_its_neck_changed() {
+    for name in ["pfha01", "PFHB05", "pfhc03", "pmha01", "pmhc05"] {
+        assert!(underwear::is_hero_head(name), "{name}");
+    }
+    for name in ["pfbam01", "n_commf01", "pfha", "pfhd01", "p_bastilah"] {
+        assert!(!underwear::is_hero_head(name), "{name}");
     }
 }
 

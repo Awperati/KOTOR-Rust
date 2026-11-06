@@ -92,6 +92,9 @@ impl Rig {
         let name = self.body_tex.as_deref().unwrap_or("");
         if crate::underwear::body_of_texture(name).is_some() {
             crate::underwear::soften_shading(&mut self.body);
+            if let (Some(head), Some(tex)) = (&mut self.head, &self.head_tex) {
+                crate::underwear::close_neck_gap(head, tex);
+            }
         }
     }
 

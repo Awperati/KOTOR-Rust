@@ -57,6 +57,11 @@ fn main() {
                         })
                         .and_then(|b| kotor_image::parse_png(&b));
                     let mut t = upscaled.or_else(|| load_texture(&mut inst, n))?;
+                    if on && underwear::is_hero_head(n) {
+                        if let Some(p) = underwear::neck_plan_for(&mut inst, n) {
+                            p.apply(&mut t);
+                        }
+                    }
                     if on {
                         if let Some(body) = underwear::body_of_texture(n) {
                             if let Some(p) = underwear::plan_for(&mut inst, &body) {

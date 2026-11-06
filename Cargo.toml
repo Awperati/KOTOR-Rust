@@ -55,3 +55,6 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.kotor-script]
 opt-level = 3
+
+[profile.dev.package.kotor-render]
+opt-level = 3

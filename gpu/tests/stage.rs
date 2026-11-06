@@ -763,3 +763,38 @@ fn stock_visual_effects_play_and_fade() {
     }
     assert_eq!(s.effects.playing(), 0, "and it ends");
 }
+
+#[test]
+fn the_underwear_style_reaches_what_a_conversation_draws() {
+    let Ok(mut s) = Stage::new("end_m01aa") else {
+        return;
+    };
+    // What is drawn each frame, in a conversation as anywhere: the hero's own rig and the textures it names.
+    let names: Vec<String> = s
+        .dynamic_scene()
+        .meshes
+        .iter()
+        .filter_map(|m| m.texture.clone())
+        .collect();
+    let body = names
+        .iter()
+        .find(|n| kotor_render::underwear::body_of_texture(n).is_some())
+        .cloned()
+        .expect("the hero's bare body is drawn");
+    let head = names
+        .iter()
+        .find(|n| kotor_render::underwear::is_hero_head(n))
+        .cloned()
+        .expect("the hero's head is drawn");
+    let painted = (s.texture(&body).unwrap(), s.texture(&head).unwrap());
+    let shape = bytes_of(&s.dynamic_scene());
+    s.set_conventional_underwear(false);
+    let original = (s.texture(&body).unwrap(), s.texture(&head).unwrap());
+    assert_ne!(painted.0.rgba, original.0.rgba, "{body} is painted");
+    assert_ne!(painted.1.rgba, original.1.rgba, "{head}'s neck is matched");
+    assert_ne!(
+        shape,
+        bytes_of(&s.dynamic_scene()),
+        "and its shading evened out"
+    );
+}

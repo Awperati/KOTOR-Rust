@@ -8,7 +8,11 @@
 //! the edge of a smooth fill: each new texel is the mean of its neighbours, the neighbours of an edge of the sheet being
 //! those it meets on the body. So the fill arrives at the skin round it with no step, also across the sheet's seams, and
 //! carries the light and shade of that skin. Grain comes from clean skin of the same picture. A belly under cloth was never
-//! painted, so it borrows the muscles of the one body whose belly is bare, as light and dark only, whatever the skin.
+//! painted, so it borrows the muscles of the one body whose belly is bare, as light and dark only, whatever the skin. What
+//! was under the top elsewhere takes its light and dark from the body's own shape. The edge of the bra stays crisp.
+//!
+//! A head's neck was always under a collar, and its tone is the head's own, so heads of one skin differ a lot. Its lowest
+//! part now fades to the tone of the body's skin, and the body's fill starts from that same tone at the neck.
 //! **Adults only:** this names the player's three female bodies, `PFBAS`, `PFBAM` and `PFBAL`, and nothing else.
 //! Nothing is written to the install or the repository.
 
@@ -37,31 +41,56 @@ const SKIN: u8 = 4;
 /// Above this share of the torso's height the rule applies. What is lower stays as it is.
 const WAIST: f32 = 0.726;
 /// Texels of skin beside cloth that are repainted, as the cloth tints them: more than a soft edge reaches.
-const MARGIN: usize = 3;
+const MARGIN: usize = 5;
 /// Passes of the fill, and how far each overshoots to arrive sooner.
 const FILL_PASSES: usize = 300;
 const OVERSHOOT: f32 = 1.85;
-/// Rounds of softening the edge of what is painted, a texel each.
-const FEATHER: usize = 2;
+/// Rounds of softening, a texel each: where the fill meets skin, wide, as nothing should show there; and the bra's edge,
+/// which rounds off the texels' steps, then is sharpened to `CLOTH_RAMP` times as steep.
+const FEATHER: usize = 4;
+const CLOTH_SOFTEN: usize = 2;
+const CLOTH_RAMP: f32 = 5.0;
+/// Share of the torso's height from which it is the neck's ring, and how strongly the shape of the body shades the fill.
+const NECK_RING: f32 = 0.985;
+const SHAPE_SHADE: f32 = 0.12;
+const SHAPE_MOST: f32 = 0.5;
 /// How near two edges of the body are to be one seam, in metres.
-const SEAM_METRES: f32 = 0.015;
+const SEAM_METRES: f32 = 0.03;
 /// Patches of grain, in texels, and how far a texel is from the smooth skin it counts as grain against.
 const GRAIN_BLOCK: usize = 24;
 const GRAIN_BLUR: usize = 3;
 /// The bare belly that is borrowed, as cells across the body and up it, and how far a cell's own light is measured against
 /// what is round it. Near kept skin it fades out over `RELIEF_FADE` texels, so that the fill meets it with no step.
 const BARE_BELLY: &str = "pfbal";
+const MIDDLE_BODY: &str = "pfbam";
+/// How far across the front of a belly a line down the middle is looked for, as a share of the torso's half width, and in
+/// how many strips.
+const BELLY_ACROSS: f32 = 0.45;
+const BELLY_STRIPS: usize = 16;
+/// Where on the upper arms the skin's tone is read, in metres up from the feet.
+const TONE_LOW: f32 = 1.0;
+const TONE_HIGH: f32 = 1.2;
+/// How far up a head's neck the change reaches, and how much of its lowest part counts as what meets the body, in metres.
+const NECK_FADE_METRES: f32 = 0.07;
+const NECK_RING_METRES: f32 = 0.012;
+/// How far down the neck reaches, and how much of it stretches to do that.
+const NECK_REACH_METRES: f32 = 0.04;
+const NECK_STRETCH_METRES: f32 = 0.02;
 const RELIEF_WIDE: usize = 64;
 const RELIEF_TALL: usize = 48;
 const RELIEF_ACROSS: i32 = 8;
 const RELIEF_UP: i32 = 15;
 const RELIEF_TRIM: usize = 2;
-const RELIEF_FADE: f32 = 6.0;
+const RELIEF_FADE: f32 = 16.0;
 /// Not a part of any piece of the sheet.
 const NO_ISLAND: u32 = u32::MAX;
 /// How close two vertices are to be one point of the body, and rounds of evening out its shading.
 const WELD_METRES: f32 = 0.015;
-const SOFTEN_ROUNDS: usize = 6;
+const SOFTEN_ROUNDS: usize = 12;
+/// How near two points that the mesh does not join shade alike: the old top stands off the skin by about this much.
+const STEP_METRES: f32 = 0.035;
+/// Over how much of the torso's height a belly's shading blends into the rest.
+const BELLY_BLEND: f32 = 0.02;
 /// How far from every colour of the cups, summed over red, green and blue, a strap's cloth is another garment's trim.
 const TRIM_LEVELS: f32 = 90.0;
 
@@ -106,9 +135,10 @@ pub fn soften_shading(m: &mut Model) {
     // Each vertex of the three, as one point of the body, with the normal there.
     let mut points: std::collections::BTreeMap<[i32; 3], usize> = Default::default();
     let mut normal: Vec<[f32; 3]> = Vec::new();
-    let mut weight: Vec<f32> = Vec::new();
     let mut soft: Vec<bool> = Vec::new();
     let mut point_of: Vec<Vec<usize>> = Vec::new();
+    let mut point_at: Vec<[f32; 3]> = Vec::new();
+    let mut from_torso: Vec<bool> = Vec::new();
     let mut joins: Vec<(usize, usize)> = Vec::new();
     for name in names {
         let (turn, shift) = (turn_of(name), shift_of(name));
@@ -124,15 +154,19 @@ pub fn soften_shading(m: &mut Model) {
             let id = *points.entry(key).or_insert(next);
             if id == next {
                 normal.push([0.0; 3]);
-                weight.push(0.0);
-                soft.push(name != "Torso" || at[2] / top >= WAIST);
+                point_at.push(at);
+                from_torso.push(name == "Torso");
+                soft.push(if name == "Torso" {
+                    at[2] / top >= WAIST
+                } else {
+                    at[2] >= TONE_LOW
+                });
             }
             let n = mesh.normals.get(i).copied().unwrap_or([0.0, 0.0, 1.0]);
             let w = [0, 1, 2].map(|k| dot3(turn[k], n));
             for k in 0..3 {
                 normal[id][k] += w[k];
             }
-            weight[id] += 1.0;
             here.push(id);
         }
         for face in &mesh.faces {
@@ -141,15 +175,77 @@ pub fn soften_shading(m: &mut Model) {
         }
         point_of.push(here);
     }
+    // What the top's own edges keep apart: its hems are a step in the mesh, with no faces across it.
+    let places: Vec<([i32; 3], usize)> = points.iter().map(|(k, id)| (*k, *id)).collect();
+    let cell = STEP_METRES / WELD_METRES;
+    let mut close = Vec::new();
+    for (i, (a, ida)) in places.iter().enumerate() {
+        if !soft[*ida] {
+            continue;
+        }
+        for (b, idb) in &places[i + 1..] {
+            if !soft[*idb] {
+                continue;
+            }
+            let d = (0..3)
+                .map(|k| (a[k] - b[k]) as f32)
+                .map(|v| v * v)
+                .sum::<f32>();
+            if d <= cell * cell {
+                joins.push((*ida, *idb));
+                close.push((*ida, *idb));
+            }
+        }
+    }
+    let unit = |v: [f32; 3]| {
+        let long = dot3(v, v).sqrt().max(1e-6);
+        v.map(|c| c / long)
+    };
+    let mut normal: Vec<[f32; 3]> = normal.into_iter().map(unit).collect();
     for _ in 0..SOFTEN_ROUNDS {
         let last = normal.clone();
         for (a, b) in &joins {
             for (to, from) in [(*a, *b), (*b, *a)] {
                 if soft[to] {
                     for k in 0..3 {
-                        normal[to][k] += last[from][k] / weight[from].max(1.0);
+                        normal[to][k] += last[from][k];
                     }
                 }
+            }
+        }
+        for n in &mut normal {
+            *n = unit(*n);
+        }
+    }
+    // Across such a step they must end up the same, or it shows as a line.
+    for _ in 0..SOFTEN_ROUNDS {
+        for (a, b) in &close {
+            let mean = unit([0, 1, 2].map(|k| normal[*a][k] + normal[*b][k]));
+            normal[*a] = mean;
+            normal[*b] = mean;
+        }
+    }
+    // The middle body's centre bar is one long edge down the belly against shorter ones beside it, and shading runs straight
+    // along a long edge, so anything that changes on the way up shows as a line. On a belly the shading now changes only
+    // round the body, as on a smooth barrel, which is the same all the way up an upright edge.
+    let band = |h: f32| {
+        let up = ((h - WAIST) / BELLY_BLEND).clamp(0.0, 1.0);
+        let down = ((BAND_HIGH - h) / BELLY_BLEND).clamp(0.0, 1.0);
+        up.min(down)
+    };
+    let (mut wide, mut deep) = (0.0f32, 0.0f32);
+    for (v, p) in point_at.iter().enumerate() {
+        if soft[v] && from_torso[v] && band(p[2] / top) >= 1.0 {
+            wide = wide.max(p[0].abs());
+            deep = deep.max(p[1].abs());
+        }
+    }
+    if wide > 0.0 && deep > 0.0 {
+        for (v, p) in point_at.iter().enumerate() {
+            let w = band(p[2] / top);
+            if soft[v] && from_torso[v] && w > 0.0 {
+                let barrel = unit([p[0] / (wide * wide), p[1] / (deep * deep), 0.0]);
+                normal[v] = unit([0, 1, 2].map(|k| normal[v][k] + w * (barrel[k] - normal[v][k])));
             }
         }
     }
@@ -220,7 +316,7 @@ const CUP_TOP: f32 = 0.897;
 const STRAP_TOP: f32 = 1.0;
 const CUP_INNER: f32 = 0.03;
 const CUP_OUTER: f32 = 0.57;
-const STRAP_AT: f32 = 0.33;
+const STRAP_AT: f32 = 0.29;
 const STRAP_HALF: f32 = 0.045;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -242,9 +338,17 @@ pub struct Plan {
     links: Vec<(u32, u32)>,
     /// Light and dark to multiply the fill by.
     relief: Vec<f32>,
-    /// How much each texel takes of the fill and of painted cloth.
+    /// How much each texel takes of the fill, and how much of it is cloth or painted cloth before sharpening.
     fill_alpha: Vec<f32>,
-    paint_alpha: Vec<f32>,
+    cloth_soft: Vec<f32>,
+    paint_soft: Vec<f32>,
+    /// The ring of the neck, which starts from the skin's tone, and the texels this body's tone is read from. A head goes
+    /// with all three bodies and matches the middle one, so each skin of this body has its tone here and the middle body's.
+    neck: Vec<bool>,
+    tone_from: Vec<u32>,
+    tones: Vec<([f32; 3], [f32; 3])>,
+    /// Texels of the front of the belly, with how far across it they are, in strips.
+    belly: Vec<(u32, u8)>,
     /// Corners of square patches of clean skin.
     donors: Vec<(u32, u32)>,
 }
@@ -262,6 +366,11 @@ pub struct SeamReport {
     pub wrap: f32,
     /// The share of painted texels of another hue than the skin beside them, as grey, orange, red and leather are.
     pub cloth_left: f32,
+    /// The grain of the fill and of the skin beside it: how far each stands from its own smooth self.
+    pub grain: f32,
+    pub skin_grain: f32,
+    /// The largest step between strips side by side down the front of the belly.
+    pub midline: f32,
 }
 
 /// Skin keeps its hue however it is lit. Anything darker or of another hue is cloth: dark leather, gold trim, grey and
@@ -275,14 +384,6 @@ fn is_cloth(p: [f32; 3], skin: [f32; 3]) -> bool {
     }
     (b / r.max(1.0) - skin[2] / skin[0].max(1.0)).abs() > 0.07
         || (g / r.max(1.0) - skin[1] / skin[0].max(1.0)).abs() > 0.07
-}
-
-/// A texel of the sheet's grid.
-fn texel(uv: [f32; 2]) -> usize {
-    let s = WORK as f32;
-    let x = ((uv[0] * s) as i32).clamp(0, WORK as i32 - 1) as usize;
-    let y = (((1.0 - uv[1]) * s) as i32).clamp(0, WORK as i32 - 1) as usize;
-    y * WORK + x
 }
 
 /// The texels beside one, on the sheet.
@@ -318,68 +419,61 @@ fn face_islands(mesh: &Mesh, first: u32) -> Vec<u32> {
         .collect()
 }
 
-/// An edge of a mesh that only one face has: an edge of a piece of the sheet, in place on the body.
-struct OpenEdge {
-    at: [[f32; 3]; 2],
-    uv: [[f32; 2]; 2],
-}
-
-fn open_edges(mesh: &Mesh, at: impl Fn(&[f32; 3]) -> [f32; 3], out: &mut Vec<OpenEdge>) {
-    let mut seen = std::collections::BTreeMap::new();
-    for face in &mesh.faces {
-        let i = face.indices.map(|v| v as usize);
-        for (a, b) in [(i[0], i[1]), (i[1], i[2]), (i[2], i[0])] {
-            *seen.entry((a.min(b), a.max(b))).or_insert(0) += 1;
-        }
-    }
-    for ((a, b), times) in seen {
-        if times == 1 && a < mesh.uvs.len() && b < mesh.uvs.len() {
-            out.push(OpenEdge {
-                at: [at(&mesh.positions[a]), at(&mesh.positions[b])],
-                uv: [mesh.uvs[a], mesh.uvs[b]],
-            });
+/// Texels at the rim of a piece of the sheet, where they are on the body.
+fn rim_of(
+    mesh: &Mesh,
+    at: impl Fn(&[f32; 3]) -> [f32; 3],
+    island_of_face: &[u32],
+    out: &mut Vec<(u32, u32, [f32; 3])>,
+) {
+    let mut here = vec![NO_ISLAND; WORK * WORK];
+    let mut place = vec![[0.0f32; 3]; WORK * WORK];
+    texel_pass(mesh, at, |n, p, face| {
+        here[n] = island_of_face[face];
+        place[n] = p;
+    });
+    for n in 0..WORK * WORK {
+        if here[n] != NO_ISLAND && beside(n).any(|m| here[m] != here[n]) {
+            out.push((n as u32, here[n], place[n]));
         }
     }
 }
 
-/// Texels that are one place on the body across a seam of the sheet. An edge may meet several shorter ones, so each point
-/// along one looks for the nearest point of any other.
-fn seam_links(edges: &[OpenEdge]) -> Vec<(u32, u32)> {
+/// Texels that are one place on the body across a seam of the sheet, found by where they are on the body. Pieces need not
+/// share vertices: the old top's hems stand off the skin, and one long edge may face several short ones.
+fn seam_links(rim: &[(u32, u32, [f32; 3])]) -> Vec<(u32, u32)> {
+    let cell = |p: &[f32; 3]| p.map(|v| (v / SEAM_METRES).floor() as i32);
+    let mut grid: std::collections::HashMap<[i32; 3], Vec<usize>> = Default::default();
+    for (i, entry) in rim.iter().enumerate() {
+        grid.entry(cell(&entry.2)).or_default().push(i);
+    }
     let mut links = Vec::new();
-    let sub = |a: [f32; 3], b: [f32; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-    for (i, e) in edges.iter().enumerate() {
-        let long = (e.uv[0][0] - e.uv[1][0]).hypot(e.uv[0][1] - e.uv[1][1]) * WORK as f32;
-        let steps = (long.ceil() as usize + 1) * 2;
-        for s in 0..=steps {
-            let t = s as f32 / steps as f32;
-            let p = [0, 1, 2].map(|k| e.at[0][k] + t * (e.at[1][k] - e.at[0][k]));
-            let mut best = (SEAM_METRES, None);
-            for (j, f) in edges.iter().enumerate() {
-                if i == j {
-                    continue;
-                }
-                let along = sub(f.at[1], f.at[0]);
-                let share =
-                    (dot3(sub(p, f.at[0]), along) / dot3(along, along).max(1e-9)).clamp(0.0, 1.0);
-                let q = [0, 1, 2].map(|k| f.at[0][k] + share * along[k]);
-                let off = sub(p, q);
-                let away = dot3(off, off).sqrt();
-                if away < best.0 {
-                    best = (away, Some((j, share)));
+    for (n, island, p) in rim {
+        let c = cell(p);
+        let mut best = (SEAM_METRES, None);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    let Some(list) = grid.get(&[c[0] + dx, c[1] + dy, c[2] + dz]) else {
+                        continue;
+                    };
+                    for i in list {
+                        let (m, other, q) = &rim[*i];
+                        if other == island {
+                            continue;
+                        }
+                        let d = [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+                        let away = dot3(d, d).sqrt();
+                        if away < best.0 {
+                            best = (away, Some(*m));
+                        }
+                    }
                 }
             }
-            let Some((j, share)) = best.1 else {
-                continue;
-            };
-            let mix = |e: &OpenEdge, t: f32| {
-                [
-                    e.uv[0][0] + t * (e.uv[1][0] - e.uv[0][0]),
-                    e.uv[0][1] + t * (e.uv[1][1] - e.uv[0][1]),
-                ]
-            };
-            let (a, b) = (texel(mix(e, t)), texel(mix(&edges[j], share)));
-            if a != b {
-                links.push((a.min(b) as u32, a.max(b) as u32));
+        }
+        if let Some(m) = best.1 {
+            if m != *n {
+                links.push((m.min(*n), m.max(*n)));
             }
         }
     }
@@ -388,13 +482,13 @@ fn seam_links(edges: &[OpenEdge]) -> Vec<(u32, u32)> {
     links
 }
 
-/// Soften a mask over a few rounds, staying inside a piece of the sheet.
-fn feather(mask: &[f32], islands: &[u32]) -> Vec<f32> {
+/// Soften a mask over rounds, staying inside a piece of the sheet and among the texels `among` allows.
+fn soften(mask: &[f32], islands: &[u32], rounds: usize, among: impl Fn(usize) -> bool) -> Vec<f32> {
     let mut out = mask.to_vec();
-    for _ in 0..FEATHER {
+    for _ in 0..rounds {
         let last = out.clone();
         for n in 0..WORK * WORK {
-            if islands[n] == NO_ISLAND {
+            if islands[n] == NO_ISLAND || !among(n) {
                 continue;
             }
             let (mut sum, mut count) = (last[n], 1.0);
@@ -411,7 +505,7 @@ fn feather(mask: &[f32], islands: &[u32]) -> Vec<f32> {
                         continue;
                     }
                     let m = ny as usize * WORK + nx as usize;
-                    if islands[m] == islands[n] {
+                    if islands[m] == islands[n] && among(m) {
                         sum += last[m];
                         count += 1.0;
                     }
@@ -421,6 +515,68 @@ fn feather(mask: &[f32], islands: &[u32]) -> Vec<f32> {
         }
     }
     out
+}
+
+/// The bra's coverage at a pixel from its softened mask: steep, so that its edge is a texel or two wide.
+fn sharpened(soft: f32) -> f32 {
+    ((soft - 0.5) * CLOTH_RAMP + 0.5).clamp(0.0, 1.0)
+}
+
+/// How much the shape of a mesh shades each vertex: above 0 on what stands out, below on what lies in a hollow. Vertices at
+/// one place on the body count as one. The body's own normals are not used, as the old top's hems are in them.
+fn shape_shade(mesh: &Mesh) -> Vec<f32> {
+    let key = |p: &[f32; 3]| p.map(|v| (v / WELD_METRES).round() as i32);
+    let mut ids = std::collections::BTreeMap::new();
+    let mut id_of = Vec::with_capacity(mesh.positions.len());
+    let mut at: Vec<[f32; 3]> = Vec::new();
+    for p in &mesh.positions {
+        let next = at.len();
+        let id = *ids.entry(key(p)).or_insert(next);
+        if id == next {
+            at.push(*p);
+        }
+        id_of.push(id);
+    }
+    let sub = |a: [f32; 3], b: [f32; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let mut normal = vec![[0.0f32; 3]; at.len()];
+    let mut near: Vec<std::collections::BTreeSet<usize>> =
+        vec![std::collections::BTreeSet::new(); at.len()];
+    for face in &mesh.faces {
+        let v = face.indices.map(|i| id_of[i as usize]);
+        let (e, f) = (sub(at[v[1]], at[v[0]]), sub(at[v[2]], at[v[0]]));
+        let cross = [
+            e[1] * f[2] - e[2] * f[1],
+            e[2] * f[0] - e[0] * f[2],
+            e[0] * f[1] - e[1] * f[0],
+        ];
+        for i in 0..3 {
+            for k in 0..3 {
+                normal[v[i]][k] += cross[k];
+            }
+            near[v[i]].insert(v[(i + 1) % 3]);
+            near[v[i]].insert(v[(i + 2) % 3]);
+        }
+    }
+    let shade: Vec<f32> = (0..at.len())
+        .map(|v| {
+            let long = dot3(normal[v], normal[v]).sqrt().max(1e-9);
+            let n = normal[v].map(|c| c / long);
+            let sum: f32 = near[v]
+                .iter()
+                .map(|u| {
+                    let d = sub(at[v], at[*u]);
+                    dot3(d, n) / dot3(d, d).sqrt().max(1e-6)
+                })
+                .sum();
+            sum / near[v].len().max(1) as f32
+        })
+        .collect();
+    // A body stands out nearly everywhere: only what differs from the rest of it shades.
+    let mean = shade.iter().sum::<f32>() / shade.len().max(1) as f32;
+    id_of
+        .iter()
+        .map(|id| (shade[*id] - mean).clamp(-SHAPE_MOST, SHAPE_MOST))
+        .collect()
 }
 
 fn torso(m: &Model) -> Option<&kotor_model::Node> {
@@ -665,6 +821,8 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
     let skin = forearm_skin(&m, &world, &pixels);
     let belly = belly_relief(inst);
     let mut relief = vec![1.0f32; WORK * WORK];
+    let mut neck = vec![false; WORK * WORK];
+    let mut belly_strips = Vec::new();
     let mut marks = vec![NOTHING; WORK * WORK];
     let mut islands = vec![NO_ISLAND; WORK * WORK];
     let mut straps = vec![false; WORK * WORK];
@@ -674,6 +832,11 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
         let h = p[2] / top;
         if let Some(belly) = &belly {
             relief[n] = relief_at(belly, p[0], p[1], h, half);
+        }
+        neck[n] = h >= NECK_RING;
+        if p[1] > 0.0 && (WAIST..BAND_LOW).contains(&h) && p[0].abs() < half * BELLY_ACROSS {
+            let strip = (p[0] / half / BELLY_ACROSS * 0.5 + 0.5) * BELLY_STRIPS as f32;
+            belly_strips.push((n as u32, strip as u8));
         }
         let cloth = is_cloth(pixels[n], skin);
         if h < WAIST {
@@ -703,9 +866,35 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
             marks[n] = PAINT;
         }
     }
+    let shaded = |mesh: &Mesh, relief: &mut [f32]| {
+        let shade = shape_shade(mesh);
+        let by_place: std::collections::HashMap<[u32; 3], f32> = mesh
+            .positions
+            .iter()
+            .zip(&shade)
+            .map(|(p, s)| (p.map(f32::to_bits), *s))
+            .collect();
+        // Once a texel, though triangles overlap a little at their edges.
+        let mut each = vec![1.0f32; WORK * WORK];
+        texel_pass(
+            mesh,
+            |p| {
+                [
+                    by_place.get(&p.map(f32::to_bits)).copied().unwrap_or(0.0),
+                    0.0,
+                    0.0,
+                ]
+            },
+            |n, v, _| each[n] = 1.0 + SHAPE_SHADE * v[0],
+        );
+        for n in 0..WORK * WORK {
+            relief[n] *= each[n];
+        }
+    };
+    shaded(mesh, &mut relief);
     let mut first = mesh.positions.len() as u32;
-    let mut edges = Vec::new();
-    open_edges(mesh, at, &mut edges);
+    let mut rim = Vec::new();
+    rim_of(mesh, at, &torso_islands, &mut rim);
     for (name, arm) in &arms {
         // Arms are bare in this style, so a sleeve goes as well. They share the sheet with the torso.
         let arm_islands = face_islands(arm, first);
@@ -722,14 +911,26 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
                 };
             },
         );
-        open_edges(arm, |p| placed(&world, name, p), &mut edges);
+        shaded(arm, &mut relief);
+        rim_of(arm, |p| placed(&world, name, p), &arm_islands, &mut rim);
     }
-    // Skin beside what goes is tinted by it.
+    let links = seam_links(&rim);
+    // Skin beside what goes is tinted by it, on the far side of a seam of the sheet too: the shadow painted along the middle
+    // body's centre bar lies on another piece of the sheet from the bar.
     for _ in 0..MARGIN {
         let last = marks.clone();
         for n in 0..WORK * WORK {
             if last[n] == SKIN && beside(n).any(|m| last[m] == CLEAR && islands[m] == islands[n]) {
                 marks[n] = CLEAR;
+            }
+        }
+        for (p, q) in &links {
+            let (p, q) = (*p as usize, *q as usize);
+            if last[p] == CLEAR && last[q] == SKIN {
+                marks[q] = CLEAR;
+            }
+            if last[q] == CLEAR && last[p] == SKIN {
+                marks[p] = CLEAR;
             }
         }
     }
@@ -747,7 +948,43 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
             }
         }
     }
-    Some(Plan::new(marks, islands, seam_links(&edges), relief))
+    // The tone of the skin: the upper arms, nearest to the neck of what no top covers on every body. Not clean everywhere,
+    // as a sleeve may reach them, so only what is marked as skin counts.
+    let mut tone_from = Vec::new();
+    for (name, arm) in &arms {
+        texel_pass(
+            arm,
+            |p| placed(&world, name, p),
+            |n, p, _| {
+                if (TONE_LOW..TONE_HIGH).contains(&p[2]) && marks[n] == SKIN {
+                    tone_from.push(n as u32);
+                }
+            },
+        );
+    }
+    tone_from.sort_unstable();
+    tone_from.dedup();
+    let mut plan = Plan::new(marks, islands, links, relief, neck);
+    for family in ["", "a", "b"] {
+        let (Some(picture), Some(middle)) = (
+            load_texture(inst, &format!("{body}{family}01")),
+            woman_tone(inst, &format!("{MIDDLE_BODY}{family}01")),
+        ) else {
+            continue;
+        };
+        let small = work_size(&picture);
+        let mut own = [0.0f32; 3];
+        for n in &tone_from {
+            for k in 0..3 {
+                own[k] += small[*n as usize][k];
+            }
+        }
+        plan.tones
+            .push((own.map(|v| v / tone_from.len().max(1) as f32), middle));
+    }
+    plan.tone_from = tone_from;
+    plan.belly = belly_strips;
+    Some(plan)
 }
 
 impl Plan {
@@ -756,6 +993,7 @@ impl Plan {
         islands: Vec<u32>,
         links: Vec<(u32, u32)>,
         mut relief: Vec<f32>,
+        neck: Vec<bool>,
     ) -> Plan {
         let takes = |m: usize| marks[m] == CLEAR || marks[m] == SKIN;
         let mut across: Vec<Vec<u32>> = vec![Vec::new(); WORK * WORK];
@@ -779,7 +1017,9 @@ impl Plan {
         }
         // Borrowed light and dark only counts away from the skin the fill must meet.
         let mut rings = vec![f32::MAX; WORK * WORK];
-        let mut front: Vec<usize> = (0..WORK * WORK).filter(|n| marks[*n] == SKIN).collect();
+        let mut front: Vec<usize> = (0..WORK * WORK)
+            .filter(|n| marks[*n] == SKIN || (neck[*n] && marks[*n] == CLEAR))
+            .collect();
         for n in &front {
             rings[*n] = 0.0;
         }
@@ -812,9 +1052,31 @@ impl Plan {
             };
             relief[n] = 1.0 + (relief[n] - 1.0) * keep;
         }
-        let mask = |want: u8| -> Vec<f32> { marks.iter().map(|m| f32::from(*m == want)).collect() };
-        let fill_alpha = feather(&mask(CLEAR), &islands);
-        let paint_alpha = feather(&mask(PAINT), &islands);
+        let is_cloth_mark = |m: u8| m == CUP || m == KEEP || m == PAINT;
+        // Where the fill meets skin it fades out across skin, a colour that matches. The cloth takes no part in that.
+        let clear: Vec<f32> = marks.iter().map(|m| f32::from(*m == CLEAR)).collect();
+        let mut fill_alpha = soften(&clear, &islands, FEATHER, |n| {
+            marks[n] == CLEAR || marks[n] == SKIN
+        });
+        // Under the bra's edge the fill carries on, so that the edge alone decides what shows there.
+        for _ in 0..=CLOTH_SOFTEN {
+            let last = fill_alpha.clone();
+            for n in 0..WORK * WORK {
+                if is_cloth_mark(marks[n]) {
+                    fill_alpha[n] = beside(n)
+                        .filter(|m| islands[*m] == islands[n])
+                        .map(|m| last[m])
+                        .fold(last[n], f32::max);
+                }
+            }
+        }
+        let cloth: Vec<f32> = marks.iter().map(|m| f32::from(is_cloth_mark(*m))).collect();
+        let cloth_soft = soften(&cloth, &islands, CLOTH_SOFTEN, |_| true);
+        let paint: Vec<f32> = marks.iter().map(|m| f32::from(*m == PAINT)).collect();
+        let paint_soft = soften(&paint, &islands, CLOTH_SOFTEN, |_| true);
+        let neck_ring: Vec<bool> = (0..WORK * WORK)
+            .map(|n| neck[n] && marks[n] == CLEAR)
+            .collect();
         let mut donors = Vec::new();
         for y in (0..WORK - GRAIN_BLOCK).step_by(GRAIN_BLOCK / 2) {
             for x in (0..WORK - GRAIN_BLOCK).step_by(GRAIN_BLOCK / 2) {
@@ -833,7 +1095,12 @@ impl Plan {
             links,
             relief,
             fill_alpha,
-            paint_alpha,
+            cloth_soft,
+            paint_soft,
+            neck: neck_ring,
+            tone_from: Vec::new(),
+            tones: Vec::new(),
+            belly: Vec::new(),
             donors,
         }
     }
@@ -848,10 +1115,107 @@ impl Plan {
         &self.near[self.near_at[i] as usize..self.near_at[i + 1] as usize]
     }
 
+    /// The tone of a picture's skin.
+    fn tone_of(&self, small: &[[f32; 3]]) -> Option<[f32; 3]> {
+        if self.tone_from.is_empty() {
+            return None;
+        }
+        let mut sum = [0.0f32; 3];
+        for n in &self.tone_from {
+            for k in 0..3 {
+                sum[k] += small[*n as usize][k];
+            }
+        }
+        let own = sum.map(|v| v / self.tone_from.len() as f32);
+        let away = |t: &[f32; 3]| (0..3).map(|k| (t[k] - own[k]).abs()).sum::<f32>();
+        self.tones
+            .iter()
+            .min_by(|a, b| away(&a.0).total_cmp(&away(&b.0)))
+            .map(|t| t.1)
+    }
+
+    /// The mean colour of the neck's ring in a picture this plan was applied to.
+    pub fn neck_colour(&self, img: &Image) -> [f32; 3] {
+        let small = work_size(img);
+        let mut sum = [0.0f32; 3];
+        let mut count = 0.0f32;
+        for n in 0..WORK * WORK {
+            if self.neck[n] {
+                for k in 0..3 {
+                    sum[k] += small[n][k];
+                }
+                count += 1.0;
+            }
+        }
+        sum.map(|v| v / count.max(1.0))
+    }
+
+    /// How wide the bra's edge is, in texels of the game's own 512 picture, seen in a picture of this size: nineteen edge
+    /// pixels in twenty are no wider. Measured across the edge wherever it runs.
+    pub fn bra_edge_width(&self, width: usize, height: usize) -> f32 {
+        let coverage = |x: f32, y: f32| {
+            let (u, v) = (
+                x * WORK as f32 / width as f32 - 0.5,
+                y * WORK as f32 / height as f32 - 0.5,
+            );
+            sharpened(bilinear1(&self.cloth_soft, u, v))
+        };
+        let mut widths = Vec::new();
+        for y in 1..height - 1 {
+            for x in 1..width - 1 {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                let c = coverage(px, py);
+                if !(0.4..0.6).contains(&c) {
+                    continue;
+                }
+                let n = (py as usize * WORK / height) * WORK + px as usize * WORK / width;
+                // Only where it meets the fill, not the rest of the sheet's cloth.
+                if self.fill_alpha[n] < 0.5 {
+                    continue;
+                }
+                let (dx, dy) = (
+                    coverage(px + 1.0, py) - coverage(px - 1.0, py),
+                    coverage(px, py + 1.0) - coverage(px, py - 1.0),
+                );
+                let long = dx.hypot(dy);
+                if long <= 0.0 {
+                    continue;
+                }
+                // From nearly no cloth to nearly all, straight across the edge, a quarter of a pixel at a time.
+                let (sx, sy) = (dx / long * 0.25, dy / long * 0.25);
+                let walk = |sign: f32, done: &dyn Fn(f32) -> bool| {
+                    let mut steps = 0.0f32;
+                    while steps < 64.0
+                        && !done(coverage(px + sign * sx * steps, py + sign * sy * steps))
+                    {
+                        steps += 1.0;
+                    }
+                    steps * 0.25
+                };
+                let across = walk(1.0, &|c| c >= 0.9) + walk(-1.0, &|c| c <= 0.1);
+                widths.push(across * WORK as f32 / width as f32);
+            }
+        }
+        widths.sort_by(f32::total_cmp);
+        widths
+            .get(widths.len() * 19 / 20)
+            .copied()
+            .unwrap_or(f32::MAX)
+    }
+
     /// The smooth skin at every texel: what stays as it is, and in what goes the mean of what is round it.
     fn solve(&self, small: &[[f32; 3]]) -> Vec<[f32; 3]> {
         let mut known: Vec<bool> = self.marks.iter().map(|m| *m == SKIN).collect();
         let mut field: Vec<[f32; 3]> = small.to_vec();
+        if let Some(tone) = self.tone_of(small) {
+            for n in 0..WORK * WORK {
+                if self.neck[n] {
+                    field[n] = tone;
+                    known[n] = true;
+                }
+            }
+        }
+        let fixed = known.clone();
         let (mut sum, mut count) = ([0.0f32; 3], 0.0f32);
         for n in 0..WORK * WORK {
             if known[n] {
@@ -863,7 +1227,9 @@ impl Plan {
         }
         let average = sum.map(|v| v / count.max(1.0));
         // A first guess, grown in rings: it only saves passes.
-        let mut left: Vec<usize> = (0..self.fill.len()).collect();
+        let mut left: Vec<usize> = (0..self.fill.len())
+            .filter(|i| !fixed[self.fill[*i] as usize])
+            .collect();
         while !left.is_empty() {
             let last = known.clone();
             let before = left.len();
@@ -896,7 +1262,7 @@ impl Plan {
         for _ in 0..FILL_PASSES {
             for i in 0..self.fill.len() {
                 let near = self.near_of(i);
-                if near.is_empty() {
+                if near.is_empty() || fixed[self.fill[i] as usize] {
                     continue;
                 }
                 let mut s = [0.0f32; 3];
@@ -959,6 +1325,33 @@ impl Plan {
             .collect();
         donors.sort_by(|a, b| a.0.total_cmp(&b.0));
         donors.truncate(donors.len().div_ceil(2));
+        // No stronger than the grain of the skin it lies beside, which is calmer than most in some sheets.
+        let hard = |n: usize| -> f32 {
+            (0..3)
+                .map(|k| small[n][k] - smooth[n][k])
+                .map(|d| d * d)
+                .sum::<f32>()
+        };
+        let (mut beside_skin, mut beside_count) = (0.0f32, 0.0f32);
+        for n in 0..WORK * WORK {
+            if self.marks[n] == SKIN && self.fill_alpha[n] > 0.0 {
+                beside_skin += hard(n);
+                beside_count += 1.0;
+            }
+        }
+        let (mut in_donors, mut donor_count) = (0.0f32, 0.0f32);
+        for (_, (x, y)) in &donors {
+            for dy in 0..GRAIN_BLOCK {
+                for dx in 0..GRAIN_BLOCK {
+                    in_donors += hard((*y as usize + dy) * WORK + *x as usize + dx);
+                    donor_count += 1.0;
+                }
+            }
+        }
+        let grain_strength = ((beside_skin / beside_count.max(1.0))
+            / (in_donors / donor_count.max(1.0)).max(1e-6))
+        .sqrt()
+        .min(1.0);
         let grain_at = |u: f32, v: f32| -> [f32; 3] {
             if donors.is_empty() {
                 return [0.0; 3];
@@ -1010,8 +1403,9 @@ impl Plan {
             for x in 0..w {
                 let u = (x as f32 + 0.5) * WORK as f32 / w as f32 - 0.5;
                 let v = (y as f32 + 0.5) * WORK as f32 / h as f32 - 0.5;
-                let a = bilinear1(&self.fill_alpha, u, v);
-                let b = bilinear1(&self.paint_alpha, u, v);
+                let a = bilinear1(&self.fill_alpha, u, v)
+                    * (1.0 - sharpened(bilinear1(&self.cloth_soft, u, v)));
+                let b = sharpened(bilinear1(&self.paint_soft, u, v));
                 if a <= 0.0 && b <= 0.0 {
                     continue;
                 }
@@ -1022,7 +1416,7 @@ impl Plan {
                 }
                 if a > 0.0 {
                     let low = bilinear(&field, u, v);
-                    let grain = grain_at(u, v);
+                    let grain = grain_at(u, v).map(|g| g * grain_strength);
                     let shade = bilinear1(&self.relief, u, v);
                     for k in 0..3 {
                         c[k] += a * (low[k] * shade + grain[k] - c[k]);
@@ -1127,12 +1521,297 @@ impl Plan {
                 }
             }
         }
+        // The grain: what stands out from the smooth skin, in the fill and in the skin beside it.
+        let smooth = box_blur(&small);
+        let grain_of = |n: usize| {
+            let d = [0, 1, 2].map(|k| small[n][k] - smooth[n][k]);
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) / 3.0
+        };
+        let (mut in_fill, mut fill_count, mut in_skin, mut skin_count) =
+            (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+        // Cloth within reach of the smoothing would count as grain.
+        let far_from_cloth = |n: usize| {
+            let (x, y) = ((n % WORK) as i32, (n / WORK) as i32);
+            let reach = GRAIN_BLUR as i32 * 2;
+            (-reach..=reach).all(|dy| {
+                (-reach..=reach).all(|dx| {
+                    let (nx, ny) = (x + dx, y + dy);
+                    nx >= 0
+                        && ny >= 0
+                        && nx < WORK as i32
+                        && ny < WORK as i32
+                        && matches!(self.marks[ny as usize * WORK + nx as usize], CLEAR | SKIN)
+                })
+            })
+        };
+        for n in 0..WORK * WORK {
+            if !far_from_cloth(n) {
+                continue;
+            }
+            if filled(n) {
+                in_fill += grain_of(n);
+                fill_count += 1.0;
+            } else if kept(n) && near_other(n, &|m| self.marks[m] == CLEAR) {
+                in_skin += grain_of(n);
+                skin_count += 1.0;
+            }
+        }
+        let grain = (in_fill / fill_count.max(1.0)).sqrt();
+        let skin_grain = (in_skin / skin_count.max(1.0)).sqrt();
+        // Down the middle of the belly.
+        let mut strips = vec![([0.0f32; 3], 0.0f32); BELLY_STRIPS];
+        for (n, strip) in &self.belly {
+            let bin = &mut strips[(*strip as usize).min(BELLY_STRIPS - 1)];
+            for k in 0..3 {
+                bin.0[k] += small[*n as usize][k];
+            }
+            bin.1 += 1.0;
+        }
+        let means: Vec<[f32; 3]> = strips
+            .iter()
+            .filter(|b| b.1 > 0.0)
+            .map(|b| b.0.map(|v| v / b.1))
+            .collect();
+        let midline = means
+            .windows(2)
+            .map(|w| step(w[0], w[1]))
+            .fold(0.0, f32::max);
         SeamReport {
+            grain,
+            skin_grain,
+            midline,
             colour: colour / patches.max(1.0),
             worst_colour: worst,
             edge: edge / edges.max(1.0),
             wrap: wrap / wraps.max(1.0),
             cloth_left: left / all.max(1.0),
+        }
+    }
+}
+
+/// A hero's head by its texture: `pfha01`, `pmhc05`. Whose body it goes with, by the family letter: what stands in the place
+/// of `a` in `pfbama01`, none for `c`.
+fn head_family(name: &str) -> Option<String> {
+    let n = name.to_ascii_lowercase();
+    let body = match n.get(..3)? {
+        "pfh" => "pfbam",
+        "pmh" => "pmbam",
+        _ => return None,
+    };
+    let rest = n.get(3..)?;
+    let family = rest.chars().next().filter(|c| "abc".contains(*c))?;
+    (rest.len() == 3 && rest[1..].bytes().all(|b| b.is_ascii_digit())).then(|| {
+        if family == 'c' {
+            format!("{body}01")
+        } else {
+            format!("{body}{family}01")
+        }
+    })
+}
+
+/// Whether a texture is a hero's head, whose neck the style changes.
+pub fn is_hero_head(name: &str) -> bool {
+    head_family(name).is_some()
+}
+
+/// How a head's neck fades to the tone of the body's skin.
+pub struct NeckPlan {
+    /// How much each texel takes of the change.
+    change: Vec<f32>,
+    /// The lowest ring of the neck, which is what meets the body.
+    ring: Vec<u32>,
+    tone: [f32; 3],
+}
+
+/// The mesh of a head that is its face and neck: the largest with the head's own texture. Hair may share that, and hang lower.
+fn head_mesh<'a>(m: &'a Model, head: &str) -> Option<&'a kotor_model::Node> {
+    fn biggest<'a>(n: &'a kotor_model::Node, head: &str, best: &mut Option<&'a kotor_model::Node>) {
+        if let Some(mesh) = &n.mesh {
+            let same = mesh
+                .texture
+                .as_deref()
+                .is_some_and(|t| t.eq_ignore_ascii_case(head));
+            if same
+                && best
+                    .and_then(|b| b.mesh.as_ref())
+                    .is_none_or(|b| mesh.faces.len() > b.faces.len())
+            {
+                *best = Some(n);
+            }
+        }
+        for c in &n.children {
+            biggest(c, head, best);
+        }
+    }
+    let mut best = None;
+    biggest(&m.root, head, &mut best);
+    best
+}
+
+/// As a character stands in a conversation the head's neck can end above the body's, with the room showing through. A collar
+/// hid that. So the lowest part of the neck reaches down inside the body. Only that part moves.
+pub fn close_neck_gap(m: &mut Model, head: &str) {
+    let Some(node) = head_mesh(m, head) else {
+        return;
+    };
+    let name = node.name.clone();
+    let world = m.world_matrices(None);
+    let Some(w) = world
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(&name))
+        .map(|x| x.1)
+    else {
+        return;
+    };
+    fn find_mut<'a>(n: &'a mut kotor_model::Node, name: &str) -> Option<&'a mut kotor_model::Node> {
+        if n.name.eq_ignore_ascii_case(name) {
+            return Some(n);
+        }
+        n.children.iter_mut().find_map(|c| find_mut(c, name))
+    }
+    let Some(mesh) = find_mut(&mut m.root, &name).and_then(|n| n.mesh.as_mut()) else {
+        return;
+    };
+    let turn = [0, 1, 2].map(|r| [w[r][0], w[r][1], w[r][2]]);
+    let up = |p: &[f32; 3]| dot3(turn[2], *p) + w[2][3];
+    let low = mesh.positions.iter().map(up).fold(f32::MAX, f32::min);
+    // Down in the world, in the mesh's own frame: the turn is a pure rotation.
+    let down = [0, 1, 2].map(|c| -turn[2][c]);
+    for p in &mut mesh.positions {
+        let t = ((up(p) - low) / NECK_STRETCH_METRES).clamp(0.0, 1.0);
+        for k in 0..3 {
+            p[k] += down[k] * NECK_REACH_METRES * (1.0 - t);
+        }
+    }
+}
+
+/// The tone of a woman's skin in a picture of the middle body: her upper arms.
+fn woman_tone(inst: &mut Install, texture: &str) -> Option<[f32; 3]> {
+    let pixels = work_size(&load_texture(inst, texture)?);
+    let mdl = inst.read(MIDDLE_BODY, ResType::MDL).ok()?;
+    let mdx = inst.read(MIDDLE_BODY, ResType::MDX).unwrap_or_default();
+    let m = kotor_model::parse_model(&mdl, &mdx).ok()?;
+    let world = m.world_matrices(None);
+    let skin = forearm_skin(&m, &world, &pixels);
+    let mut sum = [0.0f32; 3];
+    let mut count = 0.0f32;
+    for name in ["RArm", "LArm"] {
+        let Some(arm) = m.root.find(name).and_then(|n| n.mesh.as_ref()) else {
+            continue;
+        };
+        texel_pass(
+            arm,
+            |p| placed(&world, name, p),
+            |n, p, _| {
+                if (TONE_LOW..TONE_HIGH).contains(&p[2]) && !is_cloth(pixels[n], skin) {
+                    for k in 0..3 {
+                        sum[k] += pixels[n][k];
+                    }
+                    count += 1.0;
+                }
+            },
+        );
+    }
+    (count > 0.0).then(|| sum.map(|v| v / count))
+}
+
+/// The colour of a man's own neck, in a picture of the middle body.
+fn man_neck_tone(inst: &mut Install, texture: &str) -> Option<[f32; 3]> {
+    let pixels = work_size(&load_texture(inst, texture)?);
+    let mdl = inst.read("pmbam", ResType::MDL).ok()?;
+    let mdx = inst.read("pmbam", ResType::MDX).unwrap_or_default();
+    let m = kotor_model::parse_model(&mdl, &mdx).ok()?;
+    let world = m.world_matrices(None);
+    let skin = forearm_skin(&m, &world, &pixels);
+    let node = torso(&m)?;
+    let mesh = node.mesh.as_ref()?;
+    let at = |p: &[f32; 3]| placed(&world, &node.name, p);
+    let (top, _) = torso_size(mesh, at);
+    let mut sum = [0.0f32; 3];
+    let mut count = 0.0f32;
+    texel_pass(mesh, at, |n, p, _| {
+        if p[2] / top >= NECK_RING && !is_cloth(pixels[n], skin) {
+            for k in 0..3 {
+                sum[k] += pixels[n][k];
+            }
+            count += 1.0;
+        }
+    });
+    (count > 0.0).then(|| sum.map(|v| v / count))
+}
+
+/// Work out how a head's neck changes, from its model and the skin of the body it goes with.
+pub fn neck_plan_for(inst: &mut Install, head: &str) -> Option<NeckPlan> {
+    let body_texture = head_family(head)?;
+    let mdl = inst.read(head, ResType::MDL).ok()?;
+    let mdx = inst.read(head, ResType::MDX).unwrap_or_default();
+    let m = kotor_model::parse_model(&mdl, &mdx).ok()?;
+    let node = head_mesh(&m, head)?;
+    let mesh = node.mesh.as_ref()?;
+    let world = m.world_matrices(None);
+    let at = |p: &[f32; 3]| placed(&world, &node.name, p);
+    let low = mesh
+        .positions
+        .iter()
+        .map(|p| at(p)[2])
+        .fold(f32::MAX, f32::min);
+    let mut change = vec![0.0f32; WORK * WORK];
+    let mut ring = Vec::new();
+    texel_pass(mesh, at, |n, p, _| {
+        let up = (p[2] - low) / NECK_FADE_METRES;
+        // Smooth at both ends, so that no line shows where the change stops.
+        let t = up.clamp(0.0, 1.0);
+        change[n] = change[n].max(1.0 - t * t * (3.0 - 2.0 * t));
+        if p[2] - low < NECK_RING_METRES {
+            ring.push(n as u32);
+        }
+    });
+    ring.sort_unstable();
+    ring.dedup();
+    if ring.is_empty() {
+        return None;
+    }
+    // The same tone as the body's own fill starts from. A man's body keeps its own neck, so it is that.
+    let tone = if body_texture.starts_with("pfba") {
+        woman_tone(inst, &body_texture)?
+    } else {
+        man_neck_tone(inst, &body_texture)?
+    };
+    Some(NeckPlan { change, ring, tone })
+}
+
+impl NeckPlan {
+    /// The mean colour where the neck meets the body.
+    pub fn ring_colour(&self, img: &Image) -> [f32; 3] {
+        let small = work_size(img);
+        let mut sum = [0.0f32; 3];
+        for n in &self.ring {
+            for k in 0..3 {
+                sum[k] += small[*n as usize][k];
+            }
+        }
+        sum.map(|v| v / self.ring.len() as f32)
+    }
+
+    /// Apply to a head's picture, at its own size. Each channel is scaled, so the neck keeps its own shading and grain.
+    pub fn apply(&self, img: &mut Image) {
+        let at_ring = self.ring_colour(img);
+        let gain = [0, 1, 2].map(|k| self.tone[k] / at_ring[k].max(1.0));
+        let (w, h) = (img.width as usize, img.height as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let u = (x as f32 + 0.5) * WORK as f32 / w as f32 - 0.5;
+                let v = (y as f32 + 0.5) * WORK as f32 / h as f32 - 0.5;
+                let a = bilinear1(&self.change, u, v);
+                if a <= 0.0 {
+                    continue;
+                }
+                let p = (y * w + x) * 4;
+                for k in 0..3 {
+                    let c = img.rgba[p + k] as f32 * (1.0 + a * (gain[k] - 1.0));
+                    img.rgba[p + k] = (c + 0.5).clamp(0.0, 255.0) as u8;
+                }
+            }
         }
     }
 }

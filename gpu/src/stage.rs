@@ -255,6 +255,7 @@ pub struct Stage {
     /// "Underwear style: Conventional". See `kotor_render::underwear`.
     conventional_underwear: bool,
     underwear_plans: HashMap<String, Option<kotor_render::underwear::Plan>>,
+    neck_plans: HashMap<String, Option<kotor_render::underwear::NeckPlan>>,
     baseitems: Option<TwoDa>,
     /// An item's model, by item.
     held: HashMap<ObjId, Option<Rc<Model>>>,
@@ -371,6 +372,7 @@ impl Stage {
                 .filter(|d| d.is_dir()),
             conventional_underwear: true,
             underwear_plans: HashMap::new(),
+            neck_plans: HashMap::new(),
             held: HashMap::new(),
             doors: HashMap::new(),
             textures: HashMap::new(),
@@ -1215,8 +1217,10 @@ impl Stage {
     pub fn set_conventional_underwear(&mut self, on: bool) {
         if self.conventional_underwear != on {
             self.conventional_underwear = on;
-            self.textures
-                .retain(|name, _| kotor_render::underwear::body_of_texture(name).is_none());
+            self.textures.retain(|name, _| {
+                kotor_render::underwear::body_of_texture(name).is_none()
+                    && !kotor_render::underwear::is_hero_head(name)
+            });
             self.rigs.clear();
             self.static_version += 1;
         }
@@ -1227,6 +1231,7 @@ impl Stage {
         let hd = self.hd3d.clone();
         let conventional = self.conventional_underwear;
         let plans = &mut self.underwear_plans;
+        let necks = &mut self.neck_plans;
         self.textures
             .entry(name.to_string())
             .or_insert_with(|| {
@@ -1238,6 +1243,14 @@ impl Stage {
                     let plan = plans
                         .entry(body.clone())
                         .or_insert_with(|| kotor_render::underwear::plan_for(inst, &body));
+                    if let Some(plan) = plan {
+                        plan.apply(&mut img);
+                    }
+                }
+                if conventional && kotor_render::underwear::is_hero_head(name) {
+                    let plan = necks
+                        .entry(name.to_ascii_lowercase())
+                        .or_insert_with(|| kotor_render::underwear::neck_plan_for(inst, name));
                     if let Some(plan) = plan {
                         plan.apply(&mut img);
                     }
