@@ -12,7 +12,8 @@
 //!     --volume V      0 to 1 (default 0.8); --mute opens no sound device
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
-//!     --near TAG      start beside the object with this tag, for a test scene (needs --skip-menu)
+//!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
+//!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
 //!
 //! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
@@ -128,6 +129,9 @@ struct App {
     render_every: u32,
     /// Stop when this many fixed steps have run.
     max_steps: Option<u64>,
+    /// What a test driver asked for once a game has started, from the menu or at once.
+    near: Option<String>,
+    xp: Option<i32>,
     frames: u32,
     started: std::time::Instant,
     last: std::time::Instant,
@@ -210,6 +214,18 @@ impl App {
         let now = std::time::Instant::now();
         let dt = (now - self.last).as_secs_f32();
         self.last = now;
+        if self.stage.in_game() {
+            if let Some(tag) = self.near.take() {
+                if !self.stage.stand_near(&tag) {
+                    eprintln!("no floor beside {tag}");
+                }
+            }
+            if let Some(xp) = self.xp.take() {
+                let w = &mut self.stage.game.world;
+                let pc = w.pc;
+                w.grant_xp(pc, xp);
+            }
+        }
         self.stage.turn = self.turning;
         let axis = |a: bool, b: bool| a as i32 as f32 - b as i32 as f32;
         self.stage.steer = (
@@ -495,11 +511,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }
-    if let Some(tag) = opt("--near") {
-        if !stage.stand_near(&tag) {
-            return Err(format!("no floor beside {tag}").into());
-        }
-    }
     let out = if flag("--mute") {
         None
     } else {
@@ -546,6 +557,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_steps: opt("--game-seconds")
             .and_then(|n| n.parse::<u64>().ok())
             .map(|s| s * 60),
+        near: opt("--near"),
+        xp: opt("--xp").and_then(|n| n.parse().ok()),
         frames: 0,
         started: std::time::Instant::now(),
         last: std::time::Instant::now(),

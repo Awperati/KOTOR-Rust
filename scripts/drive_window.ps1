@@ -3,25 +3,7 @@
 param([string]$Shots, [int]$Speed = 1)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 # It writes one save to %LOCALAPPDATA%\kotor-rs\saves, deletes it through the screen, and leaves other saves alone.
-$scratch = $env:TEMP
-Add-Type -AssemblyName System.Drawing
-Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
-using System; using System.Drawing; using System.Runtime.InteropServices;
-public static class Drv {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
-  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
-  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
-  public static void Save(IntPtr h, string path) {
-    RECT r; GetWindowRect(h, out r);
-    using (var b = new Bitmap(r.R - r.L, r.B - r.T)) {
-      using (var g = Graphics.FromImage(b)) { var dc = g.GetHdc(); PrintWindow(h, dc, 2); g.ReleaseHdc(dc); }
-      b.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-    }
-  }
-}
-"@
+. "$PSScriptRoot\drive_common.ps1"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
@@ -29,55 +11,6 @@ $h = $v.MainWindowHandle
 "window $h"
 $before = [Drv]::GetForegroundWindow()
 $script:stateFile = "$scratch\kotor_drive.out"
-function State {
-  # Wait until the window has reported twice since this call: what was posted before it has then been handled.
-  $start = (Get-Item $script:stateFile).Length
-  $line = $null
-  for ($t = 0; $t -lt 300; $t++) {
-    $now = (Get-Item $script:stateFile).Length
-    if ($now -gt $start) {
-      $tail = @(Get-Content $script:stateFile -Tail 3 | Where-Object { $_ -like "state *" })
-      if ($tail.Count) { $line = $tail[-1] }
-      # A state line is over 100 bytes, so this is two lines.
-      if ($now - $start -gt 200) { break }
-    }
-    Start-Sleep -Milliseconds 5
-  }
-  if (-not $line) { $line = Get-Content $script:stateFile -Tail 2 | Where-Object { $_ -like "state *" } | Select-Object -Last 1 }
-  $o = @{}
-  foreach ($p in ($line -split ' ')) { if ($p -match '^(\w+)=(.*)$') { $o[$Matches[1]] = $Matches[2] } }
-  $o
-}
-function Key([int]$vk, [int]$scan, [int]$ms = 10) {
-  [void][Drv]::PostMessage($h, 0x100, [IntPtr]$vk, [IntPtr](1 -bor ($scan -shl 16)))
-  if ($ms) { Start-Sleep -Milliseconds $ms }
-  $up = [long]0xC0000001 -bor ([long]$scan -shl 16)
-  [void][Drv]::PostMessage($h, 0x101, [IntPtr]$vk, [IntPtr][long]$up)
-}
-function Hover([int]$x, [int]$y) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]0, [IntPtr](($y -shl 16) -bor $x)) }
-function Click([int]$x, [int]$y) {
-  Hover $x $y
-  $l = [IntPtr](($y -shl 16) -bor $x)
-  [void][Drv]::PostMessage($h, 0x201, [IntPtr]1, $l)
-  [void][Drv]::PostMessage($h, 0x202, [IntPtr]0, $l)
-}
-$script:failed = 0
-function Report($name, $ok, $detail) {
-  if (-not $ok) { $script:failed++ }
-  "{0,-22} {1}  {2}" -f $name, $(if ($ok) { "PASS" } else { "FAIL" }), $detail
-}
-function WaitFor([string]$name, [string]$want) {
-  for ($t = 0; $t -lt 100; $t++) { $s = State; if ($s[$name] -eq $want) { return $s } }
-  $s
-}
-function Moved($a, $b) { [Math]::Abs([double]($a.pc -split ',')[0] - [double]($b.pc -split ',')[0]) + [Math]::Abs([double]($a.pc -split ',')[1] - [double]($b.pc -split ',')[1]) }
-function WaitLog {
-  # The viewer writes its first state line once the window has drawn.
-  for ($t = 0; $t -lt 600; $t++) {
-    if ((Test-Path $script:stateFile) -and (Get-Item $script:stateFile).Length -gt 0) { return }
-    Start-Sleep -Milliseconds 20
-  }
-}
 $SPACE = @(0x20, 0x39); $RETURN = @(0x0D, 0x1C); $ONE = @(0x31, 0x02); $E = @(0x45, 0x12); $W = @(0x57, 0x11); $D = @(0x44, 0x20)
 
 # Past the opening's beats with Space, up to Trask's reply list.
@@ -175,10 +108,6 @@ $h = $v.MainWindowHandle
 "window $h"
 $before = [Drv]::GetForegroundWindow()
 $script:stateFile = "$scratch\kotor_drive2.out"
-function Press([int]$x, [int]$y, [int]$w, [int]$h2) {
-  Click ([int](($x + $w / 2) * 2)) ([int](($y + $h2 / 2) * 1.5))
-}
-function Shot($name) { if ($Shots) { [void](State); [Drv]::Save($h, "$Shots\$name.png") } }
 $ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $KEY_I = @(0x49, 0x17); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E)
 
 WaitLog

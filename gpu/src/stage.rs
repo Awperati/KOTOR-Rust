@@ -1729,6 +1729,11 @@ impl Stage {
     }
 
     /// Put the player on the floor beside an object with this tag. For test scenes.
+    /// Whether a module is being played, and not only the main menu shown.
+    pub fn in_game(&self) -> bool {
+        !self.module.is_empty()
+    }
+
     pub fn stand_near(&mut self, tag: &str) -> bool {
         let w = &mut self.game.world;
         let Some(at) = w
@@ -1770,10 +1775,11 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
+            "state menu={} saves={} gold={} level={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
+            w.object(w.pc).map_or(0, |o| o.level),
             w.object(w.pc).map_or(0, |o| o.equipped.len()),
             if self.module.is_empty() { "-" } else { &self.module },
             here[0],

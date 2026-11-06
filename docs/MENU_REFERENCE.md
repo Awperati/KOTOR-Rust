@@ -80,3 +80,14 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Target slot words | also "Activate Left Action : 1" by the slot | the name on the bar only | that line is about keys, which are not built |
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Transitions | not compared | none | I looked at frames only, one every 5 seconds |
+
+## One game, live
+
+`scripts/drive_playthrough.ps1` clicks through one game in the real window, at 1x, with messages posted to its own handle:
+main menu, New Game, the opening, the footlocker, the sheet's Level Up, the Skills and Feats steps with Recommended, Accept,
+Clothing onto the Body slot, the journal, the map, a save, Exit Game, Load from the main menu, delete, Exit. After the load the
+state log has the same level, worn items, bag, credits and place, and the sheet shows the figure in their clothes.
+
+**Not real play:** `--xp 1000` gives the level, and `--near` puts the player by the footlocker. The journal is empty at this point.
+I don't know if the original has a quest by then. The driver presses Recommended only, so the arrows and the feat grid are tested
+in code, not clicked live. It does not fight, so nothing on the combat rows above is live either.
