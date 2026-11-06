@@ -115,9 +115,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.set_saves_dir(saves.clone());
     click(&mut s, "BTN_NEWGAME", None);
     // Past the opening, to a place worth saving, with a frame of the first replies.
-    let mut talked = false;
+    let (mut talked, mut said) = (false, false);
     for _ in 0..12000 {
         s.update(DT);
+        // A line nobody answers yet: only the words at the top.
+        if !said
+            && s.game
+                .world
+                .dialogue_view()
+                .is_some_and(|d| d.3.is_empty() && !d.1.trim().is_empty())
+        {
+            said = true;
+            for _ in 0..30 {
+                s.update(DT);
+            }
+            shot(&mut gpu, &mut s, "dialogue_line", &out);
+            s.set_view(SIZES[0]);
+        }
         if !talked
             && s.game
                 .world

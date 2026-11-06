@@ -20,6 +20,8 @@ pub struct Font {
     pub image: Image,
     pub glyphs: Vec<Glyph>,
     pub line_height: i32,
+    /// Drawn in this instead of its own picture, at the same line height.
+    pub drawn_in: Option<crate::ttf::Sized>,
 }
 
 /// The glyph cells named by a font TXI, as `(upper_left, lower_right)` texture coordinates.
@@ -90,6 +92,7 @@ impl Font {
             image,
             glyphs,
             line_height,
+            drawn_in: None,
         }
     }
 
@@ -131,6 +134,9 @@ impl Font {
 
     /// Width in pixels of a string on one line.
     pub fn measure(&self, s: &str) -> i32 {
+        if let Some(t) = &self.drawn_in {
+            return t.measure(s);
+        }
         s.chars()
             .filter_map(|c| self.glyph(c))
             .map(|g| g.rect[2])
@@ -162,6 +168,9 @@ impl Font {
 
     /// Draw one line with its top-left at `(x, y)`; returns the width drawn.
     pub fn draw_line(&self, canvas: &mut Canvas, x: i32, y: i32, s: &str, color: [f32; 3]) -> i32 {
+        if let Some(t) = &self.drawn_in {
+            return t.draw_line(canvas, x, y, s, color);
+        }
         let mut pen = x;
         // Thin stock letters enlarged smoothly go faint; upscaled pictures keep their weight.
         let strength = if canvas.scale != 1.0 { 1.6 } else { 1.0 };

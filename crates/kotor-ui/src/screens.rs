@@ -18,6 +18,10 @@ pub const SCREEN: (u32, u32) = (640, 480);
 const CAPTION_X: i32 = 112;
 /// The black bars of a conversation, as the game has them: `docs/MENU_REFERENCE.md`.
 const LETTERBOX_TOP: i32 = 60;
+/// Noto Sans's size for a stock font of a line height: its letters and their gaps then fill the line as the stock's do.
+const NOTO_EM_OF_LINE: f32 = 0.72;
+/// How many words that do not fit are kept for whoever asks.
+const MOST_TOO_BIG: usize = 64;
 /// The words of a conversation, as the reference video has them at 2:30: the file's are white.
 const TALK_BLUE: [f32; 3] = [0.0, 0.65, 0.97];
 /// From this many pixels a unit the stock pictures would be enlarged at least twice, and upscaled ones are worth using.
@@ -54,6 +58,13 @@ pub struct Ui<'a> {
     /// The game is paused, with the box at the top right if something paused it.
     paused: bool,
     pause_note: String,
+    /// Text in Noto Sans, and text boxes in the glowing style; and the font, once looked for.
+    noto_on: bool,
+    glow_on: bool,
+    noto: Option<Option<std::sync::Arc<crate::ttf::Face>>>,
+    /// Words drawn since last asked, and the ones that did not fit their box.
+    words_drawn: usize,
+    words_too_big: Vec<String>,
 }
 
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
@@ -171,6 +182,11 @@ impl<'a> Ui<'a> {
             hud_party: 1,
             paused: false,
             pause_note: String::new(),
+            noto_on: false,
+            glow_on: false,
+            words_drawn: 0,
+            words_too_big: Vec::new(),
+            noto: None,
         }
     }
 
@@ -356,6 +372,55 @@ impl<'a> Ui<'a> {
         self.textures[&key].as_ref()
     }
 
+    /// Noto Sans or the game's own fonts, and glowing text boxes or the stock ones. Returns whether anything changed.
+    pub fn set_text_style(&mut self, noto: bool, glow: bool) -> bool {
+        let changed = noto != self.noto_on || glow != self.glow_on;
+        if noto != self.noto_on {
+            self.fonts.clear();
+        }
+        self.noto_on = noto;
+        self.glow_on = glow;
+        changed
+    }
+
+    /// Whether text boxes are in the glowing style.
+    pub(crate) fn glowing(&self) -> bool {
+        self.glow_on
+    }
+
+    /// How many words were drawn since last asked, and which did not fit their box.
+    pub fn words_fit(&mut self) -> (usize, Vec<String>) {
+        let drawn = std::mem::take(&mut self.words_drawn);
+        (drawn, std::mem::take(&mut self.words_too_big))
+    }
+
+    /// Whether the font is being used.
+    pub fn noto_in_use(&mut self) -> bool {
+        self.noto_on && self.noto_face().is_some()
+    }
+
+    fn noto_face(&mut self) -> Option<std::sync::Arc<crate::ttf::Face>> {
+        self.noto
+            .get_or_insert_with(|| crate::ttf::Face::bundled().map(std::sync::Arc::new))
+            .clone()
+    }
+
+    /// Text is about to be laid out on a 640 wide screen stretched over the window: its letters stay in shape, so they
+    /// take less of that width.
+    pub(crate) fn measure_for_menus(&mut self) {
+        let ratio = self.scale * SCREEN.0 as f32 / self.pixels.0.max(1) as f32;
+        if let Some(Some(f)) = &self.noto {
+            f.set_across(ratio);
+        }
+    }
+
+    /// Text is about to be laid out on a canvas with the same scale both ways.
+    pub(crate) fn measure_for_hud(&mut self) {
+        if let Some(Some(f)) = &self.noto {
+            f.set_across(1.0);
+        }
+    }
+
     pub fn font(&mut self, name: &str) -> Option<&Font> {
         let key = name.to_ascii_lowercase();
         if !self.fonts.contains_key(&key) {
@@ -363,8 +428,17 @@ impl<'a> Ui<'a> {
             // same family, `fnt_dialog16x16`.
             // Fonts stay as the game has them: upscaling fills in the gaps inside `fnt_console`'s tiny letters and turns
             // them into blocks at 4K.
-            let f =
+            let mut f =
                 Font::load(self.inst, &key).or_else(|| Font::load(self.inst, "fnt_dialog16x16"));
+            if self.noto_on {
+                if let (Some(font), Some(face)) = (f.as_mut(), self.noto_face()) {
+                    font.drawn_in = Some(crate::ttf::Sized {
+                        face,
+                        em: font.line_height as f32 * NOTO_EM_OF_LINE,
+                        line_height: font.line_height,
+                    });
+                }
+            }
             self.fonts.insert(key.clone(), f);
         }
         self.fonts[&key].as_ref()
@@ -450,6 +524,13 @@ impl<'a> Ui<'a> {
         };
         let lines = f.wrap(text, r[2]);
         let total = lines.len() as i32 * f.line_height;
+        self.words_drawn += 1;
+        if (total > r[3] || lines.iter().any(|l| f.measure(l) > r[2]))
+            && self.words_too_big.len() < MOST_TOO_BIG
+        {
+            self.words_too_big
+                .push(format!("{text:?} in {} by {}", r[2], r[3]));
+        }
         let mut y = match alignment & 0x38 {
             16 => r[1] + (r[3] - total) / 2,
             32 => r[1] + r[3] - total,
@@ -564,6 +645,10 @@ impl<'a> Ui<'a> {
         cv.fill_rect(0, 0, w, LETTERBOX_TOP, [0, 0, 0, 255]);
         let bottom = self.gui("dialog").map_or(374, |g| g.panel.extent.top - 4);
         cv.fill_rect(0, bottom, w, SCREEN.1 as i32 - bottom + 1, [0, 0, 0, 255]);
+        if self.glow_on {
+            crate::glow::bar_edge(cv, LETTERBOX_TOP, true);
+            crate::glow::bar_edge(cv, bottom, false);
+        }
     }
 
     fn dialogue_on(
@@ -572,6 +657,7 @@ impl<'a> Ui<'a> {
         scene: Option<&Image>,
         clear: [u8; 4],
     ) -> Option<Image> {
+        self.measure_for_hud();
         let gui = self.gui("dialog")?;
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         let extra = (self.width - SCREEN.0) as i32;
@@ -695,6 +781,7 @@ impl<'a> Ui<'a> {
 
     /// Where each reply of `view` is drawn, in layout units: x, y, width, height. Same rows as `dialogue_box`.
     pub fn reply_rows(&mut self, view: &DialogueView) -> Option<Vec<[i32; 4]>> {
+        self.measure_for_hud();
         let gui = self.gui("dialog")?;
         let p = &gui.panel;
         let list = gui.find("LB_REPLIES")?;
@@ -723,6 +810,7 @@ impl<'a> Ui<'a> {
 
     /// Write one line of text at the top left of `img`, on a dark strip.
     pub fn caption(&mut self, img: Image, text: &str) -> Option<Image> {
+        self.measure_for_hud();
         let font = self.font("fnt_console")?.clone();
         let mut cv = Canvas {
             width: img.width,
@@ -760,6 +848,7 @@ impl<'a> Ui<'a> {
         self.hud_party = party.len();
         let mut gui = self.gui(HUD_GUI)?;
         place_hud(&mut gui.panel, self.width, self.target_at);
+        self.measure_for_hud();
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         let mut patches: HashMap<String, Patch> = HashMap::new();
         for tag in all_tags(&gui.panel) {
@@ -986,7 +1075,11 @@ impl<'a> Ui<'a> {
         let step = 16;
         let (w, h) = (PAUSE_NOTE_WIDTH, lines.len() as i32 * step + 8);
         let (x, y) = (self.width as i32 - w - 6, 32);
-        cv.fill_rect(x, y, w, h, [0, 0, 8, 190]);
+        if self.glow_on {
+            crate::glow::boxed(cv, [x, y, w, h]);
+        } else {
+            cv.fill_rect(x, y, w, h, [0, 0, 8, 190]);
+        }
         for (i, line) in lines.iter().enumerate() {
             let at = [x, y + 4 + i as i32 * step, w, step];
             self.draw_text(cv, FLOAT_FONT, line, at, 18, [0.0, 0.65, 0.97]);

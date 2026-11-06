@@ -200,6 +200,7 @@ impl Ui<'_> {
 
     /// A screen on black, or with `over` left showing around a dialog.
     pub fn menu_overlay(&mut self, view: &MenuView) -> Option<Image> {
+        self.measure_for_menus();
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         cv.scale_x = self.pixels.0 as f32 / SCREEN.0 as f32;
         cv.clear(if view.over_scene {
@@ -216,6 +217,10 @@ impl Ui<'_> {
         if let Some(d) = &view.dialog {
             cv.fill_rect(0, 0, SCREEN.0 as i32 + 1, 481, [0, 0, 0, 140]);
             self.draw_view(&mut cv, d)?;
+            if self.glowing() {
+                let e = self.gui(&d.gui)?.panel.extent.clone();
+                crate::glow::edge(&mut cv, [e.left, e.top, e.width, e.height]);
+            }
         }
         if let Some(n) = &view.notice {
             self.draw_notice(&mut cv, n, &view.hover);
@@ -246,8 +251,12 @@ impl Ui<'_> {
             cv.fill_rect(r[0], r[1], 1, r[3], c);
             cv.fill_rect(r[0] + r[2] - 1, r[1], 1, r[3], c);
         };
-        cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 8, 235]);
-        frame(cv, r, EDGE);
+        if self.glowing() {
+            crate::glow::boxed(cv, r);
+        } else {
+            cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 8, 235]);
+            frame(cv, r, EDGE);
+        }
         for (i, line) in lines.iter().enumerate() {
             let at = [r[0] + 12, r[1] + 10 + i as i32 * step, r[2] - 24, step];
             self.draw_text(cv, NOTICE_FONT, line, at, 18, TEXT_BLUE);
@@ -402,6 +411,10 @@ impl Ui<'_> {
                 let e = &list.extent;
                 let box_ = [at.0 + e.left, at.1 + e.top, e.width, e.height];
                 self.draw_border(cv, &list.border, box_, None);
+                // The Messages screen's words are a text box.
+                if self.glowing() && patch.from_end.is_some() {
+                    crate::glow::boxed(cv, box_);
+                }
                 let font = patch.font.as_deref().unwrap_or(&t.font);
                 let Some(f) = self.font(font).cloned() else {
                     return;
@@ -548,6 +561,7 @@ impl Ui<'_> {
 
     /// What is at a point of the layout: the row, else the button whose centre is nearest (slots overlap).
     pub fn menu_hit(&mut self, view: &MenuView, x: f32, y: f32) -> Option<Hit> {
+        self.measure_for_menus();
         if let Some(n) = &view.notice {
             let (_, b, _, _) = self.notice_layout(n)?;
             let on = x >= b[0] as f32
@@ -690,6 +704,7 @@ impl Ui<'_> {
 
     /// How many lines some words make in a list, and how many fit on screen.
     pub fn menu_text_lines(&mut self, gui: &str, tag: &str, text: &str) -> (usize, usize) {
+        self.measure_for_menus();
         let Some(list) = self.gui(gui).and_then(|g| g.find(tag).cloned()) else {
             return (0, 1);
         };

@@ -95,6 +95,26 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Transitions | not compared | none | I looked at frames only, one every 5 seconds |
 
+## The owner's text style
+
+The owner asked for these. They are not in the video, so they are not compared. Both are on by default, and both are
+rows on the Feedback page. Six rows fit there, so the wheel brings up the seventh.
+
+| Row | On | Off |
+|---|---|---|
+| Game font | Noto Sans Regular for all text | the game's own fonts |
+| Text box style | black, a yellow line, blue light round it | the stock look |
+
+**Font.** `assets/fonts/NotoSans-Regular.ttf`, version 2.015, under the SIL Open Font License beside it. It is built
+into the program. Letters are drawn at the window's own pixels, so they are sharp at 720p and 4K. Each stock font's line
+height stays, and the letters are 0.72 of it: `NOTO_EM_OF_LINE`. No hinting and no kerning.
+
+**Boxes with the style.** The conversation bars, message boxes, notices, the pause note, and the words on the Messages
+screen. Menu panels keep their stock pictures: they are not text boxes.
+
+**Colours.** All in [glow.rs](../crates/kotor-ui/src/glow.rs): yellow `255,214,64`, blue `50,160,255`, strength 170, reach 7
+layout units. Other choices, not built: the colours the other way round, a brighter yellow, a wider glow.
+
 ## One game, live
 
 `scripts/drive_playthrough.ps1` clicks through one game in the real window, at 1x, with messages posted to its own handle:

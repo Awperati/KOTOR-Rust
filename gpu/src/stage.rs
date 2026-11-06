@@ -1698,6 +1698,10 @@ impl Stage {
     }
 
     fn refresh_overlay(&mut self) {
+        let s = self.settings();
+        if self.ui.set_text_style(s.noto_font, s.glow_boxes) {
+            self.overlay_key.clear();
+        }
         if let Some(view) = self.menu_view() {
             let key = format!("{view:?}{}", self.ui_width);
             if key != self.overlay_key {

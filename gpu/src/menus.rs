@@ -245,6 +245,10 @@ pub struct Settings {
     pub reverse_buttons: bool,
     /// A frame waits for the screen.
     pub vsync: bool,
+    /// All text in Noto Sans, not the game's own fonts.
+    pub noto_font: bool,
+    /// Text boxes black with a glowing edge, not the stock look.
+    pub glow_boxes: bool,
 }
 
 impl Default for Settings {
@@ -275,6 +279,8 @@ impl Default for Settings {
             mouse_sensitivity: 0.5,
             reverse_buttons: false,
             vsync: true,
+            noto_font: true,
+            glow_boxes: true,
         }
     }
 }
@@ -285,7 +291,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nnoto_font={}\nglow_boxes={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -310,6 +316,8 @@ impl Settings {
             self.vsync,
             self.conventional_underwear,
             self.early_force,
+            self.noto_font,
+            self.glow_boxes
         )
     }
 
@@ -346,6 +354,8 @@ impl Settings {
                 "mouse_sensitivity" => s.mouse_sensitivity = level(v, s.mouse_sensitivity),
                 "reverse_buttons" => s.reverse_buttons = v == "true",
                 "vsync" => s.vsync = v == "true",
+                "noto_font" => s.noto_font = v == "true",
+                "glow_boxes" => s.glow_boxes = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -1111,6 +1121,11 @@ impl Stage {
     }
 
     /// What the player chose on the option pages.
+    /// How many words were drawn since last asked, and which did not fit their box.
+    pub fn words_fit(&mut self) -> (usize, Vec<String>) {
+        self.ui.words_fit()
+    }
+
     pub fn settings(&self) -> Settings {
         self.menus.settings
     }
@@ -1735,6 +1750,7 @@ impl Stage {
             }
             (Screen::Options | Screen::Pause, "BTN_SOUND") => self.menus.stack.push(Screen::Sound),
             (Screen::Options | Screen::Pause, "BTN_FEEDBACK") => {
+                self.menus.first = 0;
                 self.menus.stack.push(Screen::Feedback)
             }
             (Screen::Options | Screen::Pause, "BTN_AUTOPAUSE") => {

@@ -2712,3 +2712,167 @@ fn the_tabs_change_screen_and_the_hud_buttons_open_them() {
     assert_eq!(alpha(SIZE.0 - 1, SIZE.1 - 2), 255, "the bottom bar");
     assert_eq!(alpha(SIZE.0 / 2, SIZE.1 / 2), 0, "the scene");
 }
+
+/// Windows of each shape: letters take the most of the 640 wide layout in a 4:3 one.
+const FIT_SIZES: [(u32, u32); 3] = [(1280, 720), (3840, 2160), (800, 600)];
+
+/// What does not fit on the screen showing now, at each size.
+fn words_too_big(s: &mut Stage, screen: &str, found: &mut Vec<String>) {
+    for size in FIT_SIZES {
+        s.words_fit();
+        s.set_view(size);
+        s.update(0.0);
+        s.overlay();
+        let (drawn, big) = s.words_fit();
+        assert!(drawn > 0, "{screen} at {size:?} drew no words");
+        found.extend(big.iter().map(|b| format!("{screen} {size:?}: {b}")));
+    }
+    s.set_view(SIZE);
+}
+
+#[test]
+fn the_screens_before_a_game_keep_their_words_inside_their_boxes() {
+    let Some(mut s) = at_chargen("fit_chargen") else {
+        return;
+    };
+    let mut found = Vec::new();
+    words_too_big(&mut s, "class", &mut found);
+    press(&mut s, "BTN_SEL4");
+    words_too_big(&mut s, "quick or custom", &mut found);
+    press(&mut s, "CUST_CHAR_BTN");
+    words_too_big(&mut s, "custom", &mut found);
+    press(&mut s, "BTN_STEPNAME1");
+    words_too_big(&mut s, "portrait", &mut found);
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME2");
+    words_too_big(&mut s, "attributes", &mut found);
+    press(&mut s, "BTN_RECOMMENDED");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME3");
+    words_too_big(&mut s, "skills", &mut found);
+    press(&mut s, "BTN_RECOMMENDED");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME4");
+    words_too_big(&mut s, "feats", &mut found);
+    press(&mut s, "BTN_RECOMMENDED");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME5");
+    press(&mut s, "BTN_RANDOM");
+    words_too_big(&mut s, "name", &mut found);
+    while s.menu_name() != "main" {
+        s.escape();
+    }
+    words_too_big(&mut s, "main", &mut found);
+    press(&mut s, "BTN_OPTIONS");
+    words_too_big(&mut s, "options", &mut found);
+    for page in ["BTN_GAMEPLAY", "BTN_GRAPHICS", "BTN_SOUND"] {
+        press(&mut s, page);
+        words_too_big(&mut s, page, &mut found);
+        press(&mut s, "BTN_BACK");
+    }
+    assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+#[test]
+fn the_screens_of_a_game_keep_their_words_inside_their_boxes() {
+    let Some((mut s, _dir)) = in_game("fit_game") else {
+        return;
+    };
+    let mut found = Vec::new();
+    s.escape();
+    words_too_big(&mut s, "pause", &mut found);
+    for page in ["BTN_FEEDBACK", "BTN_AUTOPAUSE"] {
+        press(&mut s, page);
+        words_too_big(&mut s, page, &mut found);
+        press(&mut s, "BTN_BACK");
+    }
+    press(&mut s, "BTN_SAVEGAME");
+    words_too_big(&mut s, "save", &mut found);
+    press(&mut s, "BTN_BACK");
+    s.escape();
+    let pc = s.game.world.pc;
+    for t in [
+        "g_a_class5001",
+        "g_w_blstrpstl001",
+        "g_w_lngswrd01",
+        "g_i_medeqpmnt01",
+        "g_w_lghtsbr01",
+    ] {
+        let item = s.game.world.spawn_item(t);
+        s.game.world.carry(pc, item);
+    }
+    s.open_inventory();
+    click_row(&mut s, "LB_ITEMS", 1);
+    words_too_big(&mut s, "inventory", &mut found);
+    s.open_equip();
+    press(&mut s, "BTN_INV_BODY");
+    words_too_big(&mut s, "equipment", &mut found);
+    s.escape();
+    // Level 4 has an attribute point.
+    s.game.world.grant_xp(pc, 6000);
+    for _ in 0..2 {
+        s.game.world.level_up(pc);
+    }
+    s.update(0.1);
+    s.open_character();
+    words_too_big(&mut s, "character", &mut found);
+    press(&mut s, "BTN_LEVELUP");
+    words_too_big(&mut s, "level", &mut found);
+    press(&mut s, "BTN_STEPNAME1");
+    words_too_big(&mut s, "level attributes", &mut found);
+    while s.menu_name() != "-" {
+        s.escape();
+    }
+    s.open_character();
+    press(&mut s, "BTN_ABI");
+    words_too_big(&mut s, "skills", &mut found);
+    press(&mut s, "BTN_FEATS");
+    words_too_big(&mut s, "abilities feats", &mut found);
+    press(&mut s, "BTN_MSG");
+    words_too_big(&mut s, "messages", &mut found);
+    press(&mut s, "BTN_JOU");
+    words_too_big(&mut s, "journal", &mut found);
+    assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+#[test]
+fn the_font_and_box_rows_change_the_picture_and_the_file_keeps_them() {
+    let Some((mut s, dir)) = in_game("text_style") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    assert!(s.settings().noto_font && s.settings().glow_boxes);
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    let both = frame(&mut s);
+
+    // The font: it changes the picture, and comes back the same.
+    click_row(&mut s, "LB_OPTIONS", 5);
+    assert!(!s.settings().noto_font);
+    let hover_away = s.menu_pixel("BTN_BACK", None, SIZE).unwrap();
+    s.hover(hover_away, SIZE);
+    let stock = frame(&mut s);
+    assert!(stock != both, "the words are in another font");
+    click_row(&mut s, "LB_OPTIONS", 5);
+    assert!(s.settings().noto_font);
+    s.hover(hover_away, SIZE);
+    let back = frame(&mut s);
+    assert!(back != stock, "the font came back");
+
+    // The boxes: their row is the seventh, and six fit, so the wheel brings it up.
+    s.menu_wheel(-1.0);
+    click_row(&mut s, "LB_OPTIONS", 6);
+    assert!(!s.settings().glow_boxes);
+    let saved = std::fs::read_to_string(&file).unwrap();
+    assert!(saved.contains("noto_font=true") && saved.contains("glow_boxes=false"));
+    s.hover(hover_away, SIZE);
+    assert!(frame(&mut s) != back, "its row says so");
+    click_row(&mut s, "LB_OPTIONS", 5);
+    let saved = std::fs::read_to_string(&file).unwrap();
+    assert!(saved.contains("noto_font=false"));
+
+    // Another run reads them back.
+    s.use_settings_file(file);
+    assert!(!s.settings().noto_font && !s.settings().glow_boxes);
+}

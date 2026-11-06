@@ -13,6 +13,19 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42283, 42289),
     (42285, 42291),
 ];
+/// The owner's two rows after those: their names when on and off, and their words. Not in the talk table.
+const STYLE_ROWS: [(&str, &str, &str); 2] = [
+    (
+        "Game font: Noto Sans",
+        "Game font: Original",
+        "All the game's text in Noto Sans Regular, or in the game's own fonts.",
+    ),
+    (
+        "Text box style: Glow",
+        "Text box style: Original",
+        "Text boxes black with a glowing blue and yellow edge, or as the game has them.",
+    ),
+];
 /// A box on the Auto-Pause page, and its words.
 const AUTOPAUSE: [(&str, u32); 6] = [
     ("CB_ENDROUND", 42445),
@@ -69,6 +82,8 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         2 => &mut s.subtitles,
         3 => &mut s.minimap,
         4 => &mut s.floating_numbers,
+        5 => &mut s.noto_font,
+        6 => &mut s.glow_boxes,
         _ => return None,
     })
 }
@@ -87,16 +102,17 @@ fn autopause_flag<'a>(s: &'a mut Settings, tag: &str) -> Option<&'a mut bool> {
 impl Stage {
     /// The words of what the cursor last rested on, in a page's list for them.
     fn option_words(&mut self, v: &mut MenuView, list: &str) {
-        match self.menus.option_words {
-            Some(words) => {
+        match (self.menus.option_words, self.menus.option_reason) {
+            (Some(words), reason) => {
                 let text = self.ui.strref(words);
-                let text = match self.menus.option_reason {
+                let text = match reason {
                     Some(why) => format!("{why}\n\n{text}"),
                     None => text,
                 };
                 v.text(list, text);
             }
-            None => v.hide(&[list]),
+            (None, Some(why)) => v.text(list, why),
+            (None, None) => v.hide(&[list]),
         }
     }
 
@@ -138,6 +154,7 @@ impl Stage {
             "BTN_DEFAULT" => s.vsync = Settings::default().vsync,
             "BTN_BACK" => {
                 self.menus.option_words = None;
+                self.menus.first = 0;
                 self.menus.stack.pop();
                 return;
             }
@@ -166,7 +183,7 @@ impl Stage {
     pub(super) fn feedback_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optfeedback");
         let mut settings = self.menus.settings;
-        let rows = FEEDBACK
+        let mut rows: Vec<Row> = FEEDBACK
             .iter()
             .enumerate()
             .map(|(n, (name, _))| Row {
@@ -175,7 +192,17 @@ impl Stage {
                 ..Row::default()
             })
             .collect();
-        v.lists.insert("LB_OPTIONS".to_string(), (rows, 0));
+        for (n, (on, off, _)) in STYLE_ROWS.iter().enumerate() {
+            let ticked = feedback_flag(&mut settings, FEEDBACK.len() + n).is_some_and(|f| *f);
+            rows.push(Row {
+                text: if ticked { on } else { off }.to_string(),
+                selected: ticked,
+                ..Row::default()
+            });
+        }
+        // Seven rows, and six fit: the wheel brings up the last.
+        v.lists
+            .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
         self.option_words(&mut v, "LB_DESC");
         v
     }
@@ -216,6 +243,15 @@ impl Stage {
         if words.is_some() {
             self.menus.option_words = words;
             self.menus.option_reason = None;
+        }
+        if let (Screen::Feedback, Some(Hit::Row(_, row))) = (screen, &self.menus.hover) {
+            if let Some((_, _, words)) = row
+                .checked_sub(FEEDBACK.len())
+                .and_then(|n| STYLE_ROWS.get(n))
+            {
+                self.menus.option_words = None;
+                self.menus.option_reason = Some(words);
+            }
         }
     }
 
