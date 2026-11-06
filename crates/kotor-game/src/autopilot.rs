@@ -10,6 +10,11 @@ use crate::world::{DoorState, Kind, ObjId, World};
 use kotor_core::ResType;
 use std::collections::{BTreeMap, HashSet};
 
+/// Whether a door can answer back when it is tried.
+fn door_has_a_say(o: &crate::world::Object) -> bool {
+    !o.conversation.is_empty() || o.scripts.contains_key("OnFailToOpen")
+}
+
 /// Things a playthrough can run into.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Stall {
@@ -38,6 +43,12 @@ const CONVERSATION_SECONDS: f32 = 240.0;
 const FIGHT_RANGE: f32 = 18.0;
 /// How long it explores a module before it heads for the way out.
 const EXPLORE_SECONDS: f32 = 400.0;
+/// How many times a locked door with no script or conversation is tried.
+const PLAIN_LOCK_TRIES: u32 = 2;
+/// How long a line that wants no answer stays up in a window.
+const READ_SECONDS: f32 = 7.0;
+/// How many talks in one module may send the pilot back round its doors.
+const SECOND_LOOKS: u32 = 30;
 /// How long nothing to do has to last before the pilot stops.
 const GIVE_UP_SECONDS: f32 = 15.0;
 /// How many times a locked door is tried.
@@ -52,6 +63,8 @@ pub struct Autopilot {
     pub immortal: bool,
     /// Nothing more to try.
     pub finished: bool,
+    /// Leave lines that want no answer to whoever is showing them, as the window does.
+    pub read_lines: bool,
     pub time: f32,
     goal: Option<Goal>,
     goal_time: f32,
@@ -61,9 +74,17 @@ pub struct Autopilot {
     /// How many doors were unlocked plus how many stood fully open when last looked at. A change means more of the
     /// module may be in reach.
     doors_free: usize,
+    /// Which line is showing, and for how long.
+    line_serial: Option<usize>,
+    line_time: f32,
+    /// How many more times a finished talk may send it back round the doors of this module.
+    second_looks: u32,
+    /// Seconds until the next look for foes on the way somewhere.
+    look_around: f32,
     /// Seconds with nothing to do.
     idle: f32,
     replies: HashSet<String>,
+    reply_turn: usize,
     module: String,
     module_time: f32,
     still: f32,
@@ -92,6 +113,7 @@ impl Autopilot {
             modules: Vec::new(),
             immortal: true,
             finished: false,
+            read_lines: false,
             time: 0.0,
             goal: None,
             goal_time: 0.0,
@@ -99,8 +121,13 @@ impl Autopilot {
             unreachable: HashSet::new(),
             lock_tries: BTreeMap::new(),
             doors_free: 0,
+            line_serial: None,
+            line_time: 0.0,
+            second_looks: SECOND_LOOKS,
+            look_around: 0.0,
             idle: 0.0,
             replies: HashSet::new(),
+            reply_turn: 0,
             module: String::new(),
             module_time: 0.0,
             still: 0.0,
@@ -154,6 +181,11 @@ impl Autopilot {
             self.converse(w, dt);
             return;
         }
+        if self.talk_time > 0.0 && self.second_looks > 0 {
+            // A talk can change what a door does: this is how Trask comes to open the first one.
+            self.second_looks -= 1;
+            self.forget_doors(w);
+        }
         self.talk_time = 0.0;
         if w.opened.is_some() {
             self.loot(w);
@@ -191,6 +223,7 @@ impl Autopilot {
             self.tried.clear();
             self.unreachable.clear();
             self.lock_tries.clear();
+            self.second_looks = SECOND_LOOKS;
             self.module_time = 0.0;
             self.still = 0.0;
         }
@@ -202,12 +235,7 @@ impl Autopilot {
             .sum();
         if free != self.doors_free {
             self.doors_free = free;
-            self.unreachable.clear();
-            self.lock_tries.clear();
-            let doors: Vec<ObjId> = self.tried.iter().copied().filter(|id| w.object(*id).is_some_and(|o| o.kind == Kind::Door)).collect();
-            for d in doors {
-                self.tried.remove(&d);
-            }
+            self.forget_doors(w);
         }
         while self.errors_seen < w.errors.len() {
             let e = w.errors[self.errors_seen].clone();
@@ -226,7 +254,18 @@ impl Autopilot {
         }
     }
 
-    /// Take a reply: one not said before if there is one, so that a conversation with a loop gets out of it.
+    /// Try every door again, and whatever seemed out of reach.
+    fn forget_doors(&mut self, w: &World) {
+        self.unreachable.clear();
+        self.lock_tries.clear();
+        // A plain locked door stays as it is; one with a script or a conversation may give way to someone later.
+        self.tried.retain(|id| {
+            w.object(*id)
+                .is_none_or(|o| o.kind != Kind::Door || (o.locked && !door_has_a_say(o)))
+        });
+    }
+
+    /// Take a reply: one not said before if there is one, or else any.
     fn converse(&mut self, w: &mut World, dt: f32) {
         self.talk_time += dt;
         self.next_reply -= dt;
@@ -250,10 +289,23 @@ impl Autopilot {
         if w.conversation_paused() {
             return;
         }
+        // In a window a spoken line ends by itself. A silent one waits for a key, so the pilot presses it after a while.
+        let serial = w.dialogue_serial();
+        if serial != self.line_serial {
+            self.line_serial = serial;
+            self.line_time = 0.0;
+        }
+        self.line_time += 0.2;
+        if self.read_lines && replies.is_empty() && self.line_time < READ_SECONDS {
+            return;
+        }
+        // Once everything has been said, take them in a scattered order: one leads out of the loop, and plain turns
+        // can keep missing it when menus of different sizes take turns.
+        self.reply_turn = self.reply_turn.wrapping_mul(2_654_435_761).wrapping_add(11);
         let pick = replies
             .iter()
             .position(|r| !self.replies.contains(r))
-            .unwrap_or(0);
+            .unwrap_or((self.reply_turn >> 8) % replies.len().max(1));
         if let Some(r) = replies.get(pick) {
             self.replies.insert(r.clone());
         }
@@ -356,8 +408,6 @@ impl Autopilot {
     fn watch_goal(&mut self, g: &mut Game, dt: f32) {
         let w = &mut g.world;
         let pos = w.object(w.pc).map_or([0.0; 3], |o| o.position);
-        let moved = dist2d(pos, self.last_pos) > 0.03;
-        self.last_pos = pos;
         let Some(goal) = self.goal.clone() else {
             return;
         };
@@ -386,7 +436,24 @@ impl Autopilot {
                     self.goal = None;
                     return;
                 }
-                self.still = if moved { 0.0 } else { self.still + dt };
+                // A foe comes first: it is looked for again as soon as this goal is gone. Sight is dear, so not every tick.
+                self.look_around -= dt;
+                if self.look_around <= 0.0 {
+                    self.look_around = 0.5;
+                    if self.nearest_foe(w).is_some() {
+                        w.pc_mover.stop();
+                        w.pending = None;
+                        self.goal = None;
+                        return;
+                    }
+                }
+                // Sliding along someone in the way looks like moving, so progress is measured from where it last was.
+                if dist2d(pos, self.last_pos) > 1.0 {
+                    self.last_pos = pos;
+                    self.still = 0.0;
+                } else {
+                    self.still += dt;
+                }
                 if self.still > STUCK_SECONDS {
                     self.stall(
                         w,
@@ -405,18 +472,17 @@ impl Autopilot {
 
     fn set_goal(&mut self, goal: Goal) {
         self.idle = 0.0;
+        self.last_pos = [f32::MAX; 3];
         self.goal = Some(goal);
         self.goal_time = 0.0;
         self.still = 0.0;
     }
 
-    fn choose_goal(&mut self, g: &mut Game) {
-        let w = &mut g.world;
+    /// Whoever hostile is closest, in sight and not given up on.
+    fn nearest_foe(&self, w: &World) -> Option<ObjId> {
         let pc = w.pc;
         let here = w.object(pc).map_or([0.0; 3], |o| o.position);
-        // 1. Whoever is close and hostile.
-        let foe = w
-            .objects
+        w.objects
             .values()
             .filter(|o| {
                 o.kind == Kind::Creature
@@ -425,17 +491,19 @@ impl Autopilot {
                     && !o.party_member
                     && !self.tried.contains(&o.id)
                     && dist2d(o.position, here) <= FIGHT_RANGE
+                    && w.reputation(pc, o.id) <= 10
+                    && w.clear_line(here, o.position)
             })
-            .map(|o| (o.id, dist2d(o.position, here), o.position))
-            .collect::<Vec<_>>();
-        let mut near: Option<(f32, ObjId)> = None;
-        for (id, d, at) in foe {
-            if w.reputation(pc, id) <= 10 && w.clear_line(here, at) && near.is_none_or(|n| d < n.0)
-            {
-                near = Some((d, id));
-            }
-        }
-        if let Some((_, id)) = near {
+            .min_by(|a, b| dist2d(a.position, here).total_cmp(&dist2d(b.position, here)))
+            .map(|o| o.id)
+    }
+
+    fn choose_goal(&mut self, g: &mut Game) {
+        let w = &mut g.world;
+        let pc = w.pc;
+        let here = w.object(pc).map_or([0.0; 3], |o| o.position);
+        // 1. Whoever is close and hostile.
+        if let Some(id) = self.nearest_foe(w) {
             w.attack(pc, id);
             self.set_goal(Goal::Fight(id));
             return;
@@ -642,13 +710,19 @@ impl Autopilot {
                     w.object(w.pc).map_or("?", |o| o.tag.as_str())
                 ));
             }
-            if *n >= LOCK_TRIES {
+            let n = *n;
+            let limit = if w.object(id).is_some_and(door_has_a_say) {
+                LOCK_TRIES
+            } else {
+                PLAIN_LOCK_TRIES
+            };
+            if n >= limit {
                 self.tried.insert(id);
                 self.stall(
                     w,
                     "locked",
                     &format!("open {label}"),
-                    format!("still locked after {LOCK_TRIES} tries"),
+                    format!("still locked after {limit} tries"),
                 );
             }
         } else {
