@@ -1055,6 +1055,7 @@ impl Stage {
             pixel.1 * 480.0 / size.1.max(1) as f32,
         );
         if let Some(tag) = self.ui.hud_hit(x, y) {
+            self.hud_click_sound(&tag);
             if tag == "BTN_ACTION0" || tag == "BTN_TARGET0" {
                 if let Some(id) = self.target() {
                     self.use_thing(id);

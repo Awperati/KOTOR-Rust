@@ -83,6 +83,7 @@ impl Stage {
 
     /// Once a step: see what has changed, and bring up what is waiting.
     pub(in crate::stage) fn notices_tick(&mut self) {
+        self.panel_sound();
         let asked = std::mem::take(&mut self.game.world.tutorial_requests);
         for row in asked {
             self.tutorial(row);

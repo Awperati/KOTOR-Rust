@@ -66,6 +66,19 @@ const QUEST_SORTS: [u32; 4] = [32173, 32174, 32175, 32176];
 const STR_SORT: u32 = 42566;
 const STR_ACTIVE_QUESTS: u32 = 32178;
 const STR_COMPLETED_QUESTS: u32 = 32177;
+/// The interface's sounds, from `guisounds.2da`. **Assumed:** which goes with what, from its labels. The video was compared
+/// by frames only, so none of this was heard against it.
+const SOUND_ENTER: &str = "gui_scroll";
+const SOUND_CLICK: &str = "gui_click";
+const SOUND_CHECK: &str = "gui_check";
+const SOUND_ERROR: &str = "gui_error";
+const SOUND_OPEN: &str = "gui_open";
+const SOUND_CLOSE: &str = "gui_close";
+const SOUND_SLOT_USE: &str = "gui_actuse";
+const SOUND_SLOT_SCROLL: &str = "gui_actscroll";
+const SOUND_SLOT_QUEUE: &str = "gui_button";
+const SOUND_ITEM_TAKE: &str = "gui_invadd";
+const SOUND_ITEM_SELECT: &str = "gui_invselect";
 const STR_COMBAT_MODE: u32 = 48208;
 const ATTACK_PICTURE: &str = "i_attack";
 const STR_CONTAINER: u32 = 393;
@@ -425,6 +438,8 @@ pub(super) struct Menus {
     keys_before: keyscreen::KeyMap,
     key_page: usize,
     key_capture: Option<&'static str>,
+    /// How many screens were up when last looked at.
+    stack_seen: Option<usize>,
     /// The fight's slots and rising words.
     fight: fightscreen::Fight,
     /// The words of the option the cursor last rested on.
@@ -1236,6 +1251,30 @@ impl Stage {
         self.menus.hover_slot = None;
     }
 
+    /// What a click on the HUD sounds like.
+    pub(super) fn hud_click_sound(&mut self, tag: &str) {
+        self.effect(
+            if tag.starts_with("BTN_TARGETUP") || tag.starts_with("BTN_TARGETDOWN") {
+                SOUND_SLOT_SCROLL
+            } else if tag == "BTN_TARGET1" || tag == "BTN_TARGET2" {
+                SOUND_SLOT_QUEUE
+            } else if tag == "BTN_TARGET0" || tag == "BTN_ACTION0" {
+                SOUND_SLOT_USE
+            } else {
+                SOUND_CLICK
+            },
+        );
+    }
+
+    /// Screens coming and going have a sound of their own.
+    pub(super) fn panel_sound(&mut self) {
+        let now = self.menus.stack.len();
+        if let Some(seen) = self.menus.stack_seen.filter(|s| *s != now) {
+            self.effect(if now > seen { SOUND_OPEN } else { SOUND_CLOSE });
+        }
+        self.menus.stack_seen = Some(now);
+    }
+
     /// A click on one of the HUD's buttons: the screen it opens. `BTN_ACTION0` is the stage's.
     pub(super) fn hud_button(&mut self, tag: &str) {
         match tag {
@@ -1396,9 +1435,13 @@ impl Stage {
         match done {
             Ok(()) => self.leave_slot(),
             Err(CannotEquip::BothHandsFull) => {
+                self.effect(SOUND_ERROR);
                 self.menus.message = "A weapon in the right hand takes both hands.".to_string();
             }
-            Err(_) => self.menus.refused = true,
+            Err(_) => {
+                self.effect(SOUND_ERROR);
+                self.menus.refused = true
+            }
         }
     }
 
@@ -1413,7 +1456,11 @@ impl Stage {
     pub(super) fn menu_hover(&mut self, pixel: (f32, f32), size: (u32, u32)) {
         let Some(view) = self.menu_view() else { return };
         let (x, y) = self.menu_layout_point(pixel, size);
+        let was = self.menus.hover.take();
         self.menus.hover = self.ui.menu_hit(&view, x, y);
+        if self.menus.hover.is_some() && self.menus.hover != was {
+            self.effect(SOUND_ENTER);
+        }
         let top = self.top();
         if let Some(screen) = top {
             self.option_hover(screen);
@@ -1456,6 +1503,12 @@ impl Stage {
         self.menus.message.clear();
         match self.ui.menu_hit(&view, x, y) {
             Some(Hit::Button(tag)) => {
+                let sound = if tag.starts_with("CB_") {
+                    SOUND_CHECK
+                } else {
+                    SOUND_CLICK
+                };
+                self.effect(sound);
                 if tag != "BTN_DELETE" || !delete {
                     self.menus.delete_armed = None;
                 }
@@ -1463,6 +1516,12 @@ impl Stage {
             }
             Some(Hit::Row(_, row)) => {
                 self.menus.delete_armed = None;
+                self.effect(match self.top() {
+                    Some(Screen::Container) => SOUND_ITEM_TAKE,
+                    Some(Screen::Inventory | Screen::Equip) => SOUND_ITEM_SELECT,
+                    Some(Screen::Feedback) => SOUND_CHECK,
+                    _ => SOUND_CLICK,
+                });
                 match self.top() {
                     Some(Screen::Inventory | Screen::Container) => self.use_listed_item(row),
                     Some(Screen::Feedback) => self.feedback_row(row),
@@ -1476,8 +1535,12 @@ impl Stage {
                     _ => self.menus.selected = Some(row),
                 }
             }
-            Some(Hit::Slider(tag, along)) => self.move_slider(&tag, along),
+            Some(Hit::Slider(tag, along)) => {
+                self.effect(SOUND_CLICK);
+                self.move_slider(&tag, along)
+            }
             Some(Hit::Cell(_, row, cell)) => {
+                self.effect(SOUND_CLICK);
                 if let Some(screen) = self.top() {
                     self.level_cell(screen, row, cell);
                 }

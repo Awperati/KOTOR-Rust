@@ -1769,6 +1769,62 @@ fn vsync_is_the_advanced_graphics_box_that_works_and_the_rest_say_why_not() {
     assert!(s.settings().vsync);
 }
 
+/// How many short sounds come out of the next update.
+fn sounds(s: &mut Stage) -> usize {
+    let cues = s.update(DT);
+    cues.iter()
+        .filter(|c| matches!(c, kotor_gpu::stage::Cue::Effect(b) if !b.is_empty()))
+        .count()
+}
+
+#[test]
+fn the_interface_makes_its_sounds() {
+    let Some((mut s, _)) = in_game("sounds") else {
+        return;
+    };
+    sounds(&mut s);
+    assert_eq!(sounds(&mut s), 0, "nothing happening");
+
+    // A screen opening, a new place under the cursor, a click, and a screen closing.
+    s.open_inventory();
+    assert!(sounds(&mut s) >= 1, "the panel opens");
+    let exit = s.menu_pixel("BTN_EXIT", None, SIZE).unwrap();
+    s.hover(exit, SIZE);
+    assert!(sounds(&mut s) >= 1, "the cursor enters a button");
+    s.hover(exit, SIZE);
+    assert_eq!(sounds(&mut s), 0, "and stays on it");
+    s.hover((1.0, 1.0), SIZE);
+    sounds(&mut s);
+    s.click(exit, SIZE);
+    assert!(sounds(&mut s) >= 2, "the click, and the panel closing");
+
+    // On the HUD too.
+    s.update(DT);
+    let map = s.hud_pixel("BTN_MAP", SIZE).unwrap();
+    s.click(map, SIZE);
+    assert!(sounds(&mut s) >= 2, "the click, and the panel opening");
+    s.escape();
+    sounds(&mut s);
+
+    // A box has its own, and so does being refused.
+    s.game
+        .world
+        .object_mut(s.game.world.pc)
+        .unwrap()
+        .feats
+        .clear();
+    let armour = s.game.world.spawn_item("g_a_class4001");
+    let pc = s.game.world.pc;
+    s.game.world.carry(pc, armour);
+    s.open_equip();
+    sounds(&mut s);
+    press(&mut s, "BTN_INV_BODY");
+    click_row(&mut s, "LB_ITEMS", 1);
+    sounds(&mut s);
+    press(&mut s, "BTN_EQUIP");
+    assert!(sounds(&mut s) >= 2, "the click and the refusal");
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);
