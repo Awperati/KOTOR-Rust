@@ -1038,34 +1038,33 @@ impl Host for Adapter<'_> {
             }
             "ActionEquipMostDamagingMelee" | "ActionEquipMostDamagingRanged" => {
                 let want_ranged = name.ends_with("Ranged");
-                let items: Vec<(ObjId, i32)> = self
+                let bag = self
                     .world
                     .object(caller)
-                    .map(|o| {
-                        o.inventory
-                            .iter()
-                            .filter_map(|i| Some((*i, self.world.object(*i)?.base_item)))
-                            .collect()
-                    })
+                    .map(|o| o.inventory.clone())
                     .unwrap_or_default();
-                let mut best: Option<(f32, ObjId)> = None;
-                if let Some(t) = self.world.table("baseitems") {
-                    for (item, base) in items {
-                        let row = base.max(0) as usize;
-                        let (dice, sides) = (
-                            t.int(row, "numdice").unwrap_or(0) as f32,
-                            t.int(row, "dietoroll").unwrap_or(0) as f32,
-                        );
-                        let ranged = t.int(row, "rangedweapon").unwrap_or(0) > 0;
-                        let avg = dice * (sides + 1.0) / 2.0;
-                        if dice > 0.0 && ranged == want_ranged && best.is_none_or(|b| avg > b.0) {
-                            best = Some((avg, item));
+                // A ranged weapon in hand stays: the stock AI's switch to melee up close left the arena's duelists
+                // punching with blasters in their bags. **Assumption:** the owner's rule wins over that script.
+                let in_hand = self
+                    .world
+                    .object(caller)
+                    .and_then(|o| o.equipped.get(&4).copied())
+                    .and_then(|i| self.world.object(i))
+                    .map(|i| i.base_item.max(0) as usize);
+                let holds_ranged = in_hand.is_some_and(|row| {
+                    self.world
+                        .table("baseitems")
+                        .and_then(|t| t.int(row, "rangedweapon"))
+                        .unwrap_or(0)
+                        > 0
+                });
+                let has_ranged = self.world.best_in_bag(&bag, true).is_some();
+                let keep = !want_ranged && caller != self.world.pc && (holds_ranged || has_ranged);
+                if !keep {
+                    if let Some(item) = self.world.best_in_bag(&bag, want_ranged) {
+                        if let Some(o) = self.world.object_mut(caller) {
+                            o.equipped.insert(4, item);
                         }
-                    }
-                }
-                if let Some((_, item)) = best {
-                    if let Some(o) = self.world.object_mut(caller) {
-                        o.equipped.insert(4, item);
                     }
                 }
                 self.record(name, args);

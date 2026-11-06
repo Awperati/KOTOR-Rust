@@ -341,8 +341,51 @@ impl World {
         }
     }
 
+    /// A creature with an empty right hand and a ranged weapon in its bag takes the best of them up before it fights, and
+    /// keeps it at any distance: it shoots point blank rather than punch. The arena's duelists carry blasters and wield
+    /// nothing until a script says so.
+    ///
+    /// **Assumption:** melee only when it has no ranged weapon, or a script asks for it while its hand is empty.
+    pub(crate) fn ready_ranged(&mut self, id: ObjId) {
+        let Some(o) = self.objects.get(&id) else {
+            return;
+        };
+        if o.equipped.contains_key(&4) {
+            return;
+        }
+        let bag = o.inventory.clone();
+        let best = self.best_in_bag(&bag, true);
+        if let (Some(item), Some(o)) = (best, self.objects.get_mut(&id)) {
+            o.equipped.insert(4, item);
+        }
+    }
+
+    /// The weapon of the highest average damage among `items`, ranged or melee as asked.
+    pub(crate) fn best_in_bag(&mut self, items: &[ObjId], ranged: bool) -> Option<ObjId> {
+        let withbase: Vec<(ObjId, i32)> = items
+            .iter()
+            .filter_map(|i| Some((*i, self.objects.get(i)?.base_item)))
+            .collect();
+        let t = self.table("baseitems")?;
+        let mut best: Option<(f32, ObjId)> = None;
+        for (item, base) in withbase {
+            let row = base.max(0) as usize;
+            let (dice, sides) = (
+                t.int(row, "numdice").unwrap_or(0) as f32,
+                t.int(row, "dietoroll").unwrap_or(0) as f32,
+            );
+            let is_ranged = t.int(row, "rangedweapon").unwrap_or(0) > 0;
+            let avg = dice * (sides + 1.0) / 2.0;
+            if dice > 0.0 && is_ranged == ranged && best.is_none_or(|b| avg > b.0) {
+                best = Some((avg, item));
+            }
+        }
+        best.map(|b| b.1)
+    }
+
     /// Resolve one attack and everything that follows from it: damage, scripts, death.
     fn resolve(&mut self, attacker: ObjId, target: ObjId) {
+        self.ready_ranged(attacker);
         // What the player queued goes first: a power instead of the attack, or a feat that changes it.
         let queued = (attacker == self.pc)
             .then(|| self.combat_queue.pop_front())
