@@ -44,6 +44,22 @@ const DISABLING: &[&str] = &[
     "EffectWhirlWind",
 ];
 
+/// How far Force Push throws someone, and how long the throw and the fall last.
+///
+/// **Assumed, not measured:** the script gives only 0.1 s, so the engine must size these itself.
+pub const PUSH_METRES: f32 = 3.0;
+pub const PUSH_SLIDE_SECONDS: f32 = 0.5;
+pub const PUSH_DOWN_SECONDS: f32 = 3.0;
+
+/// A creature sliding from `from` to `to` after a push, begun at `start` (game seconds).
+#[derive(Clone, Copy, Debug)]
+pub struct Shove {
+    pub who: ObjId,
+    pub from: [f32; 3],
+    pub to: [f32; 3],
+    pub start: f32,
+}
+
 /// The power being cast right now (`GetSpellId`, `GetSpellTargetObject`, `GetLastSpellCaster`).
 #[derive(Clone, Copy, Debug)]
 pub struct SpellContext {
@@ -156,6 +172,11 @@ impl World {
                 }
             }
             _ => {
+                let mut seconds = seconds;
+                if rec.name == "EffectForcePushed" {
+                    self.begin_shove(creator, target);
+                    seconds = seconds.max(PUSH_DOWN_SECONDS);
+                }
                 let expires = (duration == DURATION_TEMPORARY).then_some(self.time + seconds);
                 if duration == DURATION_INSTANT {
                     return;
@@ -169,6 +190,79 @@ impl World {
                 if let Some(t) = expires {
                     self.effect_expiry.insert(handle, t);
                 }
+            }
+        }
+    }
+
+    /// Throw `target` back from `from` along the floor, as far as the floor, walls, doors and other creatures allow.
+    fn begin_shove(&mut self, from: ObjId, target: ObjId) {
+        let (Some(a), Some(b)) = (
+            self.objects.get(&from).map(|o| o.position),
+            self.objects.get(&target).map(|o| o.position),
+        ) else {
+            return;
+        };
+        let Some(nav) = self.nav.as_ref() else {
+            return;
+        };
+        let d = dist2d(a, b);
+        let (dx, dy) = if d > 1e-3 {
+            ((b[0] - a[0]) / d, (b[1] - a[1]) / d)
+        } else {
+            (1.0, 0.0)
+        };
+        let blockers: Vec<[f32; 2]> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == crate::world::Kind::Creature && !o.dead && o.id != target)
+            .map(|o| [o.position[0], o.position[1]])
+            .collect();
+        let mut at = b;
+        for i in 1..=(PUSH_METRES / 0.25) as usize {
+            let s = i as f32 * 0.25;
+            let (x, y) = (b[0] + dx * s, b[1] + dy * s);
+            let Some(z) = nav.height_at(x, y, at[2] + 0.4) else {
+                break;
+            };
+            let next = [x, y, z];
+            let hit = nav.crosses_block(at, next)
+                || blockers
+                    .iter()
+                    .any(|c| (c[0] - x).hypot(c[1] - y) < 2.0 * crate::follow::CREATURE_RADIUS);
+            if hit {
+                break;
+            }
+            at = next;
+        }
+        self.shoves.retain(|s| s.who != target);
+        self.shoves.push(Shove {
+            who: target,
+            from: b,
+            to: at,
+            start: self.time,
+        });
+        if let Some(o) = self.objects.get_mut(&target) {
+            o.facing = (-dy).atan2(-dx).to_degrees();
+        }
+    }
+
+    /// Slide thrown creatures along their throw.
+    pub(crate) fn update_shoves(&mut self) {
+        let now = self.time;
+        let shoves = std::mem::take(&mut self.shoves);
+        for s in shoves {
+            let t = ((now - s.start) / PUSH_SLIDE_SECONDS).clamp(0.0, 1.0);
+            // Fast at first, slowing to a stop.
+            let e = 1.0 - (1.0 - t).powi(2);
+            let at = [0, 1, 2].map(|i| s.from[i] + (s.to[i] - s.from[i]) * e);
+            if let Some(o) = self.objects.get_mut(&s.who) {
+                o.position = at;
+            }
+            if s.who == self.pc {
+                self.pc_mover.pos = at;
+            }
+            if t < 1.0 {
+                self.shoves.push(s);
             }
         }
     }

@@ -645,6 +645,7 @@ impl World {
         }
         self.update_followers(dt);
         self.update_combat(dt);
+        self.update_shoves();
         self.expire_effects();
         self.update_knockouts();
         if status == MoveStatus::Arrived || held_up {
@@ -775,7 +776,11 @@ impl World {
     }
 
     /// A route that may pass closed doors that are not locked; `open_doors_near` opens them on the way.
-    fn route_through_doors(&mut self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<[f32; 3]>> {
+    pub(crate) fn route_through_doors(
+        &mut self,
+        from: [f32; 3],
+        to: [f32; 3],
+    ) -> Option<Vec<[f32; 3]>> {
         let doors: Vec<([f32; 3], [f32; 3])> = self
             .objects
             .values()
@@ -793,7 +798,7 @@ impl World {
         route
     }
 
-    fn open_doors_near(&mut self, at: [f32; 3]) {
+    pub(crate) fn open_doors_near(&mut self, at: [f32; 3]) {
         let near: Vec<ObjId> = self
             .objects
             .values()

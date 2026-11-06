@@ -362,6 +362,8 @@ pub struct World {
     pub spell: crate::force::SpellContext,
     /// When each temporary effect (by handle) runs out.
     pub(crate) effect_expiry: HashMap<u32, f32>,
+    /// Creatures being thrown back by Force Push: who, from, to, start time (`force.rs`).
+    pub shoves: Vec<crate::force::Shove>,
     /// Every player-side creature is knocked out.
     pub game_over: bool,
     /// An `ActionPauseConversation` ran and its resume has not yet.
@@ -582,6 +584,7 @@ impl World {
             combat: crate::combat::CombatState::new(),
             spell: crate::force::SpellContext::default(),
             effect_expiry: HashMap::new(),
+            shoves: Vec::new(),
             game_over: false,
             conv_paused: false,
             conv_paused_at: None,
