@@ -27,10 +27,12 @@ fn push(dir: &std::path::Path, sha: &str, behaviour: &str) {
     fs::write(dir.join("latest.txt"), format!("{sha}\n")).unwrap();
 }
 
+/// With time for a crash to be seen on a machine under load: 400 ms once failed a CI run, as a build that had not yet
+/// crashed counted as started. A build that exits comes back at once, whatever this is.
 fn launcher(dir: &std::path::Path) -> Launcher {
     Launcher {
         root: dir.to_path_buf(),
-        grace: Duration::from_millis(400),
+        grace: Duration::from_secs(30),
     }
 }
 
@@ -95,7 +97,10 @@ fn a_build_that_crashes_at_start_is_passed_over_and_then_skipped() {
 #[test]
 fn a_crash_after_the_grace_period_is_not_held_against_a_build() {
     let dir = root("late", &[("old", "0")]);
-    let l = launcher(&dir);
+    let l = Launcher {
+        grace: Duration::from_millis(100),
+        ..launcher(&dir)
+    };
     // Up past the grace, then ends well enough: the game's own affair from there.
     push(&dir, "new", "700");
     assert_eq!(l.run(&[]), ran_build("new", 0));
