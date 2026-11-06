@@ -235,6 +235,26 @@ impl Effects {
         }
     }
 
+    /// Keep the `Fountain` emitters of a model going, placed by `xf`.
+    pub fn load_model(&mut self, model: &kotor_model::Model, xf: &Mat) {
+        let mats = model.world_matrices(None);
+        let sources = &mut self.sources;
+        model.root.walk(&mut |n| {
+            let Some(e) = &n.emitter else { return };
+            if !e.update.eq_ignore_ascii_case("fountain") || e.texture.is_empty() {
+                return;
+            }
+            let Some((_, m)) = mats.iter().find(|(name, _)| *name == n.name) else {
+                return;
+            };
+            let mut at = *m;
+            for (row, out) in at.iter_mut().enumerate() {
+                *out = [0, 1, 2, 3].map(|c| (0..4).map(|k| xf[row][k] * m[k][c]).sum());
+            }
+            sources.push(source_of(n, e, at, None));
+        });
+    }
+
     /// Play a stock effect model at a place: its emitters run for the model's first animation or a second and a half.
     pub fn play_model(&mut self, model: &kotor_model::Model, at: [f32; 3]) {
         let seconds = model

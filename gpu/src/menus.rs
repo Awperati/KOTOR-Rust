@@ -18,6 +18,8 @@ mod fightscreen;
 mod figure;
 #[path = "levelup.rs"]
 mod levelup;
+#[path = "mainscene.rs"]
+mod mainscene;
 #[path = "mapscreen.rs"]
 mod mapscreen;
 pub(super) use fightscreen::target_slot;
@@ -468,6 +470,9 @@ pub(super) struct Menus {
     abilities_tab: usize,
     messages_feedback: bool,
     message_back: usize,
+    /// The main menu's scene, once loaded, and whether it could not be.
+    main_scene: Option<mainscene::MainScene>,
+    main_scene_failed: bool,
     settings: Settings,
     /// Where the settings are kept; `None` keeps them in memory, as in tests.
     settings_file: Option<PathBuf>,
@@ -618,7 +623,14 @@ impl Stage {
         let hover = self.menus.hover.clone();
         match top {
             Screen::Tutorial => MenuView::default(),
-            Screen::Main => main_menu(),
+            Screen::Main => {
+                let mut v = main_menu();
+                if self.main_scene_ready() {
+                    v.hole = Some("LBL_3DVIEW".to_string());
+                    v.hole_veil = mainscene::VEIL;
+                }
+                v
+            }
             Screen::Pause => pause_menu(),
             Screen::Saves(mode) => self.saves_view(mode),
             Screen::Name => {
@@ -2059,7 +2071,7 @@ impl Stage {
     }
 }
 
-/// `mainmenu.gui`. The 3D model, the debug warp, the module list and the notice about new content stay out, and the
+/// `mainmenu.gui`, with its scene behind a hole: see `mainscene.rs`. The debug warp, the module list and the notice about new content stay out, and the
 /// movies are greyed.
 fn main_menu() -> MenuView {
     let mut v = MenuView::new("mainmenu");

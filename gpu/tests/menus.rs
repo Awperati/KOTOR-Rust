@@ -29,7 +29,12 @@ fn the_main_menu_starts_a_game_and_exit_quits() {
     assert!(s.dynamic_scene().meshes.is_empty());
     let o = s.overlay().expect("the menu is drawn").clone();
     assert_eq!((o.width, o.height), SIZE);
-    assert!(o.rgba.chunks(4).all(|p| p[3] == 255), "it hides the scene");
+    // Its own scene shows through it, and only that: see the test of the scene.
+    assert!(
+        o.rgba.chunks(4).any(|p| p[3] == 255),
+        "the logo and buttons"
+    );
+    assert!(s.frame_scene().2, "nothing else is drawn behind it");
 
     // Stock strings come from the talk table: a button with text differs under the cursor.
     let new_game = s.menu_pixel("BTN_NEWGAME", None, SIZE).unwrap();
@@ -2086,6 +2091,44 @@ fn the_party_screen_shows_whoever_is_chosen_in_3d() {
     let (now, _, alone) = s.frame_scene();
     assert!(alone);
     assert_eq!(now.meshes.len(), scene.meshes.len());
+}
+
+#[test]
+fn the_main_menu_has_its_scene_behind_a_hole_and_it_moves() {
+    let Some(mut s) = at_menu() else { return };
+    s.set_view(SIZE);
+    s.update(DT);
+    // A veil over the hole, not the picture that was there, and the logo and buttons over it.
+    let o = s.overlay().unwrap();
+    let alpha = o.rgba[3];
+    assert!(alpha > 0 && alpha < 255, "{alpha}");
+    let (first, camera, alone) = s.frame_scene();
+    assert!(alone);
+    assert!(!first.meshes.is_empty());
+    assert!(first
+        .meshes
+        .iter()
+        .any(|m| m.texture.as_deref() == Some("N_DarthMalak01")));
+    assert!(camera.fov > 10.0 && camera.fov < 40.0, "{}", camera.fov);
+
+    // Time moves him and fills the room with fog.
+    for _ in 0..60 {
+        s.update(DT);
+    }
+    let (later, _, _) = s.frame_scene();
+    let moved = first
+        .meshes
+        .iter()
+        .zip(&later.meshes)
+        .any(|(a, b)| a.positions != b.positions);
+    assert!(moved);
+    assert!(!s.frame_particles().is_empty(), "the fog");
+
+    // It belongs to this screen alone.
+    press(&mut s, "BTN_OPTIONS");
+    let (_, _, alone) = s.frame_scene();
+    assert!(!alone);
+    assert!(s.frame_particles().is_empty());
 }
 
 #[test]

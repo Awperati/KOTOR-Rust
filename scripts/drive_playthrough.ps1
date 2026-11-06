@@ -20,6 +20,7 @@ $E = @(0x45, 0x12); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E); $KEY_J = @(0
 WaitLog
 $s = WaitFor "menu" "main"
 Report "Opens on the main menu" ($s.menu -eq "main") "menu=$($s.menu)"
+Shot "play_main_menu"
 Press 285 222 210 22   # BTN_NEWGAME
 $s = WaitFor "module" "end_m01aa"
 Report "New Game starts it" ($s.module -eq "end_m01aa" -and $s.menu -eq "-") "menu=$($s.menu) module=$($s.module)"

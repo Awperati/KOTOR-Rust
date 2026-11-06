@@ -280,11 +280,7 @@ impl App {
         if self.frames.is_multiple_of(self.render_every) {
             let (scene, cam, figure) = stage.frame_scene();
             st.gpu.set_figure_only(figure);
-            st.gpu.set_particles(if figure {
-                Vec::new()
-            } else {
-                stage.particles()
-            });
+            st.gpu.set_particles(stage.frame_particles());
             if let Err(e) = st
                 .gpu
                 .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)

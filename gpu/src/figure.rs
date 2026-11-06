@@ -130,8 +130,22 @@ impl Stage {
         scene
     }
 
+    /// The particles that go with `frame_scene`.
+    pub fn frame_particles(&mut self) -> Vec<crate::effects::ParticleBatch> {
+        if let Some(fog) = self.main_scene_particles() {
+            return fog;
+        }
+        if self.figure_camera().is_some() {
+            return Vec::new();
+        }
+        self.particles()
+    }
+
     /// What a window should draw now, and with what camera; the last says that only this is drawn, for a figure.
     pub fn frame_scene(&mut self) -> (Scene, Camera, bool) {
+        if let Some((scene, camera)) = self.main_scene_now() {
+            return (scene, camera, true);
+        }
         match self.figure_camera() {
             Some(camera) => (self.figure_scene(), camera, true),
             None => (self.dynamic_scene(), self.camera(), false),

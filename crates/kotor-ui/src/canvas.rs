@@ -132,13 +132,13 @@ impl Canvas {
         }
     }
 
-    /// Leave nothing in a rectangle of layout units, for what lies behind the picture to show.
-    pub fn clear_rect(&mut self, x: i32, y: i32, w: i32, h: i32) {
+    /// Leave only a veil of black, of this opacity, in a rectangle of layout units, for what lies behind the picture to show.
+    pub fn clear_rect(&mut self, x: i32, y: i32, w: i32, h: i32, veil: u8) {
         let [x, y, w, h] = self.to_pixels(x, y, w, h);
         for yy in y.max(0)..(y + h).min(self.height as i32) {
             for xx in x.max(0)..(x + w).min(self.width as i32) {
                 let i = ((yy as u32 * self.width + xx as u32) * 4) as usize;
-                self.rgba[i..i + 4].fill(0);
+                self.rgba[i..i + 4].copy_from_slice(&[0, 0, 0, veil]);
             }
         }
     }

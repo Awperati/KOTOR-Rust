@@ -484,6 +484,7 @@ impl Stage {
 
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
+        self.main_scene_tick(dt);
         self.take_party_request();
         self.notices_tick();
         if self.menu_open() && !self.container_up() {

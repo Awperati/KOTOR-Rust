@@ -16,6 +16,7 @@ fn shot(gpu: &mut GpuRenderer, s: &mut Stage, name: &str, out: &std::path::Path)
         s.update(0.0);
         let (moving, cam, figure) = s.frame_scene();
         gpu.set_figure_only(figure);
+        gpu.set_particles(s.frame_particles());
         let mut img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
         if let Some(o) = s.overlay() {
             composite(&mut img, o);
@@ -52,6 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut gpu = GpuRenderer::new(SIZES[0].0, SIZES[0].1)?;
     let mut s = Stage::menu("end_m01aa", true)?;
     hover(&mut s, "BTN_NEWGAME");
+    // The fog takes a while to fill the room.
+    for _ in 0..600 {
+        s.update(1.0 / 30.0);
+    }
     shot(&mut gpu, &mut s, "main_menu", &out);
     click(&mut s, "BTN_OPTIONS", None);
     shot(&mut gpu, &mut s, "options", &out);
