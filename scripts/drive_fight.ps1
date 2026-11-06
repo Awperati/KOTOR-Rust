@@ -61,6 +61,17 @@ Shot "fight_disengage_button"
 $s = FindFoe
 Report "The cursor finds them again" ($s.target -like "Sith*") "foe=$($s.foe) target=$($s.target)"
 
+# Key 1 is the left slot, and Disengage leaves it again.
+Key 0x31 0x02
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ($s.engaged -ne "true" -and (Get-Date) -lt $until)
+Report "Key 1 is the left slot" ($s.engaged -eq "true") "engaged=$($s.engaged) target=$($s.target)"
+$p = ToPixel $s $s.disengage
+Click $p[0] $p[1]
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ($s.engaged -eq "true" -and (Get-Date) -lt $until)
+$s = FindFoe
+
 # The left slot's arrow goes to a feat: its name under the cursor, and a click queues it and starts the attack.
 ClickSlot $s "down0"
 [void](State)

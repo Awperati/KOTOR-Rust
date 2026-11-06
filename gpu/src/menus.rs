@@ -1722,6 +1722,22 @@ impl Stage {
         }
     }
 
+    /// A number key on a screen: the panels with numbered steps take it as a click on that step.
+    pub(super) fn menu_number(&mut self, n: usize) {
+        if matches!(self.top(), Some(Screen::LevelUp | Screen::ChargenMain)) {
+            self.effect(SOUND_CLICK);
+            self.press(&format!("BTN_STEPNAME{n}"));
+        }
+    }
+
+    /// Where the needle beside the alignment bar is, in layout units: left, top, width and height.
+    pub fn alignment_needle(&mut self) -> Option<[i32; 4]> {
+        let w = &self.game.world;
+        let alignment = w.object(w.pc)?.alignment;
+        self.ui
+            .menu_needle("character", "SLD_ALIGN", (100 - alignment, 100))
+    }
+
     /// What a button does.
     fn press(&mut self, tag: &str) {
         let Some(top) = self.top() else {

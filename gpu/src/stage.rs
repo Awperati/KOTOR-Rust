@@ -1151,6 +1151,30 @@ impl Stage {
         }
     }
 
+    /// A number key, by what is up: a step on a numbered panel, a reply, a line going on, or a slot under an enemy, as the
+    /// video's "Activate Left Action : 1" has it.
+    pub fn number_pressed(&mut self, n: usize) {
+        if self.menu_open() && !self.container_up() {
+            return self.menu_number(n);
+        }
+        let w = &self.game.world;
+        if w.in_dialogue() {
+            let replies = w.dialogue_view().map_or(0, |v| v.3.len());
+            if replies == 0 && n == 1 {
+                return self.continue_line();
+            }
+        } else if w.opened.is_none() && (1..=3).contains(&n) {
+            let hostile = self.target_view().is_some_and(|t| t.3 == "Attack");
+            if hostile && self.use_slot(n - 1) {
+                if let Some(id) = self.target() {
+                    self.use_thing(id);
+                }
+            }
+            return;
+        }
+        self.number_key(n);
+    }
+
     /// Tab: the next party member takes over.
     pub fn next_leader(&mut self) {
         if !self.game.world.in_dialogue() {

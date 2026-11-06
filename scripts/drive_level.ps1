@@ -54,8 +54,10 @@ Shot "level_sheet"
 Press 126 267 127 40   # BTN_LEVELUP
 $s = WaitFor "menu" "levelup"
 Report "Level Up opens the panel" ($s.menu -eq "levelup") "menu=$($s.menu)"
-Press 377 177 195 31   # BTN_STEPNAME2
+# The panel's steps are numbered, and the keys take them: 2 for Skills, then 5 to accept.
+Key 0x32 0x03
 $s = WaitFor "menu" "level_skills"
+Report "Key 2 is the second step" ($s.menu -eq "level_skills") "menu=$($s.menu)"
 Press 113 410 138 28   # BTN_RECOMMENDED
 [void](State)
 Press 253 410 134 28   # BTN_ACCEPT
@@ -71,7 +73,7 @@ if ($s.menu -eq "level_feats") {
   $s = WaitFor "menu" "levelup"
 }
 "feats step: $($s.menu)"
-Press 377 271 195 31   # BTN_STEPNAME5
+Key 0x35 0x06
 $s = WaitFor "menu" "character"
 Report "Accept gives the level" ($s.menu -eq "character" -and [int]$s.level -eq [int]$start.level + 1) "menu=$($s.menu) level $($start.level) -> $($s.level)"
 Shot "level_done"

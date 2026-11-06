@@ -179,6 +179,12 @@ fn cell_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
     [0, 1, 2].map(|i| [row[0] + i * step, row[1] + 4, side, side])
 }
 
+/// A needle's width in layout units, and how solid a picture's pixel has to be to count as the picture.
+const NEEDLE_WIDTH: i32 = 14;
+const SOLID: u8 = 128;
+/// How many rows of the picture stay beyond the needle at each end of its way.
+const NEEDLE_INSET: usize = 4;
+
 /// Where a list's rows go: the first row's rectangle in panel units, the step down, and how many fit.
 fn row_layout(list: &Control) -> Option<([i32; 4], i32, usize)> {
     let p = list.proto_item.as_ref()?;
@@ -377,6 +383,61 @@ impl Ui<'_> {
         self.draw_text(cv, font, &text, r, t.alignment, color);
     }
 
+    /// Where a needle goes beside a tall scale, as `docs/MENU_REFERENCE.md` has it: small, along the scale's own picture from
+    /// its top to its foot, with its point against the picture's side. The side curves, so that is looked up row by row.
+    /// The layout is whole units, so it goes a little into the picture and not a little short of it.
+    fn needle_place(&mut self, c: &Control, r: [i32; 4], img: &Image, along: f32) -> [i32; 4] {
+        let w = NEEDLE_WIDTH;
+        let h = w * img.height as i32 / img.width.max(1) as i32;
+        let solid =
+            |i: &Image, x: usize, y: usize| i.rgba[(y * i.width as usize + x) * 4 + 3] > SOLID;
+        let (iw, ih) = (img.width as usize, img.height as usize);
+        let point = (0..iw)
+            .find(|x| (0..ih).any(|y| solid(img, *x, y)))
+            .unwrap_or(0);
+        let point = point as f32 * w as f32 / iw.max(1) as f32;
+        let beside = |y: f32| [r[0] + r[2] / 2 + 4, y as i32 - h / 2, w, h];
+        let Some(bar) = self.texture(&c.border.fill).cloned() else {
+            return beside(r[1] as f32 + r[3] as f32 * along);
+        };
+        let (bw, bh) = (bar.width as usize, bar.height as usize);
+        let right = |y: usize| (0..bw).rev().find(|x| solid(&bar, *x, y));
+        let rows: Vec<usize> = (0..bh).filter(|y| right(*y).is_some()).collect();
+        let (Some(&first), Some(&last)) = (rows.first(), rows.last()) else {
+            return beside(r[1] as f32 + r[3] as f32 * along);
+        };
+        // A little in from its ends, where the picture's corners would leave the point against nothing.
+        let (first, last) = (
+            first + NEEDLE_INSET,
+            last.saturating_sub(NEEDLE_INSET).max(first + NEEDLE_INSET),
+        );
+        let row = first + ((last - first) as f32 * along) as usize;
+        let row = *rows
+            .iter()
+            .min_by_key(|y| y.abs_diff(row))
+            .unwrap_or(&first);
+        let side = right(row).map_or(0, |x| x + 1) as f32 * r[2] as f32 / bw as f32;
+        let y = r[1] as f32 + row as f32 * r[3] as f32 / bh as f32;
+        [
+            (r[0] as f32 + side - point).floor() as i32,
+            y as i32 - h / 2,
+            w,
+            h,
+        ]
+    }
+
+    /// Where the needle of a tall slider of this screen is at this value.
+    pub fn menu_needle(&mut self, gui: &str, tag: &str, value: (i32, i32)) -> Option<[i32; 4]> {
+        let g = self.gui(gui)?;
+        let c = g.find(tag)?.clone();
+        let (ox, oy) = self.panel_origin(&g.panel);
+        let e = &c.extent;
+        let r = [ox + e.left, oy + e.top, e.width, e.height];
+        let img = self.texture(c.thumb.as_deref()?).cloned()?;
+        let along = value.0.clamp(0, value.1.max(1)) as f32 / value.1.max(1) as f32;
+        Some(self.needle_place(&c, r, &img, along))
+    }
+
     /// The track, and the handle along it: across, or down from the top when the slider is taller than wide.
     fn draw_slider(&mut self, cv: &mut Canvas, c: &Control, r: [i32; 4], patch: &Patch, lit: bool) {
         let track = c.hilight.as_ref().filter(|_| lit).unwrap_or(&c.border);
@@ -388,11 +449,7 @@ impl Ui<'_> {
         let along = cur.clamp(0, max.max(1)) as f32 / max.max(1) as f32;
         let full = [0, 0, img.width as i32, img.height as i32];
         let dst = if r[3] > r[2] {
-            // Small, beside the scale: `docs/MENU_REFERENCE.md`.
-            let w = 14;
-            let h = w * img.height as i32 / img.width.max(1) as i32;
-            let y = r[1] + ((r[3] - h) as f32 * along) as i32;
-            [r[0] + r[2] / 2 + 4, y, w, h]
+            self.needle_place(c, r, &img, along)
         } else {
             let w = r[3] * img.width as i32 / img.height.max(1) as i32;
             [r[0] + ((r[2] - w) as f32 * along) as i32, r[1], w, r[3]]

@@ -419,7 +419,7 @@ impl App {
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys[4] = pressed,
             KeyCode::Escape if pressed => self.stage.escape(),
             KeyCode::Enter if pressed => self.stage.continue_line(),
-            _ if pressed && digit > 0 => self.stage.number_key(digit),
+            _ if pressed && digit > 0 => self.stage.number_pressed(digit),
             _ => {}
         }
     }

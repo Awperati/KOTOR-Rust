@@ -3024,20 +3024,34 @@ fn mist_colour(s: &mut Stage) -> [f32; 3] {
     sum.map(|c| c / count)
 }
 
-/// Where the needle beside the alignment bar is, in pixels down a 720 high frame. Beside the bar the sheet leaves a hole
-/// for the figure, so all that is solid in that strip is the needle.
-fn needle_y(s: &mut Stage) -> f32 {
-    let (left, right) = (2 * 105, 2 * 115);
-    let o = frame(s);
-    let mut rows = Vec::new();
-    for y in 2 * 70..(SIZE.1 as usize) * 8 / 10 {
-        let solid = (left..right).any(|x| o[(y * SIZE.0 as usize + x) * 4 + 3] > 200);
-        if solid {
-            rows.push(y as f32);
-        }
+/// How many clear pixels lie between the needle's point and the alignment bar, on the row through the needle's middle.
+/// The sheet leaves a hole for the figure behind them, so what is clear there is the gap.
+fn needle_gap(s: &mut Stage, size: (u32, u32)) -> usize {
+    s.set_view(size);
+    s.update(DT);
+    let needle = s.alignment_needle().unwrap();
+    let o = s.overlay().unwrap().clone();
+    let (sx, sy) = (size.0 as f32 / 640.0, size.1 as f32 / 480.0);
+    let y = ((needle[1] as f32 + needle[3] as f32 / 2.0) * sy) as usize;
+    let solid = |x: usize| o.rgba[(y * size.0 as usize + x) * 4 + 3] > 100;
+    // From inside the needle, back past its point: its own pixels, then any gap, then the bar's.
+    let mut x = ((needle[0] as f32 + needle[2] as f32 * 0.7) * sx) as usize;
+    while !solid(x) {
+        x -= 1;
     }
-    assert!(!rows.is_empty(), "there is a needle");
-    rows.iter().sum::<f32>() / rows.len() as f32
+    while solid(x) && x > 0 {
+        x -= 1;
+    }
+    // Solid past the needle's own left: it runs straight into the bar.
+    if (x as f32) < needle[0] as f32 * sx {
+        return 0;
+    }
+    let mut gap = 0;
+    while !solid(x) && gap < 200 {
+        x -= 1;
+        gap += 1;
+    }
+    gap
 }
 
 #[test]
@@ -3050,19 +3064,145 @@ fn the_needle_beside_the_alignment_bar_follows_the_alignment() {
     s.set_view(SIZE);
     let mut at = |alignment: i32| {
         s.game.world.object_mut(pc).unwrap().alignment = alignment;
-        needle_y(&mut s)
+        s.update(DT);
+        let n = s.alignment_needle().unwrap();
+        n[1] as f32 + n[3] as f32 / 2.0
     };
     let places = [0, 20, 50, 80, 100].map(&mut at);
     assert!(
         places.windows(2).all(|p| p[0] > p[1]),
         "light is higher: {places:?}"
     );
-    // Evenly along it.
+    // Evenly along the bar, which runs about 152 to 352 down the screen.
     let (dark, light) = (places[0], places[4]);
+    assert!(
+        (dark - 352.0).abs() < 6.0 && (light - 152.0).abs() < 6.0,
+        "{places:?}"
+    );
     for (place, alignment) in places.iter().zip([0.0, 20.0, 50.0, 80.0, 100.0]) {
         let even = dark + (light - dark) * alignment / 100.0;
         assert!((place - even).abs() < 3.0, "{alignment}: {places:?}");
     }
+}
+
+#[test]
+fn the_needle_rests_against_the_bar_at_every_size_and_alignment() {
+    let Some((mut s, _)) = in_game("needle_gap") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.open_character();
+    for size in [(1280, 720), (2560, 1440), (3840, 2160)] {
+        for alignment in [0, 20, 50, 80, 100] {
+            s.game.world.object_mut(pc).unwrap().alignment = alignment;
+            let gap = needle_gap(&mut s, size);
+            assert!(gap <= 1, "{gap} pixels at {size:?} and {alignment}");
+        }
+    }
+    s.set_view(SIZE);
+}
+
+#[test]
+fn a_number_key_picks_its_own_reply_and_goes_on_from_a_line_with_none() {
+    let Some(mut s) = at_menu() else { return };
+    press(&mut s, "BTN_NEWGAME");
+    let (mut picked, mut went_on) = (false, false);
+    for _ in 0..4000 {
+        s.update(DT);
+        let Some(view) = s.game.world.dialogue_view() else {
+            if picked && went_on {
+                break;
+            }
+            continue;
+        };
+        let said = s.game.world.transcript.len();
+        if view.3.is_empty() {
+            s.number_pressed(2);
+            assert_eq!(s.game.world.transcript.len(), said, "only 1 goes on");
+            s.number_pressed(1);
+            went_on |= s.game.world.dialogue_view() != Some(view);
+        } else {
+            let n = view.3.len();
+            s.number_pressed(n + 1);
+            assert_eq!(s.game.world.transcript.len(), said, "no such reply");
+            s.number_pressed(n);
+            let heard = format!("{:?}", &s.game.world.transcript[said..]);
+            let last = view.3[n - 1].split('[').next().unwrap().trim().to_string();
+            assert!(heard.contains(&last), "{last} in {heard}");
+            picked = true;
+        }
+    }
+    assert!(picked && went_on);
+}
+
+#[test]
+fn a_number_key_is_a_step_on_the_numbered_panels() {
+    // Level-up: the first step is there, and one further on is not yet.
+    let Some((mut s, _)) = in_game("number_level") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.game.world.grant_xp(pc, 6000);
+    for _ in 0..2 {
+        s.game.world.level_up(pc);
+    }
+    s.update(0.1);
+    s.open_character();
+    press(&mut s, "BTN_LEVELUP");
+    assert_eq!(s.menu_name(), "levelup");
+    s.number_pressed(3);
+    assert_eq!(s.menu_name(), "levelup", "not yet");
+    s.number_pressed(1);
+    assert_ne!(s.menu_name(), "levelup");
+
+    // Making a character: not before there are steps, and then the first.
+    let Some(mut s) = at_chargen("number_chargen") else {
+        return;
+    };
+    s.number_pressed(1);
+    assert_eq!(s.menu_name(), "chargen_class", "no numbers here");
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    assert_eq!(s.menu_name(), "chargen");
+    s.number_pressed(3);
+    assert_eq!(s.menu_name(), "chargen", "not yet");
+    s.number_pressed(1);
+    assert_eq!(s.menu_name(), "chargen_portrait");
+}
+
+#[test]
+fn keys_one_two_and_three_are_the_slots_under_an_enemy() {
+    let Some((mut s, _)) = in_game("number_slots") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    // Nobody to fight: nothing.
+    s.number_pressed(1);
+    assert!(!s.game.world.combat.target.contains_key(&pc));
+
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 0.1, p[1], p[2]]);
+    let o = s.game.world.object_mut(foe).unwrap();
+    o.faction = 1;
+    (o.hp, o.max_hp) = (900, 900);
+    let grenade = s.game.world.spawn_item("g_w_adhsvgren001");
+    s.game.world.carry(pc, grenade);
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.spells.insert(23);
+    (o.force, o.max_force) = (50, 50);
+    s.update(DT);
+    s.number_pressed(1);
+    assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
+    s.number_pressed(2);
+    assert_eq!(
+        s.game.world.combat_queue.back(),
+        Some(&kotor_game::CombatAction::Power(23))
+    );
+    s.number_pressed(3);
+    assert!(!s.game.world.carried(pc).contains(&grenade));
 }
 
 #[test]
