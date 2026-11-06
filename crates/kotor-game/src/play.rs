@@ -600,6 +600,9 @@ impl World {
         } * dt;
         let open = |d: [f32; 2]| -> Option<[f32; 3]> {
             let (x, y) = (p[0] + d[0] * go, p[1] + d[1] * go);
+            if nav.crosses_block(p, [x, y, p[2]]) {
+                return None;
+            }
             let len = d[0].hypot(d[1]).max(1e-6);
             nav.walkable_at(
                 x + d[0] / len * STEER_CLEARANCE,

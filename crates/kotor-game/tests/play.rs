@@ -75,6 +75,11 @@ fn a_closed_door_blocks_its_whole_width() {
     assert!(nav
         .find_path([90.0, 112.5, 0.0], [74.0, 112.0, 0.0])
         .is_none());
+    // Standing right beside it is no way through either, nor does it let anyone see past.
+    assert!(nav
+        .find_path([82.4, 111.05, 0.0], [74.0, 112.0, 0.0])
+        .is_none());
+    assert!(!w.can_see_along([90.0, 112.5, 0.0], [74.0, 112.0, 0.0]));
 }
 
 #[test]

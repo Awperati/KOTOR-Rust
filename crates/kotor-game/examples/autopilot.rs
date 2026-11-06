@@ -6,6 +6,7 @@
 //! `AUTOPILOT_READ_LINES` holds lines as long as a person would read them.
 //! `AUTOPILOT_TRACE` adds the last lines said, everyone alive, every door and a map of where the player can walk.
 //! `AUTOPILOT_EVENTS` names a file for the whole event log.
+//! `AUTOPILOT_MORTAL` plays without `Autopilot::immortal`: it can die, spends its levels and logs each fight.
 
 use kotor_archive::Install;
 use kotor_game::{Autopilot, Game, Kind, World};
@@ -28,6 +29,7 @@ fn main() {
     let mut p = Autopilot::new();
     let started = std::time::Instant::now();
     p.read_lines = std::env::var_os("AUTOPILOT_READ_LINES").is_some();
+    p.immortal = std::env::var_os("AUTOPILOT_MORTAL").is_none();
     let until = std::env::var("AUTOPILOT_UNTIL").unwrap_or_default();
     while p.time < seconds
         && !p.finished
@@ -61,6 +63,8 @@ fn main() {
         trace(&g.world);
     }
     println!("--- real time {:.1} s", started.elapsed().as_secs_f32());
+    let won = p.fights.iter().filter(|f| f.won).count();
+    println!("--- fights {won} won, {} not", p.fights.len() - won);
     println!(
         "--- experience {}",
         g.world.object(g.world.pc).map_or(0, |o| o.xp)

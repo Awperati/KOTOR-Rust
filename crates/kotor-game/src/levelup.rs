@@ -154,6 +154,7 @@ impl World {
             o.feat_slots.0 -= 1;
         }
         o.feats.insert(feat);
+        self.pay_toughness(id, feat);
         Ok(())
     }
 

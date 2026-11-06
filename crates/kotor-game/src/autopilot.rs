@@ -111,14 +111,40 @@ const SECOND_LOOKS: u32 = 30;
 const GIVE_UP_SECONDS: f32 = 15.0;
 /// How many times a locked door is tried.
 const LOCK_TRIES: u32 = 8;
+/// A mortal pilot takes a medpack below half its hit points, at most one a round.
+const MEDPACK_SECONDS: f32 = 3.0;
+const GEAR_SECONDS: f32 = 1.0;
+const SLOT_ARMOUR: i32 = 1;
+const SLOT_RIGHT_HAND: i32 = 4;
+const SLOT_LEFT_HAND: i32 = 5;
+
+/// How one fight of the pilot's went.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FightResult {
+    pub module: String,
+    pub foe: String,
+    pub won: bool,
+    pub hp_before: i32,
+    pub hp_after: i32,
+    pub max_hp: i32,
+    pub seconds: f32,
+    pub medpacks: u32,
+    pub time: f32,
+}
 
 pub struct Autopilot {
     pub stalls: Vec<Stall>,
     pub log: Vec<String>,
     /// Modules reached, in order.
     pub modules: Vec<String>,
-    /// Keep the player alive, so that one lost fight does not hide everything behind it.
+    /// Keep the player alive, so that one lost fight does not hide everything behind it. When off it plays as a person
+    /// would: it spends what levels give, wears the best it has found, takes medpacks, and a party that is down ends it.
     pub immortal: bool,
+    /// Every fight the pilot chose, in order.
+    pub fights: Vec<FightResult>,
+    fight: Option<FightResult>,
+    medpack_wait: f32,
+    gear_wait: f32,
     /// Nothing more to try.
     pub finished: bool,
     /// Hold lines that want no answer for as long as a person would read them, in game time.
@@ -172,6 +198,10 @@ impl Autopilot {
             log: Vec::new(),
             modules: Vec::new(),
             immortal: true,
+            fights: Vec::new(),
+            fight: None,
+            medpack_wait: 0.0,
+            gear_wait: 0.0,
             finished: false,
             read_lines: false,
             digests: Vec::new(),
@@ -250,10 +280,20 @@ impl Autopilot {
                     o.dead = false;
                 }
             }
+        } else {
+            self.spend_what_levels_give(w);
+            if w.game_over {
+                self.die(w);
+                return;
+            }
+            self.lead_with_someone_standing(w);
         }
         if w.in_dialogue() {
             self.converse(w, dt);
             return;
+        }
+        if !self.immortal {
+            self.look_after_itself(w, dt);
         }
         if self.talk_time > 0.0 && self.second_looks > 0 {
             // A talk can change what a door does: this is how Trask comes to open the first one.
@@ -273,6 +313,193 @@ impl Autopilot {
                 self.choose_goal(g);
             }
         }
+    }
+
+    /// Take each level as the Auto Level Up button does, and spend what is unspent.
+    fn spend_what_levels_give(&mut self, w: &mut World) {
+        w.hold_levels = true;
+        let pc = w.pc;
+        let everyone: Vec<ObjId> = std::iter::once(pc).chain(w.party.iter().copied()).collect();
+        for id in everyone {
+            while w.level_ready(id) {
+                let Some(up) = w.level_up(id) else {
+                    break;
+                };
+                let class = w.object(id).map_or(0, |o| o.class);
+                let n = w.primary_ability(class);
+                let points = w.ability_points_at(up.level);
+                if let Some(before) = w.object(id).map(|o| o.abilities) {
+                    if let Some(o) = w.object_mut(id) {
+                        o.abilities[n] += points;
+                    }
+                    w.settle_abilities(id, before);
+                }
+                if id == pc {
+                    self.log.push(format!("took level {}", up.level));
+                }
+            }
+            let Some(class) = w.object(id).map(|o| o.class) else {
+                continue;
+            };
+            if w.object(id).is_some_and(|o| o.skill_points > 0) {
+                for skill in w.recommended_skills(class) {
+                    while w.buy_skill_rank(id, skill).is_ok() {}
+                }
+            }
+            if w.object(id).is_some_and(|o| o.feat_slots != (0, 0)) {
+                while let Some(feat) = w.recommended_feat(id) {
+                    if w.choose_feat(id, feat).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// The whole party is down: this is where the game ends.
+    fn die(&mut self, w: &mut World) {
+        self.end_fight(w, false);
+        self.stall(
+            w,
+            "death",
+            "stay alive",
+            "the whole party is down".to_string(),
+        );
+        self.finished = true;
+    }
+
+    /// Control goes to someone still standing when the leader is knocked out.
+    fn lead_with_someone_standing(&mut self, w: &mut World) {
+        let pc = w.pc;
+        if w.object(pc).is_some_and(|o| o.down) {
+            let next = w
+                .party
+                .iter()
+                .copied()
+                .find(|id| w.object(*id).is_some_and(|o| !o.dead && !o.down));
+            self.end_fight(w, false);
+            if let Some(id) = next {
+                w.switch_leader(id);
+                self.goal = None;
+            }
+        }
+    }
+
+    /// Medpacks, and the best of what has been found.
+    fn look_after_itself(&mut self, w: &mut World, dt: f32) {
+        self.medpack_wait -= dt;
+        self.gear_wait -= dt;
+        if self.gear_wait <= 0.0 {
+            self.gear_wait = GEAR_SECONDS;
+            self.gear_up(w);
+        }
+        let pc = w.pc;
+        let hurt = w.object(pc).is_some_and(|o| !o.down && o.hp * 2 < o.max_hp);
+        if !hurt || self.medpack_wait > 0.0 {
+            return;
+        }
+        let pack = w.carried(pc).into_iter().find(|i| {
+            w.object(*i)
+                .is_some_and(|o| o.template.starts_with("g_i_medeqpmnt"))
+        });
+        if let Some(pack) = pack {
+            self.medpack_wait = MEDPACK_SECONDS;
+            if w.use_item(pc, pack).is_ok() {
+                if let Some(f) = self.fight.as_mut() {
+                    f.medpacks += 1;
+                }
+            }
+        }
+    }
+
+    /// Wear the armour with the most `baseac` and hold the melee weapon with the most damage, as this pilot only fights
+    /// up close. Anything else goes on a free slot. The left hand stays empty: two weapons are not built.
+    fn gear_up(&mut self, w: &mut World) {
+        let pc = w.pc;
+        let Some(t) = w.table("baseitems") else {
+            return;
+        };
+        let cell = |w: &World, item: Option<ObjId>, c: &str| {
+            item.and_then(|i| w.object(i))
+                .and_then(|o| t.int(o.base_item.max(0) as usize, c))
+                .unwrap_or(0)
+        };
+        let melee = |w: &World, item: Option<ObjId>| {
+            if cell(w, item, "rangedweapon") != 0 {
+                return -1;
+            }
+            cell(w, item, "numdice") * (cell(w, item, "dietoroll") + 1)
+        };
+        for item in w.carried(pc) {
+            let mask = w.slots_of(item);
+            if mask == 0 || w.can_wear(pc, item).is_err() {
+                continue;
+            }
+            let worn =
+                |w: &World, slot: i32| w.object(pc).and_then(|o| o.equipped.get(&slot).copied());
+            let fits = |slot: i32| mask & (1 << slot) != 0;
+            let slot = if fits(SLOT_ARMOUR) {
+                (worn(w, SLOT_ARMOUR).is_none()
+                    || cell(w, Some(item), "baseac") > cell(w, worn(w, SLOT_ARMOUR), "baseac"))
+                .then_some(SLOT_ARMOUR)
+            } else if fits(SLOT_RIGHT_HAND) {
+                let held = worn(w, SLOT_RIGHT_HAND);
+                let score = melee(w, Some(item));
+                (score > 0 && (held.is_none() || score > melee(w, held))).then_some(SLOT_RIGHT_HAND)
+            } else {
+                (0..12).find(|s| *s != SLOT_LEFT_HAND && fits(*s) && worn(w, *s).is_none())
+            };
+            if let Some(slot) = slot {
+                if w.equip(pc, item, Some(slot)).is_ok() {
+                    let name = w.object(pc).and_then(|o| o.equipped.get(&slot).copied());
+                    let name = name
+                        .and_then(|i| w.object(i))
+                        .map_or("?", |o| o.template.as_str());
+                    self.log.push(format!("wearing {name} in slot {slot}"));
+                }
+            }
+        }
+    }
+
+    fn begin_fight(&mut self, w: &World, foe: ObjId) {
+        let me = w.object(w.pc);
+        self.fight = Some(FightResult {
+            module: w.module.clone(),
+            foe: w.object(foe).map_or(String::new(), |o| o.tag.clone()),
+            won: false,
+            hp_before: me.map_or(0, |o| o.hp),
+            hp_after: 0,
+            max_hp: me.map_or(0, |o| o.max_hp),
+            seconds: self.time,
+            medpacks: 0,
+            time: self.time,
+        });
+    }
+
+    fn end_fight(&mut self, w: &World, won: bool) {
+        let Some(mut f) = self.fight.take() else {
+            return;
+        };
+        let me = w.object(w.pc);
+        f.won = won;
+        f.hp_after = me.map_or(0, |o| o.hp);
+        f.max_hp = me.map_or(f.max_hp, |o| o.max_hp);
+        f.seconds = self.time - f.time;
+        if !self.immortal {
+            self.log.push(format!(
+                "FIGHT {} {} {} at {:.0} s: {} to {} of {} hit points in {:.0} s, {} medpacks",
+                if won { "won" } else { "lost" },
+                f.foe,
+                f.module,
+                f.time,
+                f.hp_before,
+                f.hp_after,
+                f.max_hp,
+                f.seconds,
+                f.medpacks
+            ));
+        }
+        self.fights.push(f);
     }
 
     fn notice_changes(&mut self, g: &mut Game) {
@@ -416,7 +643,11 @@ impl Autopilot {
             self.items_taken += 1;
         }
         w.opened = None;
-        self.wear_what_fits(w);
+        if self.immortal {
+            self.wear_what_fits(w);
+        } else {
+            self.gear_up(w);
+        }
     }
 
     /// Put carried items on the first free slot they fit, using the slots in `baseitems.2da`.
@@ -522,9 +753,11 @@ impl Autopilot {
                 let over =
                     w.object(t).is_none_or(|o| o.dead || o.down) || w.reputation(w.pc, t) > 10;
                 if over {
+                    self.end_fight(w, true);
                     self.kills += 1;
                     self.goal = None;
                 } else if self.goal_time > FIGHT_SECONDS {
+                    self.end_fight(w, false);
                     let name = w.object(t).map_or(String::new(), |o| o.tag.clone());
                     self.stall(
                         w,
@@ -617,6 +850,7 @@ impl Autopilot {
         // 1. Whoever is close and hostile.
         if let Some(id) = self.nearest_foe(w) {
             w.attack(pc, id);
+            self.begin_fight(w, id);
             self.set_goal(Goal::Fight(id));
             return;
         }

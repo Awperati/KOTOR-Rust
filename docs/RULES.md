@@ -32,7 +32,7 @@ power's routine trace).
 ## Assumed, not measured from the game (I do not know these)
 - The save and skill-check formulas above, and a natural 1/20 on saves.
 - First-level skill points x4; the first feat list is the "regular" slots and list 0 the "bonus" slots.
-- Level-up hit points are half the die + 1 (average, not rolled); Force points the same from `forcedie`.
+- Each level's hit points are the whole die plus Constitution, measured on one sheet in `REFERENCE.md`. Force points after level 1 are half of `forcedie` + 1, which is not measured.
 - **Kill experience = challenge rating x 25: the real rule is unknown to me.**
 - Knocked-out party members stand up with 1 hit point when the fight ends; real recovery may differ.
 - Spell save DC = 10 + half the caster level + Wisdom modifier. Force resistance, link immunity, creature size and movement type are fixed answers

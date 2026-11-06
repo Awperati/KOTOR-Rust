@@ -582,6 +582,11 @@ impl World {
         }
     }
 
+    /// [`World::clear_line`] for tests.
+    pub fn can_see_along(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        self.clear_line(a, b)
+    }
+
     /// Whether a line between two places stays over walkable, unblocked floor.
     ///
     /// **Assumption:** the walkmesh stands in for sight, since walls and closed doors end it. Pits and railings block
@@ -590,6 +595,9 @@ impl World {
         let Some(nav) = self.nav.as_ref() else {
             return true;
         };
+        if nav.crosses_block(a, b) {
+            return false;
+        }
         let len = dist2d(a, b);
         let steps = (len / 0.75).ceil().max(1.0) as usize;
         let top = a[2].max(b[2]) + 1.5;
@@ -679,7 +687,12 @@ impl World {
                 }
             }
             if m.has_route() {
-                m.step(nav, &self.move_params, dt);
+                // A fighter runs at a foe.
+                let params = kotor_walkmesh::MoveParams {
+                    speed: crate::RUN_SPEED,
+                    ..self.move_params
+                };
+                m.step(nav, &params, dt);
             }
             let mut to = m.pos;
             if to != apos {

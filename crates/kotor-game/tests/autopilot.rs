@@ -57,6 +57,58 @@ fn the_pilot_plays_off_the_endar_spire() {
         .any(|l| l.dialogue == "end_trask01" && l.node == 35));
 }
 
+#[test]
+fn a_mortal_pilot_spends_its_points_wears_its_finds_and_takes_medpacks() {
+    let Some(w) = world() else {
+        return;
+    };
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    p.immortal = false;
+    let pc = g.world.pc;
+    p.run_steps(&mut g, 60);
+    let o = g.world.object(pc).unwrap();
+    assert!(o.skills.iter().sum::<i32>() > 0, "skills bought");
+    assert_eq!(o.skill_points, 0);
+    // A level waits to be taken, and is.
+    g.world.grant_xp(pc, 1000);
+    assert_eq!(g.world.object(pc).unwrap().level, 1);
+    p.run_steps(&mut g, 60);
+    assert_eq!(g.world.object(pc).unwrap().level, 2);
+    // Better armour goes on, and a medpack when hurt.
+    let suit = g.world.spawn_item("g_a_class4001");
+    g.world.carry(pc, suit);
+    let pack = g.world.spawn_item("g_i_medeqpmnt01");
+    g.world.carry(pc, pack);
+    // The pilot looks after itself between talks.
+    for _ in 0..600 {
+        if !g.world.in_dialogue() {
+            break;
+        }
+        p.run_steps(&mut g, 60);
+    }
+    assert!(!g.world.in_dialogue());
+    g.world.object_mut(pc).unwrap().hp = 1;
+    p.run_steps(&mut g, 120);
+    let o = g.world.object(pc).unwrap();
+    assert_eq!(o.equipped.get(&1), Some(&suit), "the better armour");
+    assert!(o.hp > 1, "the medpack worked");
+}
+
+#[test]
+fn the_party_down_ends_a_mortal_run() {
+    let Some(w) = world() else {
+        return;
+    };
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    p.immortal = false;
+    g.world.game_over = true;
+    p.run_steps(&mut g, 1);
+    assert!(p.finished);
+    assert_eq!(p.stalls.last().map(|s| s.kind), Some("death"));
+}
+
 /// What must come out the same whatever the speed: the digests on the way, the last one, and a save file.
 type Played = (Vec<(u64, u64)>, u64, Vec<u8>);
 

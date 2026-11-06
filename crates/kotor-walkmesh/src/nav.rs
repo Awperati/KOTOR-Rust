@@ -28,6 +28,8 @@ pub struct NavMesh {
     /// Faces covered by a closed door or other obstacle; routes cannot enter them. A count, so
     /// overlapping obstacles can be lifted independently.
     blocked: Vec<u16>,
+    /// Lines that nothing may cross.
+    lines: Vec<(V3, V3)>,
     /// Faces by the grid cells their bounds touch, so that finding the face under a point need not try them all.
     cells: HashMap<(i32, i32), Vec<u32>>,
 }
@@ -141,6 +143,7 @@ impl NavMesh {
             centroids,
             links,
             blocked,
+            lines: Vec::new(),
             cells,
         }
     }
@@ -169,42 +172,29 @@ impl NavMesh {
         n
     }
 
-    /// The faces a straight line on the floor crosses, on the level of `a`. For a closed door, as wide as it is.
-    fn faces_on_line(&self, a: V3, b: V3) -> Vec<usize> {
+    /// Nothing may cross this line on the floor, as across a closed door. Undo with [`NavMesh::unblock_line`] using the
+    /// same arguments. A line and not faces, because a door's faces can reach metres to either side of it.
+    pub fn block_line(&mut self, a: V3, b: V3) {
+        self.lines.push((a, b));
+    }
+
+    pub fn unblock_line(&mut self, a: V3, b: V3) {
+        if let Some(i) = self.lines.iter().position(|l| *l == (a, b)) {
+            self.lines.swap_remove(i);
+        }
+    }
+
+    /// Whether going straight from `p` to `q` crosses a blocked line on its level.
+    pub fn crosses_block(&self, p: V3, q: V3) -> bool {
         // More than a step, less than a storey: walkways pass over and under each other.
         const LEVEL: f32 = 1.5;
-        let cross =
-            |p: V3, q: V3, r: V3| (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
-        let meets = |p: V3, q: V3| {
-            cross(a, b, p) * cross(a, b, q) <= 0.0 && cross(p, q, a) * cross(p, q, b) <= 0.0
-        };
-        (0..self.tris.len())
-            .filter(|&i| {
-                let t = &self.tris[i];
-                (self.centroids[i][2] - a[2]).abs() <= LEVEL
-                    && (meets(t[0], t[1])
-                        || meets(t[1], t[2])
-                        || meets(t[2], t[0])
-                        || tri_height(t, a[0], a[1]).is_some())
-            })
-            .collect()
-    }
-
-    /// Block every face a line on the floor crosses. Undo with [`NavMesh::unblock_line`] using the same arguments.
-    pub fn block_line(&mut self, a: V3, b: V3) -> usize {
-        let faces = self.faces_on_line(a, b);
-        for &i in &faces {
-            self.blocked[i] = self.blocked[i].saturating_add(1);
-        }
-        faces.len()
-    }
-
-    pub fn unblock_line(&mut self, a: V3, b: V3) -> usize {
-        let faces = self.faces_on_line(a, b);
-        for &i in &faces {
-            self.blocked[i] = self.blocked[i].saturating_sub(1);
-        }
-        faces.len()
+        let side =
+            |u: V3, v: V3, r: V3| (v[0] - u[0]) * (r[1] - u[1]) - (v[1] - u[1]) * (r[0] - u[0]);
+        self.lines.iter().any(|&(a, b)| {
+            (p[2] - a[2]).abs() <= LEVEL
+                && side(a, b, p) * side(a, b, q) < 0.0
+                && side(p, q, a) * side(p, q, b) < 0.0
+        })
     }
 
     /// Number of faces currently blocked.
@@ -273,6 +263,9 @@ impl NavMesh {
         let (start, goal) = (self.face_near(from, 1.5)?, self.face_near(to, 1.5)?);
         let mut g = vec![f32::MAX; self.tris.len()];
         let mut came = vec![usize::MAX; self.tris.len()];
+        // Where a walker comes onto each face. A face's centre can lie across a blocked line from where the walker is.
+        let mut entry = self.centroids.clone();
+        entry[start] = from;
         let mut open = BinaryHeap::new();
         g[start] = 0.0;
         open.push(Open {
@@ -288,14 +281,24 @@ impl NavMesh {
                 path.reverse();
                 return Some(path);
             }
+            let here = entry[node];
             for l in self.links[node]
                 .iter()
                 .filter(|l| self.blocked[l.to] == 0 || l.to == goal)
             {
+                let door = [
+                    (l.a[0] + l.b[0]) / 2.0,
+                    (l.a[1] + l.b[1]) / 2.0,
+                    (l.a[2] + l.b[2]) / 2.0,
+                ];
+                if self.crosses_block(here, door) {
+                    continue;
+                }
                 let ng = g[node] + dist(self.centroids[node], self.centroids[l.to]);
                 if ng < g[l.to] {
                     g[l.to] = ng;
                     came[l.to] = node;
+                    entry[l.to] = door;
                     let h = dist(self.centroids[l.to], self.centroids[goal]);
                     open.push(Open {
                         f: ng + h,
@@ -330,7 +333,9 @@ impl NavMesh {
             });
         }
         portals.push((end, end));
-        Some(funnel(&portals))
+        let route = funnel(&portals);
+        // Faces can reach across a blocked line, so the route itself has to stay on its side.
+        (!route.windows(2).any(|w| self.crosses_block(w[0], w[1]))).then_some(route)
     }
 
     fn height_in(&self, face: usize, x: f32, y: f32) -> Option<f32> {
@@ -482,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn a_blocked_line_cuts_routes_across_it_but_a_blocked_face_can_be_walked_up_to() {
+    fn a_blocked_line_cuts_routes_across_it_but_not_up_to_it() {
         let parts = [
             [0.0, 0.0, 10.0, 4.0],
             [10.0, 0.0, 20.0, 4.0],
@@ -491,11 +496,10 @@ mod tests {
         let mut nav = NavMesh::from_meshes(&parts.map(|p| floor(&[p])));
         let (from, on_it, past) = ([1.0, 2.0, 0.0], [11.0, 2.0, 0.0], [29.0, 2.0, 0.0]);
         let (a, b) = ([15.0, -1.0, 0.0], [15.0, 5.0, 0.0]);
-        assert!(nav.block_line(a, b) > 0);
+        nav.block_line(a, b);
         assert!(nav.find_path(from, past).is_none());
         assert!(nav.find_path(from, on_it).is_some());
         nav.unblock_line(a, b);
-        assert_eq!(nav.blocked_count(), 0);
         assert!(nav.find_path(from, past).is_some());
     }
 

@@ -25,7 +25,7 @@ mod tutorial;
 mod world;
 
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
-pub use autopilot::{state_digest, Autopilot, Stall};
+pub use autopilot::{state_digest, Autopilot, FightResult, Stall};
 pub use chargen::{
     attribute_cost, BodySize, CharacterSpec, ABILITY_NAMES, ATTRIBUTE_BASE, ATTRIBUTE_MAX,
     POINT_POOL,

@@ -18,7 +18,7 @@ Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fet
 
 ## What is guessed (documented where each is used)
 NPC turn rate; which side's door clip; creature radius 0.4 m and follow distances; combat
-(one attack per round, reach 2 m / 12 m, critical confirmation roll, no line of sight); **kill XP = challenge rating x 25, paid in full to each standing party member**; average level-up HP;
+(one attack per round, reach 2 m / 12 m, critical confirmation roll, no line of sight); **kill XP = challenge rating x 25, paid in full to each standing party member**; Force points per level;
 spell save DC; x4 skill points at level 1; knocked-out recovery to 1 HP; the 30-point attribute schedule (the three classes' recommended scores do cost exactly
 30, which supports it); which appearance column is which body size; cutscene lengths (animation ids from 1200 index the stunt model's animations: ids 1200-1203
 match the four animation lengths in order, ids 1219/1220 unresolved); GUI text alignment codes, control draw order, and the font fallback for `fnt_d16x16`.
@@ -70,14 +70,26 @@ Last run: 2,756 game seconds in 23 wall seconds. `end_m01aa` -> `end_m01ab` -> `
 I do not know yet where the papers come from, nor how much of the game runs past this point.
 
 Fixed on the way, earliest first, each with a test:
-1. **A closed door blocked only a 1.1 m disc.** The pilot walked round it, past locked doors. It now blocks its whole width, from its model's mesh.
+1. **A closed door blocked only a 1.1 m disc.** The pilot walked round it, past locked doors. It is now a line as wide as its model's mesh, which nothing crosses and which sight stops at. Faces would not do: a door's faces can reach metres to either side.
 2. **The second module's real route.** With no way round, the pilot needs the footlocker's spikes for the security panel. It wrote off anything out of reach for good, and now keeps it until a door opens.
 3. **A door could not be reached when a neighbouring door shares its face.** `tar_m02af` has two. A route may now end on a blocked face.
 4. **The player stuck on people**, at (104, 108) in the cantina and elsewhere. Someone stood on a route corner, or beside a wall, or the player was wedged between two. It now walks through in those cases, and stops when someone stands where the route ends.
 5. **Global names ignored case nowhere.** `k_ptar_dueler_ud` sets `TAR_DUELOVER` and the announcer reads `Tar_DuelOver`, so a duel never ended.
 6. **`SurrenderToEnemies` did nothing.** It now ends the fight on both sides and makes the fighter neutral. The second half is an assumption.
 7. **`tar03_cutdlg`: the pause that ran out.** A feat used as a talent did nothing, and `EffectAssuredHit` was ignored, so the Bek whose death resumes the talk never died.
-8. **Plot creatures could be killed**, such as `tar03_turret`. They now take no harm, and the pilot leaves them alone.
+8. **Plot creatures could be killed**, such as `tar03_turret`. They now take no harm, and the pilot leaves them alone. **That no harm is an assumption.**
+
+## A pilot that can die
+
+`AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, takes a medpack below half its hit points at most once a round, and a party that is down ends the run. A leader knocked out hands over to someone standing. Each fight is logged as `FIGHT won` or `FIGHT lost`.
+
+Last run: 34 fights won, none lost, 3,559 game seconds. **It dies in `tar_m03aa` at (201, 222)**, level 2 with 24 hit points, to `tar03_turret` by the undercity elevator: d20 + 23 against Defense 16, 2 to 6 a hit, and they cannot be hurt. It went there because the locked door is its way out.
+
+So this does not yet say much about balance:
+- **Nobody can rest.** Rest, or healing between fights, is not built, so only medpacks heal. I do not know how fast the original heals out of combat.
+- **Enemies come back.** Going back to a module loads it fresh, with its dead alive again and its doors shut. That is how `BountyHunt023` is beaten many times and pays many times. The original keeps a module's state.
+- **Some foes never hit back.** The troopers in the last room of `end_m01ab` have their AI off from `k_pend_sith_9`, and I found no script in that module that turns it on. In the video an explosion from the panel kills them.
+- **The player's first feats are the class's recommended ones,** not what the video's player chose.
 
 What is left, by how early it matters:
 1. **Item use and level-up by hand.** Nothing can use a medpac, so `Mod_OnActvtItem` (`k_pend_activate`) never fires. Experience levels the hero by itself, with no choices.

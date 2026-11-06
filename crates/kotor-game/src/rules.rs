@@ -11,8 +11,8 @@
 //! **Assumed, not measured from the game:** the d20 save and skill check (d20 + bonus against a DC, natural 1 fails
 //! and natural 20 succeeds a save); first level gives four times the skill points of later levels; a class skill rank
 //! costs 1 point and a cross-class rank 2, ranks capped at level + 3 (cross-class half that); the first feat list is
-//! the regular slots (`_reg`) and the zero list the bonus slots (`_bon`); hit points rise by half the hit die + 1
-//! (rounded as an average, not rolled) plus the Constitution modifier, first level by the full die; Force points
+//! the regular slots (`_reg`) and the zero list the bonus slots (`_bon`); hit points rise by the whole hit die plus the
+//! Constitution modifier, which the reference video's sheet measures; Force points
 //! likewise from `forcedie`; kill experience is `ChallengeRating` x 25, paid in full to each of the living party; a party member
 //! reduced to 0 hit points is knocked out and stands up with 1 hit point when the fight is over (the player and
 //! party members never die from damage); the game is over when everyone in the party is down at once.
@@ -81,6 +81,10 @@ pub struct LevelUp {
 fn abbr(class_row: &str) -> String {
     class_row.to_ascii_lowercase()
 }
+
+/// `TOUGHNESS`, `IMPROVED_TOUGHNESS` and `MASTER_TOUGHNESS` in `feat.2da`. Their words: one more hit point a level,
+/// counted back to the first.
+const TOUGHNESS_FEATS: [i32; 3] = [84, 123, 124];
 
 impl World {
     /// A creature's ability score including effects (ability increase and decrease).
@@ -354,12 +358,13 @@ impl World {
             .unwrap_or(0) as i32
     }
 
-    /// Hit points a level adds: the full hit die at level 1, then half the die + 1 (an average, not rolled),
+    /// Hit points a level adds: the whole hit die,
     /// plus the Constitution modifier, at least 1.
     pub fn hp_for_level(&mut self, class: i32, constitution: i32, level: i32) -> i32 {
-        let die = self.die_of(class, "hitdie");
-        let base = if level <= 1 { die } else { die / 2 + 1 };
-        (base + ability_mod(constitution)).max(1)
+        // Every level pays the whole die. Measured: the reference video's Soldier has Constitution 14 and Toughness, and
+        // 26 hit points at level 2. That is (10 + 2 + 1) x 2. Half a die would give 22.
+        let _ = level;
+        (self.die_of(class, "hitdie") + ability_mod(constitution)).max(1)
     }
 
     /// Force points a level adds, the same way from `forcedie` (none for a class without one).
@@ -371,6 +376,26 @@ impl World {
             die
         } else {
             die / 2 + 1
+        }
+    }
+
+    /// The hit points a creature's Toughness feats add each level.
+    fn toughness_of(&self, id: ObjId) -> i32 {
+        self.objects.get(&id).map_or(0, |o| {
+            TOUGHNESS_FEATS
+                .iter()
+                .filter(|f| o.feats.contains(f))
+                .count() as i32
+        })
+    }
+
+    /// A Toughness feat just taken pays for the levels so far.
+    pub(crate) fn pay_toughness(&mut self, id: ObjId, feat: i32) {
+        if TOUGHNESS_FEATS.contains(&feat) {
+            if let Some(o) = self.objects.get_mut(&id) {
+                o.max_hp += o.level;
+                o.hp += o.level;
+            }
         }
     }
 
@@ -389,10 +414,11 @@ impl World {
             bonus_feats: self.feat_slots_at(class, level).1,
             granted_feats: self.feats_granted_at(class, level),
         };
+        let tough = self.toughness_of(id);
         let o = self.objects.get_mut(&id)?;
         o.level = level;
-        o.max_hp += up.hp;
-        o.hp += up.hp;
+        o.max_hp += up.hp + tough;
+        o.hp += up.hp + tough;
         o.max_force += up.force;
         o.force += up.force;
         o.skill_points += up.skill_points;

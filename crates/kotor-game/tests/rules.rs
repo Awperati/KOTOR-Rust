@@ -149,18 +149,68 @@ fn experience_raises_levels_with_hit_points_skills_and_feats() {
     let u = &ups[0];
     assert_eq!(u.level, 2);
     assert_eq!(
-        u.hp, 6,
-        "half the d10 hit die + 1, plus a 0 Constitution modifier"
+        u.hp, 10,
+        "the whole d10 hit die, plus a 0 Constitution modifier"
     );
     assert_eq!(u.skill_points, 2);
     let o = w.object(pc).unwrap();
-    assert_eq!((o.level, o.max_hp, o.hp), (2, 26, 26));
+    assert_eq!((o.level, o.max_hp, o.hp), (2, 30, 30));
     assert_eq!(o.skill_points, 2);
     // A big grant crosses several thresholds in one go and lands on the level the table says.
     w.grant_xp(pc, 100_000);
     let want = w.level_for_xp(w.object(pc).unwrap().xp);
     assert_eq!(w.object(pc).unwrap().level, want);
     assert!(want >= 5);
+}
+
+#[test]
+fn each_standing_party_member_gets_the_whole_kill_and_nobody_else() {
+    let Some(mut w) = world() else { return };
+    let (pc, foe) = (w.pc, soldier(&w));
+    let trask = w.by_tag("end_trask")[0];
+    let carth = w.by_tag("Carth").first().copied();
+    w.party.push(trask);
+    w.object_mut(trask).unwrap().party_member = true;
+    let worth = w.kill_xp(foe);
+    assert!(worth > 0);
+    let xp = |w: &World, id| w.object(id).map_or(0, |o| o.xp);
+    let (a, b) = (xp(&w, pc), xp(&w, trask));
+    let other = carth.map(|c| xp(&w, c));
+    assert!(w.hurt(pc, foe, 100000));
+    assert_eq!(xp(&w, pc) - a, worth);
+    assert_eq!(xp(&w, trask) - b, worth);
+    assert_eq!(carth.map(|c| xp(&w, c)), other, "not in the party");
+    // Who is knocked out is not paid.
+    let next = w
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003" && !o.dead)
+        .map(|o| o.id)
+        .unwrap();
+    w.object_mut(trask).unwrap().down = true;
+    let (a, b) = (xp(&w, pc), xp(&w, trask));
+    assert!(w.hurt(pc, next, 100000));
+    assert_eq!(xp(&w, pc) - a, w.kill_xp(next));
+    assert_eq!(xp(&w, trask), b);
+}
+
+#[test]
+fn the_reference_videos_soldier_has_26_hit_points_at_level_2() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    let o = w.object_mut(pc).unwrap();
+    // `docs/REFERENCE.md`, 657 s: Constitution 14, with Toughness.
+    o.abilities[2] = 14;
+    o.class = 0;
+    o.level = 1;
+    o.max_hp = 12;
+    o.hp = 12;
+    o.feat_slots = (1, 0);
+    o.feats.remove(&84);
+    w.choose_feat(pc, 84).unwrap();
+    assert_eq!(w.object(pc).unwrap().max_hp, 13);
+    w.level_up(pc).unwrap();
+    assert_eq!(w.object(pc).unwrap().max_hp, 26);
 }
 
 #[test]
