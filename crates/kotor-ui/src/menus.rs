@@ -454,6 +454,8 @@ impl Ui<'_> {
                     }
                     ([r[0] + side + 6, r[1], r[2] - side - 8, r[3]], 17)
                 }
+                // Words from the left keep off the row's border.
+                None if t.alignment & 1 != 0 => ([r[0] + 8, r[1], r[2] - 8, r[3]], t.alignment),
                 None => (r, t.alignment),
             };
             let font = row.font.as_deref().unwrap_or(&t.font);

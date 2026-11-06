@@ -17,6 +17,8 @@ mod levelup;
 #[path = "mapscreen.rs"]
 mod mapscreen;
 pub(super) use fightscreen::target_slot;
+#[path = "keyscreen.rs"]
+mod keyscreen;
 #[path = "notices.rs"]
 mod notices;
 #[path = "optionpages.rs"]
@@ -153,6 +155,9 @@ pub(super) enum Screen {
     /// `optfeedback.gui` and `optautopause.gui`.
     Feedback,
     AutoPause,
+    /// `optkeymapping.gui` and `optmouse.gui`.
+    KeyMap,
+    Mouse,
 }
 
 /// What the player chose on the option pages. Kept in a text file beside the saves.
@@ -190,6 +195,10 @@ pub struct Settings {
     pub pause_party: bool,
     pub pause_action: bool,
     pub pause_target: bool,
+    /// 0 to 1; a half is as the camera has always turned.
+    pub mouse_sensitivity: f32,
+    /// The left button looks, and the right one clicks.
+    pub reverse_buttons: bool,
 }
 
 impl Default for Settings {
@@ -215,6 +224,8 @@ impl Default for Settings {
             pause_party: true,
             pause_action: false,
             pause_target: false,
+            mouse_sensitivity: 0.5,
+            reverse_buttons: false,
         }
     }
 }
@@ -225,7 +236,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_camera={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -244,7 +255,9 @@ impl Settings {
             self.pause_enemy,
             self.pause_party,
             self.pause_action,
-            self.pause_target
+            self.pause_target,
+            self.mouse_sensitivity,
+            self.reverse_buttons
         )
     }
 
@@ -276,6 +289,8 @@ impl Settings {
                 "pause_party" => s.pause_party = v == "true",
                 "pause_action" => s.pause_action = v == "true",
                 "pause_target" => s.pause_target = v == "true",
+                "mouse_sensitivity" => s.mouse_sensitivity = level(v, s.mouse_sensitivity),
+                "reverse_buttons" => s.reverse_buttons = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -335,6 +350,8 @@ impl Screen {
             Screen::Tutorial => "tutorial",
             Screen::Feedback => "feedback",
             Screen::AutoPause => "autopause",
+            Screen::KeyMap => "keymap",
+            Screen::Mouse => "mouse",
         }
     }
 
@@ -395,6 +412,11 @@ pub(super) struct Menus {
     paused: bool,
     pause_note: String,
     auto_pause_on: bool,
+    /// The keys, as they were when the page opened, its filter, and the action waiting for a key.
+    keys: keyscreen::KeyMap,
+    keys_before: keyscreen::KeyMap,
+    key_page: usize,
+    key_capture: Option<&'static str>,
     /// The fight's slots and rising words.
     fight: fightscreen::Fight,
     /// The words of the option the cursor last rested on.
@@ -583,6 +605,8 @@ impl Stage {
             Screen::Map => self.map_view(),
             Screen::Feedback => self.feedback_view(),
             Screen::AutoPause => self.autopause_view(),
+            Screen::KeyMap => self.key_map_view(),
+            Screen::Mouse => self.mouse_view(),
         }
     }
 
@@ -961,6 +985,7 @@ impl Stage {
     pub fn use_settings_file(&mut self, path: PathBuf) {
         if let Ok(text) = std::fs::read_to_string(&path) {
             self.menus.settings = Settings::from_text(&text);
+            self.menus.keys.read(&text);
         }
         self.menus.settings_file = Some(path);
         self.settings_changed();
@@ -977,7 +1002,7 @@ impl Stage {
             let written = path
                 .parent()
                 .map_or(Ok(()), std::fs::create_dir_all)
-                .and_then(|()| std::fs::write(path, s.to_text()));
+                .and_then(|()| std::fs::write(path, s.to_text() + &self.menus.keys.to_text()));
             if let Err(e) = written {
                 self.menus.message = format!("Cannot keep the settings: {e}");
             }
@@ -1046,7 +1071,7 @@ impl Stage {
     fn gameplay_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optgameplay");
         self.gameplay_words(&mut v);
-        v.inert(&["CB_REVERSE", "BTN_KEYMAP", "BTN_MOUSE"]);
+        v.inert(&["CB_REVERSE"]);
         let s = self.menus.settings;
         v.value("CB_LEVELUP", s.auto_level as i32, 1);
         v.value("CB_DISABLEMOVE", s.combat_movement as i32, 1);
@@ -1089,6 +1114,7 @@ impl Stage {
             "SLI_VO" => s.voice = along,
             "SLI_FX" => s.effects = along,
             "SLI_GAMMA" => s.brightness = along,
+            "SLI_MOUSESEN" => s.mouse_sensitivity = along,
             _ => return,
         }
         self.settings_changed();
@@ -1425,6 +1451,7 @@ impl Stage {
                 match self.top() {
                     Some(Screen::Inventory | Screen::Container) => self.use_listed_item(row),
                     Some(Screen::Feedback) => self.feedback_row(row),
+                    Some(Screen::KeyMap) => self.key_row(row),
                     Some(Screen::Equip) => {
                         if self.menus.slot.is_some() {
                             self.menus.chosen = Some(row);
@@ -1487,6 +1514,10 @@ impl Stage {
                 self.menus.stack.push(Screen::AutoPause)
             }
             (Screen::Feedback | Screen::AutoPause, _) => self.option_page_press(top, tag),
+            (Screen::Gameplay, "BTN_KEYMAP") => self.open_key_map(),
+            (Screen::Gameplay, "BTN_MOUSE") => self.menus.stack.push(Screen::Mouse),
+            (Screen::KeyMap, _) => self.key_map_press(tag),
+            (Screen::Mouse, _) => self.mouse_press(tag),
             (Screen::Gameplay, "CB_LEVELUP") => {
                 self.menus.settings.auto_level = !self.menus.settings.auto_level;
                 self.settings_changed();
@@ -1628,6 +1659,7 @@ impl Stage {
                 self.menus.message.clear();
             }
             Some(Screen::Tutorial) => self.tutorial_next(),
+            Some(Screen::KeyMap) => self.cancel_key_map(),
             Some(Screen::Party) => {
                 self.party_press("BTN_BACK");
                 self.menus.hover = None;

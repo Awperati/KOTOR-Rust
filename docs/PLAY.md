@@ -64,6 +64,10 @@ The camera starts 3.3 m behind and 1.7 m above the player, and comes closer wher
 ## Interface on a wide screen
 GUI files lay out 640x480. The interface is drawn 480 units high and as wide as the window's shape makes it, then stretched over the whole window. **Assumed, not compared with the game:** the left of the HUD stays, the party and map keep their distance from the right edge, the action slot and notice icons stay centred, and the dialogue box is a bar from edge to edge.
 
+## Keys and mouse
+From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A click on a row waits for a key; Esc gives up, a key in use swaps with the other action, OK keeps it in the settings file, and Cancel or Esc puts back what the page found. Default gives back the keys at the top of this file, not `keymap.2da`'s, which differ in places. Esc, Enter, the digits, Shift and the arrows stay as they are. Mouse Settings has the camera's speed, where a half is the speed it always had, and swaps the buttons, on the screens too. New: O opens the options, and F disengages.
+
+
 ## Pause
 Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game goes back to the main menu with the game gone, and Close or Esc goes back to the game. Feedback and Auto-Pause are greyed and do nothing.
 

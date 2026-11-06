@@ -272,6 +272,23 @@ impl App {
         }
     }
 
+    /// The buttons, as the Mouse Settings page has them.
+    fn look_button(&self) -> MouseButton {
+        if self.stage.settings().reverse_buttons {
+            MouseButton::Left
+        } else {
+            MouseButton::Right
+        }
+    }
+
+    fn click_button(&self) -> MouseButton {
+        if self.stage.settings().reverse_buttons {
+            MouseButton::Right
+        } else {
+            MouseButton::Left
+        }
+    }
+
     fn key(&mut self, code: KeyCode, pressed: bool) {
         let digit = match code {
             KeyCode::Digit1 | KeyCode::Numpad1 => 1,
@@ -285,19 +302,40 @@ impl App {
             KeyCode::Digit9 | KeyCode::Numpad9 => 9,
             _ => 0,
         };
+        // The Key Mapping page takes a key first, then what it says each key does.
+        let name = format!("{code:?}");
+        if pressed && self.stage.capture_key(&name) {
+            return;
+        }
+        match self.stage.action_for_key(&name) {
+            Some("MoveForward") => return self.keys[0] = pressed,
+            Some("MoveBack") => return self.keys[1] = pressed,
+            Some("MoveLeft") => return self.keys[2] = pressed,
+            Some("MoveRight") => return self.keys[3] = pressed,
+            Some(action) => {
+                if pressed {
+                    match action {
+                        "Use" => self.stage.interact(),
+                        "ChangeLeader" => {
+                            self.stage.next_leader();
+                        }
+                        "Equip" => self.stage.open_equip(),
+                        "Inventory" => self.stage.open_inventory(),
+                        "Character" => self.stage.open_character(),
+                        "Quests" => self.stage.open_journal(),
+                        "Map" => self.stage.open_map(),
+                        "Options" => self.stage.escape(),
+                        "Pause" => self.stage.space_key(),
+                        "CancelCombat" => self.stage.hud_disengage(),
+                        _ => {}
+                    }
+                }
+                return;
+            }
+            None => {}
+        }
         match code {
-            KeyCode::KeyW => self.keys[0] = pressed,
-            KeyCode::KeyS => self.keys[1] = pressed,
-            KeyCode::KeyA => self.keys[2] = pressed,
-            KeyCode::KeyD => self.keys[3] = pressed,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys[4] = pressed,
-            KeyCode::KeyE if pressed => self.stage.interact(),
-            KeyCode::Tab if pressed => self.stage.next_leader(),
-            KeyCode::KeyI if pressed => self.stage.open_inventory(),
-            KeyCode::KeyU if pressed => self.stage.open_equip(),
-            KeyCode::KeyC if pressed => self.stage.open_character(),
-            KeyCode::KeyJ if pressed => self.stage.open_journal(),
-            KeyCode::KeyM if pressed => self.stage.open_map(),
             KeyCode::ArrowLeft => {
                 self.turning = if pressed { TURN_SPEED } else { 0.0 };
             }
@@ -305,7 +343,6 @@ impl App {
                 self.turning = if pressed { -TURN_SPEED } else { 0.0 };
             }
             KeyCode::Escape if pressed => self.stage.escape(),
-            KeyCode::Space if pressed => self.stage.space_key(),
             KeyCode::Enter if pressed => self.stage.continue_line(),
             _ if pressed && digit > 0 => self.stage.number_key(digit),
             _ => {}
@@ -348,11 +385,9 @@ impl ApplicationHandler for App {
                 }
                 self.cursor = now;
             }
-            WindowEvent::MouseInput {
-                state,
-                button: MouseButton::Right,
-                ..
-            } => self.looking = state == ElementState::Pressed,
+            WindowEvent::MouseInput { state, button, .. } if button == self.look_button() => {
+                self.looking = state == ElementState::Pressed
+            }
             WindowEvent::Focused(false) => {
                 self.keys = [false; 5];
                 self.looking = false;
@@ -360,9 +395,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
-                button: MouseButton::Left,
+                button,
                 ..
-            } => {
+            } if button == self.click_button() => {
                 if let Some(st) = &self.state {
                     let z = st.window.inner_size();
                     self.stage.click(self.cursor, (z.width, z.height));

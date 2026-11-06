@@ -946,8 +946,10 @@ impl Stage {
         } else {
             dy
         };
-        self.yaw -= dx * 0.005;
-        self.pitch = (self.pitch + dy * 0.004).clamp(-0.2, 1.2);
+        // A half on the Mouse Settings slider is the speed this always had.
+        let speed = self.settings().mouse_sensitivity * 2.0;
+        self.yaw -= dx * 0.005 * speed;
+        self.pitch = (self.pitch + dy * 0.004 * speed).clamp(-0.2, 1.2);
     }
 
     /// What the replies on screen are, in the conversation.

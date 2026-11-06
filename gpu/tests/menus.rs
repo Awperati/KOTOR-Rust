@@ -1551,6 +1551,137 @@ fn space_never_pauses_in_a_conversation_nor_just_after_one() {
     assert!(!s.paused());
 }
 
+#[test]
+fn the_keys_can_be_changed_kept_and_put_back() {
+    let Some((mut s, dir)) = in_game("keys") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    assert_eq!(s.action_for_key("KeyU"), Some("Equip"));
+    assert_eq!(s.action_for_key("KeyW"), Some("MoveForward"));
+    assert_eq!(s.action_for_key("KeyP"), None);
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "BTN_KEYMAP");
+    assert_eq!(s.menu_name(), "keymap");
+
+    // Movement first, then Game: Use, Change Leader, Equipment.
+    let movement = frame(&mut s);
+    press(&mut s, "BTN_Filter_Game");
+    assert!(frame(&mut s) != movement);
+    // Mini Games has nothing, and stays on the page shown.
+    let game = frame(&mut s);
+    press(&mut s, "BTN_Filter_Mini");
+    s.hover((1.0, 1.0), SIZE);
+    assert!(frame(&mut s) != movement);
+    let _ = game;
+
+    // A click on a row waits for a key. Esc gives up, and the key stays.
+    click_row(&mut s, "LST_EventList", 2);
+    assert!(s.capture_key("Escape"));
+    assert_eq!(s.action_for_key("KeyU"), Some("Equip"));
+    assert!(!s.capture_key("KeyQ"), "not waiting now");
+
+    // A new key takes over.
+    click_row(&mut s, "LST_EventList", 2);
+    assert!(s.capture_key("KeyP"));
+    assert_eq!(s.action_for_key("KeyP"), Some("Equip"));
+    assert_eq!(s.action_for_key("KeyU"), None);
+    // One in use swaps: Inventory's I goes to Equip, and P to Inventory.
+    click_row(&mut s, "LST_EventList", 2);
+    assert!(s.capture_key("KeyI"));
+    assert_eq!(s.action_for_key("KeyI"), Some("Equip"));
+    assert_eq!(s.action_for_key("KeyP"), Some("Inventory"));
+
+    // Cancel puts back what the page found, and Esc does the same.
+    press(&mut s, "BTN_Cancel");
+    assert_eq!(s.menu_name(), "gameplay");
+    assert_eq!(s.action_for_key("KeyU"), Some("Equip"));
+    press(&mut s, "BTN_KEYMAP");
+    press(&mut s, "BTN_Filter_Game");
+    click_row(&mut s, "LST_EventList", 2);
+    s.capture_key("KeyP");
+    s.escape();
+    assert_eq!(s.menu_name(), "gameplay");
+    assert_eq!(s.action_for_key("KeyU"), Some("Equip"));
+
+    // OK keeps it, in the file too, and a new stage reads it.
+    press(&mut s, "BTN_KEYMAP");
+    press(&mut s, "BTN_Filter_Game");
+    click_row(&mut s, "LST_EventList", 2);
+    s.capture_key("KeyP");
+    press(&mut s, "BTN_Accept");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("key.Equip=KeyP"), "{text}");
+    let mut again = at_menu().unwrap();
+    again.use_settings_file(file.clone());
+    assert_eq!(again.action_for_key("KeyP"), Some("Equip"));
+
+    // Default gives the first keys back.
+    press(&mut s, "BTN_KEYMAP");
+    press(&mut s, "BTN_Default");
+    press(&mut s, "BTN_Accept");
+    assert_eq!(s.action_for_key("KeyU"), Some("Equip"));
+
+    // The Cancel Combat key is the Disengage button.
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 3.0, p[1], p[2]]);
+    s.game.world.combat.target.insert(pc, foe);
+    s.update(DT);
+    s.hud_disengage();
+    assert_eq!(s.game.world.combat.target.get(&pc), None);
+}
+
+#[test]
+fn mouse_sensitivity_turns_the_camera_faster_and_buttons_can_swap() {
+    let Some((mut s, dir)) = in_game("mouse") else {
+        return;
+    };
+    s.use_settings_file(dir.join("settings.txt"));
+    let turn = |s: &mut Stage| {
+        let before = s.camera().eye;
+        s.look(40.0, 0.0);
+        let after = s.camera().eye;
+        (after[0] - before[0]).hypot(after[1] - before[1])
+    };
+    let normal = turn(&mut s);
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "BTN_MOUSE");
+    assert_eq!(s.menu_name(), "mouse");
+    assert_eq!(s.settings().mouse_sensitivity, 0.5);
+    let bar = s.menu_pixel("SLI_MOUSESEN", None, SIZE).unwrap();
+    s.hover((bar.0 + 200.0, bar.1), SIZE);
+    s.click((bar.0 + 200.0, bar.1), SIZE);
+    let high = s.settings().mouse_sensitivity;
+    assert!(high > 0.7, "{high}");
+    press(&mut s, "CB_REVBUTTONS");
+    assert!(s.settings().reverse_buttons);
+    // The words about it show under the cursor.
+    s.hover((1.0, 1.0), SIZE);
+    let plain = frame(&mut s);
+    let tick = s.menu_pixel("CB_REVBUTTONS", None, SIZE).unwrap();
+    s.hover(tick, SIZE);
+    assert!(frame(&mut s) != plain);
+    press(&mut s, "BTN_DEFAULT");
+    assert!(!s.settings().reverse_buttons);
+    assert_eq!(s.settings().mouse_sensitivity, 0.5);
+    let bar = s.menu_pixel("SLI_MOUSESEN", None, SIZE).unwrap();
+    s.click((bar.0 + 200.0, bar.1), SIZE);
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+    assert!(turn(&mut s) > normal);
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);

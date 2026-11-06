@@ -225,6 +225,8 @@ impl<'a> Ui<'a> {
             "container",
             "partyselection",
             "map",
+            "optkeymapping",
+            "optmouse",
             "optfeedback",
             "optautopause",
             "maincg",

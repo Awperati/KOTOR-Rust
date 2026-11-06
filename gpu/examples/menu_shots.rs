@@ -218,6 +218,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     click(&mut s, "BTN_BACK", None);
     s.escape();
 
+    // The Gameplay page's own pages.
+    s.escape();
+    click(&mut s, "BTN_GAMEPLAY", None);
+    click(&mut s, "BTN_KEYMAP", None);
+    shot(&mut gpu, &mut s, "opt_keymap_move", &out);
+    click(&mut s, "BTN_Filter_Game", None);
+    s.set_view(size);
+    let p = s.menu_pixel("LST_EventList", Some(1), size).unwrap();
+    s.hover(p, size);
+    s.click(p, size);
+    shot(&mut gpu, &mut s, "opt_keymap_game", &out);
+    s.capture_key("Escape");
+    click(&mut s, "BTN_Cancel", None);
+    click(&mut s, "BTN_MOUSE", None);
+    s.set_view(size);
+    let p = s.menu_pixel("CB_REVBUTTONS", None, size).unwrap();
+    s.hover(p, size);
+    shot(&mut gpu, &mut s, "opt_mouse", &out);
+    click(&mut s, "BTN_BACK", None);
+    click(&mut s, "BTN_BACK", None);
+    s.escape();
+
     // Where the party is: the map.
     s.open_map();
     shot(&mut gpu, &mut s, "map", &out);
