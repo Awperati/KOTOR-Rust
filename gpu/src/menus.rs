@@ -187,6 +187,8 @@ pub(super) enum Screen {
     Galaxy,
     /// `pazaakwager.gui`, `pazaaksetup.gui` or `pazaakgame.gui`.
     Pazaak,
+    /// `confirm.gui`, asking about Solo Mode.
+    Solo,
     /// `upgradesel.gui`, `upgradeitems.gui` and `upgrade.gui`.
     BenchKinds,
     BenchItems,
@@ -429,6 +431,7 @@ impl Screen {
             Screen::Store => "store",
             Screen::Galaxy => "galaxy",
             Screen::Pazaak => "pazaak",
+            Screen::Solo => "solo",
             Screen::BenchKinds => "bench_kinds",
             Screen::BenchItems => "bench_items",
             Screen::Bench => "bench",
@@ -744,6 +747,7 @@ impl Stage {
             Screen::Store => self.store_view(),
             Screen::Galaxy => self.galaxy_view(),
             Screen::Pazaak => self.pazaak_view(),
+            Screen::Solo => self.solo_view(),
             Screen::BenchKinds => self.bench_kinds_view(),
             Screen::BenchItems => self.bench_items_view(),
             Screen::Bench => self.bench_view(),
@@ -1472,6 +1476,7 @@ impl Stage {
             "BTN_CHAR3" => self.change_member(1),
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "TB_PAUSE" => self.toggle_pause(),
+            "TB_SOLO" if self.game.world.solo_mode => self.solo_key(),
             "BTN_TARGETUP0" | "BTN_TARGETDOWN0" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1"
             | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => self.turn_slot(tag),
             "BTN_OPT" => self.escape(),
@@ -1790,6 +1795,7 @@ impl Stage {
             (Screen::Store, _) => self.store_press(tag),
             (Screen::Galaxy, _) => self.galaxy_press(tag),
             (Screen::Pazaak, _) => self.pazaak_press(tag),
+            (Screen::Solo, _) => self.solo_press(tag),
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),

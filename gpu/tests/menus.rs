@@ -3519,6 +3519,45 @@ fn a_shift_from_the_games_script_shows_on_the_sheet_and_in_what_a_power_costs() 
 }
 
 #[test]
+fn solo_mode_asks_shows_its_button_and_scripts_take_people_off_the_party_screen() {
+    let Some((mut s, _)) = in_game("solo") else {
+        return;
+    };
+    assert_eq!(s.action_for_key("KeyV"), Some("SoloMode"));
+    let button = s.hud_pixel("TB_SOLO", SIZE).unwrap();
+    s.click(button, SIZE);
+    assert_eq!(s.menu_name(), "-", "off, it does not show");
+
+    // No leaves it off, and the game waits for the answer.
+    s.solo_key();
+    assert_eq!(s.menu_name(), "solo");
+    words_too_big(&mut s, "solo", &mut Vec::new());
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    assert!(!s.game.world.solo_mode);
+
+    // Yes turns it on, and its button shows and turns it off again.
+    s.solo_key();
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.menu_name(), "-");
+    assert!(s.game.world.solo_mode);
+    s.update(DT);
+    s.click(button, SIZE);
+    assert_eq!(s.menu_name(), "solo");
+    press(&mut s, "BTN_OK");
+    assert!(!s.game.world.solo_mode);
+
+    // Someone a script has taken away cannot be chosen.
+    s.game.world.available.insert(1, "p_carth".to_string());
+    s.open_party();
+    assert!(s.menu_pixel("BTN_NPC1", None, SIZE).is_some());
+    s.escape();
+    s.game.world.unselectable.insert(1);
+    s.open_party();
+    assert!(s.menu_pixel("BTN_NPC1", None, SIZE).is_none());
+}
+
+#[test]
 fn the_mist_behind_the_figure_follows_the_alignment() {
     let Some((mut s, _)) = in_game("figure_mist") else {
         return;

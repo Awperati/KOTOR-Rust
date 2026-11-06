@@ -1824,6 +1824,7 @@ impl Stage {
         self.ui.set_minimap(minimap);
         self.ui.set_notices(notices);
         self.ui.set_floats(floats);
+        self.ui.set_solo(self.game.world.solo_mode);
         self.ui.set_pause(pause.0, pause.1);
         self.ui.set_combat(combat);
         self.overlay = match view {
@@ -1920,6 +1921,7 @@ impl Stage {
         let row0 = at(self.menu_pixel("LB_ITEMS", Some(0), (640, 480)));
         let row1 = at(self.menu_pixel("LB_ITEMS", Some(1), (640, 480)));
         let pc = self.game.world.pc;
+        let solo = self.game.world.solo_mode;
         let attack = self.game.world.attack_bonus_of(pc, 4);
         let defense = self.game.world.defense_of(pc);
         let (paused, note) = self.pause_view();
@@ -1933,7 +1935,7 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

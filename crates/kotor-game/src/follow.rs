@@ -139,7 +139,7 @@ impl World {
 
     /// Walk each party member towards the player when it has fallen behind, keeping it out of other creatures.
     pub(crate) fn update_followers(&mut self, dt: f32) {
-        if self.nav.is_none() {
+        if self.nav.is_none() || self.solo_mode {
             return;
         }
         let Some(pc_pos) = self.objects.get(&self.pc).map(|o| o.position) else {

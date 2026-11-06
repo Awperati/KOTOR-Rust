@@ -42,7 +42,6 @@ const PRESENTATION: &[&str] = &[
     "SetPartyLeader",
     "PlayAnimation",
     "MusicBattleStop",
-    "RevealMap",
     "SetCurrentAction",
     "PlayRumblePattern",
     "AurPostString",
@@ -58,17 +57,12 @@ const PRESENTATION: &[&str] = &[
     "MusicBattlePlay",
     "SoundObjectFadeAndStop",
     "SoundObjectSetVolume",
-    "SetMapPinEnabled",
     "SetLightsaberPowered",
     "EndGame",
     "SetEncounterActive",
     "SurrenderToEnemies",
     "SaveNPCState",
     "AwardStealthXP",
-    "SetSoloMode",
-    "SetNPCSelectability",
-    "SetPlayerRestrictMode",
-    "SetItemNonEquippable",
     "SetIsDestroyable",
 ];
 
@@ -1159,6 +1153,54 @@ impl Host for Adapter<'_> {
                     .object(self.obj(caller, args, 0))
                     .map_or(0, |o| o.alignment),
             )),
+            "GetSoloMode" => b(self.world.solo_mode),
+            "SetSoloMode" => {
+                self.world.solo_mode = int(args, 0)? != 0;
+                self.record(name, args);
+                None
+            }
+            // **Not known:** what the game does in this mode. Only scripts ask for it.
+            "GetPlayerRestrictMode" => b(self.world.restrict_mode),
+            "SetPlayerRestrictMode" => {
+                self.world.restrict_mode = int(args, 0)? != 0;
+                self.record(name, args);
+                None
+            }
+            "GetNPCSelectability" => b(!self.world.unselectable.contains(&int(args, 0)?)),
+            "SetNPCSelectability" => {
+                let npc = int(args, 0)?;
+                if int(args, 1)? != 0 {
+                    self.world.unselectable.remove(&npc);
+                } else {
+                    self.world.unselectable.insert(npc);
+                }
+                self.record(name, args);
+                None
+            }
+            "SetItemNonEquippable" => {
+                let item = self.obj(caller, args, 0);
+                let off = int(args, 1)? != 0;
+                if let Some(o) = self.world.object_mut(item) {
+                    o.non_equippable = off;
+                }
+                self.record(name, args);
+                None
+            }
+            "SetMapPinEnabled" => {
+                let pin = self.obj(caller, args, 0);
+                self.world.set_map_pin(pin, int(args, 1)? != 0);
+                self.record(name, args);
+                None
+            }
+            "RevealMap" => {
+                let at = match args.first() {
+                    Some(Value::Vector(v)) => *v,
+                    _ => [0.0; 3],
+                };
+                self.world.reveal_map(at, int(args, 1).unwrap_or(-1));
+                self.record(name, args);
+                None
+            }
             "GetAlignmentGoodEvil" => {
                 let who = self.obj(caller, args, 0);
                 Some(Value::Int(self.world.alignment_side(who)))
@@ -1457,11 +1499,9 @@ impl Host for Adapter<'_> {
                 self.default_hit(name);
                 Some(Value::Object(OBJECT_INVALID))
             }
-            "GetSoloMode"
-            | "GetLastAttackAction"
+            "GetLastAttackAction"
             | "GetUserActionsPending"
             | "GetIsDebilitated"
-            | "GetPlayerRestrictMode"
             | "GetPartyAIStyle"
             | "GetNPCAIStyle"
             | "GetIsEncounterCreature"

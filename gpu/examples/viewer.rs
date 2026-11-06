@@ -454,6 +454,7 @@ impl App {
                         "Options" => self.stage.escape(),
                         "Pause" => self.stage.space_key(),
                         "CancelCombat" => self.stage.hud_disengage(),
+                        "SoloMode" => self.stage.solo_key(),
                         _ => {}
                     }
                 }

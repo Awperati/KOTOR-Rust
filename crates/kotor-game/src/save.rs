@@ -359,6 +359,14 @@ impl World {
                         st(vec![("Name", s(k)), ("Value", Value::Int(*v))])
                     }),
                 ),
+                ("SoloMode", Value::Byte(self.solo_mode as u8)),
+                ("RestrictMode", Value::Byte(self.restrict_mode as u8)),
+                (
+                    "Unselectable",
+                    list_of(self.unselectable.iter(), |n| {
+                        st(vec![("Row", Value::Int(*n))])
+                    }),
+                ),
                 (
                     "ReputationList",
                     list_of(self.reputation_shifts.iter(), |((from, of), by)| {
@@ -561,6 +569,8 @@ impl World {
                     st(vec![("Slot", Value::Int(*slot)), ("Row", Value::Int(*row))])
                 }),
             ),
+            ("NonEquippable", Value::Byte(o.non_equippable as u8)),
+            ("MapNote", Value::Int(o.map_note.map_or(-1, i32::from))),
             ("XP", Value::Int(o.xp)),
             ("Faction", Value::Int(o.faction)),
             ("Race", Value::Int(o.race)),
@@ -784,6 +794,11 @@ impl World {
                 .iter()
                 .filter_map(|x| Some((x.str("Field")?.to_string(), x.str("Script")?.to_string())))
                 .collect();
+            o.non_equippable = e.int("NonEquippable").unwrap_or(0) != 0;
+            o.map_note = match e.int("MapNote").unwrap_or(-1) {
+                -1 => None,
+                on => Some(on != 0),
+            };
             o.natural_ac = e.int("NaturalAC").unwrap_or(0) as i32;
             o.perception = e.float("Perception").unwrap_or(20.0) as f32;
             o.challenge_rating = e.float("Challenge").unwrap_or(1.0) as f32;
@@ -989,6 +1004,15 @@ impl World {
             .unwrap_or_default();
 
         // Globals, journal, party.
+        self.solo_mode = globals.root.int("SoloMode").unwrap_or(0) != 0;
+        self.restrict_mode = globals.root.int("RestrictMode").unwrap_or(0) != 0;
+        self.unselectable = globals
+            .root
+            .list("Unselectable")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| Some(x.int("Row")? as i32))
+            .collect();
         self.reputation_shifts = globals
             .root
             .list("ReputationList")

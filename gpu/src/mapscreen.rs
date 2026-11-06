@@ -22,6 +22,8 @@ const SEEN_PICTURE: &str = "kotor_rs_seen_map";
 /// The map on show, and the note chosen.
 pub(super) struct Shown {
     area: u32,
+    /// `World::map_pin_changes` when it was read.
+    pins: u32,
     map: Option<AreaMap>,
     note: usize,
     /// How many cells the picture was last made with.
@@ -45,11 +47,16 @@ fn mark(at: [f32; 2], side: i32, tint: [f32; 3]) -> Mark {
 impl Stage {
     /// Read the map if the party has moved to another area since.
     fn current_map(&mut self) {
-        let area = self.game.world.area;
-        let fresh = self.menus.map.as_ref().is_some_and(|s| s.area == area);
+        let (area, pins) = (self.game.world.area, self.game.world.map_pin_changes);
+        let fresh = self
+            .menus
+            .map
+            .as_ref()
+            .is_some_and(|s| s.area == area && s.pins == pins);
         if !fresh {
             self.menus.map = Some(Shown {
                 area,
+                pins,
                 map: self.game.world.area_map(),
                 note: 0,
                 composed: 0,

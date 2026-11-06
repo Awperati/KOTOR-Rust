@@ -191,6 +191,9 @@ impl World {
         if self.slots_of(item) == 0 {
             return Err(CannotEquip::NotWearable);
         }
+        if self.objects.get(&item).is_some_and(|o| o.non_equippable) {
+            return Err(CannotEquip::Prerequisites);
+        }
         let row = self
             .objects
             .get(&item)

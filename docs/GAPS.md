@@ -34,7 +34,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 | 14 | **Traps and mines.** | `docs/STATUS.md` lists traps as missing, and a chosen Security action too. Demolitions then means nothing. | M |
 | 15 | **Stealth.** | `AwardStealthXP`, 1 call, only records itself, and invisibility is not modelled. `docs/STATUS.md` lists stealth as not built. | M |
 | 16 | **Scenes whose pause runs out.** | `tar02_zelka021`, `tar04_outwom043`, `tar02_sithintero`. Each ended by our time limit, so some script's walk or death never came. Not read yet. | S each |
-| 17 | **Recorded with no effect.** | `SetPlotFlag`, 6 calls, in the duel ring among others. `SetSoloMode`, `SetNPCSelectability`, `SetPlayerRestrictMode` and `SetItemNonEquippable`. Each may matter somewhere. | S each |
+| 17 | **Recorded with no effect: the menu side is built.** | `SetSoloMode` with the V key, `SetNPCSelectability`, `SetItemNonEquippable`, `SetMapPinEnabled` and `RevealMap` work, live in `drive_solo.ps1`. `SetPlayerRestrictMode` keeps its value for the scripts that ask, and I do not know what else it does. `SetPlotFlag` still only records itself. | S |
 
 ## Exists, so not a gap
 

@@ -62,6 +62,8 @@ pub struct Ui<'a> {
     hud_party: usize,
     /// The game is paused, with the box at the top right if something paused it.
     paused: bool,
+    /// The party is not following: `TB_SOLO` shows.
+    solo: bool,
     pause_note: String,
     /// Text in Noto Sans, and text boxes in the glowing style; and the font, once looked for.
     noto_on: bool,
@@ -197,6 +199,7 @@ impl<'a> Ui<'a> {
             floats: Vec::new(),
             hud_party: 1,
             paused: false,
+            solo: false,
             pause_note: String::new(),
             noto_on: false,
             glow_on: false,
@@ -850,7 +853,8 @@ impl<'a> Ui<'a> {
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         let mut patches: HashMap<String, Patch> = HashMap::new();
         for tag in all_tags(&gui.panel) {
-            if tag != "LBL_MAPBORDER" && HUD_HIDDEN.iter().any(|p| tag.starts_with(p)) {
+            let solo = self.solo && tag == "TB_SOLO";
+            if !solo && tag != "LBL_MAPBORDER" && HUD_HIDDEN.iter().any(|p| tag.starts_with(p)) {
                 patches.insert(
                     tag,
                     Patch {
@@ -1092,6 +1096,11 @@ impl<'a> Ui<'a> {
             let at = [x, y + 4 + i as i32 * step, w, step];
             self.draw_text(cv, FLOAT_FONT, line, at, 18, [0.0, 0.65, 0.97]);
         }
+    }
+
+    /// Whether the party is not following.
+    pub fn set_solo(&mut self, solo: bool) {
+        self.solo = solo;
     }
 
     /// Whether the game is paused, and what to say about it.
@@ -1361,7 +1370,7 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
-const HUD_BUTTONS: [&str; 25] = [
+const HUD_BUTTONS: [&str; 26] = [
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -1374,6 +1383,7 @@ const HUD_BUTTONS: [&str; 25] = [
     "BTN_CLEARONE",
     "BTN_CLEARONE2",
     "TB_PAUSE",
+    "TB_SOLO",
     "BTN_CHAR2",
     "BTN_CHAR3",
     "BTN_TARGET0",

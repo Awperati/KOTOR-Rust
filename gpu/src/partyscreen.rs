@@ -10,6 +10,8 @@ const STR_ADD: u32 = 38455;
 const STR_REMOVE: u32 = 38456;
 const STR_LEVEL: u32 = 32154;
 const STR_SURE: u32 = 38328;
+const STR_SOLO_ON: u32 = 37889;
+const STR_SOLO_OFF: u32 = 37891;
 const QUESTION_RISE: i32 = 10;
 /// Who each slot is in the game, from the file's own `LBL_NA` pictures: these with a 2 are for those not on offer.
 const PORTRAITS: [&str; 9] = [
@@ -86,7 +88,8 @@ impl Stage {
         };
         for (slot, portrait) in PORTRAITS.iter().enumerate() {
             let n = slot as i32;
-            let offered = self.game.world.available.contains_key(&n);
+            let w = &self.game.world;
+            let offered = w.available.contains_key(&n) && !w.unselectable.contains(&n);
             let (tag_char, tag_na, tag_button) = (
                 format!("LBL_CHAR{slot}"),
                 format!("LBL_NA{slot}"),
@@ -147,6 +150,38 @@ impl Stage {
             v.dialog = Some(Box::new(d));
         }
         v
+    }
+
+    /// The key for Solo Mode, and the button that shows while it is on: the game's question, then the change.
+    /// **Assumed:** it asks. The talk table has the question at 37889 and 37891, and I have no frame of it.
+    pub fn solo_key(&mut self) {
+        if !self.menu_open() && !self.game.world.in_dialogue() {
+            self.menus.stack.push(Screen::Solo);
+            self.menus.hover = None;
+        }
+    }
+
+    pub(super) fn solo_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("confirm");
+        let question = if self.game.world.solo_mode {
+            STR_SOLO_OFF
+        } else {
+            STR_SOLO_ON
+        };
+        v.text("LB_MESSAGE", self.ui.strref(question));
+        v.font("LB_MESSAGE", "fnt_d16x16");
+        v.patches.entry("LB_MESSAGE".to_string()).or_default().rise = QUESTION_RISE;
+        v.over_scene = true;
+        v
+    }
+
+    pub(super) fn solo_press(&mut self, tag: &str) {
+        if tag == "BTN_OK" {
+            let w = &mut self.game.world;
+            w.solo_mode = !w.solo_mode;
+        }
+        self.menus.stack.pop();
+        self.menus.hover = None;
     }
 
     fn close_party(&mut self, keep: bool) {

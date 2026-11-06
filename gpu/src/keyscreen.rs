@@ -12,7 +12,7 @@ use kotor_ui::{MenuView, Row};
 use std::collections::BTreeMap;
 
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 18] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 19] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
@@ -31,9 +31,10 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 18] = [
     ("Options", 48052, 1, "KeyO"),
     ("Pause", 48019, 1, "Space"),
     ("CancelCombat", 48315, 1, "KeyF"),
+    ("SoloMode", 48035, 1, "KeyV"),
 ];
 /// Each action's name in `keymap.2da`.
-const ORIGINAL_NAMES: [(&str, &str); 18] = [
+const ORIGINAL_NAMES: [(&str, &str); 19] = [
     ("MoveForward", "ActionUp"),
     ("MoveBack", "ActionDown"),
     ("MoveLeft", "ActionLeft"),
@@ -52,6 +53,7 @@ const ORIGINAL_NAMES: [(&str, &str); 18] = [
     ("Options", "Options"),
     ("Pause", "Pause"),
     ("CancelCombat", "CancleCombat"),
+    ("SoloMode", "PartyActive"),
 ];
 const ORIGINAL_LABEL: &str = "Original";
 const MINI_GAMES_PAGE: usize = 2;

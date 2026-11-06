@@ -6,7 +6,7 @@
 //! from its top left; what has been seen is a circle round the player of `SEEN_RADIUS`, measured from the width of the
 //! one short walk at 1:25:00 of the reference video.
 
-use crate::world::{ObjId, World};
+use crate::world::{Kind, ObjId, World};
 use kotor_core::ResType;
 use kotor_gff::{Gff, Struct, Value};
 
@@ -20,6 +20,8 @@ const CELL: f32 = 4.0;
 pub const SEEN_COLS: usize = (SHOWN_WIDTH / CELL) as usize;
 pub const SEEN_ROWS: usize = (SHOWN_HEIGHT / CELL) as usize;
 const SEEN_RADIUS: f32 = 14.0;
+/// How near a waypoint must stand to a note's place in the area's file to be the one made from it.
+const NOTE_NEAR: f32 = 0.01;
 
 /// A waypoint with a note on the map.
 #[derive(Clone, Debug, PartialEq)]
@@ -81,12 +83,37 @@ impl AreaMap {
 impl World {
     /// The player has been here: what is round them has been seen. Returns how many cells of this map are seen.
     pub fn reveal(&mut self, map: &AreaMap, x: f32, y: f32) -> usize {
+        self.reveal_round(map, x, y, SEEN_RADIUS)
+    }
+
+    /// `RevealMap`: what is round a point has been seen, or all of it if the radius is below 0.
+    pub(crate) fn reveal_map(&mut self, at: [f32; 3], radius: i32) {
+        let Some(map) = self.area_map() else { return };
+        if radius < 0 {
+            self.explored
+                .insert(map.picture.clone(), vec![true; SEEN_COLS * SEEN_ROWS]);
+            return;
+        }
+        let [a, b] = map.pixel(at[0], at[1]);
+        let [c, d] = map.pixel(at[0] + radius as f32, at[1]);
+        self.reveal_round(&map, at[0], at[1], (c - a).hypot(d - b));
+    }
+
+    /// `SetMapPinEnabled`.
+    pub fn set_map_pin(&mut self, pin: ObjId, on: bool) {
+        if let Some(o) = self.object_mut(pin) {
+            o.map_note = Some(on);
+        }
+        self.map_pin_changes += 1;
+    }
+
+    fn reveal_round(&mut self, map: &AreaMap, x: f32, y: f32, radius: f32) -> usize {
         let cells = self
             .explored
             .entry(map.picture.clone())
             .or_insert_with(|| vec![false; SEEN_COLS * SEEN_ROWS]);
         let [px, py] = map.pixel(x, y);
-        let reach = (SEEN_RADIUS / CELL).ceil() as i32 + 1;
+        let reach = (radius / CELL).ceil() as i32 + 1;
         let (cx, cy) = ((px / CELL) as i32, (py / CELL) as i32);
         for row in cy - reach..=cy + reach {
             for col in cx - reach..=cx + reach {
@@ -96,7 +123,7 @@ impl World {
                     (col as f32 + 0.5) * CELL - px,
                     (row as f32 + 0.5) * CELL - py,
                 );
-                if inside && dx * dx + dy * dy <= SEEN_RADIUS * SEEN_RADIUS {
+                if inside && dx * dx + dy * dy <= radius * radius {
                     cells[row as usize * SEEN_COLS + col as usize] = true;
                 }
             }
@@ -128,9 +155,18 @@ impl World {
         let git = Gff::parse(&self.inst.read(&name, ResType::GIT).ok()?).ok()?;
         for w in git.root.list("WaypointList").unwrap_or_default() {
             let shown = |l: &str| w.int(l).unwrap_or(0) != 0;
-            if shown("HasMapNote") && shown("MapNoteEnabled") {
-                let x = w.float("XPosition").unwrap_or(0.0) as f32;
-                let y = w.float("YPosition").unwrap_or(0.0) as f32;
+            let x = w.float("XPosition").unwrap_or(0.0) as f32;
+            let y = w.float("YPosition").unwrap_or(0.0) as f32;
+            // The object made from this line, if a script has spoken to it.
+            let said = self
+                .objects
+                .values()
+                .filter(|o| o.kind == Kind::Waypoint)
+                .filter(|o| {
+                    (o.position[0] - x).abs() < NOTE_NEAR && (o.position[1] - y).abs() < NOTE_NEAR
+                })
+                .find_map(|o| o.map_note);
+            if shown("HasMapNote") && said.unwrap_or(shown("MapNoteEnabled")) {
                 out.notes.push(MapNote {
                     name: w.loc("MapNote").map_or(String::new(), |l| self.text(l)),
                     at: out.place(x, y),

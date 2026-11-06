@@ -133,6 +133,10 @@ pub struct Object {
     pub base_item: i32,
     /// Items: the `upgrade.2da` row in each slot of the upgrade bench.
     pub upgrades: BTreeMap<i32, i32>,
+    /// Items: a script says it cannot go on (`SetItemNonEquippable`).
+    pub non_equippable: bool,
+    /// Waypoints: what a script has said of the map note here (`SetMapPinEnabled`), over what the area's file says.
+    pub map_note: Option<bool>,
     pub xp: i32,
     /// `repute.2da` row (`FactionID`), `racialtypes.2da` row (`Race`) and `SubraceIndex`.
     pub faction: i32,
@@ -255,6 +259,8 @@ impl Object {
             stack: 1,
             plot: false,
             upgrades: BTreeMap::new(),
+            non_equippable: false,
+            map_note: None,
             alignment: 50,
         }
     }
@@ -374,6 +380,13 @@ pub struct World {
     pub selected_planet: i32,
     /// A game of Pazaak is up, and how the last one went, for its end script.
     pub pazaak: Option<crate::pazaak::PazaakGame>,
+    /// The party does not follow the leader (`SetSoloMode`, and the Solo Mode key).
+    pub solo_mode: bool,
+    pub restrict_mode: bool,
+    /// The party table's rows a script has taken off the party screen (`SetNPCSelectability`).
+    pub unselectable: BTreeSet<i32>,
+    /// Goes up when a script changes the map's notes, for what has them drawn.
+    pub map_pin_changes: u32,
     /// How far each faction, in its row, has changed its mind about another (`AdjustReputation`).
     pub(crate) reputation_shifts: BTreeMap<(i32, i32), i32>,
     pub last_pazaak_result: i32,
@@ -568,6 +581,10 @@ impl World {
             planet_lines: BTreeMap::new(),
             selected_planet: -1,
             pazaak: None,
+            solo_mode: false,
+            restrict_mode: false,
+            unselectable: BTreeSet::new(),
+            map_pin_changes: 0,
             reputation_shifts: BTreeMap::new(),
             last_pazaak_result: crate::pazaak::RESULT_LOST,
             explored: BTreeMap::new(),
