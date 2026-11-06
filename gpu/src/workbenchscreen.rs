@@ -1,8 +1,8 @@
 //! The upgrade bench, as the reference video has it at 1:13:05 and 3:42:00: `upgradesel.gui` chooses a kind of thing,
 //! `upgradeitems.gui` one of them, and `upgrade.gui` its slots. Nothing changes until Assemble. A script asks for it with
 //! `ShowUpgradeScreen`. **Assumed:** a click on a slot lists what goes in it, as the video shows the slots and not the
-//! clicks. A lightsaber's own layout in the file, with a bigger figure, is not used. **Not built:** what an upgrade does in
-//! a fight: see `crates/kotor-game/src/workbench.rs`.
+//! clicks. A lightsaber's own layout in the file, with a bigger figure, is not used. What an upgrade does is in
+//! `crates/kotor-game/src/gear.rs`.
 
 use super::{Screen, Stage};
 use kotor_game::{BenchKind, ObjId};

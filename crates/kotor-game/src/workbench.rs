@@ -3,7 +3,7 @@
 //!
 //! **Read from the install:** all of that. **Assumed:** a kind's slots, from `upgrade.2da`'s types and the reference video
 //! at 1:13:05 and 3:42:00: melee weapons take types 1 to 3, ranged 4 to 7, armour 8 and 9, and a lightsaber four crystals.
-//! **Not built:** what a property does. The rules do not read item properties yet, so an upgrade only changes the list.
+//! What a property does is in `crates/kotor-game/src/gear.rs`.
 
 use crate::world::{ObjId, World};
 use kotor_core::ResType;

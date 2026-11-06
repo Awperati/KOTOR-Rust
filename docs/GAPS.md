@@ -30,7 +30,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 | # | Gap | Evidence | Size |
 |---|---|---|---|
 | 12 | **Pazaak: built, not reached.** | `PlayPazaak` starts it, with wager, side deck and sets, in `crates/kotor-game/src/pazaak.rs`. Live in `drive_pazaak.ps1`. The rules are from knowing the game: I found no game of it in the reference video. No run has reached a table in a game. | Done |
-| 13 | **Workbench and upgrades: built.** | `upgradesel`, `upgradeitems` and `upgrade`, opened by `ShowUpgradeScreen`. The pilot does not use them. | Done |
+| 13 | **Workbench and upgrades: built.** | `upgradesel`, `upgradeitems` and `upgrade`, opened by `ShowUpgradeScreen`. Item properties now count for everyone, in `crates/kotor-game/src/gear.rs`: attack, damage, defense, abilities, skills, saves, keen, and who may wear what. Live in `drive_bench.ps1`. The pilot does not use it. On-hit effects and regeneration are not built, and damage types are row 9. | Done |
 | 14 | **Traps and mines.** | `docs/STATUS.md` lists traps as missing, and a chosen Security action too. Demolitions then means nothing. | M |
 | 15 | **Stealth.** | `AwardStealthXP`, 1 call, only records itself, and invisibility is not modelled. `docs/STATUS.md` lists stealth as not built. | M |
 | 16 | **Scenes whose pause runs out.** | `tar02_zelka021`, `tar04_outwom043`, `tar02_sithintero`. Each ended by our time limit, so some script's walk or death never came. Not read yet. | S each |

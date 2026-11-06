@@ -1106,6 +1106,7 @@ impl World {
         };
         let heading = p.float("PT_PLAYER_HEAD").unwrap_or(0.0) as f32;
         self.pc_mover = kotor_walkmesh::Mover::new(pos, heading);
+        self.remember_items();
         self.pc = leader;
         if let Some(o) = self.objects.get_mut(&leader) {
             o.position = pos;

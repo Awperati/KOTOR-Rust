@@ -48,6 +48,7 @@ const SAVE_NAME_MAX: usize = 32;
 const SMALL_FONT: &str = "fnt_d16x16";
 /// Strings of the save screen in `dialog.tlk`.
 const STR_LOAD_GAME: u32 = 1585;
+const STR_WRONG_SIDE: u32 = 1512;
 const STR_SAVE_GAME: u32 = 1588;
 
 /// The picture an empty slot shows, by the slot's button: stock names, seen in the reference video at 7:05.
@@ -1626,6 +1627,10 @@ impl Stage {
             Err(CannotEquip::BothHandsFull) => {
                 self.effect(SOUND_ERROR);
                 self.menus.message = "A weapon in the right hand takes both hands.".to_string();
+            }
+            Err(CannotEquip::Alignment) => {
+                self.effect(SOUND_ERROR);
+                self.menus.message = self.ui.strref(STR_WRONG_SIDE);
             }
             Err(_) => {
                 self.effect(SOUND_ERROR);

@@ -15,6 +15,7 @@ mod follow;
 mod force;
 mod galaxy;
 mod game;
+mod gear;
 mod host;
 mod items;
 mod journal;

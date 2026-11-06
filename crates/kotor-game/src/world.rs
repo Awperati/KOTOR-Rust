@@ -667,6 +667,9 @@ impl World {
     ) -> ObjId {
         let id = self.add(kind, template);
         self.fill_from_template(id, template, ty, &Struct::default());
+        if kind == Kind::Item {
+            self.item_template(template);
+        }
         if let Some(o) = self.objects.get_mut(&id) {
             o.position = position;
         }
@@ -910,6 +913,7 @@ impl World {
         // in `end_m01ab` it does not.
         self.programs.clear();
         self.item_templates.clear();
+        self.remember_items();
         let ifo = Gff::parse(&self.inst.read("module", ResType::IFO)?)?;
         let area_name = ifo
             .root

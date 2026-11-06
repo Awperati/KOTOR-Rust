@@ -42,6 +42,7 @@ pub(crate) struct ItemTemplate {
     texture_variation: i64,
     /// The row of `spells.2da` its `CastSpell` property runs.
     power: Option<i32>,
+    pub(crate) properties: Vec<crate::gear::ItemProperty>,
 }
 
 /// What a screen shows about an item.
@@ -68,12 +69,14 @@ pub enum CannotEquip {
     WrongSlot,
     /// A feat is missing, or it is for droids.
     Prerequisites,
+    /// It is for the other side, in the game's words at 1512.
+    Alignment,
     /// The right hand holds a weapon that takes both.
     BothHandsFull,
 }
 
 impl World {
-    fn item_template(&mut self, template: &str) -> Rc<ItemTemplate> {
+    pub(crate) fn item_template(&mut self, template: &str) -> Rc<ItemTemplate> {
         let key = template.to_ascii_lowercase();
         if let Some(t) = self.item_templates.get(&key) {
             return t.clone();
@@ -102,6 +105,8 @@ impl World {
                 .find(|p| p.int("PropertyName") == Some(10))
                 .and_then(|p| p.int("Subtype"))
                 .map(|s| s as i32);
+            out.properties =
+                self.read_properties(g.root.list("PropertiesList").unwrap_or_default());
         }
         let out = Rc::new(out);
         self.item_templates.insert(key, out.clone());
@@ -208,7 +213,15 @@ impl World {
         if wrong_body || !has_feats {
             return Err(CannotEquip::Prerequisites);
         }
-        Ok(())
+        let template = self.objects.get(&item).map(|o| o.template.clone());
+        if let Some(template) = template {
+            self.item_template(&template);
+        }
+        match self.passes_item_limits(who, item) {
+            (false, _) => Err(CannotEquip::Alignment),
+            (_, false) => Err(CannotEquip::Prerequisites),
+            _ => Ok(()),
+        }
     }
 
     /// Put an item on: in `slot`, or the first free slot it fits, or else the first it fits. Whatever was there goes

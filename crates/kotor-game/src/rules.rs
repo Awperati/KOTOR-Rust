@@ -92,7 +92,9 @@ impl World {
         let Some(o) = self.objects.get(&id) else {
             return 10;
         };
-        o.abilities[ability] + self.effect_sum(id, "EffectAbilityIncrease", Some(ability as f32))
+        o.abilities[ability]
+            + self.gear_ability(id, ability)
+            + self.effect_sum(id, "EffectAbilityIncrease", Some(ability as f32))
             - self.effect_sum(id, "EffectAbilityDecrease", Some(ability as f32))
     }
 
@@ -117,6 +119,7 @@ impl World {
         };
         self.class_save(class, level, save)
             + ability_mod(self.ability_score(id, save.ability()))
+            + self.gear_save(id, save)
             + self.effect_sum(id, "EffectSavingThrowIncrease", None)
             - self.effect_sum(id, "EffectSavingThrowDecrease", None)
     }
@@ -167,6 +170,7 @@ impl World {
             _ => 3,
         };
         ability_mod(self.ability_score(id, key))
+            + self.gear_skill(id, skill)
             + self.effect_sum(id, "EffectSkillIncrease", Some(skill as f32))
             - self.effect_sum(id, "EffectSkillDecrease", Some(skill as f32))
     }

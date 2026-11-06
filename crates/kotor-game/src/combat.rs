@@ -202,12 +202,13 @@ impl World {
     }
 
     /// What is added to the d20 with the weapon in a slot (the right hand's empty fist too): base attack bonus,
-    /// Strength in melee or Dexterity at range, and effects.
+    /// Strength in melee or Dexterity at range, what the gear gives, and effects.
     pub fn attack_bonus_of(&mut self, id: ObjId, slot: i32) -> i32 {
         let ranged = self.hand_weapon(id, slot).is_some_and(|w| w.ranged);
         let ability = if ranged { DEX } else { STR };
         self.base_attack_of(id)
             + ability_mod(self.ability_score(id, ability))
+            + self.gear_attack(id, slot)
             + self.effect_sum(id, "EffectAttackIncrease", None)
             - self.effect_sum(id, "EffectAttackDecrease", None)
     }
@@ -219,14 +220,19 @@ impl World {
             let fist = slot == 4 && !self.objects.get(&id)?.equipped.contains_key(&4);
             fist.then_some(Weapon::UNARMED)
         })?;
-        let add = if w.ranged {
-            0
-        } else {
-            ability_mod(self.ability_score(id, STR))
-        };
+        let (flat, dice) = self.gear_damage(id, slot);
+        let add = flat
+            + if w.ranged {
+                0
+            } else {
+                ability_mod(self.ability_score(id, STR))
+            };
+        let (least, most) = dice.iter().fold((0, 0), |(l, m), (count, sides)| {
+            (l + count, m + count * sides)
+        });
         Some((
-            damage(w.dice, add, Outcome::Hit, 1),
-            damage(w.dice * w.sides, add, Outcome::Hit, 1),
+            damage(w.dice, add, Outcome::Hit, 1) + least,
+            damage(w.dice * w.sides, add, Outcome::Hit, 1) + most,
         ))
     }
 
@@ -250,7 +256,11 @@ impl World {
                 .sum(),
             None => 0,
         };
-        10 + armor + natural + ability_mod(dex) + self.effect_sum(id, "EffectACIncrease", None)
+        10 + armor
+            + natural
+            + ability_mod(dex)
+            + self.gear_defense(id)
+            + self.effect_sum(id, "EffectACIncrease", None)
             - self.effect_sum(id, "EffectACDecrease", None)
     }
 
@@ -376,7 +386,7 @@ impl World {
         let bonus = self.attack_bonus_of(attacker, 4) + boost.to_hit;
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
-        let threat = weapon.threat * boost.threat.max(1);
+        let threat = weapon.threat * boost.threat.max(1) * self.threat_factor(attacker, 4);
         let mut outcome = resolve_attack(roll, confirm, bonus, defense, threat);
         if outcome == Outcome::Miss && self.has_assured_hit(attacker) {
             outcome = Outcome::Hit;
@@ -384,8 +394,9 @@ impl World {
         let mut dealt = 0;
         if outcome != Outcome::Miss {
             let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
-            let mod_ = if weapon.ranged { 0 } else { str_mod };
-            dealt = damage(dice, mod_, outcome, weapon.multiplier) + boost.damage;
+            let mod_ = self.gear_damage(attacker, 4).0 + if weapon.ranged { 0 } else { str_mod };
+            let more = self.roll_gear_damage(attacker, 4, target, outcome == Outcome::Critical);
+            dealt = damage(dice, mod_, outcome, weapon.multiplier) + boost.damage + more;
             // **Assumption:** difficulty scales what the party takes, by the `multiplier` of `difficultyopt.2da`.
             if target == self.pc || self.party.contains(&target) {
                 dealt = ((dealt as f32 * self.difficulty_multiplier()).round() as i32).max(1);

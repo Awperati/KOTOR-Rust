@@ -17,7 +17,8 @@
 //!     --no-early-force New games play by the game's own rules, whatever Settings says
 //!     --early-force   With --autopilot, new games have the early Force rule too, for a test driver
 //!     --power N       give the player this power of `spells.2da` and the Force for it when a game starts, for a test driver
-//!     --give NAME     give the player this item when a game starts, for a test driver
+//!     --give NAMES    give the player these items, split by commas, when a game starts, for a test driver. One that ends
+//!                     in ! is put on
 //!     --gold N        give the player these credits when a game starts, for a test driver
 //!     --store TAG     open this store when a game starts, as its script would, for a test driver
 //!     --global NAME=N set this global number when a game starts, for a test driver
@@ -280,10 +281,15 @@ impl App {
                     w.open_store(store, 0, 0);
                 }
             }
-            if let Some(template) = self.give.take() {
+            if let Some(templates) = self.give.take() {
                 let w = &mut self.stage.game.world;
-                let (pc, item) = (w.pc, w.spawn_item(&template));
-                w.carry(pc, item);
+                for template in templates.split(',') {
+                    let (pc, item) = (w.pc, w.spawn_item(template.trim_end_matches('!')));
+                    w.carry(pc, item);
+                    if template.ends_with('!') {
+                        let _ = w.equip(pc, item, None);
+                    }
+                }
             }
             if let Some(power) = self.power.take() {
                 let w = &mut self.stage.game.world;
