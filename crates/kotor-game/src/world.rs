@@ -351,6 +351,8 @@ pub struct World {
     pub tutorial_requests: Vec<i32>,
     /// All the experience scripts have given, as against kills.
     pub plot_xp: i32,
+    /// What the player has queued for their next attacks.
+    pub combat_queue: VecDeque<crate::combat_actions::CombatAction>,
     /// Who the party screen left behind, by slot.
     pub bench: BTreeMap<i32, crate::party::BenchedMember>,
     /// The direction the player is being steered this step, and whether at a run.
@@ -511,6 +513,7 @@ impl World {
             tutorial_seen: BTreeSet::new(),
             tutorial_requests: Vec::new(),
             plot_xp: 0,
+            combat_queue: VecDeque::new(),
             bench: BTreeMap::new(),
             journal_order: Vec::new(),
             journal_file: None,

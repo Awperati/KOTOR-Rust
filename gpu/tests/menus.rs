@@ -1353,6 +1353,86 @@ fn the_feedback_and_autopause_pages_keep_what_they_say_and_it_takes_effect() {
     assert!(s.game.world.carried(pc).contains(&armour));
 }
 
+#[test]
+fn the_other_slots_queue_feats_and_powers_and_blows_show_as_numbers() {
+    let Some((mut s, _)) = in_game("slots") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 0.1, p[1], p[2]]);
+    let o = s.game.world.object_mut(foe).unwrap();
+    o.faction = 1;
+    (o.hp, o.max_hp) = (900, 900);
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.feats.clear();
+    o.spells.clear();
+    s.update(DT);
+    // No feats and no powers: only the first slot answers.
+    let slot = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    s.click(slot, SIZE);
+    assert!(s.game.world.combat_queue.is_empty());
+
+    // With two feats, the arrows go through them.
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.feats.extend([28, 8]);
+    o.spells.insert(23);
+    (o.force, o.max_force) = (50, 50);
+    s.update(DT);
+    let first = frame(&mut s);
+    let down = s.hud_pixel("BTN_TARGETDOWN1", SIZE).unwrap();
+    s.click(down, SIZE);
+    assert!(
+        s.game.world.combat_queue.is_empty(),
+        "an arrow queues nothing"
+    );
+    assert!(frame(&mut s) != first, "the next feat shows");
+    let up = s.hud_pixel("BTN_TARGETUP1", SIZE).unwrap();
+    s.click(up, SIZE);
+
+    // Under the cursor, a slot says what it does. The bar follows the target on the screen, so ask where it is now.
+    let shown = frame(&mut s);
+    let slot = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    s.hover(slot, SIZE);
+    assert!(frame(&mut s) != shown);
+    let slot = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+
+    // A click queues it and attacks, and the queue shows it.
+    s.click(slot, SIZE);
+    assert_eq!(s.game.world.combat_queue.len(), 1);
+    assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
+    let power = s.hud_pixel("BTN_TARGET2", SIZE).unwrap();
+    s.click(power, SIZE);
+    assert_eq!(s.game.world.combat_queue.len(), 2);
+    assert_eq!(
+        s.game.world.combat_queue[1],
+        kotor_game::CombatAction::Power(23)
+    );
+
+    // Blows show as words over the target, and the option turns them off.
+    let log = s.game.world.combat.log.len();
+    for _ in 0..300 {
+        s.update(DT);
+        if s.game.world.combat.log.len() > log {
+            break;
+        }
+    }
+    assert!(s.game.world.combat.log.len() > log);
+    s.update(DT);
+    assert!(!s.floats_shown().is_empty());
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    click_row(&mut s, "LB_OPTIONS", 4);
+    assert!(!s.settings().floating_numbers);
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    s.update(DT);
+    assert!(s.floats_shown().is_empty());
+}
+
 /// The picture of the game, with nothing open.
 fn frame_of_hud(s: &mut Stage) -> Vec<u8> {
     s.update(DT);

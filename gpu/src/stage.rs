@@ -973,9 +973,18 @@ impl Stage {
             }
             return;
         }
+        let at = (
+            pixel.0 * self.ui_width as f32 / size.0.max(1) as f32,
+            pixel.1 * 480.0 / size.1.max(1) as f32,
+        );
+        let on_hud = self.ui.hud_hit(at.0, at.1);
+        self.set_hud_hover(on_hud);
         let cam = self.camera();
         let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
-        self.hover_target = self.game.world.pick(o, d);
+        // The bar's slots stay where they are while the cursor is on them, whatever lies behind.
+        if !self.over_target_slots() {
+            self.hover_target = self.game.world.pick(o, d);
+        }
     }
 
     /// Use a thing: an enemy is attacked, anything else is walked to and talked to, opened or used.
@@ -1028,6 +1037,12 @@ impl Stage {
             if tag == "BTN_ACTION0" || tag == "BTN_TARGET0" {
                 if let Some(id) = self.target() {
                     self.use_thing(id);
+                }
+            } else if let Some(slot) = menus::target_slot(&tag) {
+                if self.queue_slot(slot) {
+                    if let Some(id) = self.target() {
+                        self.use_thing(id);
+                    }
                 }
             } else {
                 self.hud_button(&tag);
@@ -1621,6 +1636,7 @@ impl Stage {
         let minimap = self.minimap_view();
         let combat = self.combat_view(target.as_ref().map(|t| t.3));
         let notices = self.notices_view();
+        let floats = self.floats_view();
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -1628,7 +1644,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}{notices:?}",
+                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}{notices:?}{floats:?}",
                 self.module,
                 party
                     .iter()
@@ -1650,6 +1666,7 @@ impl Stage {
         self.ui.set_minimap(minimap);
         let engaged = combat.engaged || !notices.is_empty();
         self.ui.set_notices(notices);
+        self.ui.set_floats(floats);
         self.ui.set_combat(combat);
         self.overlay = match view {
             // A wordless beat: the scene alone.
@@ -1757,11 +1774,16 @@ impl Stage {
             Kind::Creature if !o.dead => 2.1,
             _ => 1.1,
         };
+        self.on_screen(o.position, up)
+    }
+
+    /// Where a point of the world, `up` above the floor, is in the layout.
+    fn on_screen(&self, at: [f32; 3], up: f32) -> Option<(i32, i32)> {
         let cam = self.camera();
         let v = [
-            o.position[0] - cam.eye[0],
-            o.position[1] - cam.eye[1],
-            o.position[2] + up - cam.eye[2],
+            at[0] - cam.eye[0],
+            at[1] - cam.eye[1],
+            at[2] + up - cam.eye[2],
         ];
         let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
         let norm = |a: [f32; 3]| {

@@ -113,6 +113,7 @@ impl Stage {
             }
         }
         self.menus.had = Some(now);
+        self.floats_tick();
         let w = &self.game.world;
         if self.menus.settings.auto_level
             && w.hold_levels

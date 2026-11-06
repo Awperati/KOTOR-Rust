@@ -10,10 +10,13 @@ use kotor_game::{
 use kotor_ui::{CombatHud, Hit, MenuView, Row};
 use std::path::{Path, PathBuf};
 
+#[path = "fightscreen.rs"]
+mod fightscreen;
 #[path = "levelup.rs"]
 mod levelup;
 #[path = "mapscreen.rs"]
 mod mapscreen;
+pub(super) use fightscreen::target_slot;
 #[path = "notices.rs"]
 mod notices;
 #[path = "optionpages.rs"]
@@ -388,6 +391,8 @@ pub(super) struct Menus {
     /// Pages of tutorial pop-ups waiting, and whether they come up at all.
     tutorials: std::collections::VecDeque<u32>,
     tutorials_on: bool,
+    /// The fight's slots and rising words.
+    fight: fightscreen::Fight,
     /// The words of the option the cursor last rested on.
     option_words: Option<u32>,
     /// The icons flashing on the HUD and when they stop, and what they were last compared with.
@@ -1195,6 +1200,9 @@ impl Stage {
             "BTN_JOU" => self.open_journal(),
             "BTN_MAP" | "BTN_MINIMAP" => self.open_map(),
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
+            "BTN_TARGETUP1" | "BTN_TARGETDOWN1" | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => {
+                self.turn_slot(tag)
+            }
             "BTN_OPT" => self.escape(),
             _ => {}
         }
@@ -1217,16 +1225,20 @@ impl Stage {
         }
         let w = &self.game.world;
         let attacking = w.combat.target.contains_key(&w.pc);
-        let queue = if attacking {
+        let mut queue = if attacking {
             vec![ATTACK_PICTURE.to_string()]
         } else {
             Vec::new()
         };
+        let hostile = action == Some("Attack");
+        let (slots, hover) = self.slots_view(hostile, &mut queue);
         CombatHud {
             engaged: self.party_blocked(),
             message: self.ui.strref(STR_COMBAT_MODE),
             queue,
-            attack: (action == Some("Attack")).then(|| ATTACK_PICTURE.to_string()),
+            attack: hostile.then(|| ATTACK_PICTURE.to_string()),
+            slots,
+            hover,
         }
     }
 
@@ -1721,6 +1733,7 @@ impl Stage {
         self.forget_view();
         self.menus.map = None;
         self.menus.had = None;
+        self.menus.fight = Default::default();
         if let Err(e) = self.enter_module() {
             self.game.world.errors.push(format!("stage: {e}"));
         }

@@ -273,6 +273,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.game.world.combat.target.insert(pc, foe);
     s.update(0.05);
     shot(&mut gpu, &mut s, "combat_engaged", &out);
+    // With feats and powers in the other slots, and a blow landing.
+    if let Some(o) = s.game.world.object_mut(pc) {
+        o.feats.extend([28, 8, 11, 30, 29, 31]);
+        o.spells.extend([23, 15]);
+        (o.force, o.max_force) = (50, 50);
+    }
+    s.update(0.05);
+    s.game.world.combat_queue.clear();
+    let log = s.game.world.combat.log.len();
+    for _ in 0..80 {
+        s.update(0.05);
+        if s.game.world.combat.log.len() > log {
+            break;
+        }
+    }
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "combat_slots", &out);
     s.game.world.combat.target.clear();
     s.game.world.objects.remove(&foe);
     s.update(0.05);

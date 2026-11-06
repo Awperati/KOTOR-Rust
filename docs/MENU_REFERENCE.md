@@ -48,6 +48,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Auto Level Up, Combat Movement | greyed boxes | working. Not clicked live |
 | Tutorial pop-ups | none | a box with words and OK or Continue, from `tutorial.2da`, once each, as at 3:15, 3:36 and 4:00. What sets each off is read from the table's labels. Frames: `tutorial_screen`, `tutorial_game`. Over a screen and over the game tested in code; not clicked live, the driver turns them off |
 | Notices | none | the HUD's own icons for quest, credits, XP from scripts, items and alignment, as at 3:46. Frame: `notices`. Not clicked live |
+| Combat slots and floats | empty | as at 6:05: feats in the second slot and hostile powers in the third, arrows through them, yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. Tested in code, not clicked live |
 | Combat HUD | none | as at 5:50 and 6:05: the panel at the foot with the action under way and Disengage, the red line at the top, the enemy's bar red, slots under it. The first slot and Disengage were clicked in a test, not in the live window: the driver cannot start a fight. Frames: `combat_target`, `combat_engaged` |
 | Small map on the HUD | a frame and a still arrow | the map round the player, 120 of the picture's pixels, with `mm_barrow` turning, compared with 3:46. A click opens the map. Which way the arrow's picture points is read from the frame `hud_minimap` |
 | Choosing equipment | a click wore at once, a click on a worn slot took off | a click on a slot lists it, `inone` and None first, `(Equipped)` marked, words on the left, OK and Cancel. The owner chose this |
@@ -72,8 +73,8 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Tutorial pop-ups over the game | the HUD stays under the box | the HUD goes while it is up | the box is drawn as a screen |
 | Tutorial pop-up words | at 5:50 the words differ from the talk table's row 21 and 34 | the talk table's | where theirs come from not found |
 | Notice timing | not measured | 6 s, assumed | the video's are short and I sampled every 5 s |
-| Combat target slots | three: attack, feats, powers, with arrows to go through them; the slot under the cursor is yellow, and its words float by it | the attack in the first, empty others, no words | feats in a fight and powers from the HUD are not in the rules yet |
-| Combat floats | damage and XP over the target | none | not built |
+| Combat feats | a stun on a critical, a Defense penalty for Flurry and Rapid Shot, as their words say | not applied | the attack's changes are built, these two are not |
+| Target slot words | also "Activate Left Action : 1" by the slot | the name on the bar only | that line is about keys, which are not built |
 | Enemy sighted | a box at the top right, and the game pauses | none | automatic pause is not built |
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Sounds | clicks and hovers | none in menus | not compared: I looked at frames only |

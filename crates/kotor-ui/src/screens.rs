@@ -46,6 +46,7 @@ pub struct Ui<'a> {
     notices: Vec<String>,
     /// The small map and its frame are switched off.
     minimap_off: bool,
+    floats: Vec<Float>,
 }
 
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
@@ -58,11 +59,26 @@ pub struct CombatHud {
     pub queue: Vec<String>,
     /// The target is an enemy: its bar is red, and this picture is in the first slot under it.
     pub attack: Option<String>,
+    /// The pictures of the other two slots, what each shows now, and whether it has more to go through.
+    pub slots: [Option<(String, bool)>; 2],
+    /// The slot under the cursor, and what it does, for the name bar.
+    pub hover: Option<(usize, String)>,
+}
+
+/// Words rising over someone in a fight, in layout units.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Float {
+    pub x: i32,
+    pub y: i32,
+    pub text: String,
+    pub color: [f32; 3],
 }
 
 /// What a fight's text and bar are drawn in.
 const COMBAT_RED: [f32; 3] = [1.0, 0.16, 0.1];
 const HOSTILE_SLOT: &str = "lbl_miscroll_h";
+const HOVER_SLOT: &str = "lbl_miscroll_hi";
+const FLOAT_FONT: &str = "fnt_d16x16";
 /// What stays in the middle of a wide window, as the video has it.
 const HUD_CENTRED: [&str; 4] = ["LBL_COMBATBG", "LBL_QUEUE", "BTN_CLEAR", "LBL_CMBT"];
 
@@ -138,6 +154,7 @@ impl<'a> Ui<'a> {
             combat: CombatHud::default(),
             notices: Vec::new(),
             minimap_off: false,
+            floats: Vec::new(),
         }
     }
 
@@ -803,6 +820,10 @@ impl<'a> Ui<'a> {
                 self.draw_minimap(&mut cv, [e.left, e.top, e.width, e.height]);
             }
         }
+        for f in self.floats.clone() {
+            let r = [f.x - 60, f.y, 120, 20];
+            self.draw_text(&mut cv, FLOAT_FONT, &f.text, r, 18, f.color);
+        }
         Some(cv.into_image())
     }
 
@@ -889,6 +910,25 @@ impl<'a> Ui<'a> {
                 patches.entry(format!("BTN_TARGET{n}")).or_default().fill =
                     Some(HOSTILE_SLOT.to_string());
             }
+            for (n, slot) in combat.slots.iter().enumerate() {
+                let n = n + 1;
+                if let Some((icon, more)) = slot {
+                    let picture = patches.entry(format!("LBL_TARGET{n}")).or_default();
+                    picture.hidden = false;
+                    picture.fill = Some(icon.clone());
+                    if *more {
+                        for arrow in ["UP", "DOWN"] {
+                            let tag = format!("BTN_TARGET{arrow}{n}");
+                            patches.entry(tag).or_default().hidden = false;
+                        }
+                    }
+                }
+            }
+            if let Some((n, words)) = &combat.hover {
+                patches.entry(format!("BTN_TARGET{n}")).or_default().fill =
+                    Some(HOVER_SLOT.to_string());
+                patches.entry("LBL_NAME".to_string()).or_default().text = Some(words.clone());
+            }
         }
         if combat.attack.is_some() {
             patches.entry("LBL_NAME".to_string()).or_default().color = Some(COMBAT_RED);
@@ -904,6 +944,11 @@ impl<'a> Ui<'a> {
     /// What the HUD shows of a fight.
     pub fn set_combat(&mut self, combat: CombatHud) {
         self.combat = combat;
+    }
+
+    /// The words rising over people in a fight.
+    pub fn set_floats(&mut self, floats: Vec<Float>) {
+        self.floats = floats;
     }
 
     /// The Mini Map box on the Feedback page.
@@ -928,6 +973,12 @@ impl<'a> Ui<'a> {
         let shown = |tag: &str| match tag {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
             "BTN_TARGET0" => self.combat.attack.is_some() && self.target_at.is_some(),
+            "BTN_TARGET1" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1" => {
+                self.combat.slots[0].is_some() && self.target_at.is_some()
+            }
+            "BTN_TARGET2" | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => {
+                self.combat.slots[1].is_some() && self.target_at.is_some()
+            }
             "BTN_MINIMAP" => !self.minimap_off,
             _ => true,
         };
@@ -935,6 +986,8 @@ impl<'a> Ui<'a> {
             .children
             .iter()
             .filter(|c| HUD_BUTTONS.contains(&c.tag.as_str()) && shown(&c.tag))
+            // What is drawn last lies on top: the arrows on their slots.
+            .rev()
             .find(|c| {
                 let e = &c.extent;
                 x >= e.left as f32
@@ -1150,7 +1203,7 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
-const HUD_BUTTONS: [&str; 14] = [
+const HUD_BUTTONS: [&str; 20] = [
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -1163,6 +1216,12 @@ const HUD_BUTTONS: [&str; 14] = [
     "BTN_CLEARONE",
     "BTN_CLEARONE2",
     "BTN_TARGET0",
+    "BTN_TARGET1",
+    "BTN_TARGETUP1",
+    "BTN_TARGETDOWN1",
+    "BTN_TARGET2",
+    "BTN_TARGETUP2",
+    "BTN_TARGETDOWN2",
     "BTN_OPT",
     "BTN_ACTION0",
 ];

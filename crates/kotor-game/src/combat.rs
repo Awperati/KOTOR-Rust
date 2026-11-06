@@ -296,17 +296,45 @@ impl World {
 
     /// Resolve one attack and everything that follows from it: damage, scripts, death.
     fn resolve(&mut self, attacker: ObjId, target: ObjId) {
+        // What the player queued goes first: a power instead of the attack, or a feat that changes it.
+        let queued = (attacker == self.pc)
+            .then(|| self.combat_queue.pop_front())
+            .flatten();
+        if let Some(crate::combat_actions::CombatAction::Power(spell)) = queued {
+            if self.cast_spell(attacker, spell, target, false).is_ok() {
+                return;
+            }
+        }
+        let boost = match queued {
+            Some(crate::combat_actions::CombatAction::Feat(f)) => {
+                crate::combat_actions::feat_boost(f)
+            }
+            _ => Default::default(),
+        };
+        self.resolve_with(attacker, target, boost);
+        if boost.extra_attack && self.objects.get(&target).is_some_and(|t| !t.dead) {
+            self.resolve_with(attacker, target, boost);
+        }
+    }
+
+    fn resolve_with(
+        &mut self,
+        attacker: ObjId,
+        target: ObjId,
+        boost: crate::combat_actions::FeatBoost,
+    ) {
         let weapon = self.weapon_of(attacker);
         let str_mod = ability_mod(self.ability_score(attacker, STR));
-        let bonus = self.attack_bonus_of(attacker, 4);
+        let bonus = self.attack_bonus_of(attacker, 4) + boost.to_hit;
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
-        let outcome = resolve_attack(roll, confirm, bonus, defense, weapon.threat);
+        let threat = weapon.threat * boost.threat.max(1);
+        let outcome = resolve_attack(roll, confirm, bonus, defense, threat);
         let mut dealt = 0;
         if outcome != Outcome::Miss {
             let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
             let mod_ = if weapon.ranged { 0 } else { str_mod };
-            dealt = damage(dice, mod_, outcome, weapon.multiplier);
+            dealt = damage(dice, mod_, outcome, weapon.multiplier) + boost.damage;
             // **Assumption:** difficulty scales what the party takes, by the `multiplier` of `difficultyopt.2da`.
             if target == self.pc || self.party.contains(&target) {
                 dealt = ((dealt as f32 * self.difficulty_multiplier()).round() as i32).max(1);

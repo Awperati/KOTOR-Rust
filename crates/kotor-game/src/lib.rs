@@ -5,6 +5,7 @@ mod area_map;
 mod autopilot;
 mod chargen;
 mod combat;
+mod combat_actions;
 mod cutscene;
 mod dialogue;
 mod follow;
@@ -32,6 +33,7 @@ pub use combat::{
     ability_mod, damage, resolve_attack, AttackLog, CombatState, Outcome, Weapon,
     HEARTBEAT_SECONDS, MELEE_REACH, RANGED_REACH, ROUND_SECONDS,
 };
+pub use combat_actions::{CombatAction, CombatChoice};
 pub use cutscene::{Beat, CameraShot, Conversation, LengthFrom, Lookup, Player, Step, Timeline};
 pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
