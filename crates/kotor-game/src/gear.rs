@@ -303,6 +303,52 @@ impl World {
     }
 
     /// Reads the files of the items there are, for what asks about them without being able to read.
+    /// What kind of thing a carried item is, from `baseitems.2da`.
+    fn base_label(&mut self, item: ObjId) -> String {
+        let Some(row) = self.object(item).map(|o| o.base_item) else {
+            return String::new();
+        };
+        self.table("baseitems")
+            .and_then(|t| t.get(row.max(0) as usize, "label").map(str::to_string))
+            .unwrap_or_default()
+    }
+
+    /// Whether someone may try a lock with the Security skill, and the spikes they carry. The talk table's row 256: points in
+    /// the skill make it an option on a target, spikes carried are options too, and with no points they cannot try.
+    pub fn lock_ways(&mut self, who: ObjId) -> (bool, Vec<ObjId>) {
+        const SKILL_SECURITY: usize = 6;
+        let trained = self.skill_ranks(who, SKILL_SECURITY) > 0;
+        let carried = self.carried(who);
+        let spikes = carried
+            .into_iter()
+            .filter(|i| self.base_label(*i) == "Security_Spikes")
+            .collect();
+        (trained, spikes)
+    }
+
+    /// What someone carries to use on themselves, for the quick slots: what heals, and then the rest. The video at 7:50 has
+    /// a Medpac in the first of these and Adrenal Stamina in the next. **Assumed:** a repair kit goes with what heals.
+    pub fn quick_items(&mut self, who: ObjId) -> [Vec<ObjId>; 2] {
+        const HEALS: [&str; 3] = [
+            "Medical_Equipment",
+            "Squad_Recovery_kit",
+            "Droid_Repair_Equipment",
+        ];
+        let thrown = self.combat_throwables(who);
+        let mut out = [Vec::new(), Vec::new()];
+        for item in self.carried(who) {
+            let for_self = self
+                .item_view(item)
+                .is_some_and(|v| v.power.is_some() && v.slots == 0);
+            if thrown.contains(&item) || !for_self {
+                continue;
+            }
+            let label = self.base_label(item);
+            out[usize::from(!HEALS.contains(&label.as_str()))].push(item);
+        }
+        out
+    }
+
     pub(crate) fn remember_items(&mut self) {
         let templates: Vec<String> = self
             .objects

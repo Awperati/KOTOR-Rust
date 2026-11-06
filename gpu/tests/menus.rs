@@ -734,10 +734,10 @@ fn the_option_pages_change_what_they_say_and_keep_it() {
     assert_eq!(again.take_wanted_size(), Some((1920, 1080)));
     press(&mut again, "BTN_NEWGAME");
     assert_eq!(again.game.world.difficulty, 2);
-    // The camera turns the other way on the pitch.
+    // The file's Mouse Look box has the tag of an inverted camera, and the owner wants no flip from it: bug 17.
     let before = again.pitch;
     again.look(0.0, 10.0);
-    assert!(again.pitch < before);
+    assert!(again.pitch > before);
     let _ = std::fs::remove_file(&file);
 
     // Also from the pause menu.
@@ -749,6 +749,161 @@ fn the_option_pages_change_what_they_say_and_keep_it() {
     assert_eq!(p.menu_name(), "sound");
     p.escape();
     assert_eq!(p.menu_name(), "pause");
+}
+
+/// A door a Security check can open, locked, with the player beside it and nothing else in reach to be the target.
+fn beside_a_locked_door(s: &mut Stage) -> Option<u32> {
+    let w = &mut s.game.world;
+    let doors: Vec<u32> = w
+        .objects
+        .values()
+        .filter(|o| o.kind == kotor_game::Kind::Door && o.link_module.is_empty())
+        .map(|o| o.id)
+        .collect();
+    let door = doors.into_iter().find(|d| w.lock_can_be_picked(*d))?;
+    let at = w.object(w.pc)?.position;
+    // Trask would be the nearest thing in reach.
+    for o in w.objects.values_mut() {
+        o.useable = false;
+    }
+    let o = w.object_mut(door)?;
+    o.locked = true;
+    o.open = false;
+    o.useable = true;
+    // This one talks to whoever fails it, and has scripts for that.
+    o.conversation.clear();
+    o.scripts.clear();
+    // The floor keeps the player where it has them, so the door comes here.
+    o.position = [at[0] - 0.8, at[1], at[2]];
+    Some(door)
+}
+
+fn carrying(s: &mut Stage, template: &str) -> u32 {
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let item = w.spawn_item(template);
+    w.object_mut(pc).unwrap().inventory.push(item);
+    item
+}
+
+#[test]
+fn a_locked_door_is_tried_with_the_skill_and_a_spike_only_by_one_who_has_points() {
+    let Some((mut s, _)) = in_game("lock_ways") else {
+        return;
+    };
+    let Some(door) = beside_a_locked_door(&mut s) else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let spike = carrying(&mut s, "g_i_secspike02");
+    assert!(s.game.world.lock_ways(pc).1.contains(&spike));
+    let tried = |s: &Stage| {
+        s.game
+            .world
+            .events
+            .iter()
+            .filter(|e| e.starts_with("security"))
+            .count()
+    };
+    // No points: they cannot try, even with a spike, and the spike stays.
+    s.game.world.object_mut(pc).unwrap().skills = vec![0; 8];
+    let by_it = |s: &mut Stage| {
+        // Facing it, or its bar has nowhere to be.
+        s.yaw = std::f32::consts::PI;
+        // Trask goes on talking in this room.
+        if s.game.world.in_dialogue() {
+            s.number_key(1);
+            s.continue_line();
+        }
+        s.update(DT);
+    };
+    // Where someone is drawn catches up with where they are.
+    for _ in 0..10 {
+        by_it(&mut s);
+    }
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    s.click(slot, SIZE);
+    assert_eq!(
+        s.menu_name(),
+        "-",
+        "it is the slot, not what the file has there"
+    );
+    for _ in 0..30 {
+        by_it(&mut s);
+    }
+    assert_eq!(tried(&s), 0);
+    assert!(s.game.world.object(door).unwrap().locked);
+    assert!(s.game.world.object(spike).is_some());
+
+    // With points the slot has the skill first, and then the spike, which goes with the try.
+    s.game.world.object_mut(pc).unwrap().skills[6] = 20;
+    by_it(&mut s);
+    let down = s.hud_pixel("BTN_TARGETDOWN0", SIZE).unwrap();
+    s.click(down, SIZE);
+    by_it(&mut s);
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    s.click(slot, SIZE);
+    for _ in 0..30 {
+        by_it(&mut s);
+    }
+    assert_eq!(tried(&s), 1);
+    assert!(s.game.world.object(spike).is_none(), "a spike is used up");
+    assert!(!s.game.world.object(door).unwrap().locked);
+}
+
+#[test]
+fn a_medpac_is_used_from_the_quick_slot() {
+    let Some((mut s, _)) = in_game("quick_slot") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let medpac = carrying(&mut s, "g_i_medeqpmnt01");
+    carrying(&mut s, "g_i_adrnaline003");
+    let lists = s.game.world.quick_items(pc);
+    assert_eq!(lists[0], vec![medpac]);
+    assert_eq!(lists[1].len(), 1, "a stim goes in the next slot");
+    s.game.world.object_mut(pc).unwrap().hp = 1;
+    s.update(DT);
+    let slot = s.hud_pixel("BTN_ACTION1", SIZE).unwrap();
+    s.click(slot, SIZE);
+    for _ in 0..30 {
+        s.update(DT);
+    }
+    assert!(s.game.world.object(pc).unwrap().hp > 1, "it heals");
+    assert!(s.game.world.object(medpac).is_none(), "and is used up");
+}
+
+#[test]
+fn the_arrow_on_a_portrait_goes_to_the_character_when_a_level_waits() {
+    let Some((mut s, _)) = in_game("level_arrow") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let portrait = s.hud_pixel("BTN_CHAR1", SIZE).unwrap();
+    s.click(portrait, SIZE);
+    assert_eq!(s.menu_name(), "-", "nothing waits");
+    s.game.world.hold_levels = true;
+    s.game.world.grant_xp(pc, 1000);
+    assert!(s.game.world.level_ready(pc));
+    s.click(portrait, SIZE);
+    assert_eq!(s.menu_name(), "character");
+}
+
+#[test]
+fn the_mouse_look_box_does_not_flip_the_camera() {
+    let Some((mut s, dir)) = in_game("mouse_look") else {
+        return;
+    };
+    let before = s.pitch;
+    s.look(0.0, 10.0);
+    let plain = s.pitch - before;
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("settings.txt");
+    std::fs::write(&file, "invert_camera=true\n").unwrap();
+    s.use_settings_file(file);
+    let before = s.pitch;
+    s.look(0.0, 10.0);
+    assert!((s.pitch - before - plain).abs() < 1e-6);
 }
 
 #[test]

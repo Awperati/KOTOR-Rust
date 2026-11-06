@@ -345,12 +345,14 @@ fn a_locked_door_checks_security_and_keeps_shut_on_a_failure() {
     let Some(mut w) = world() else {
         return;
     };
-    // `end_door02` asks for Security at DC 1, and the hero has no ranks in it.
+    // `end_door02` asks for Security at DC 1, and the hero has no ranks in it. With none they cannot try: the talk table's
+    // row 256.
     let door = id_of(&w, "end_door02");
     w.object_mut(door).unwrap().locked = true;
     w.use_door(door);
     let events = w.events.join("\n");
-    assert!(events.contains("security"), "{events}");
+    assert!(!events.contains("security"), "{events}");
+    assert!(events.contains("is locked"), "{events}");
     let d = w.object(door).unwrap();
     assert!(d.locked && !d.open);
 }

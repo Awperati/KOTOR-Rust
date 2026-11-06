@@ -456,6 +456,10 @@ pub struct World {
     pub last_disturbed_by: ObjId,
     pub disturbed_item: ObjId,
     pub last_closed_by: ObjId,
+    /// The security spike the player chose for the lock they are walking to.
+    pub lock_tool: Option<ObjId>,
+    /// Whether a lock of this template can be picked at all.
+    pub(crate) pickable: HashMap<String, bool>,
     pub(crate) filled: std::collections::HashSet<ObjId>,
     pub(crate) conv: Option<crate::dialogue::ConvRun>,
     /// The owner's early Force rules hold for this game. See `docs/EARLYFORCE.md`.
@@ -672,6 +676,8 @@ impl World {
             last_disturbed_by: OBJECT_INVALID,
             disturbed_item: OBJECT_INVALID,
             last_closed_by: OBJECT_INVALID,
+            lock_tool: None,
+            pickable: HashMap::new(),
             filled: std::collections::HashSet::new(),
             conv: None,
             gold: 0,

@@ -16,4 +16,5 @@ pub use menus::{Cell, Hit, Mark, MenuView, Notice, Row};
 pub use screens::{
     CombatHud, DialogueView, Float, HudMember, MiniMap, Patch, SlotShown, Ui, SCREEN,
 };
+pub use screens::{TARGET_BAR_AND_SLOTS_HIGH, TARGET_BAR_HIGH};
 pub use ttf::{Face, Sized};

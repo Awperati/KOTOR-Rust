@@ -385,20 +385,60 @@ impl World {
         }
     }
 
-    /// The player tries a locked door: a carried key opens it, or else a Security check against its `OpenLockDC`. A door
-    /// that names `KeyRequired`, or has no DC, opens only by key or script.
-    ///
-    /// **Assumption:** a check needs no security tunneler and can be tried again.
-    fn try_lock(&mut self, id: ObjId) {
-        let Some(template) = self.objects.get(&id).map(|d| d.template.clone()) else {
-            return;
+    /// The file of what has a lock: a door's or a placeable's.
+    fn lock_file(&mut self, id: ObjId) -> Option<kotor_gff::Gff> {
+        let o = self.objects.get(&id)?;
+        let kind = if o.kind == Kind::Door { 2042 } else { 2044 };
+        let template = o.template.clone();
+        let bytes = self.inst.read(&template, ResType(kind)).ok()?;
+        kotor_gff::Gff::parse(&bytes).ok()
+    }
+
+    /// Whether a Security check could open this: it has a DC and does not ask for a key.
+    pub fn lock_can_be_picked(&mut self, id: ObjId) -> bool {
+        let Some(template) = self.objects.get(&id).map(|o| o.template.clone()) else {
+            return false;
         };
-        let Some(utd) = self
+        if let Some(known) = self.pickable.get(&template) {
+            return *known;
+        }
+        let can = self.lock_file(id).is_some_and(|g| {
+            g.root.int("OpenLockDC").unwrap_or(0) > 0 && g.root.int("KeyRequired").unwrap_or(0) == 0
+        });
+        self.pickable.insert(template, can);
+        can
+    }
+
+    /// What a security spike adds, from its file's property. `g_i_secspike01` has 5 and `g_i_secspike02`, the tunneler, 10.
+    fn spike_bonus(&mut self, spike: ObjId) -> i32 {
+        const PROPERTY_SECURITY_SPIKE: i64 = 37;
+        let Some(template) = self.objects.get(&spike).map(|o| o.template.clone()) else {
+            return 0;
+        };
+        let Some(g) = self
             .inst
-            .read(&template, ResType(2042))
+            .read(&template, ResType(2025))
             .ok()
             .and_then(|b| kotor_gff::Gff::parse(&b).ok())
         else {
+            return 0;
+        };
+        g.root
+            .list("PropertiesList")
+            .unwrap_or_default()
+            .iter()
+            .find(|p| p.int("PropertyName") == Some(PROPERTY_SECURITY_SPIKE))
+            .and_then(|p| p.int("CostValue"))
+            .unwrap_or(0) as i32
+    }
+
+    /// The player tries a lock: a carried key opens it, or else a Security check against its `OpenLockDC`, with the spike
+    /// they chose. A lock that names `KeyRequired`, or has no DC, opens only by key or script. A spike is used up by a try.
+    ///
+    /// **Assumption:** a check can be tried again.
+    fn try_lock(&mut self, id: ObjId) {
+        let tool = self.lock_tool.take();
+        let Some(utd) = self.lock_file(id) else {
             return;
         };
         let key = utd.root.str("KeyName").unwrap_or("").to_ascii_lowercase();
@@ -417,8 +457,12 @@ impl World {
             self.events
                 .push(format!("{} opens with a key", self.describe(id)));
             true
-        } else if dc > 0 && !key_only {
-            let c = self.skill_check(pc, SKILL_SECURITY, dc);
+        } else if dc > 0 && !key_only && self.skill_ranks(pc, SKILL_SECURITY) > 0 {
+            let bonus = tool.map_or(0, |spike| self.spike_bonus(spike));
+            if let Some(spike) = tool {
+                self.spend_one(pc, spike);
+            }
+            let c = self.skill_check(pc, SKILL_SECURITY, dc - bonus);
             self.events.push(format!(
                 "security {} + {} against {} on {}: {}",
                 c.roll,
@@ -983,7 +1027,7 @@ impl World {
     /// open, and its `OnOpen` script runs, which is how the game's own treasure scripts fill it.
     ///
     /// **Measured over the 117 modules:** 408 of 1,467 placeable templates have `HasInventory`, 354 have an `ItemList`
-    /// and 45 are locked. Locks are not built, so a locked one stays shut.
+    /// and 45 are locked.
     fn open_container(&mut self, id: ObjId) {
         let Some(template) = self.objects.get(&id).map(|o| o.template.clone()) else {
             return;
@@ -1002,6 +1046,9 @@ impl World {
             .is_some_and(|o| !o.inventory.is_empty());
         if !has && !holds {
             return;
+        }
+        if self.objects.get(&id).is_some_and(|o| o.locked) {
+            self.try_lock(id);
         }
         if self.objects.get(&id).is_some_and(|o| o.locked) {
             self.events.push(format!("{} is locked", self.describe(id)));

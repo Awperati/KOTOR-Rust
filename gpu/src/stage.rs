@@ -251,6 +251,9 @@ fn styled(mut rig: Rig, conventional: bool) -> Rc<Rig> {
     Rc::new(rig)
 }
 
+/// How far over a head its bar stays, in layout units.
+const TARGET_BAR_CLEAR: i32 = 6;
+
 /// The stock icon for a target's action, read from the texture names in `swpc_tex_gui.erf`.
 fn action_icon(action: &str) -> &'static str {
     match action {
@@ -1232,11 +1235,6 @@ impl Stage {
 
     /// Drag with the right button: turn the camera round the player and tilt it.
     pub fn look(&mut self, dx: f32, dy: f32) {
-        let dy = if self.settings().invert_camera {
-            -dy
-        } else {
-            dy
-        };
         // A half on the Mouse Settings slider is the speed this always had.
         let speed = self.settings().mouse_sensitivity * 2.0;
         self.yaw -= dx * 0.005 * speed;
@@ -2103,10 +2101,10 @@ impl Stage {
         }
         let party = self.party_view();
         let target = self.target_view();
-        let target_at = self.target_on_screen();
-        self.ui.set_target_at(target_at);
         let minimap = self.minimap_view();
         let combat = self.combat_view(target.as_ref().map(|t| t.3));
+        let target_at = self.target_on_screen(combat.attack.is_some() || combat.locked);
+        self.ui.set_target_at(target_at);
         let notices = self.notices_view();
         let floats = self.floats_view();
         let pause = self.pause_view();
@@ -2228,6 +2226,8 @@ impl Stage {
         let middle_slot = at(self.hud_pixel("BTN_TARGET1", layout));
         let right_slot = at(self.hud_pixel("BTN_TARGET2", layout));
         let disengage = at(self.hud_pixel("BTN_CLEARALL", layout));
+        let down2 = at(self.hud_pixel("BTN_TARGETDOWN2", layout));
+        let thrown = self.right_slot_name();
         let beside = at(self.hud_pixel("BTN_CHAR3", layout));
         let w = &self.game.world;
         let align = w.object(w.pc).map_or(-1, |o| o.alignment);
@@ -2270,7 +2270,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} steps={} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} fov={:.1} steps={} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
@@ -2304,16 +2304,23 @@ impl Stage {
         )
     }
 
-    /// Where the target's name bar goes, in layout units: a little over the target, as the game has it.
-    fn target_on_screen(&self) -> Option<(i32, i32)> {
+    /// Where the target's name bar goes, in layout units: over the target's head with its slots, as the video has it at 7:50.
+    /// So it covers neither the target nor what is next to it, and the mouse can still reach them.
+    fn target_on_screen(&self, slots: bool) -> Option<(i32, i32)> {
         let w = &self.game.world;
         let o = w.object(self.target()?)?;
+        let high = if slots {
+            kotor_ui::TARGET_BAR_AND_SLOTS_HIGH
+        } else {
+            kotor_ui::TARGET_BAR_HIGH
+        };
         let up = match o.kind {
             Kind::Door => 2.6,
             Kind::Creature if !o.dead => 2.1,
             _ => 1.1,
         };
-        self.on_screen(o.position, up)
+        let (x, y) = self.on_screen(o.position, up)?;
+        Some((x, (y - high - TARGET_BAR_CLEAR).max(0)))
     }
 
     /// Where a point of the world, `up` above the floor, is in the layout.

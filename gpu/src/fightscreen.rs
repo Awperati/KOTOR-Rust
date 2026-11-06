@@ -36,7 +36,13 @@ enum SlotDoes {
     Attack,
     Queue(CombatAction),
     Throw(ObjId),
+    /// Try the target's lock with the skill and this spike.
+    Security(Option<ObjId>),
 }
+
+/// The Security skill's name in the talk table.
+const STR_SECURITY: u32 = 329;
+const SECURITY_PICTURE: &str = "isk_security";
 
 /// One thing a slot offers.
 struct SlotChoice {
@@ -73,6 +79,8 @@ pub(super) struct Fight {
     round: u32,
     down: std::collections::BTreeSet<ObjId>,
     target: Option<ObjId>,
+    /// What each quick slot at the bottom right shows.
+    quick_picks: [usize; 3],
     /// A driver's player cannot fall.
     unhurt: bool,
 }
@@ -90,6 +98,10 @@ pub fn target_slot(tag: &str) -> Option<usize> {
 impl Stage {
     /// Left: the plain attack, then the feats. Middle: Force powers. Right: what can be thrown.
     fn slot_choices(&mut self, slot: usize) -> Vec<SlotChoice> {
+        let locked = self.lock_choices();
+        if !locked.is_empty() {
+            return if slot == 0 { locked } else { Vec::new() };
+        }
         let pc = self.game.world.pc;
         let queued = |ui: &mut kotor_ui::Ui, c: CombatChoice| SlotChoice {
             does: SlotDoes::Queue(c.action),
@@ -118,6 +130,153 @@ impl Stage {
             }
             _ => self.throwables(),
         }
+    }
+
+    /// The ways to try the target's lock: the skill if the leader has points in it, and each spike carried, which is no use
+    /// without them. Nothing for what is not locked, or what no skill can open.
+    fn lock_choices(&mut self) -> Vec<SlotChoice> {
+        let Some(id) = self.target() else {
+            return Vec::new();
+        };
+        let w = &mut self.game.world;
+        let shut = w.object(id).is_some_and(|o| {
+            o.locked
+                && !o.open
+                && matches!(o.kind, kotor_game::Kind::Door | kotor_game::Kind::Placeable)
+        });
+        if !shut || !w.lock_can_be_picked(id) {
+            return Vec::new();
+        }
+        let pc = w.pc;
+        let (trained, spikes) = w.lock_ways(pc);
+        let views: Vec<_> = spikes.iter().filter_map(|i| w.item_view(*i)).collect();
+        let mut out = Vec::new();
+        if trained {
+            out.push(SlotChoice {
+                does: SlotDoes::Security(None),
+                name: self.ui.strref(STR_SECURITY),
+                icon: SECURITY_PICTURE.to_string(),
+                usable: true,
+            });
+        }
+        for v in views {
+            out.push(SlotChoice {
+                does: SlotDoes::Security(Some(v.id)),
+                icon: self.first_picture(&v.icons),
+                name: v.name,
+                usable: trained,
+            });
+        }
+        out
+    }
+
+    pub(super) fn target_has_a_way_in(&mut self) -> bool {
+        !self.lock_choices().is_empty()
+    }
+
+    fn first_picture(&mut self, names: &[String]) -> String {
+        names
+            .iter()
+            .find(|n| self.ui.texture(n).is_some())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// What a quick slot offers. The third has nothing yet: the video shows it empty on a Soldier.
+    fn quick_choices(&mut self, slot: usize) -> Vec<SlotChoice> {
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        let mut lists = w.quick_items(pc);
+        let items = match slot {
+            0 => std::mem::take(&mut lists[0]),
+            1 => std::mem::take(&mut lists[1]),
+            _ => return Vec::new(),
+        };
+        let views: Vec<_> = items.iter().filter_map(|i| w.item_view(*i)).collect();
+        views
+            .into_iter()
+            .map(|v| SlotChoice {
+                does: SlotDoes::Throw(v.id),
+                icon: self.first_picture(&v.icons),
+                name: v.name,
+                usable: true,
+            })
+            .collect()
+    }
+
+    /// What the quick slots show, and the name of the one under the cursor.
+    pub(super) fn quick_view(&mut self) -> ([Option<SlotShown>; 3], Option<String>) {
+        let mut shows = [None, None, None];
+        let mut hover = None;
+        let over = self.menus.fight.hover.clone();
+        for (slot, shown) in shows.iter_mut().enumerate() {
+            let choices = self.quick_choices(slot);
+            if choices.is_empty() {
+                continue;
+            }
+            let pick = &choices[self.menus.fight.quick_picks[slot] % choices.len()];
+            *shown = Some(SlotShown {
+                picture: pick.icon.clone(),
+                more: choices.len() > 1,
+                greyed: false,
+            });
+            let tag = format!("BTN_ACTION{}", slot + 1);
+            if over.as_deref() == Some(tag.as_str()) {
+                hover = Some(pick.name.clone());
+            }
+        }
+        (shows, hover)
+    }
+
+    fn quick_slot_of(tag: &str) -> usize {
+        tag.chars()
+            .last()
+            .and_then(|c| c.to_digit(10))
+            .map_or(1, |n| n as usize)
+            .clamp(1, 3)
+            - 1
+    }
+
+    /// A click on a quick slot: the leader uses what it shows on themselves.
+    pub(super) fn use_quick_slot(&mut self, tag: &str) {
+        let slot = Self::quick_slot_of(tag);
+        let choices = self.quick_choices(slot);
+        if choices.is_empty() {
+            return;
+        }
+        if let SlotDoes::Throw(item) =
+            choices[self.menus.fight.quick_picks[slot] % choices.len()].does
+        {
+            let w = &mut self.game.world;
+            let pc = w.pc;
+            let _ = w.use_item_on(pc, item, pc);
+        }
+    }
+
+    /// An arrow on a quick slot.
+    pub(super) fn turn_quick_slot(&mut self, tag: &str) {
+        let slot = Self::quick_slot_of(tag);
+        let count = self.quick_choices(slot).len();
+        if count == 0 {
+            return;
+        }
+        let pick = self.menus.fight.quick_picks[slot] % count;
+        self.menus.fight.quick_picks[slot] = if tag.starts_with("BTN_ACTIONUP") {
+            (pick + count - 1) % count
+        } else {
+            (pick + 1) % count
+        };
+    }
+
+    /// What the right slot shows, for a test driver.
+    pub(in crate::stage) fn right_slot_name(&mut self) -> String {
+        let choices = self.throwables();
+        if choices.is_empty() {
+            return "-".to_string();
+        }
+        choices[self.menus.fight.picks[2] % choices.len()]
+            .name
+            .replace(' ', "_")
     }
 
     fn throwables(&mut self) -> Vec<SlotChoice> {
@@ -193,6 +352,10 @@ impl Stage {
         }
         match choices[pick].does {
             SlotDoes::Attack => true,
+            SlotDoes::Security(spike) => {
+                self.game.world.lock_tool = spike;
+                true
+            }
             SlotDoes::Queue(action) => {
                 let w = &mut self.game.world;
                 let room = w.combat_queue.len() < MOST_QUEUED;

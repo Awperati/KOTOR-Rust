@@ -1517,8 +1517,18 @@ impl Stage {
             "BTN_CHAR" => self.open_character(),
             "BTN_JOU" => self.open_journal(),
             "BTN_MAP" | "BTN_MINIMAP" => self.open_map(),
-            "BTN_CHAR3" => self.change_member(0),
-            "BTN_CHAR2" => self.change_member(1),
+            "BTN_CHAR1" => self.open_if_level_waits(),
+            "BTN_CHAR3" => {
+                self.change_member(0);
+                self.open_if_level_waits();
+            }
+            "BTN_CHAR2" => {
+                self.change_member(1);
+                self.open_if_level_waits();
+            }
+            "BTN_ACTION1" | "BTN_ACTION2" | "BTN_ACTION3" => self.use_quick_slot(tag),
+            "BTN_ACTIONUP1" | "BTN_ACTIONUP2" | "BTN_ACTIONUP3" | "BTN_ACTIONDOWN1"
+            | "BTN_ACTIONDOWN2" | "BTN_ACTIONDOWN3" => self.turn_quick_slot(tag),
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "TB_PAUSE" => self.toggle_pause(),
             "TB_SOLO" if self.game.world.solo_mode => self.solo_key(),
@@ -1526,6 +1536,14 @@ impl Stage {
             | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => self.turn_slot(tag),
             "BTN_OPT" => self.escape(),
             _ => {}
+        }
+    }
+
+    /// The arrow on a portrait says a level is waiting, and a click on it goes to the screen with the level-up button.
+    fn open_if_level_waits(&mut self) {
+        let w = &self.game.world;
+        if w.level_ready(w.pc) {
+            self.open_character();
         }
     }
 
@@ -1552,8 +1570,13 @@ impl Stage {
             Vec::new()
         };
         let hostile = action == Some("Attack");
-        let (slots, hover) = self.slots_view(hostile, &mut queue);
+        let locked = !hostile && self.target_has_a_way_in();
+        let (slots, hover) = self.slots_view(hostile || locked, &mut queue);
+        let (quick, quick_hover) = self.quick_view();
         CombatHud {
+            locked,
+            quick,
+            quick_hover,
             engaged: self.party_blocked(),
             message: self.ui.strref(STR_COMBAT_MODE),
             queue,

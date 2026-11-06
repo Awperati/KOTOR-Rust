@@ -93,7 +93,15 @@ do { $s = State } while ([int]$s.queue -le $queued -and (Get-Date) -lt $until)
 Report "The middle slot queues the power" ([int]$s.queue -gt $queued) "queue $queued -> $($s.queue) slot1=$($s.slot1)"
 Shot "fight_queued"
 # The right slot: the grenade given for this run goes at once. An adhesive one, or a frag grenade kills this Sith first.
+# The pilot may have looted others on the way, so its arrow goes round to the one given.
+for ($i = 0; $i -lt 8; $i++) {
+  $s = State
+  if ($s.thrown -like "Adhesive*") { break }
+  ClickSlot $s "down2"
+  [void](State)
+}
 $s = State
+Report "The right slot's arrow finds the adhesive grenade" ($s.thrown -like "Adhesive*") "thrown=$($s.thrown)"
 $carried = [int]$s.inv
 ClickSlot $s "slot2"
 $until = (Get-Date).AddSeconds(5)
@@ -110,12 +118,21 @@ $floated = $false
 do {
   $s = State
   if ([int]$s.floats -gt 0 -and -not $floated) { $floated = $true; Shot "fight_float" }
+  # A party that joins in may have finished this one, and the next is still there.
+  if ($s.dlg -eq "true") { Key $ENTER[0] $ENTER[1] }
+  elseif ($s.engaged -ne "true" -and $s.foe -ne "-") {
+    HoverLayout $s $s.foe
+    $s = State
+    if ($s.target -like "Sith*") { ClickSlot $s "slot0" }
+  }
 } while (([int]$s.attacks -eq 0 -or -not $floated) -and (Get-Date) -lt $until)
 Report "The player attacks" ([int]$s.attacks -gt 0) "attacks=$($s.attacks) hp=$($s.hp) clip=$($s.clip)"
 Report "Words rise" $floated "floats=$($s.floats)"
 Shot "fight_engaged"
 
 # The fight's lines are on the Messages tab, and the game waits under it.
+$until = (Get-Date).AddSeconds(30)
+do { $s = State; if ($s.dlg -eq "true") { Key $ENTER[0] $ENTER[1] } } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
 Key 0x4C 0x26
 $s = WaitFor "menu" "messages"
 Report "L opens Messages" ($s.menu -eq "messages") "menu=$($s.menu) dlg=$($s.dlg) hp=$($s.hp)"

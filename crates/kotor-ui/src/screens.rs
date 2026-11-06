@@ -25,7 +25,7 @@ const SLOT_WORDS_FONT: &str = "dialogfont10x10";
 /// What darkens a picture that cannot be used.
 const GREYED: [u8; 4] = [0, 0, 0, 170];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
-const HUD_TEXT_BOXES: [&str; 2] = ["LBL_NAMEBG", "LBL_ACTIONDESCBG"];
+const HUD_TEXT_BOXES: [&str; 1] = ["LBL_ACTIONDESCBG"];
 /// How many words that do not fit are kept for whoever asks.
 const MOST_TOO_BIG: usize = 64;
 /// The words of a conversation, as the reference video has them at 2:30: the file's are white.
@@ -100,6 +100,12 @@ pub struct CombatHud {
     pub slots: [Option<SlotShown>; 3],
     /// The slot under the cursor, and what it does, for the name bar.
     pub hover: Option<(usize, String)>,
+    /// The target is locked, and the first slot under its bar has ways to try it.
+    pub locked: bool,
+    /// The three slots at the bottom right after the action's: what heals, what else the leader can use on themselves.
+    pub quick: [Option<SlotShown>; 3],
+    /// What the one under the cursor is called.
+    pub quick_hover: Option<String>,
 }
 
 /// Words rising over someone in a fight, in layout units.
@@ -1049,16 +1055,20 @@ impl<'a> Ui<'a> {
                 show(format!("LBL_QUEUE{n}"));
             }
         }
-        let bar = combat.attack.is_some() && self.target_at.is_some();
+        let hostile = combat.attack.is_some() && self.target_at.is_some();
+        let bar = hostile || (combat.locked && self.target_at.is_some());
         if bar {
             for tag in [
                 "BTN_TARGET0",
                 "BTN_TARGETUP0",
                 "BTN_TARGETDOWN0",
                 "LBL_TARGET0",
-                "BTN_TARGET1",
-                "BTN_TARGET2",
             ] {
+                show(tag.to_string());
+            }
+        }
+        if hostile {
+            for tag in ["BTN_TARGET1", "BTN_TARGET2"] {
                 show(tag.to_string());
             }
         }
@@ -1070,10 +1080,34 @@ impl<'a> Ui<'a> {
                 patches.entry(format!("LBL_QUEUE{n}")).or_default().fill = Some(icon.clone());
             }
         }
+        for (n, slot) in combat.quick.iter().enumerate() {
+            let Some(shown) = slot else { continue };
+            let n = n + 1;
+            let picture = patches.entry(format!("LBL_ACTION{n}")).or_default();
+            picture.hidden = false;
+            picture.fill = Some(shown.picture.clone());
+            if shown.more {
+                for arrow in ["UP", "DOWN"] {
+                    let tag = format!("BTN_ACTION{arrow}{n}");
+                    patches.entry(tag).or_default().hidden = false;
+                }
+            }
+        }
+        if let Some(words) = &combat.quick_hover {
+            let line = patches.entry("LBL_ACTIONDESC".to_string()).or_default();
+            line.hidden = false;
+            line.text = Some(words.clone());
+            patches
+                .entry("LBL_ACTIONDESCBG".to_string())
+                .or_default()
+                .hidden = false;
+        }
         if bar {
             for n in 0..3 {
-                patches.entry(format!("BTN_TARGET{n}")).or_default().fill =
-                    Some(HOSTILE_SLOT.to_string());
+                if hostile {
+                    patches.entry(format!("BTN_TARGET{n}")).or_default().fill =
+                        Some(HOSTILE_SLOT.to_string());
+                }
             }
             for (n, slot) in combat.slots.iter().enumerate() {
                 if let Some(shown) = slot {
@@ -1166,7 +1200,7 @@ impl<'a> Ui<'a> {
         let shown = |tag: &str| match tag {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
             "BTN_TARGET0" | "BTN_TARGETUP0" | "BTN_TARGETDOWN0" => {
-                self.combat.attack.is_some() && self.target_at.is_some()
+                (self.combat.attack.is_some() || self.combat.locked) && self.target_at.is_some()
             }
             "BTN_TARGET1" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1" => {
                 self.combat.slots[1].is_some() && self.target_at.is_some()
@@ -1177,6 +1211,18 @@ impl<'a> Ui<'a> {
             "BTN_MINIMAP" => !self.minimap_off,
             "BTN_CHAR3" => self.hud_party >= 2,
             "BTN_CHAR2" => self.hud_party >= 3,
+            "BTN_ACTION1" => self.combat.quick[0].is_some(),
+            "BTN_ACTION2" => self.combat.quick[1].is_some(),
+            "BTN_ACTION3" => self.combat.quick[2].is_some(),
+            "BTN_ACTIONUP1" | "BTN_ACTIONDOWN1" => {
+                self.combat.quick[0].as_ref().is_some_and(|q| q.more)
+            }
+            "BTN_ACTIONUP2" | "BTN_ACTIONDOWN2" => {
+                self.combat.quick[1].as_ref().is_some_and(|q| q.more)
+            }
+            "BTN_ACTIONUP3" | "BTN_ACTIONDOWN3" => {
+                self.combat.quick[2].as_ref().is_some_and(|q| q.more)
+            }
             _ => true,
         };
         gui.panel
@@ -1373,7 +1419,7 @@ const MAP_GRID: f32 = 18.0;
 const MAP_GRID_LINE: [f32; 3] = [0.0, 70.0, 105.0];
 const MAP_GRID_BACK: [f32; 3] = [2.0, 4.0, 22.0];
 /// What the HUD does not show now: combat, notices, the action queue and the map's picture are not built.
-const HUD_HIDDEN: [&str; 25] = [
+const HUD_HIDDEN: [&str; 26] = [
     "LBL_CMBT",
     "LBL_COMBATBG",
     "LBL_MAP",
@@ -1399,11 +1445,22 @@ const HUD_HIDDEN: [&str; 25] = [
     "TB_STEALTH",
     "LBL_ACTION1",
     "LBL_ACTION2",
+    "LBL_ACTION3",
 ];
 /// Which of the file's three places each member has, in the party's order. The file's second place is the far one: the video
 /// has one companion right beside the leader at 7:30.
 const HUD_MEMBER_SLOTS: [usize; 3] = [1, 3, 2];
-const HUD_BUTTONS: [&str; 26] = [
+const HUD_BUTTONS: [&str; 36] = [
+    "BTN_CHAR1",
+    "BTN_ACTION1",
+    "BTN_ACTIONUP1",
+    "BTN_ACTIONDOWN1",
+    "BTN_ACTION2",
+    "BTN_ACTIONUP2",
+    "BTN_ACTIONDOWN2",
+    "BTN_ACTION3",
+    "BTN_ACTIONUP3",
+    "BTN_ACTIONDOWN3",
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -1454,25 +1511,37 @@ fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>) {
         e.height = scale(e.height);
     }
     let Some((x, y)) = target_at else { return };
+    // As thin as the video has it at 7:50, and not the file's 26 high: this sits over the fight.
     for c in &mut panel.children {
-        let down = match c.tag.as_str() {
-            "LBL_NAMEBG" | "LBL_NAME" => 0,
-            "LBL_HEALTHBG" | "PB_HEALTH" => 21,
+        let (down, high) = match c.tag.as_str() {
+            "LBL_NAMEBG" | "LBL_NAME" => (0, BAR_NAME_HIGH),
+            "LBL_HEALTHBG" | "PB_HEALTH" => (BAR_NAME_HIGH, BAR_HEALTH_HIGH),
             _ => continue,
         };
         c.extent.left = x - c.extent.width / 2;
         c.extent.top = y + down;
+        c.extent.height = high;
     }
     // The slots under the bar are placed from its left and its top in the file.
     let bar = panel.children.iter().find(|c| c.tag == "LBL_NAMEBG");
     let bar = bar.map_or(0, |c| c.extent.width);
+    let first = panel.children.iter().find(|c| c.tag == "BTN_TARGET0");
+    let up = first.map_or(0, |c| c.extent.top) - BAR_NAME_HIGH - BAR_HEALTH_HIGH - BAR_GAP;
     for c in &mut panel.children {
         if c.tag.starts_with("BTN_TARGET") || c.tag.starts_with("LBL_TARGET") {
             c.extent.left += x - bar / 2;
-            c.extent.top += y;
+            c.extent.top += y - up;
         }
     }
 }
+
+/// The name, the health and the gap under them, in layout units.
+const BAR_NAME_HIGH: i32 = 13;
+const BAR_HEALTH_HIGH: i32 = 3;
+const BAR_GAP: i32 = 1;
+/// A target's bar with no slots, and with them.
+pub const TARGET_BAR_HIGH: i32 = BAR_NAME_HIGH + BAR_HEALTH_HIGH;
+pub const TARGET_BAR_AND_SLOTS_HIGH: i32 = TARGET_BAR_HIGH + BAR_GAP + 47;
 
 /// Spread a 640-wide HUD over a wider screen. The left side stays, the party and the map keep their distance from
 /// the right edge, and the action slot and the notice icons stay centred.
