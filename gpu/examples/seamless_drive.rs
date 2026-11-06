@@ -150,6 +150,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let p = s.game.world.pc_mover.pos;
         let d = dist(p, *last);
+        if d > 0.3 {
+            println!(
+                "jump {d:.3} in {} from {:?} to {:?}",
+                s.game.world.module, last, p
+            );
+        }
         *last = p;
         d
     };
@@ -178,6 +184,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     for i in 0..90 {
         step(&mut s);
+        let d = track(&mut s, &mut last, &mut module_now);
+        max_step = max_step.max(d);
         if i == 30 {
             shot(
                 &mut gpu,
@@ -301,6 +309,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "now in {}, largest step {max_step:.3} m, {teleports} jumps, {back} frames",
             s.game.world.module
         ),
+    );
+    r.check(
+        "no menu or loading screen on the way back either",
+        menus == 0,
+        format!("{menus} frames in all"),
     );
     shot(
         &mut gpu,
