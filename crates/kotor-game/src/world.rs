@@ -839,12 +839,20 @@ impl World {
         if let Some(p) = self.programs.get(&key) {
             return p.clone();
         }
-        let p = self
-            .inst
-            .read(&key, ResType::NCS)
-            .ok()
-            .and_then(|b| disassemble(&b).ok())
-            .map(Rc::new);
+        let bytes = match self.inst.read(&key, ResType::NCS) {
+            Ok(b) => b,
+            // Only a script that is not there is remembered as missing. A file that could not be read this time may be
+            // read the next, and says why.
+            Err(kotor_core::Error::NotFound(_)) => {
+                self.programs.insert(key, None);
+                return None;
+            }
+            Err(e) => {
+                self.errors.push(format!("script {key}: {e}"));
+                return None;
+            }
+        };
+        let p = disassemble(&bytes).ok().map(Rc::new);
         self.programs.insert(key, p.clone());
         p
     }

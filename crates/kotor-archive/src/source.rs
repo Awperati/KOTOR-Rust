@@ -4,6 +4,20 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// Open a file, trying again for a moment if it exists and will not open. Each read opens its archive afresh. Once, in a
+/// run of the tests, every read of a module failed for a fraction of a second; the cause was not found.
+fn open_patiently(p: &Path) -> std::io::Result<File> {
+    for millis in [50, 200, 500] {
+        match File::open(p) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                std::thread::sleep(std::time::Duration::from_millis(millis));
+            }
+            done => return done,
+        }
+    }
+    File::open(p)
+}
+
 /// Where an archive's bytes live: a file read on demand, or memory.
 #[derive(Clone, Debug)]
 pub enum Source {
@@ -24,7 +38,7 @@ impl Source {
     pub fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
         match self {
             Source::File(p) => {
-                let mut f = File::open(p)?;
+                let mut f = open_patiently(p)?;
                 let size = f.metadata()?.len();
                 if offset.checked_add(len as u64).is_none_or(|e| e > size) {
                     return Err(Error::format(format!(

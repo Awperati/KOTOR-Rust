@@ -1,6 +1,7 @@
 # Drive the viewer through its OWN window handle with posted messages. No global mouse or keyboard, and no focus.
 param([string]$Shots)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
+# It writes one save to %LOCALAPPDATA%\kotor-rs\saves, deletes it through the screen, and leaves other saves alone.
 $scratch = $env:TEMP
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
@@ -120,3 +121,147 @@ Report "Never took focus" ($during -ne $h) "foreground before=$before now=$durin
 Stop-Process -Id $v.Id -Force
 Get-Content "$scratch\kotor_drive.err" -Tail 4
 
+# The second run: from the main menu, through a save and two loads, to Exit. Layout units are 853 wide on this
+# 1280x720 window, and a 640 wide screen is centred, so a control at layout x is at (x + 106) * 1.5.
+$savesDir = Join-Path $env:LOCALAPPDATA "kotor-rs\saves"
+$savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--state-log","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
+$h = [IntPtr]::Zero
+for ($i = 0; $i -lt 60 -and $h -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 500; $v.Refresh(); $h = $v.MainWindowHandle }
+"window $h"
+$before = [Drv]::GetForegroundWindow()
+function State {
+  Start-Sleep -Milliseconds 150
+  $line = Get-Content "$scratch\kotor_drive2.out" -Tail 2 | Where-Object { $_ -like "state *" } | Select-Object -Last 1
+  $o = @{}
+  foreach ($p in ($line -split ' ')) { if ($p -match '^(\w+)=(.*)$') { $o[$Matches[1]] = $Matches[2] } }
+  $o
+}
+function Press([int]$x, [int]$y, [int]$w, [int]$h2) {
+  Click ([int](($x + $w / 2 + 106) * 1.5)) ([int](($y + $h2 / 2) * 1.5))
+  Start-Sleep -Milliseconds 300
+}
+function WaitFor([string]$name, [string]$want) {
+  for ($t = 0; $t -lt 60; $t++) { $s = State; if ($s[$name] -eq $want) { return $s }; Start-Sleep -Milliseconds 300 }
+  $s
+}
+function Moved($a, $b) { [Math]::Abs([double]($a.pc -split ',')[0] - [double]($b.pc -split ',')[0]) + [Math]::Abs([double]($a.pc -split ',')[1] - [double]($b.pc -split ',')[1]) }
+function Shot($name) { if ($Shots) { Start-Sleep -Milliseconds 300; [Drv]::Save($h, "$Shots\$name.png") } }
+$ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $KEY_I = @(0x49, 0x17); $KEY_U = @(0x55, 0x16)
+
+$s = WaitFor "menu" "main"
+Report "Opens on the main menu" ($s.menu -eq "main" -and $s.module -eq "-") "menu=$($s.menu) module=$($s.module)"
+Shot "live_main_menu"
+Press 285 222 210 22   # BTN_NEWGAME
+$s = WaitFor "module" "end_m01aa"
+Report "New Game starts it" ($s.module -eq "end_m01aa" -and $s.menu -eq "-") "menu=$($s.menu) module=$($s.module)"
+
+# Past the opening and the first talk, to where a save is allowed.
+$quiet = 0
+for ($i = 0; $i -lt 400 -and $quiet -lt 6; $i++) {
+  Key $SPACE[0] $SPACE[1] 20; Key $ONE[0] $ONE[1] 20; $s = State
+  if ($s.dlg -eq "false" -and [int]$s.said -gt 3) { $quiet++ } else { $quiet = 0 }
+}
+Report "Through the opening" ($quiet -ge 6) "dlg=$($s.dlg) said=$($s.said)"
+
+Key $ESC[0] $ESC[1]
+$s = WaitFor "menu" "pause"
+Report "Esc pauses" ($s.menu -eq "pause") "menu=$($s.menu)"
+Shot "live_pause"
+Press 60 145 240 35    # BTN_SAVEGAME
+$s = WaitFor "menu" "save"
+Report "Save Game opens" ($s.menu -eq "save") "menu=$($s.menu) saves=$($s.saves) message from the screen if not"
+$savesAt = [int]$s.saves
+Press 253 410 134 28   # BTN_SAVELOAD
+$s = WaitFor "menu" "name"
+Report "Save asks a name" ($s.menu -eq "name") "menu=$($s.menu)"
+for ($i = 0; $i -lt 34; $i++) { Key $BACK[0] $BACK[1] 15 }
+foreach ($k in @(@(0x44, 0x20), @(0x52, 0x13), @(0x49, 0x17), @(0x56, 0x2F), @(0x45, 0x12))) { Key $k[0] $k[1] 30 }
+Shot "live_save_name"
+Key $ENTER[0] $ENTER[1]
+$s = WaitFor "menu" "save"
+Report "Enter writes the save" ($s.menu -eq "save" -and [int]$s.saves -eq $savesAt + 1) "saves $savesAt -> $($s.saves)"
+$new = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | Where-Object { $savesBefore -notcontains $_.FullName })
+Report "It is in the saves folder" ($new.Count -eq 1) "$($new[0].FullName) $($new[0].Length) bytes"
+Shot "live_save_list"
+Press 389 410 138 28   # BTN_BACK
+$s = WaitFor "menu" "pause"
+Press 393 410 146 28   # BTN_EXIT
+$saved = WaitFor "menu" "-"
+Report "Back in the game" ($saved.menu -eq "-") "menu=$($saved.menu) pc=$($saved.pc)"
+
+# Move away, then load: the player is back where it was saved.
+Key $W[0] $W[1] 900
+Key $D[0] $D[1] 500
+Start-Sleep -Milliseconds 300
+$away = State
+Report "Walked away" ((Moved $saved $away) -gt 0.3) "$($saved.pc) -> $($away.pc)"
+Key $ESC[0] $ESC[1]
+[void](WaitFor "menu" "pause")
+Press 60 110 240 35    # BTN_LOADGAME
+$s = WaitFor "menu" "load"
+Press 69 88 246 50     # first row
+Shot "live_load_list"
+Press 253 410 134 28   # BTN_SAVELOAD
+$s = WaitFor "menu" "-"
+Start-Sleep -Milliseconds 400
+$s = State
+Report "Load puts it back" ($s.menu -eq "-" -and (Moved $saved $s) -lt 0.3) "$($away.pc) -> $($s.pc), saved at $($saved.pc)"
+Shot "live_loaded"
+
+# The item screens.
+Key $KEY_I[0] $KEY_I[1]
+$s = WaitFor "menu" "inventory"
+Report "I opens the inventory" ($s.menu -eq "inventory") "menu=$($s.menu)"
+Shot "live_inventory"
+Key $KEY_U[0] $KEY_U[1]
+$s = WaitFor "menu" "equip"
+Report "U opens the equipment" ($s.menu -eq "equip") "menu=$($s.menu)"
+Shot "live_equip"
+Key $ESC[0] $ESC[1]
+$s = WaitFor "menu" "-"
+Report "Esc closes it" ($s.menu -eq "-") "menu=$($s.menu)"
+
+# Exit Game to the main menu, and load from there.
+Key $ESC[0] $ESC[1]
+[void](WaitFor "menu" "pause")
+Press 60 364 240 35    # BTN_QUIT
+$s = WaitFor "menu" "main"
+Report "Exit Game goes to the menu" ($s.menu -eq "main" -and $s.module -eq "-") "menu=$($s.menu) module=$($s.module)"
+Press 285 246 210 22   # BTN_LOADGAME
+$s = WaitFor "menu" "load"
+Press 69 88 246 50
+Press 253 410 134 28
+$s = WaitFor "module" "end_m01aa"
+Start-Sleep -Milliseconds 400
+$s = State
+Report "Load from the main menu" ($s.menu -eq "-" -and $s.module -eq "end_m01aa" -and (Moved $saved $s) -lt 0.3) "module=$($s.module) pc=$($s.pc)"
+
+# Delete asks once, then the save is gone.
+Key $ESC[0] $ESC[1]
+[void](WaitFor "menu" "pause")
+Press 60 110 240 35
+$s = WaitFor "menu" "load"
+$count = [int]$s.saves
+Press 69 88 246 50
+Press 113 410 138 28   # BTN_DELETE
+$s = State
+$asked = [int]$s.saves -eq $count
+Press 113 410 138 28
+$s = State
+$left = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | Where-Object { $savesBefore -notcontains $_.FullName })
+Report "Delete asks, then deletes" ($asked -and [int]$s.saves -eq $count - 1 -and $left.Count -eq 0) "saves $count -> $($s.saves), driver's files left $($left.Count)"
+
+# Back out to the main menu, and Exit closes the window.
+Press 389 410 138 28
+[void](WaitFor "menu" "pause")
+Press 60 364 240 35
+[void](WaitFor "menu" "main")
+$during = [Drv]::GetForegroundWindow()
+Report "Never took focus" ($during -ne $h) "foreground before=$before now=$during viewer=$h"
+Press 285 318 210 27   # BTN_EXIT
+$gone = $v.WaitForExit(8000)
+Report "Exit closes the window" $gone "exited=$gone"
+if (-not $gone) { Stop-Process -Id $v.Id -Force }
+foreach ($f in $left) { Remove-Item $f.FullName -Force }
+Get-Content "$scratch\kotor_drive2.err" -Tail 4

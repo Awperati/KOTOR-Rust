@@ -1,7 +1,7 @@
 # Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**228 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**257 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -31,7 +31,7 @@ See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`.
 - Saves are this engine's own layout; the original's saves are not read and ours do not open in the original.
 - MP3 (all voice-over, most music): all 558 files decode through `gpu/audio` (symphonia); lengths agree with the header estimate within 4.4%. The game loop runs in a window on DISPLAY2 (`docs/PLAY.md`). Its sound has only been run at volume 0, so nobody has heard it.
 - **The owner's install is modded.** `end_m01aa.mod` replaces the module's `.rim` pair and its `k_pend_start` removes Trask after the opening; `--original` ignores it. Tests that open the module without `set_prefer_rim` ran against that `.mod`, so their Endar Spire results describe the modded module.
-- Not built: window and input, menus, inventory/equip/map screens, minigames (Pazaak, swoop, turrets), area-of-effect objects, damage types and resistances,
+- Not built: the map, party and journal screens, the options pages, minigames (Pazaak, swoop, turrets), area-of-effect objects, damage types and resistances,
   grenades, dual wielding, speed/haste, stealth, lock picking and traps, vendors, the galaxy map, and cutscenes that use models not in the opening.
 
 ## What the owner could check by playing the real game side by side
@@ -46,8 +46,8 @@ See `COMBAT.md`, `RULES.md`, `CHARGEN.md`, `CUTSCENE.md`, `UI.md`, `GAME.md`.
 
 ## What a first playable still lacks
 Most to least blocking, all absent unless stated:
-1. **Inventory and equip screen.** Items can be taken from a footlocker but not worn or used, so the opening's own tutorial cannot be followed.
-2. **Character creation and a main menu.** The game starts straight in the Endar Spire as a fixed Soldier. There is no new game, load or save screen, though saves work underneath.
+1. **Using items.** The inventory and equipment screens work for the player (`docs/PLAY.md`), but a medpack cannot be used yet and party members cannot be switched to.
+2. **Character creation.** New Game starts the Endar Spire as a fixed Soldier. The main menu, pause menu and save, load and delete screens are in.
 3. **Combat controls.** A click attacks, and that is all: no action queue, feats, powers or items from the slots, no pause. Only the first slot is drawn.
 4. **Hearing the sound.** Voice, music, shots, blows, doors and steps are wired from the stock tables, and nobody has listened to them yet.
 5. **Force power visuals and the other emitter types.** Bolts, muzzle flashes, sparks and rooms' `Fountain` emitters are in.
