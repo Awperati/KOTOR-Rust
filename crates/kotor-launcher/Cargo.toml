@@ -1,0 +1,19 @@
+[package]
+name = "kotor-launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "kotor_launcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "KotorRust"
+path = "src/main.rs"
+
+# Stands in for the game in tests and in scripts/launcher_demo.ps1.
+[[bin]]
+name = "kotor-fake-game"
+path = "src/fake_game.rs"

@@ -24,3 +24,17 @@ jobs:
       - name: Format, lints and tests
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check.ps1
+
+  # Every green push to master becomes a build that KotorRust.exe starts on its next start. See scripts/ci_build.ps1.
+  publish:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: [self-hosted, Windows, X64, kotor]
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}\..\cargo-target
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, start it hidden, publish
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ci_build.ps1

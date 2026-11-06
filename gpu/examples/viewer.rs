@@ -283,7 +283,14 @@ impl App {
         }
         let stage = &mut self.stage;
         if st.static_seen != stage.static_version {
-            st.window.set_title(&stage.label());
+            // What the launcher has to say, then what the viewer always says.
+            let note = std::env::var("KOTOR_BUILD_NOTE").unwrap_or_default();
+            let label = stage.label();
+            st.window.set_title(&if note.is_empty() {
+                label
+            } else {
+                format!("{note} | {label}")
+            });
             st.static_seen = stage.static_version;
             let scene = stage.static_scene().clone();
             st.gpu.set_static_scene(&scene, &mut |n| stage.texture(n));

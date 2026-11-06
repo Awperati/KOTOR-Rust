@@ -52,6 +52,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kotor-launcher"
+version = "0.1.0"
+
+[[package]]
 name = "kotor-model"
 version = "0.1.0"
 dependencies = [

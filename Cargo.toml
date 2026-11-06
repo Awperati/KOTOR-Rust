@@ -16,6 +16,7 @@ members = [
     "crates/kotor-ui",
     "crates/kotor-audio",
     "crates/kotor-tool",
+    "crates/kotor-launcher",
 ]
 
 [workspace.package]

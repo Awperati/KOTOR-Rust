@@ -3,6 +3,17 @@
 //! Checked against the software renderer by `examples/compare.rs` (same camera, same scene). `Presenter` shows
 //! the picture on a window surface for `examples/viewer.rs`.
 
+/// Which build this is, for Settings. CI names the commit and the day; a build on a developer's machine has neither.
+pub fn build_line() -> String {
+    match (
+        option_env!("KOTOR_BUILD_SHA"),
+        option_env!("KOTOR_BUILD_DATE"),
+    ) {
+        (Some(sha), Some(date)) => format!("Build {sha}, {date}"),
+        _ => "Build: local".to_string(),
+    }
+}
+
 pub mod effects;
 pub mod stage;
 mod watch;
