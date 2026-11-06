@@ -6,13 +6,13 @@ The game runs in fixed steps of 1/60 s, and every game timer counts those steps.
 
 | Way | Command | Measured |
 |---|---|---|
-| No window | `cargo run --release -p kotor-game --example autopilot -- end_m01aa 900 120` | 850 game seconds per wall second |
-| Window, 16x | `viewer --autopilot` (16x is the default with `--autopilot`) | 15.5 |
-| Window, 64x | `viewer --autopilot --speed 64` | 56.7 |
-| Window, 256x | `viewer --autopilot --speed 256` | 162 |
+| No window | `cargo run --release -p kotor-game --example autopilot -- end_m01aa 900 120` | 807 game seconds per wall second |
+| Window, 16x | `viewer --autopilot` (16x is the default with `--autopilot`) | 15.6 |
+| Window, 64x | `viewer --autopilot --speed 64` | 58.5 |
+| Window, 256x | `viewer --autopilot --speed 256` | 182 |
 | Window, watching | `viewer --autopilot --speed 1` | 1, and lines stay up long enough to read |
 
-Measured on 6 Nov 2026 over 900 game seconds, in a hidden 1280x720 window with `--mute`. With no window, the pilot leaves the Endar Spire at 677 game seconds, in about 0.8 wall seconds (worked out from the rate; the whole 900.8 game seconds took 1.06).
+Measured on 6 Nov 2026 over 900 game seconds, in a hidden 1280x720 window with `--mute`. With no window, the pilot leaves the Endar Spire at 587 game seconds, in about 0.7 wall seconds (worked out from the rate; the whole 900.8 game seconds took 1.12).
 
 Other switches:
 - `--speed N` works without `--autopilot` too, for playing by hand. I have measured it only with the pilot.
@@ -39,7 +39,7 @@ The first comparison failed. The window turned the speaker and the player to eac
 
 ## What it does not speed up
 
-- **Drawing.** It is why a window tops out near 160x. Do not judge frame rate or how motion looks at speed.
+- **Drawing.** It is why a window tops out near 180x. Do not judge frame rate or how motion looks at speed.
 - **Sound.** Above 1x the viewer plays none, so sound must be judged at 1x.
 - **Loading files.** A module loads in wall time at every speed. Game time does not pass meanwhile, so results do not change.
 - **`Stage::update_camera`, hover and the overlay.** They run once per frame, on wall time. They only change what is shown.

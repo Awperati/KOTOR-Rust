@@ -8,5 +8,3 @@ gpu/target/
 
 # Frames from the reference video: local viewing only, never committed.
 /cache/
-# Frames from the reference video (docs/REFERENCE.md).
-cache/

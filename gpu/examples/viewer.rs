@@ -441,7 +441,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .unwrap_or((1280, 720));
     let original = !flag("--installed-mod");
-    let mut stage = if (flag("--skip-menu") || flag("--autopilot")) {
+    let mut stage = if flag("--skip-menu") || flag("--autopilot") {
         Stage::open(&module, original)?
     } else {
         Stage::menu(&module, original)?
@@ -450,7 +450,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if flag("--no-hd") {
         stage.no_hd();
     }
-    if !(flag("--skip-menu") || flag("--autopilot")) {
+    if !flag("--skip-menu") && !flag("--autopilot") {
         stage.use_saved_settings();
     }
     if let Some(tag) = opt("--near") {

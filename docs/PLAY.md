@@ -27,7 +27,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | M | map |
 | C | character |
 
-Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG` and `--autopilot` (a scripted player takes the controls and prints what stalls), `--autopilot` (a scripted player takes the controls and prints what stalls) and `--speed N` (`docs/FASTTEST.md`).
+Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG`, `--autopilot` (a scripted player takes the controls and prints what stalls) and `--speed N` (`docs/FASTTEST.md`).
 
 `scripts/drive_window.ps1` plays the running window with messages posted to its own handle only, with no global input and no focus change, and prints PASS or FAIL for replies, the footlocker, WASD and click-to-walk.
 
