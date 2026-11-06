@@ -1,7 +1,7 @@
 //! What the player can queue in a fight: the feats that change the next attack and the Force powers that hurt. The
 //! numbers are the talk table's own words for each feat.
 //!
-//! **Assumed:** a power is for an enemy when `spells.2da` fills its `forcehostile`; "while using this feat" in Flurry's
+//! A power is for an enemy when `spells.2da` fills its `forcehostile`, as a test checks. **Assumed:** "while using this feat" in Flurry's
 //! words is the combat round.
 
 use crate::world::{ObjId, World};

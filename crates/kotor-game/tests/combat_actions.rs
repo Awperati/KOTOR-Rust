@@ -1,7 +1,9 @@
 //! What the player queues in a fight changes the next attack, as the talk table says.
 
 use kotor_archive::Install;
+use kotor_core::ResType;
 use kotor_game::{CombatAction, ObjId, World};
+use kotor_tables::{Tlk, TwoDa};
 
 fn fight() -> Option<(World, ObjId)> {
     let dir = kotor_core::install_dir()?;
@@ -30,6 +32,196 @@ fn first_attack(w: &mut World, foe: ObjId) -> kotor_game::AttackLog {
         }
     }
     panic!("no attack");
+}
+
+fn table(name: &str) -> Option<TwoDa> {
+    let dir = kotor_core::install_dir()?;
+    let mut inst = Install::open(dir).unwrap();
+    TwoDa::parse(&inst.read(name, ResType(2017)).unwrap()).ok()
+}
+
+fn talk_table() -> Option<Tlk> {
+    let dir = kotor_core::install_dir()?;
+    Tlk::parse(&std::fs::read(dir.join("dialog.tlk")).unwrap()).ok()
+}
+
+/// The feats the slots offer, with the row's label and the words the numbers in `combat_actions.rs` were read from.
+const FEAT_WORDS: [(i32, &str, &[&str]); 18] = [
+    (28, "POWER_ATTACK", &["+5 damage", "-3 to hit", "melee"]),
+    (
+        17,
+        "IMPROVED_POWER_ATTACK",
+        &["+8 to damage", "-3 to hit", "melee"],
+    ),
+    (
+        83,
+        "MASTER_POWER_ATTACK",
+        &["+10 to damage", "-3 penalty", "melee"],
+    ),
+    (29, "POWER_BLAST", &["+5 damage", "-3 to hit", "ranged"]),
+    (
+        18,
+        "IMPROVED_POWER_BLAST",
+        &["+8 to damage", "-3 to hit", "blaster"],
+    ),
+    (
+        82,
+        "MASTER_POWER_BLAST",
+        &["+10 to damage", "-3 penalty", "blaster"],
+    ),
+    (
+        8,
+        "CRITICAL_STRIKE",
+        &["doubles", "melee", "stunned for 6", "Strength"],
+    ),
+    (
+        19,
+        "IMPROVED_CRITICAL_STRIKE",
+        &["triples", "melee", "stunned for 6", "Strength"],
+    ),
+    (
+        81,
+        "MASTER_CRITICAL_STRIKE",
+        &["quadruples", "melee", "stunned for 6", "Strength"],
+    ),
+    (
+        31,
+        "SNIPER_SHOT",
+        &["doubles", "ranged", "stunned for 6", "Intelligence"],
+    ),
+    (
+        20,
+        "IMPROVED_SNIPER_SHOT",
+        &["triples", "ranged", "stunned for 6", "Intelligence"],
+    ),
+    (
+        77,
+        "MASTER_SNIPER_SHOT",
+        &["quadruples", "ranged", "stunned for 6", "Intelligence"],
+    ),
+    (
+        11,
+        "FLURRY",
+        &["extra melee", "-4 to Defense", "-4 penalty", "3 seconds"],
+    ),
+    (
+        91,
+        "IMPROVED_FLURRY",
+        &["extra melee", "-2 to Defense", "-2 penalty"],
+    ),
+    (
+        53,
+        "WHIRLWIND_ATTACK",
+        &["extra melee", "-1 to Defense", "-1 penalty"],
+    ),
+    (
+        30,
+        "RAPID_SHOT",
+        &["extra ranged", "-4 to Defense", "-4 penalty", "3 seconds"],
+    ),
+    (
+        92,
+        "IMPROVED_RAPID_SHOT",
+        &["extra ranged", "-2 to Defense", "-2 penalty"],
+    ),
+    (
+        26,
+        "MULTI_SHOT",
+        &["extra ranged", "-1 to Defense", "-1 penalty"],
+    ),
+];
+
+#[test]
+fn the_feats_are_the_rows_and_numbers_the_tables_say() {
+    let (Some(t), Some(words)) = (table("feat"), talk_table()) else {
+        return;
+    };
+    for (feat, label, says) in FEAT_WORDS {
+        let row = feat as usize;
+        assert_eq!(t.get(row, "label"), Some(label));
+        let text = words
+            .get(t.int(row, "description").unwrap() as u32)
+            .unwrap();
+        for s in says {
+            assert!(text.contains(s), "{label} should say {s:?}: {text}");
+        }
+    }
+}
+
+#[test]
+fn the_slots_offer_the_strongest_of_each_kind_for_the_weapon_held() {
+    let Some((mut w, _)) = fight() else { return };
+    let pc = w.pc;
+    w.object_mut(pc)
+        .unwrap()
+        .feats
+        .extend(FEAT_WORDS.map(|f| f.0));
+    let ids = |w: &mut World| -> Vec<i32> {
+        let pc = w.pc;
+        let choices = w.combat_feats(pc);
+        let feats = choices.iter().map(|c| match c.action {
+            CombatAction::Feat(f) => f,
+            CombatAction::Power(p) => panic!("power {p}"),
+        });
+        feats.collect()
+    };
+    w.object_mut(pc).unwrap().equipped.clear();
+    assert_eq!(
+        ids(&mut w),
+        vec![83, 81, 53],
+        "with no weapon, the melee ones"
+    );
+    let rifle = w.spawn_item("g_w_blstrrfl001");
+    w.object_mut(pc).unwrap().equipped.insert(4, rifle);
+    assert_eq!(
+        ids(&mut w),
+        vec![82, 77, 26],
+        "with a blaster, the ranged ones"
+    );
+}
+
+#[test]
+fn the_powers_for_an_enemy_are_those_the_table_marks_hostile() {
+    let (Some((mut w, _)), Some(t)) = (fight(), table("spells")) else {
+        return;
+    };
+    let pc = w.pc;
+    let usable: Vec<usize> = (0..t.row_count())
+        .filter(|r| t.int(*r, "usertype") == Some(1))
+        .collect();
+    let hostile: Vec<i32> = usable
+        .iter()
+        .filter(|r| t.int(**r, "forcehostile").is_some())
+        .map(|r| *r as i32)
+        .collect();
+    // Two columns say it, and they agree. Nothing is both for an enemy and for a friend.
+    for r in &usable {
+        let says = t.int(*r, "hostilesetting") == Some(1);
+        let label = t.get(*r, "label").unwrap_or("");
+        assert_eq!(says, t.int(*r, "forcehostile").is_some(), "{label}");
+        assert!(
+            !(says && t.int(*r, "forcefriendly").is_some()),
+            "{label} is both"
+        );
+    }
+    assert!(hostile.len() > 10, "{hostile:?}");
+    // Knowing everything, with the Force for it, the slot offers exactly those.
+    let o = w.object_mut(pc).unwrap();
+    o.spells.extend(usable.iter().map(|r| *r as i32));
+    (o.force, o.max_force) = (9999, 9999);
+    let powers = w.combat_powers(pc);
+    let offered: Vec<i32> = powers
+        .iter()
+        .map(|c| match c.action {
+            CombatAction::Power(p) => p,
+            CombatAction::Feat(f) => panic!("feat {f}"),
+        })
+        .collect();
+    assert_eq!(offered, hostile);
+    // Force Push is one; Heal is not. A power too dear is left out.
+    assert!(offered.contains(&23) && !offered.contains(&28));
+    w.object_mut(pc).unwrap().force = 0;
+    assert!(w.combat_powers(pc).is_empty());
 }
 
 #[test]
