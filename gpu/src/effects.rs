@@ -96,6 +96,10 @@ struct Source {
     /// Seconds a played effect goes on emitting; `None` for a room's emitter, which never stops.
     left: Option<f32>,
     single: bool,
+    /// Its model says its quads lie flat in the emitter's plane.
+    local_z: bool,
+    /// Its quads do: along these two axes, not facing the camera.
+    flat: Option<([f32; 3], [f32; 3])>,
 }
 
 /// A jagged arc that flickers while it lasts.
@@ -236,6 +240,15 @@ impl Effects {
         }
     }
 
+    /// Quads lie flat in their emitters' planes where the model says so, which the galaxy map's disc needs. Elsewhere they
+    /// face the camera, as they always have here.
+    pub fn lay_flat(&mut self) {
+        for s in self.sources.iter_mut().filter(|s| s.local_z) {
+            let column = |c: usize| [s.at[0][c], s.at[1][c], s.at[2][c]];
+            s.flat = Some((column(0), column(1)));
+        }
+    }
+
     /// Turn the emitters' colours from blue through grey to red: 0 leaves them, a half makes them grey of the same
     /// brightness, and 1 swaps blue and red and takes most of the green, which with the red would make orange.
     pub fn redden(&mut self, amount: f32) {
@@ -253,13 +266,15 @@ impl Effects {
         }
     }
 
-    /// Keep the `Fountain` emitters of a model going, placed by `xf`.
+    /// Keep the `Fountain` and `Single` emitters of a model going, placed by `xf`.
     pub fn load_model(&mut self, model: &kotor_model::Model, xf: &Mat) {
         let mats = model.world_matrices(None);
         let sources = &mut self.sources;
         model.root.walk(&mut |n| {
             let Some(e) = &n.emitter else { return };
-            if !e.update.eq_ignore_ascii_case("fountain") || e.texture.is_empty() {
+            let runs = e.update.eq_ignore_ascii_case("fountain")
+                || e.update.eq_ignore_ascii_case("single");
+            if !runs || e.texture.is_empty() {
                 return;
             }
             let Some((_, m)) = mats.iter().find(|(name, _)| *name == n.name) else {
@@ -399,6 +414,8 @@ impl Effects {
             particles: Vec::new(),
             left: Some(0.0),
             single: false,
+            local_z: false,
+            flat: None,
         };
         for _ in 0..10 {
             let p = self.spawn(&burst);
@@ -546,7 +563,9 @@ impl Effects {
                     (p.frame * cells as f32) as u32
                 } % cells;
                 let uv = cell_uv(cell, s.grid);
-                let (a, b) = if s.stretched {
+                let (a, b) = if let Some((x, y)) = s.flat {
+                    (scaled(x, size), scaled(y, size))
+                } else if s.stretched {
                     axial_quad(p.pos, p.vel, size * 3.0, size, cam)
                 } else {
                     (scaled(right, size), scaled(up, size))
@@ -596,6 +615,7 @@ fn source_of(n: &Node, e: &kotor_model::Emitter, at: Mat, left: Option<f32>) -> 
         texture: e.texture.to_ascii_lowercase(),
         additive: e.blend.eq_ignore_ascii_case("lighten"),
         stretched: e.render.eq_ignore_ascii_case("motion_blur"),
+        local_z: e.render.eq_ignore_ascii_case("billboard_to_local_z"),
         grid: (e.grid[0].max(1), e.grid[1].max(1)),
         rate: one(n, BIRTH_RATE, 0.0),
         random_rate: one(n, RANDOM_BIRTH_RATE, 0.0),
@@ -630,6 +650,7 @@ fn source_of(n: &Node, e: &kotor_model::Emitter, at: Mat, left: Option<f32>) -> 
         particles: Vec::new(),
         left,
         single: e.update.eq_ignore_ascii_case("single"),
+        flat: None,
     }
 }
 

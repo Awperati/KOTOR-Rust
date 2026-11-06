@@ -25,6 +25,8 @@ mod mainscene;
 #[path = "mapscreen.rs"]
 mod mapscreen;
 pub(super) use fightscreen::target_slot;
+#[path = "galaxyscreen.rs"]
+mod galaxyscreen;
 #[path = "keyscreen.rs"]
 mod keyscreen;
 #[path = "notices.rs"]
@@ -33,6 +35,7 @@ mod notices;
 mod optionpages;
 #[path = "partyscreen.rs"]
 mod partyscreen;
+pub use galaxyscreen::PlanetLine;
 #[path = "storescreen.rs"]
 mod storescreen;
 #[path = "workbenchscreen.rs"]
@@ -178,6 +181,8 @@ pub(super) enum Screen {
     QuestItems,
     /// `store.gui`.
     Store,
+    /// `galaxymap.gui`.
+    Galaxy,
     /// `upgradesel.gui`, `upgradeitems.gui` and `upgrade.gui`.
     BenchKinds,
     BenchItems,
@@ -418,6 +423,7 @@ impl Screen {
             Screen::Messages => "messages",
             Screen::QuestItems => "quest_items",
             Screen::Store => "store",
+            Screen::Galaxy => "galaxy",
             Screen::BenchKinds => "bench_kinds",
             Screen::BenchItems => "bench_items",
             Screen::Bench => "bench",
@@ -505,6 +511,8 @@ pub(super) struct Menus {
     fight: fightscreen::Fight,
     /// A shop, while one is open.
     shop: storescreen::Shop,
+    /// The galaxy map, once it has been up.
+    galaxy: Option<galaxyscreen::Galaxy>,
     /// The words of the option the cursor last rested on.
     option_words: Option<u32>,
     /// Why that option is greyed.
@@ -725,6 +733,7 @@ impl Stage {
             Screen::Messages => self.messages_view(),
             Screen::QuestItems => self.quest_items_view(),
             Screen::Store => self.store_view(),
+            Screen::Galaxy => self.galaxy_view(),
             Screen::BenchKinds => self.bench_kinds_view(),
             Screen::BenchItems => self.bench_items_view(),
             Screen::Bench => self.bench_view(),
@@ -1765,6 +1774,7 @@ impl Stage {
         }
         match (top, tag) {
             (Screen::Store, _) => self.store_press(tag),
+            (Screen::Galaxy, _) => self.galaxy_press(tag),
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),
@@ -1964,6 +1974,7 @@ impl Stage {
             Some(Screen::Main) => {}
             Some(Screen::Container) => self.game.world.close_container(),
             Some(Screen::Store) => self.store_escape(),
+            Some(Screen::Galaxy) => self.galaxy_escape(),
             Some(Screen::Equip) if self.menus.slot.is_some() => {
                 self.leave_slot();
                 self.menus.message.clear();

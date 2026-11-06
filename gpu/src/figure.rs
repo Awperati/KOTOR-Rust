@@ -227,6 +227,9 @@ impl Stage {
         if let Some(mist) = self.chargen_particles() {
             return mist;
         }
+        if let Some(galaxy) = self.galaxy_particles() {
+            return galaxy;
+        }
         if let Some(camera) = self.figure_camera() {
             return self
                 .menus
@@ -245,7 +248,11 @@ impl Stage {
         if let Some((scene, camera)) = self.main_scene_now() {
             return (scene, camera, true);
         }
-        if let Some((scene, camera)) = self.chargen_scene().or_else(|| self.bench_scene()) {
+        if let Some((scene, camera)) = self
+            .chargen_scene()
+            .or_else(|| self.bench_scene())
+            .or_else(|| self.galaxy_scene())
+        {
             return (scene, camera, true);
         }
         match self.figure_camera() {

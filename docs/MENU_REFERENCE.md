@@ -95,6 +95,13 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Hover and chosen colour | yellow-green text; I could not measure it exactly, since small text in a compressed video has no clean pixels | yellow | the difference is small and unmeasured |
 | Transitions | not compared | none | I looked at frames only, one every 5 seconds |
 
+## The galaxy map
+
+`galaxymap.gui`, compared with the video at 8:29:45. The galaxy is the emitters of `galaxy.mdl`, and the planet is the row's
+model, which zooms in and then turns. **Not connected:** the rules are not built, so nothing in a game opens it yet. Frames:
+`galaxy`, `galaxy_tatooine`. **Differences:** the video's planet runs past the edges of its window, and ours stops inside
+it, since one camera draws both windows. Its planet is shaded from one side, and ours is lit evenly. **Assumed:** a click picks a planet, and one you cannot go to can be looked at, with Travel greyed.
+
 ## The shop
 
 `store.gui`, compared with the video at 50:10 and 50:20. One list at a time, Buy or Sell, with a button to change. A click

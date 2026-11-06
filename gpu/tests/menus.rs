@@ -2894,6 +2894,101 @@ fn the_screens_of_a_game_keep_their_words_inside_their_boxes() {
     press(&mut s, "BTN_Examine");
     words_too_big(&mut s, "shop sell", &mut found);
     assert!(found.is_empty(), "{}", found.join("\n"));
+
+    // The galaxy map, on each planet the story can have.
+    let Some(mut s) = at_galaxy("fit_galaxy") else {
+        return;
+    };
+    for planet in [
+        "LBL_Planet_Dantooine",
+        "LBL_Planet_Tatooine",
+        "LBL_Planet_Kashyyyk",
+    ] {
+        press(&mut s, planet);
+        words_too_big(&mut s, planet, &mut found);
+    }
+    assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+fn at_galaxy(name: &str) -> Option<Stage> {
+    let (mut s, _) = in_game(name)?;
+    let line = |row, available, selectable| kotor_gpu::stage::PlanetLine {
+        row,
+        available,
+        selectable,
+    };
+    // Taris, where we are, Dantooine and Tatooine to go to, Kashyyyk not yet, and Manaan not on the map.
+    s.open_galaxy(
+        1,
+        vec![
+            line(1, true, true),
+            line(3, true, true),
+            line(4, true, true),
+            line(5, true, false),
+            line(6, false, false),
+        ],
+    );
+    s.update(DT);
+    Some(s)
+}
+
+#[test]
+fn the_galaxy_map_shows_what_the_story_allows_and_says_what_was_chosen() {
+    let Some(mut s) = at_galaxy("galaxy") else {
+        return;
+    };
+    assert_eq!(s.menu_name(), "galaxy");
+    let time = s.game.world.time;
+    frame(&mut s);
+    assert_eq!(s.game.world.time, time, "the game waits");
+    assert_eq!(s.galaxy_shown(), Some(1));
+
+    // Off the map: no button. Where we are: nowhere to go.
+    assert!(s.menu_pixel("LBL_Planet_Manaan", None, SIZE).is_none());
+    assert!(s.menu_pixel("LBL_Planet_Korriban", None, SIZE).is_none());
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "galaxy");
+    assert_eq!(s.take_galaxy_choice(), None);
+
+    // A click shows a planet, with its words.
+    let taris = frame(&mut s);
+    press(&mut s, "LBL_Planet_Dantooine");
+    assert_eq!(s.galaxy_shown(), Some(3));
+    assert!(frame(&mut s) != taris, "its name and words");
+    let (scene, _, alone) = s.frame_scene();
+    assert!(alone && !scene.meshes.is_empty(), "the planet is drawn");
+    assert!(!s.frame_particles().is_empty(), "the galaxy is drawn");
+
+    // It can be looked at and not gone to.
+    press(&mut s, "LBL_Planet_Kashyyyk");
+    assert_eq!(s.galaxy_shown(), Some(5));
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "galaxy");
+
+    // Travel says where.
+    press(&mut s, "LBL_Planet_Tatooine");
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(s.take_galaxy_choice(), Some(Some(4)));
+    assert_eq!(s.take_galaxy_choice(), None, "once");
+    s.update(DT);
+    assert!(s.game.world.time > time);
+}
+
+#[test]
+fn cancel_and_esc_leave_the_galaxy_map_with_nothing_chosen() {
+    let Some(mut s) = at_galaxy("galaxy_cancel") else {
+        return;
+    };
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(s.take_galaxy_choice(), Some(None));
+    let Some(mut s) = at_galaxy("galaxy_esc") else {
+        return;
+    };
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(s.take_galaxy_choice(), Some(None));
 }
 
 /// A shop with a cheap thing and a dear one, and some credits.

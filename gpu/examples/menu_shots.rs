@@ -405,6 +405,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.update(0.1);
     shot(&mut gpu, &mut s, "hud_minimap", &out);
 
+    // The galaxy map, as at 8:29:45: Dantooine on show, once it has zoomed in, and then Tatooine as it starts to.
+    let on_map = |row: i32, selectable: bool| kotor_gpu::stage::PlanetLine {
+        row,
+        available: true,
+        selectable,
+    };
+    s.open_galaxy(
+        3,
+        vec![
+            on_map(3, true),
+            on_map(4, true),
+            on_map(5, true),
+            on_map(6, true),
+            on_map(7, false),
+            on_map(11, true),
+        ],
+    );
+    for _ in 0..150 {
+        s.update(DT);
+    }
+    shot(&mut gpu, &mut s, "galaxy", &out);
+    click(&mut s, "LBL_Planet_Tatooine", None);
+    for _ in 0..20 {
+        s.update(DT);
+    }
+    shot(&mut gpu, &mut s, "galaxy_tatooine", &out);
+    s.escape();
+    s.take_galaxy_choice();
+    s.update(0.1);
+
     // A shop: what it sells, the question over a dear item, and what it would buy.
     let keeper = s.game.world.spawn_creature("n_calonord", [0.0; 3]);
     if let Some(o) = s.game.world.object_mut(keeper) {

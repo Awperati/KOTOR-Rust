@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 #[path = "menus.rs"]
 mod menus;
-pub use menus::{about_words, default_saves_dir, default_settings_file, Settings};
+pub use menus::{about_words, default_saves_dir, default_settings_file, PlanetLine, Settings};
 
 type Mat = [[f32; 4]; 4];
 
@@ -505,6 +505,7 @@ impl Stage {
         self.main_scene_tick(dt);
         self.chargen_mist_tick(dt);
         self.figure_mist_tick(dt);
+        self.galaxy_tick(dt);
         self.bench_tick(dt);
         self.take_bench_request();
         self.take_party_request();

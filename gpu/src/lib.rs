@@ -716,11 +716,16 @@ impl GpuRenderer {
                     view: &color_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 18.0 / 255.0,
-                            g: 20.0 / 255.0,
-                            b: 28.0 / 255.0,
-                            a: 1.0,
+                        // A figure's or a planet's screen has space behind it, and a world has its sky.
+                        load: wgpu::LoadOp::Clear(if self.figure_only {
+                            wgpu::Color::BLACK
+                        } else {
+                            wgpu::Color {
+                                r: 18.0 / 255.0,
+                                g: 20.0 / 255.0,
+                                b: 28.0 / 255.0,
+                                a: 1.0,
+                            }
                         }),
                         store: wgpu::StoreOp::Store,
                     },
