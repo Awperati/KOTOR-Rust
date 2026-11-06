@@ -22,6 +22,8 @@ pub enum Kind {
     Placeable,
     Waypoint,
     Trigger,
+    /// A shop, from the `StoreList` of an area or `CreateObject`.
+    Store,
     Item,
 }
 
@@ -389,6 +391,12 @@ pub struct World {
     pub last_closed_by: ObjId,
     pub(crate) filled: std::collections::HashSet<ObjId>,
     pub(crate) conv: Option<crate::dialogue::ConvRun>,
+    /// The shop that is open, and what never runs out in any shop.
+    pub store: Option<crate::store::StoreOpen>,
+    pub(crate) store_infinite: BTreeSet<ObjId>,
+    pub(crate) encounters: Vec<crate::encounters::Encounter>,
+    /// Encounters that have fired, by module and place in its list.
+    pub(crate) spent_encounters: BTreeSet<String>,
     /// Party credits (`GetGold`).
     pub gold: i32,
     /// `SetCustomToken` values, substituted for `<CUSTOMn>` in text.
@@ -511,6 +519,10 @@ impl World {
             effect_cursor: HashMap::new(),
             locations: Vec::new(),
             available: BTreeMap::new(),
+            store: None,
+            store_infinite: BTreeSet::new(),
+            encounters: Vec::new(),
+            spent_encounters: BTreeSet::new(),
             set_aside: BTreeSet::new(),
             exiting: OBJECT_INVALID,
             last_opened_by: OBJECT_INVALID,
@@ -914,22 +926,29 @@ impl World {
             p.position = [f("Mod_Entry_X"), f("Mod_Entry_Y"), f("Mod_Entry_Z")];
         }
         let git = Gff::parse(&self.inst.read(&area_name, ResType::GIT)?)?;
-        let lists: [(&str, Kind, ResType); 5] = [
+        let lists: [(&str, Kind, ResType); 6] = [
             ("Creature List", Kind::Creature, ResType(2027)),
             ("Door List", Kind::Door, ResType(2042)),
             ("Placeable List", Kind::Placeable, ResType(2044)),
             ("WaypointList", Kind::Waypoint, ResType(2058)),
             ("TriggerList", Kind::Trigger, ResType(2032)),
+            ("StoreList", Kind::Store, crate::store::STORE_FILE),
         ];
         for (label, kind, ty) in lists {
             for s in git.root.list(label).unwrap_or_default() {
-                let tpl = s.str("TemplateResRef").unwrap_or_default().to_string();
+                // A store names its template `ResRef`.
+                let tpl = s
+                    .str("TemplateResRef")
+                    .or_else(|| s.str("ResRef"))
+                    .unwrap_or_default()
+                    .to_string();
                 let tag = s.str("Tag").unwrap_or(&tpl).to_string();
                 let id = self.add(kind, &tag);
                 self.fill_from_template(id, &tpl, ty, s);
             }
         }
         self.module = module.to_string();
+        self.load_encounters(&git);
         self.build_nav(&area_name)?;
         let pos = self.objects.get(&pc).map_or([0.0; 3], |p| p.position);
         self.pc_mover = Mover::new(pos, std::f32::consts::FRAC_PI_2);

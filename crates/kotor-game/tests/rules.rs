@@ -17,6 +17,39 @@ fn effect(w: &mut World, name: &str, nums: &[f32]) -> u32 {
     w.effects.len() as u32
 }
 
+#[test]
+fn a_grenade_thrown_at_a_foe_hurts_it_and_is_used_up() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    let foe = soldier(&w);
+    let at = w.object(pc).unwrap().position;
+    w.teleport(foe, [at[0] + 3.0, at[1], at[2]]);
+    w.object_mut(pc).unwrap().hp = 5000;
+    w.object_mut(foe).unwrap().max_hp = 500;
+    w.object_mut(foe).unwrap().hp = 500;
+    let grenade = w.spawn_item("g_w_fraggren01");
+    w.object_mut(grenade).unwrap().stack = 6;
+    w.carry(pc, grenade);
+    for _ in 0..6 {
+        let done = w.use_item_on(pc, grenade, foe);
+        assert!(
+            done.is_ok(),
+            "{done:?}: {:?} {:?}",
+            w.errors.last(),
+            w.events.iter().rev().take(3).collect::<Vec<_>>()
+        );
+        for _ in 0..240 {
+            w.step(1.0 / 60.0);
+        }
+    }
+    assert!(
+        w.object(foe).unwrap().hp < 500,
+        "{:?}",
+        w.events.iter().rev().take(6).collect::<Vec<_>>()
+    );
+    assert!(!w.carried(pc).contains(&grenade), "all six thrown");
+}
+
 fn soldier(w: &World) -> ObjId {
     w.objects
         .values()

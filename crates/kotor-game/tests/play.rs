@@ -217,6 +217,115 @@ fn someone_standing_in_the_way_does_not_end_a_chase() {
 }
 
 #[test]
+fn an_encounter_brings_its_creatures_out_once() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m03aa").unwrap();
+    let pc = w.pc;
+    let before = |w: &World| {
+        w.objects
+            .values()
+            .filter(|o| o.kind == Kind::Creature)
+            .count()
+    };
+    let n = before(&w);
+    // `g_blckvulgrou001`: its `RecCreatures` is 2, and its floor lies just west of this point.
+    w.teleport(pc, [379.0, 150.0, 8.3]);
+    w.step(0.1);
+    assert_eq!(before(&w), n + 2, "{:?}", w.events.last());
+    let events = w.events.join("\n");
+    assert!(
+        events.contains("encounter tar_m03aa/0 brings out"),
+        "{events}"
+    );
+    let foe = w
+        .objects
+        .values()
+        .find(|o| o.template == "tar03_blackv037")
+        .unwrap()
+        .id;
+    assert!(w.reputation(pc, foe) <= 10, "hostile");
+    // Off it and on again: no more come.
+    w.teleport(pc, [300.0, 150.0, 8.3]);
+    w.step(0.1);
+    w.teleport(pc, [379.0, 150.0, 8.3]);
+    w.step(0.1);
+    assert_eq!(before(&w), n + 2);
+}
+
+#[test]
+fn a_shop_sells_for_its_mark_up_and_buys_for_its_mark_down() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("tar_m02ac").unwrap();
+    // `zelkastore001`, tag `zelkastore2`: mark-up 100, mark-down 40, and a medpack worth 40 + 40.
+    let store = w.by_tag("zelkastore2")[0];
+    assert_eq!(w.object(store).unwrap().kind, Kind::Store);
+    let open = kotor_script_open(&mut w, store);
+    assert!(open);
+    let s = w.store.clone().unwrap();
+    assert_eq!(
+        (s.mark_up, s.mark_down, s.can_buy, s.can_sell),
+        (100, 40, true, true)
+    );
+    let lines = w.store_lines();
+    assert_eq!(lines.len(), 13);
+    let pack = lines
+        .iter()
+        .find(|l| w.object(l.item).unwrap().template == "g_i_medeqpmnt01")
+        .unwrap()
+        .clone();
+    assert!(pack.infinite);
+    assert_eq!(pack.price, 80);
+    w.gold = 200;
+    let pc = w.pc;
+    let carried = |w: &World, t: &str| {
+        w.carried(w.pc)
+            .iter()
+            .filter_map(|i| w.object(*i))
+            .filter(|o| o.template == t)
+            .map(|o| o.stack)
+            .sum::<i32>()
+    };
+    let had = carried(&w, "g_i_medeqpmnt01");
+    w.store_buy(pack.item).unwrap();
+    w.store_buy(pack.item).unwrap();
+    assert_eq!(w.gold, 40);
+    assert_eq!(carried(&w, "g_i_medeqpmnt01"), had + 2);
+    assert_eq!(
+        w.store_buy(pack.item),
+        Err(kotor_game::CannotTrade::TooDear)
+    );
+    assert_eq!(w.store_lines().len(), 13, "an infinite line stays");
+    // Selling gives 40 percent, one at a time.
+    let mine = w
+        .carried(pc)
+        .into_iter()
+        .find(|i| w.object(*i).unwrap().template == "g_i_medeqpmnt01")
+        .unwrap();
+    w.store_sell(mine).unwrap();
+    assert_eq!(w.gold, 72);
+    assert_eq!(carried(&w, "g_i_medeqpmnt01"), had + 1);
+    assert_eq!(w.store_lines().len(), 14, "what it bought is for sale");
+    w.close_store();
+    assert_eq!(
+        w.store_buy(pack.item),
+        Err(kotor_game::CannotTrade::NoStoreOpen)
+    );
+}
+
+/// A script saying `OpenStore`.
+fn kotor_script_open(w: &mut World, store: u32) -> bool {
+    let prog = call_program(w, &[("OpenStore/2", vec![co(1), co(0)])]);
+    w.run_program(&prog, store).unwrap();
+    w.store.is_some()
+}
+
+#[test]
 fn what_is_not_useable_is_never_offered() {
     let Some(mut w) = world() else { return };
     let props: Vec<(u32, [f32; 3])> = w

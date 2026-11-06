@@ -85,9 +85,15 @@ impl World {
     /// `spells.2da` is `ITEM_ABILITY_MED_PACK`, script `k_sup_healing`. **Assumed:** using an item takes no time and has
     /// no feat or skill check.
     pub fn use_item(&mut self, who: ObjId, item: ObjId) -> Result<(), CannotUse> {
+        self.use_item_on(who, item, who)
+    }
+
+    /// Use an item at someone: a grenade at a foe, in the same way a medpack goes on oneself. Its `CastSpell` property
+    /// names a row of `spells.2da`, whose script does the rest.
+    pub fn use_item_on(&mut self, who: ObjId, item: ObjId, at: ObjId) -> Result<(), CannotUse> {
         let spell = self.item_view(item).and_then(|v| v.power);
         let spell = spell.ok_or(CannotUse::NoPower)?;
-        self.cast_spell(who, spell, who, true)
+        self.cast_spell(who, spell, at, true)
             .map_err(|_| CannotUse::Failed)?;
         let last = self.objects.get(&item).is_some_and(|o| o.stack <= 1);
         if last {

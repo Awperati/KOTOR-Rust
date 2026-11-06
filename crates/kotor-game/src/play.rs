@@ -81,7 +81,7 @@ fn pick_sphere(o: &Object) -> Option<([f32; 3], f32)> {
     Some(([o.position[0], o.position[1], o.position[2] + up], r))
 }
 
-fn inside_polygon(p: [f32; 2], poly: &[[f32; 2]]) -> bool {
+pub(crate) fn inside_polygon(p: [f32; 2], poly: &[[f32; 2]]) -> bool {
     let mut inside = false;
     let mut j = poly.len().wrapping_sub(1);
     for i in 0..poly.len() {
@@ -590,6 +590,7 @@ impl World {
             }
         }
         self.update_triggers();
+        self.update_encounters();
         if let Some((module, wp)) = self.transition_request.take() {
             if let Err(e) = self.transition(&module, &wp) {
                 self.errors.push(format!("transition to {module}: {e}"));

@@ -44,6 +44,9 @@ Read by eye from contact sheets of one frame every 5 minutes, so each time is go
 | The hero then | Str 16, Dex 11, Con 14, Int 12, Wis 10, Cha 13. 26/26 vitality, defense 14, saves 5, 0, 0 | 657 s | Same | Exact |
 | Hit points per level | The whole die: (10 + 2 + 1) x 2 = 26 for this Soldier with Toughness at level 2. Half a die gives 22 | 643 s for the feat's words, 657 s for 26/26 | Read off the level-up and character screens | Exact for this one sheet |
 | Healing outside combat | None seen: the bar beside the portrait holds at 27 to 28 px of about 85 for 30 s, and at 70 to 71 px for 24 s | 395 to 425 s, 613 to 637 s | That bar measured once a second | 1 px, about 0.3 hit points, so under 0.02 hit points a second |
+| Healing by a medpack | The bar jumps 28 to 84 of 85 within 1 s, twice, each just after a quick slot lights yellow. There is no climb | 448 to 450 s, 573 to 574 s | Bar read once a second by short seeks, then a contact sheet | 1 s. That the lit slot is a medpack is by eye |
+| Other rises, Taris | Hero 800 to 1,180 s, 46 to 84, is the only long gap with no bar. All others are jumps too, seen 20 s apart, 780 to 12,000 s, 562 frames. Holds level for 30 s or more between them | Same | Bars read every 20 s | Coarse: 20 s |
+| Knocked out | Not seen. In 562 frames neither bar reads 0 with its portrait up, and the lowest second bar is 14 of 48 | 780 to 12,000 s | Same | A knock-out between frames would be missed |
 | Healing by a level | The bar stands at 70 of 85 before the level and the sheet reads 26/26 after it | 637 s, 657 s | Same, and the character screen | One level |
 | Dialogue cuts | 13 shots in 78.9 s, 0.9 to 11.0 s each, mean 6.1 s, black bars above and below | 1,705.2 to 1,784.1 s | Picture changes between frames at 10 a second, then one frame of each shot | 0.1 s |
 | Who has the shot | All 5 shots with replies up show the hero. 7 of the other 8 show the speaker, and 1 is wide | Same | Looked at those 13 frames | Clear in the frames. One conversation only |
@@ -65,7 +68,7 @@ Only the bare arms, bare legs and shorts support column a. No other column of th
 - `step_pc`: a clicked hero runs too, at `RUN_SPEED`, not at the walking speed. The hero runs everywhere I looked, though I do not know which of those runs were clicked.
 - `hp_for_level`: every level pays the whole hit die, and Toughness now pays one a level. Medium confidence: one sheet, Soldier only. Force points are still half a die after level 1, not measured.
 - `level_up`: a level heals whoever takes it. Medium confidence: one level.
-- Nothing heals outside combat, as before. The video does not show how its hero gets from 28 of 85 at 425 s to full by 1,605 s, as those stretches hold cutscenes, menus and medpacks that I did not go through. So a rest may exist that I have not seen.
+- Nothing heals outside combat, as before. How the hero gets from 28 of 85 at 425 s to full is now measured below: medpacks. `use_item` heals through the medpack's own power, so nothing had to change, except that a pilot can now buy them.
 - `speaker_camera`: holds the speaker while the line is said, then cuts to the player while the replies wait. Medium confidence: one conversation. Over-the-shoulder and wide shots are not copied.
 - `MoveParams::speed`: 1.6 became 1.7 m/s, from the tables and not the video. See below.
 - `award_kill`: each standing party member gets the whole kill, not a share. **Weak evidence, an assumption:** see below.
@@ -84,6 +87,8 @@ Run speed assumes the camera sits 55 degrees wide vertically. That is `camerasty
 
 ## Not measured
 
+- **Standing up:** how much a knocked-out member gets back. The video's player was not knocked out in what I sampled. `update_knockouts`' 1 hit point stays an assumption.
+- **Shop prices:** no shop screen was looked at. A medpack at `Cost` 40 plus `AddCost` 40 comes to 80 here.
 - **Walk speed:** the hero runs everywhere I looked, and I timed no walker. `walkrate` is 1.70 for `NORM`. `walkdist` over the walk cycle gives 1.70 for a man (1.813 m, 1.067 s) and 1.60 for a woman (1.6 m, 1.0 s). Only 1.70 is used, for everyone.
 - **`creaturespeed.2da` per creature:** `moverate` and `WalkRate` in a creature's file can pick slower or faster rows. Everyone still uses one speed. `PLAYER` has a `walkrate` of 3.20, which I did not check against the hero.
 - **NPC turn rate:** still the assumed 4.0 radians a second.

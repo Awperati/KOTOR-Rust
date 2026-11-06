@@ -117,6 +117,11 @@ const MEDPACK_SECONDS: f32 = 3.0;
 const GEAR_SECONDS: f32 = 1.0;
 /// Taken off how far a placeable is when a mortal pilot picks what to do next: more than across any module.
 const LOOK_FIRST: f32 = 10_000.0;
+const GRENADE_SECONDS: f32 = 6.0;
+/// A foe with more hit points left than this is worth a grenade.
+const GRENADE_HP: i32 = 20;
+/// How many medpacks it buys up to.
+const MEDPACKS_WANTED: i32 = 10;
 const SKILL_COMPUTER: usize = 0;
 const SKILL_SECURITY: usize = 6;
 const SLOT_ARMOUR: i32 = 1;
@@ -167,6 +172,7 @@ pub struct Autopilot {
     ways_retried: bool,
     new_module_at: f32,
     party_filled: bool,
+    grenade_wait: f32,
     /// Where each module's ways out go, as far as it has seen.
     links: BTreeMap<String, BTreeSet<String>>,
     /// The things that took it to another module, by module and tag, and where to.
@@ -231,6 +237,7 @@ impl Autopilot {
             ways_retried: false,
             new_module_at: 0.0,
             party_filled: false,
+            grenade_wait: 0.0,
             links: BTreeMap::new(),
             exits: BTreeMap::new(),
             finished: false,
@@ -330,6 +337,9 @@ impl Autopilot {
             }
             self.lead_with_someone_standing(w);
         }
+        if w.store.is_some() {
+            self.shop(w);
+        }
         if w.in_dialogue() {
             self.converse(w, dt);
             return;
@@ -356,6 +366,49 @@ impl Autopilot {
                 self.choose_goal(g);
             }
         }
+    }
+
+    /// Sell what it does not wear, and stock up on medpacks: a mortal pilot ran out with nothing else to heal it.
+    fn shop(&mut self, w: &mut World) {
+        let spare: Vec<ObjId> = w
+            .sell_lines()
+            .into_iter()
+            .filter(|l| {
+                w.slots_of(l.item) != 0
+                    && w.object(l.item)
+                        .is_some_and(|o| !o.template.starts_with("g_i_medeqpmnt"))
+            })
+            .map(|l| l.item)
+            .collect();
+        for item in spare {
+            let _ = w.store_sell(item);
+        }
+        let packs = |w: &World| -> i32 {
+            w.carried(w.pc)
+                .iter()
+                .filter_map(|i| w.object(*i))
+                .filter(|o| o.template.starts_with("g_i_medeqpmnt"))
+                .map(|o| o.stack)
+                .sum()
+        };
+        let line = w
+            .store_lines()
+            .into_iter()
+            .filter(|l| {
+                w.object(l.item)
+                    .is_some_and(|o| o.template.starts_with("g_i_medeqpmnt"))
+            })
+            .min_by_key(|l| l.price);
+        if let Some(line) = line {
+            while packs(w) < MEDPACKS_WANTED && w.store_buy(line.item).is_ok() {
+                self.log
+                    .push(format!("bought a medpack for {}", line.price));
+                if !line.infinite {
+                    break;
+                }
+            }
+        }
+        w.close_store();
     }
 
     /// Take along whoever is on offer, as a person would at the party screen. Lowest slot first: the first to join.
@@ -466,6 +519,24 @@ impl Autopilot {
         if self.gear_wait <= 0.0 {
             self.gear_wait = GEAR_SECONDS;
             self.gear_up(w);
+            // A grenade at whatever has plenty left, every few seconds.
+            self.grenade_wait -= GEAR_SECONDS;
+            if let Some(Goal::Fight(foe)) = self.goal {
+                let tough = w.object(foe).is_some_and(|o| o.hp > GRENADE_HP);
+                if tough && self.grenade_wait <= 0.0 {
+                    let pc = w.pc;
+                    let grenade = w
+                        .carried(pc)
+                        .into_iter()
+                        .find(|i| w.object(*i).is_some_and(|o| o.template.contains("gren")));
+                    if let Some(g) = grenade {
+                        if w.use_item_on(pc, g, foe).is_ok() {
+                            self.grenade_wait = GRENADE_SECONDS;
+                            self.log.push(format!("threw {g} at {foe}"));
+                        }
+                    }
+                }
+            }
             // The first feat on offer, with each attack: a person with a good one would.
             if matches!(self.goal, Some(Goal::Fight(_))) && w.combat_queue.is_empty() {
                 let pc = w.pc;

@@ -1,7 +1,7 @@
 # Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**365 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**368 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -62,7 +62,7 @@ CI runs `scripts/check.ps1` on a self-hosted runner with no game files (`.github
 
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 80000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 15,796 game seconds in 60 wall seconds, 121 kills, experience 9,721, level 4, 3,265 door tries, 87 items, 9,531 lines. It ends when no new module has come for 8,000 s. Script errors: 4. The 387 `locked` stalls are doors it tried and gave up on.
+Last run: 15,706 game seconds in 49 wall seconds, 145 kills, experience 10,563, level 5, 5,323 door tries, 87 items, 7,699 lines. It ends when no new module has come for 8,000 s. Script errors: 2. The 633 `locked` stalls are doors it tried and gave up on.
 
 | Module | First entered, game s | Visits |
 |---|---|---|
@@ -73,24 +73,24 @@ Last run: 15,796 game seconds in 60 wall seconds, 121 kills, experience 9,721, l
 | `tar_m02aa`, upper city | 468 | 1 |
 | `tar_m02ac` | 613 | 2 |
 | `tar_m02ae`, cantina and duel ring | 1,030 | 1 |
-| `tar_m02ab` | 1,620 | 5 |
-| `tar_m03aa`, lower city | 1,920 | 30 |
-| `tar_m03ab` | 2,142 | 1 |
-| `tar_m03ae` | 2,690 | 1 |
-| `tar_m11aa`, hidden Bek base | 3,024 | 23 |
-| `tar_m04aa`, undercity | 3,448 | 2 |
-| `tar_m03ad` | 3,923 | 1 |
-| `tar_m09aa`, Sith base | 4,467 | 3 |
-| `tar_m02ad` | 5,110 | 1 |
-| `tar_m09ab`, Sith base, governor | 5,786 | 1 |
-| `tar_m10aa`, Black Vulkar base | 6,186 | 3 |
-| `tar_m05ab`, sewers | 6,798 | 1 |
-| `tar_m05aa`, sewers | 7,110 | 1 |
-| `tar_m10ac` | 7,796 | 1 |
+| `tar_m02ab` | 1,604 | 5 |
+| `tar_m03aa`, lower city | 1,843 | 27 |
+| `tar_m03ab` | 2,110 | 1 |
+| `tar_m03ae` | 2,655 | 1 |
+| `tar_m11aa`, hidden Bek base | 2,936 | 21 |
+| `tar_m04aa`, undercity | 3,422 | 2 |
+| `tar_m03ad` | 3,898 | 1 |
+| `tar_m09aa`, Sith base | 4,453 | 3 |
+| `tar_m02ad` | 5,152 | 1 |
+| `tar_m09ab`, Sith base, governor | 5,684 | 1 |
+| `tar_m10aa`, Black Vulkar base | 6,078 | 3 |
+| `tar_m05ab`, sewers | 6,714 | 2 |
+| `tar_m10ac` | 7,201 | 1 |
+| `tar_m05aa`, sewers | 7,706 | 1 |
 
 That is 20 of the 97 named modules in the install, not counting `STUNT_` ones, and 18 of Taris's 23. Being in a module does not mean its story is done.
 
-**Quests:** 16 of the 101 in `global.jrl` were started, and 4 completed: `end_attack`, `tar_infectedoutcasts`, `tar_rancor`, `tar_selvenbounty`. Still open with the state reached: `tar_largobounty` 66, `tar_matrik` 66, `tar_bastsearch` 35, `k_swg_carthtalk` 20, `tar_diabounty` 20, `tar_duelring` 10, `tar_rakghoulserum` 2, `k_rapidtransit` 1, `tar_bendakbounty` 1, `tar_planetinfo` 1, `tar_rukilapprentice` 1, `tar_vulkarbase` 1.
+**Quests:** 17 of the 101 in `global.jrl` were started, and 4 completed: `end_attack`, `tar_diabounty`, `tar_infectedoutcasts`, `tar_rancor`. Still open with the state reached: `tar_largobounty` 66, `tar_matrik` 66, `tar_bastsearch` 35, `k_swg_carthtalk` 20, `tar_duelring` 10, `tar_rakghoulserum` 2, `k_pazaak` 1, `k_rapidtransit` 1, `tar_bendakbounty` 1, `tar_planetinfo` 1, `tar_rukilapprentice` 1, `tar_selvenbounty` 1, `tar_vulkarbase` 1.
 
 **No module holds it now. What it cannot reach:** every way left is story, a talk or a door it cannot open.
 
@@ -132,6 +132,7 @@ Fixed on the way, earliest first, each with a test:
 20. **Talks did not move quests.** Their state is in `QuestEntry`, and the code read `PlotIndex`, which is nearly always -1. Only scripts moved quests before this.
 21. **The pilot took a reply a real player dies of.** `k_ptar_killpc` sets the plot guard at `tar03_underdoor`, who hits at +21, on the player. It now avoids a reply that can turn someone who cannot be hurt. **That this rule covers all such replies is an assumption.** It takes one only when nothing else is on offer.
 22. **`ActionUnlockObject` and `ActionLockObject` did nothing.** So the guard could not let anyone by, and the undercity's inside was out of reach. **That they always work, with no skill check, is an assumption.**
+26. **Shops, encounters, grenades.** `OpenStore` now opens a store from its `.utm`, with prices from `Cost` and `AddCost` and its mark-ups, and the pilot sells spares and buys medpacks. Encounters in an area's `Encounter List` bring out `RecCreatures`, once. `use_item_on` throws a grenade. **How the game scales encounters, and a shop's price formula, are assumptions.** The store screen is not built yet.
 25. **Droids, rakghouls and 24 other appearances stood in a T-pose.** 26 of the 125 appearances the 21 modules can field had no idle: 25 carry their clips in their own model and the code read only supermodels, and they name clips `cpause1` and `cwalk`, not `pause1` and `walk`. A body's own clips now count, and a person's clip names find a creature's. Which clip stands in for which is **an assumption**, read from the names.
 24. **A skill counts for the leader.** The pilot now sends whoever is best: Security for a plain lock, Computer Use for a terminal. A door with a say of its own still answers to who it answers to. It also takes skills and feats when immortal.
 23. **The pilot never took Carth along.** Nothing in a run with no party screen brought him. It now fills the party once a visit, leaving out those a script took aside: the duel ring empties the party and puts it back, and a second Carth made `k_ptar_duelring` loop to the step limit.
@@ -140,11 +141,13 @@ Fixed on the way, earliest first, each with a test:
 
 `AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, and gives whoever is worst off a medpack below half their hit points, at most one every 3 s. It uses the first feat on offer with each attack. A party that is down ends the run. A leader knocked out hands over to someone standing, and takes the lead back when up. Each fight is logged as `FIGHT won` or `FIGHT lost`.
 
-Last run: **the party is wiped in `tar_m10aa` at 4,628 game seconds**, after 15 modules, main character at level 3, with 70 fights won and 4 not. The main character was knocked out 83 times, Mission 4 and Carth once. Small changes move this: the run before the pilot sent its best to terminals had the same pilot reach all 21 modules with no wipe, by 7,186 s, knocked out 217 times.
+Last run: **no wipe.** All 21 modules, the last by about 9,000 game seconds, level 5, 164 fights won and 10 not, 174 knock-outs of the main character, 26 medpacks bought and 19 grenades thrown. It stopped at 16,929 s because nothing new came for 8,000 s. Encounters now add fights too.
 
-**Why, and it is a missing rule more than balance.** It carried no medpacks by then, and nothing else heals. There is no shop to buy more (`OpenStore` only records itself), no healing out of combat, and getting up after a fight gives 1 hit point. So it walked into `VulkarPool`, 58 hit points, at 1 hit point, with Mission hurt. It held 3 frag grenades it cannot throw, as the engine has no grenades yet. It does not retreat, as nothing would heal it if it did. **Standing up at 1 hit point is an assumption.**
+Results move with the route. Before shops, one run was wiped in `tar_m10aa` at 4,628 s: out of medpacks, nothing else healing, walking into `VulkarPool` at 1 hit point. Another of the same kind reached all 21. So read this as "survivable with a party and medpacks", not as a measure of balance.
 
-The reference video's hero goes from 28 of 85 at 425 s to full by 1,605 s. Those stretches hold cutscenes and menus, so I do not know how. Finding that out comes first, before any reading of balance. See `docs/GAPS.md`.
+**It lives on two things to doubt.** Everyone gets up with 1 hit point when a fight ends, which is an assumption, and the video gives no help: nobody was knocked out in the 562 frames sampled through Taris. Also, the pilot walks into the next fight at 1 hit point, so most of its losses are small ones.
+
+How the video's hero heals is measured: medpacks, in a jump of one frame, and levels. See `docs/REFERENCE.md`. No rest or slow healing was seen, so none was built. It does not retreat, as nothing would heal it if it did.
 
 Balance still cannot be judged. Only medpacks and a new level heal. The video shows no healing over 30 s out of combat, but it does not rule out a rest button. The player's feats are the class's recommended ones, not what the video's player chose.
 

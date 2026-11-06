@@ -62,7 +62,6 @@ const PRESENTATION: &[&str] = &[
     "SetPlanetSelectable",
     "SetPlanetAvailable",
     "SetLightsaberPowered",
-    "OpenStore",
     "EndGame",
     "SetEncounterActive",
     "SurrenderToEnemies",
@@ -1547,6 +1546,7 @@ impl Host for Adapter<'_> {
                 let (kind, ty) = match int(args, 0)? {
                     8 => (Kind::Door, ResType(2042)),
                     32 => (Kind::Waypoint, ResType(2058)),
+                    128 => (Kind::Store, crate::store::STORE_FILE),
                     64 => (Kind::Placeable, ResType(2044)),
                     4 => (Kind::Trigger, ResType(2032)),
                     _ => (Kind::Creature, ResType(2027)),
@@ -1673,6 +1673,12 @@ impl Host for Adapter<'_> {
                 if let Some(o) = self.world.object_mut(caller) {
                     o.actions.clear();
                 }
+                None
+            }
+            "OpenStore" => {
+                self.record(name, args);
+                let store = self.obj(caller, args, 0);
+                self.world.open_store(store, int(args, 2)?, int(args, 3)?);
                 None
             }
             "ActionOpenDoor" => {

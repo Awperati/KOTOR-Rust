@@ -38,6 +38,7 @@ fn kind_code(k: Kind) -> u8 {
         Kind::Waypoint => 5,
         Kind::Trigger => 6,
         Kind::Item => 7,
+        Kind::Store => 8,
     }
 }
 
@@ -51,6 +52,7 @@ fn kind_from(c: i64) -> Option<Kind> {
         5 => Kind::Waypoint,
         6 => Kind::Trigger,
         7 => Kind::Item,
+        8 => Kind::Store,
         _ => return None,
     })
 }
@@ -428,6 +430,16 @@ impl World {
                 ),
                 ("PT_GOLD", Value::Int(self.gold)),
                 (
+                    "RS_ENCOUNTERS",
+                    Value::String(
+                        self.spent_encounters
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    ),
+                ),
+                (
                     "PT_TOKENS",
                     list_of(self.tokens.iter(), |(n, t)| {
                         st(vec![("Number", Value::Int(*n)), ("Text", s(t))])
@@ -654,6 +666,7 @@ impl World {
                         Kind::Placeable => ResType(2044),
                         Kind::Waypoint => ResType(2058),
                         Kind::Trigger => ResType(2032),
+                        Kind::Store => crate::store::STORE_FILE,
                         _ => ResType(2025),
                     };
                     let id = self.spawn(kind, &key.2, ty, [0.0; 3]);
@@ -997,6 +1010,12 @@ impl World {
             .filter_map(|b| Some((b.int("Slot")? as i32, bench_from(b))))
             .collect();
         self.gold = p.int("PT_GOLD").unwrap_or(0) as i32;
+        self.spent_encounters = p
+            .str("RS_ENCOUNTERS")
+            .unwrap_or_default()
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
         self.tokens = p
             .list("PT_TOKENS")
             .unwrap_or_default()
