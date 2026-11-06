@@ -152,6 +152,7 @@ impl<'a> Ui<'a> {
             "optsound",
             "inventory",
             "equip",
+            "character",
         ] {
             if let Some(g) = self.gui(g) {
                 gather_pictures(&g.panel, &mut names);

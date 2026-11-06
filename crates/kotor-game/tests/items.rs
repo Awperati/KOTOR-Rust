@@ -180,3 +180,45 @@ fn equipment_survives_a_save() {
     assert_eq!(carried.len(), 1);
     assert_eq!(b.object(carried[0]).unwrap().stack, 2);
 }
+
+#[test]
+fn a_medpack_heals_through_its_stock_script_and_is_used_up() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    let pack = give(&mut w, "g_i_medeqpmnt01");
+    give(&mut w, "g_i_medeqpmnt01");
+    assert_eq!(w.object(pack).unwrap().stack, 2);
+    assert_eq!(w.item_view(pack).unwrap().power, Some(64));
+    w.object_mut(pc).unwrap().hp = 1;
+    w.use_item(pc, pack).unwrap();
+    assert!(w.object(pc).unwrap().hp > 1, "it healed");
+    assert_eq!(w.object(pack).unwrap().stack, 1, "one came off the stack");
+    assert!(w.errors.is_empty(), "{:?}", w.errors);
+    w.use_item(pc, pack).unwrap();
+    assert!(w.object(pack).is_none(), "the last one is gone");
+    assert!(w.carried(pc).is_empty());
+
+    // Armour has no power to use, and stays.
+    let armour = give(&mut w, "g_a_class4001");
+    assert_eq!(w.use_item(pc, armour), Err(kotor_game::CannotUse::NoPower));
+    assert_eq!(w.carried(pc), vec![armour]);
+}
+
+#[test]
+fn the_sheet_says_what_the_rules_say() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    let s = w.sheet(pc).unwrap();
+    // `docs/STATUS.md`: a new Soldier has 12 hit points, defense 12 and saves +4, +2, +1.
+    assert_eq!((s.hp, s.max_hp, s.defense), (12, 12, 12));
+    assert_eq!((s.fortitude, s.reflex, s.will), (4, 2, 1));
+    assert_eq!(s.level, 1);
+    assert_eq!(s.next_level_xp, 1000, "exptable.2da");
+    assert_eq!(s.class, "Soldier");
+    assert_eq!(s.abilities[0].1, kotor_game::ability_mod(s.abilities[0].0));
+    let printed = w.character_sheet(pc);
+    assert!(
+        printed.contains(&format!("Defense {}", s.defense)),
+        "{printed}"
+    );
+}

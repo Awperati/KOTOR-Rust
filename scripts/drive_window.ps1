@@ -147,11 +147,22 @@ function WaitFor([string]$name, [string]$want) {
 }
 function Moved($a, $b) { [Math]::Abs([double]($a.pc -split ',')[0] - [double]($b.pc -split ',')[0]) + [Math]::Abs([double]($a.pc -split ',')[1] - [double]($b.pc -split ',')[1]) }
 function Shot($name) { if ($Shots) { Start-Sleep -Milliseconds 300; [Drv]::Save($h, "$Shots\$name.png") } }
-$ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $KEY_I = @(0x49, 0x17); $KEY_U = @(0x55, 0x16)
+$ESC = @(0x1B, 0x01); $ENTER = @(0x0D, 0x1C); $BACK = @(0x08, 0x0E); $KEY_I = @(0x49, 0x17); $KEY_U = @(0x55, 0x16); $KEY_C = @(0x43, 0x2E)
 
 $s = WaitFor "menu" "main"
 Report "Opens on the main menu" ($s.menu -eq "main" -and $s.module -eq "-") "menu=$($s.menu) module=$($s.module)"
 Shot "live_main_menu"
+Press 285 294 210 22   # BTN_OPTIONS
+$s = WaitFor "menu" "options"
+Report "Options opens" ($s.menu -eq "options") "menu=$($s.menu)"
+Press 71 289 240 40    # BTN_SOUND
+$s = WaitFor "menu" "sound"
+Report "Sound page opens" ($s.menu -eq "sound") "menu=$($s.menu)"
+Shot "live_sound"
+Key $ESC[0] $ESC[1]
+[void](WaitFor "menu" "options")
+Key $ESC[0] $ESC[1]
+[void](WaitFor "menu" "main")
 Press 285 222 210 22   # BTN_NEWGAME
 $s = WaitFor "module" "end_m01aa"
 Report "New Game starts it" ($s.module -eq "end_m01aa" -and $s.menu -eq "-") "menu=$($s.menu) module=$($s.module)"
@@ -218,6 +229,10 @@ Key $KEY_U[0] $KEY_U[1]
 $s = WaitFor "menu" "equip"
 Report "U opens the equipment" ($s.menu -eq "equip") "menu=$($s.menu)"
 Shot "live_equip"
+Key $KEY_C[0] $KEY_C[1]
+$s = WaitFor "menu" "character"
+Report "C opens the character" ($s.menu -eq "character") "menu=$($s.menu)"
+Shot "live_character"
 Key $ESC[0] $ESC[1]
 $s = WaitFor "menu" "-"
 Report "Esc closes it" ($s.menu -eq "-") "menu=$($s.menu)"

@@ -140,6 +140,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let p = s.menu_pixel("LB_ITEMS", Some(0), size).unwrap();
     s.hover(p, size);
     shot(&mut gpu, &mut s, "equip_item", &out);
+    s.open_character();
+    shot(&mut gpu, &mut s, "character", &out);
     s.escape();
 
     // A body that left something, as a list, then with treasure.

@@ -40,6 +40,8 @@ pub(crate) struct ItemTemplate {
     description: String,
     model_variation: i64,
     texture_variation: i64,
+    /// The row of `spells.2da` its `CastSpell` property runs.
+    power: Option<i32>,
 }
 
 /// What a screen shows about an item.
@@ -53,6 +55,8 @@ pub struct ItemView {
     pub stack: i32,
     /// Bits of the slots it fits.
     pub slots: u32,
+    /// The row of `spells.2da` it runs when used, if it can be used.
+    pub power: Option<i32>,
 }
 
 /// Two weapons, or one in the right hand that takes both: why an item cannot go on.
@@ -89,6 +93,15 @@ impl World {
                 .unwrap_or_default();
             out.model_variation = g.root.int("ModelVariation").unwrap_or(0);
             out.texture_variation = g.root.int("TextureVar").unwrap_or(0);
+            // Property 10 is `CastSpell` in `itempropdef.2da`.
+            out.power = g
+                .root
+                .list("PropertiesList")
+                .unwrap_or_default()
+                .iter()
+                .find(|p| p.int("PropertyName") == Some(10))
+                .and_then(|p| p.int("Subtype"))
+                .map(|s| s as i32);
         }
         let out = Rc::new(out);
         self.item_templates.insert(key, out.clone());
@@ -147,6 +160,7 @@ impl World {
             icons,
             stack,
             slots,
+            power: t.power,
         })
     }
 

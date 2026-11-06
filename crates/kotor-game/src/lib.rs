@@ -14,6 +14,7 @@ mod items;
 mod play;
 mod rules;
 mod save;
+mod sheet;
 mod world;
 
 pub use autopilot::{Autopilot, Stall};
@@ -40,4 +41,5 @@ pub use play::{
 };
 pub use rules::{save_passes, skill_passes, Check, LevelUp, Save};
 pub use save::{read_save_info, SaveInfo, SAVE_VERSION};
+pub use sheet::{CannotUse, Sheet};
 pub use world::{Action, Delayed, DoorState, EffectRec, Kind, ObjId, Object, World};

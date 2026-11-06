@@ -22,7 +22,8 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | Wheel | zoom |
 | Esc | back out of a screen, or pause |
 | I | inventory |
-| U | equipment (C stays free for a character sheet) |
+| U | equipment |
+| C | character |
 
 Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG` and `--autopilot` (a scripted player takes the controls and prints what stalls).
 
@@ -83,7 +84,12 @@ Saving is refused during a conversation or a fight, because neither is saved. Al
 ## Inventory and equipment
 `inventory.gui` and `equip.gui`, for the player only. The inventory lists what is carried with its picture and stack, the portrait, vitality, defense and credits. A click on an item wears it in its slot, and anything else just shows its words. The equipment screen lists what can be worn: a click wears it, a click on a worn slot takes it off, and a click on an empty slot lists only what fits it. Damage and to hit follow `combat.rs`: the left hand's only show when it holds a weapon, and combat does not use them yet.
 
-Item pictures are `i<itemclass>_<number>`. Measured over the 557 item templates in the BIFs: 430 go by `ModelVariation`, 97 (the armour) by `TextureVar`, and 30 have no picture at all, `defaulticon` included. `baseitems.2da` `equipableslots` is a mask of slots. **Assumed, not compared with the game:** every `reqfeat` of a row must be known; `droidorhuman` 1 is humans and 2 droids; a weapon that fits only the right hand takes both hands; identical items join a stack up to `stacking`, weapons included; item words replace the portrait and slots while the cursor is on an item. Party switching, quest items and using an item are not built: the first buttons are hidden and the others greyed.
+Item pictures are `i<itemclass>_<number>`. Measured over the 557 item templates in the BIFs: 430 go by `ModelVariation`, 97 (the armour) by `TextureVar`, and 30 have no picture at all, `defaulticon` included. `baseitems.2da` `equipableslots` is a mask of slots. **Assumed, not compared with the game:** every `reqfeat` of a row must be known; `droidorhuman` 1 is humans and 2 droids; a weapon that fits only the right hand takes both hands; identical items join a stack up to `stacking`, weapons included; item words replace the portrait and slots while the cursor is on an item. Party switching and quest items are not built: the first buttons are hidden and the second greyed.
+
+**Use Item** works on the item whose words are on show, if it has a `CastSpell` property. Measured: a medpack's property 10 has `Subtype` 64, row 64 of `spells.2da` is `ITEM_ABILITY_MED_PACK`, and its script `k_sup_healing` does the healing. **Assumed:** using an item takes no time, and has no skill or feat check.
+
+## Character
+`character.gui`, for the player, with the numbers from the rules: class, level, experience and what the next level needs, vitality, Force, defense, the six attributes, the three saves and alignment. **Assumed:** one `LBL_GOOD` mark down the scale shows the alignment, light at the top. The 3D figure is not built, so the portrait stands in its place. Level-up and party switching are hidden, and Scripts is greyed.
 
 ## Loot
 All of this is the game's own data, measured with `crates/kotor-game/examples/loot_census.rs` over the BIFs and 117 modules. There is no `itemcreate` table in the game: its 2DAs with item in the name are `baseitems`, `itempropdef`, `itemprops`, `itemvalue` and `skillvsitemcost`. `treasurescale.2da` exists and no template or script here was seen using it.

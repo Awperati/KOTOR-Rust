@@ -61,6 +61,7 @@ pub(super) enum Screen {
     Name,
     Inventory,
     Equip,
+    Character,
     /// `container.gui`, up for as long as the world has something open. The game runs on behind it.
     Container,
     /// `optionsmain.gui`, from the main menu.
@@ -179,6 +180,7 @@ impl Screen {
             Screen::Name => "name",
             Screen::Inventory => "inventory",
             Screen::Equip => "equip",
+            Screen::Character => "character",
             Screen::Container => "container",
             Screen::Options => "options",
             Screen::Gameplay => "gameplay",
@@ -322,6 +324,7 @@ impl Stage {
             }
             Screen::Inventory => self.inventory_view(),
             Screen::Equip => self.equip_view(),
+            Screen::Character => self.character_view(),
             Screen::Container => self.container_view(),
             Screen::Options => options_menu(),
             Screen::Gameplay => self.gameplay_view(),
@@ -490,7 +493,14 @@ impl Stage {
     fn inventory_view(&mut self) -> MenuView {
         let mut v = MenuView::new("inventory");
         v.hide(&["BTN_CHANGE1", "BTN_CHANGE2"]);
-        v.inert(&["BTN_QUESTITEMS", "BTN_USEITEM"]);
+        v.inert(&["BTN_QUESTITEMS"]);
+        let about_item = self.menus.about;
+        let usable = about_item
+            .and_then(|i| self.game.world.item_view(i))
+            .is_some_and(|a| a.power.is_some());
+        if !usable {
+            v.inert(&["BTN_USEITEM"]);
+        }
         let rows = self.item_rows();
         v.lists
             .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
@@ -761,6 +771,78 @@ impl Stage {
         self.menus.first = 0;
     }
 
+    /// `character.gui`. The numbers come from the rules. There is no 3D figure yet, so the portrait stands in its place.
+    /// Level-up, scripts and party switching are not built.
+    fn character_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("character");
+        v.hide(&[
+            "BTN_AUTO",
+            "BTN_LEVELUP",
+            "BTN_CHANGE1",
+            "BTN_CHANGE2",
+            "LBL_CLASS2",
+            "LBL_LEVEL2",
+        ]);
+        v.inert(&["BTN_SCRIPTS"]);
+        v.fill("LBL_3DCHAR", self.portrait());
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        let Some(s) = w.sheet(pc) else { return v };
+        v.text("LBL_NAME", s.name);
+        v.text("LBL_CLASS1", s.class);
+        v.text("LBL_LEVEL1", s.level.to_string());
+        v.text("LBL_EXPERIENCE_STAT", s.xp.to_string());
+        v.text("LBL_NEEDED_XP", s.next_level_xp.to_string());
+        v.text("LBL_VITALITY_STAT", format!("{}/{}", s.hp, s.max_hp));
+        v.text("LBL_FORCE_STAT", format!("{}/{}", s.force, s.max_force));
+        v.text("LBL_DEFENSE_STAT", s.defense.to_string());
+        v.text("LBL_FORTITUDE_STAT", format!("{:+}", s.fortitude));
+        v.text("LBL_REFLEX_STAT", format!("{:+}", s.reflex));
+        v.text("LBL_WILL_STAT", format!("{:+}", s.will));
+        for (i, (score, modifier)) in [
+            "LBL_STR", "LBL_DEX", "LBL_CON", "LBL_INT", "LBL_WIS", "LBL_CHA",
+        ]
+        .iter()
+        .zip([
+            "LBL_STR_MOD",
+            "LBL_DEX_MOD",
+            "LBL_CON_MOD",
+            "LBL_INT_MOD",
+            "LBL_WIS_MOD",
+            "LBL_CHA_MOD",
+        ])
+        .enumerate()
+        {
+            let (value, bonus) = s.abilities[i];
+            v.text(score, value.to_string());
+            v.text(modifier, format!("{bonus:+}"));
+        }
+        // One mark down the scale, from light at the top. **Assumed** from the tags and where they lie.
+        let row = ((100 - s.alignment.clamp(0, 100)) * 9 / 100) + 1;
+        for n in 1..=10 {
+            if n != row {
+                v.hide(&[format!("LBL_GOOD{n}").as_str()]);
+            }
+        }
+        v.value("SLD_ALIGN", 100 - s.alignment, 100);
+        v
+    }
+
+    /// The Use Item button: the item whose words are on show.
+    fn use_about_item(&mut self) {
+        let Some(item) = self.menus.about else { return };
+        let pc = self.game.world.pc;
+        if self.game.world.use_item(pc, item).is_ok() {
+            self.menus.about = self.game.world.object(item).map(|_| item);
+            self.menus.first = 0;
+        }
+    }
+
+    /// The C key: the character, or back to the game if it is up.
+    pub fn open_character(&mut self) {
+        self.open_items(Screen::Character);
+    }
+
     /// The I key: the inventory, or back to the game if it is up.
     pub fn open_inventory(&mut self) {
         self.open_items(Screen::Inventory);
@@ -778,7 +860,10 @@ impl Stage {
             return;
         }
         let from_game = top.is_none() && self.started && !self.game.world.in_dialogue();
-        let swapping = matches!(top, Some(Screen::Inventory | Screen::Equip));
+        let swapping = matches!(
+            top,
+            Some(Screen::Inventory | Screen::Equip | Screen::Character)
+        );
         if from_game || swapping {
             self.menus.stack.pop();
             self.menus.stack.push(screen);
@@ -967,7 +1052,8 @@ impl Stage {
             (Screen::Name, "BTN_CANCEL") => {
                 self.menus.stack.pop();
             }
-            (Screen::Inventory, "BTN_EXIT") | (Screen::Equip, "BTN_BACK") => {
+            (Screen::Inventory, "BTN_USEITEM") => self.use_about_item(),
+            (Screen::Inventory | Screen::Character, "BTN_EXIT") | (Screen::Equip, "BTN_BACK") => {
                 self.menus.stack.pop();
             }
             (Screen::Equip, _) => {

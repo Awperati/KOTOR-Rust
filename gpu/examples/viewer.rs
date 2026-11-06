@@ -18,7 +18,7 @@
 //! W A S D: run, relative to the camera (Shift walks). Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
 //! Tab: the next party member takes over. Space: end a line, or close a container. Wheel: zoom. Esc: back out of a screen,
-//! or pause. I: inventory. U: equipment.
+//! or pause. I: inventory. U: equipment. C: character.
 use kotor_audio::Audio;
 use kotor_audio_out::{decode_any, AudioOut};
 use kotor_gpu::stage::{Cue, Stage};
@@ -285,6 +285,7 @@ impl App {
             KeyCode::Tab if pressed => self.stage.next_leader(),
             KeyCode::KeyI if pressed => self.stage.open_inventory(),
             KeyCode::KeyU if pressed => self.stage.open_equip(),
+            KeyCode::KeyC if pressed => self.stage.open_character(),
             KeyCode::ArrowLeft => {
                 self.turning = if pressed { TURN_SPEED } else { 0.0 };
             }

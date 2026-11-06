@@ -674,3 +674,45 @@ fn autosave_writes_on_a_change_of_module_when_ticked() {
     let _ = std::fs::remove_file(&settings);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_character_screen_shows_the_sheet_and_use_item_heals() {
+    let Some((mut s, _)) = in_game("character") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.open_character();
+    assert_eq!(s.menu_name(), "character");
+    let t = s.game.world.time;
+    let before = frame(&mut s);
+    assert_eq!(s.game.world.time, t, "the game waits");
+    s.game.world.object_mut(pc).unwrap().hp = 3;
+    assert_ne!(frame(&mut s), before, "the numbers are live");
+    // C closes it, and it swaps with the other two.
+    s.open_character();
+    assert_eq!(s.menu_name(), "-");
+    s.open_inventory();
+    s.open_character();
+    assert_eq!(s.menu_name(), "character");
+    press(&mut s, "BTN_EXIT");
+    assert_eq!(s.menu_name(), "-");
+
+    // Use Item needs an item with a power on show.
+    let armour = s.game.world.spawn_item("g_a_class4001");
+    let pack = s.game.world.spawn_item("g_i_medeqpmnt01");
+    s.game.world.carry(pc, armour);
+    s.game.world.carry(pc, pack);
+    s.open_inventory();
+    press(&mut s, "BTN_USEITEM");
+    assert_eq!(s.game.world.object(pc).unwrap().hp, 3, "nothing on show");
+    let row = s.menu_pixel("LB_ITEMS", Some(1), SIZE).unwrap();
+    s.hover(row, SIZE);
+    press(&mut s, "BTN_USEITEM");
+    assert!(s.game.world.object(pc).unwrap().hp > 3, "it healed");
+    assert_eq!(
+        s.game.world.carried(pc),
+        vec![armour],
+        "the last one is gone"
+    );
+    assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
+}
