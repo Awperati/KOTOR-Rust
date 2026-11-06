@@ -64,7 +64,7 @@ Checked by the frames at the times above, and by `gpu/tests/menus.rs`.
 | Tutorial pop-ups | none | a box with words and OK or Continue, from `tutorial.2da`, once each, as at 3:15, 3:36 and 4:00. What sets each off is read from the table's labels. Over the game the HUD stays under the box. Frames: `tutorial_screen`, `tutorial_game`. Over a screen and over the game tested in code; not clicked live, the driver turns them off |
 | Notices | none | the HUD's own icons for quest, credits, XP from scripts, items and alignment, as at 3:46. Frame: `notices`. Not clicked live |
 | Pause | none | Space or the hourglass, which is framed in yellow; as at 5:50, an enemy first seen pauses the game with the box at the top right. The video's ring on the hourglass is a plain frame here. Frame: `enemy_sighted`. Clicked live in `scripts/drive_fight.ps1`, with the first Sith |
-| Combat slots and floats | empty | the owner's words, and the video at 6:05: left, with arrows, the plain attack and the feats; middle, hostile Force powers; right, grenades, thrown at once. Yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. In `drive_fight.ps1` the left slot and its down arrow, the middle slot, the right slot and the words rising are live; the other arrows are tested in code. The video's words under the slot, "Activate Left Action : 1", are not built: they are string 48303. The keys 1, 2 and 3 are |
+| Combat slots and floats | empty | the owner's words, and the video at 6:05: left, with arrows, the plain attack and the feats; middle, hostile Force powers; right, grenades, thrown at once. Yellow under the cursor with the name on the bar. Damage, Miss and XP rise over the target. The numbers are the talk table's. Frame: `combat_slots`. In `drive_fight.ps1` the left slot and its down arrow, the middle slot, the right slot and the words rising are live; the other arrows are tested in code. Under the cursor a slot says "Activate Left Action : 1", with the talk table's words and its key. The keys 1, 2 and 3 are the slots |
 | Combat HUD | none | as at 5:50 and 6:05: the panel at the foot with the action under way and Disengage, the red line at the top, the enemy's bar red, slots under it. Live in `drive_fight.ps1`: combat mode, the bar, the slots, the Disengage button, and F. Frames: `combat_target`, `combat_engaged` |
 | Small map on the HUD | a frame and a still arrow | the map round the player, 120 of the picture's pixels, with `mm_barrow` turning, compared with 3:46. A click opens the map. Which way the arrow's picture points is read from the frame `hud_minimap` |
 | Choosing equipment | a click wore at once, a click on a worn slot took off | a click on a slot lists it, `inone` and None first, `(Equipped)` marked, words on the left, OK and Cancel. The owner chose this |
@@ -122,8 +122,10 @@ video does: a conversation and the target's bar have none. Frame: `hud_trask`.
 The character sheet and the party screen have the emitters of `charmain_light.mdl` behind the figure, as at 1:23:50 and
 3:12:00. The level-up panel has those of `cgmain_light.mdl`, as making a character does. The install has no dark model, so
 the owner's red for the dark side is the same mist with blue and red swapped. It is all blue from alignment 60, grey at 50
-and all red from 40. Those numbers are assumed. The video has Carth, 75, in blue, and Canderous, 30, in red at 7:17:02, and
-no frame I found of anyone at 50. Its mist is thicker and brighter at the foot than ours. Frames: `mist_light`,
+and all red from 40. Where it turns is assumed. The video has grey on the player's sheet at 22:17, with the needle near the
+middle: red, green and blue equal, as ours. It has Carth, 75, in blue, and Canderous, 30, in red at 7:17:02. Beside the
+figure its grey reads 51 to 120 and ours 25 to 131, so ours is darker at the top. Its blue at 1:23:50 is lighter than
+ours: 107,182,254 at the foot against 39,143,212. Frames: `mist_light`,
 `alignment_80`, `alignment_50`, `alignment_20`, `mist_dark`. On the party screen it follows whoever is chosen.
 
 The alignment bar is the stock picture on `SLD_ALIGN`, and the needle is its stock thumb. In the video at 1:23:50 the bar runs
@@ -142,7 +144,7 @@ to its foot, and its point follows the bar's curve.
 | A container | the existing rule: that item, then everything, then close |
 | A fight, an enemy as the target | 1, 2 and 3 are the left, middle and right slots, as the video's "Activate Left Action : 1" |
 
-The video's words under a slot are not drawn. `drive_keys.ps1` runs the replies live, `drive_fight.ps1` key 1 and
+`drive_keys.ps1` runs the replies live, `drive_fight.ps1` key 1 and
 `drive_level.ps1` the panel's keys.
 
 ## The owner's text style

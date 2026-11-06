@@ -24,10 +24,14 @@ const LEVEL_HOLE: [f32; 4] = [155.0, 89.0, 162.0, 186.0];
 const PARTY_HOLE: [f32; 4] = [326.0, 109.0, 258.0, 213.0];
 const CREATURE_FILE: ResType = ResType(2027);
 const ITEM_FILE: ResType = ResType(2025);
-const FIGURE_HEIGHT: f32 = 1.9;
-/// A little air over the head and under the feet.
-const FIGURE_MARGIN: f32 = 1.15;
-const FIGURE_FOV: f32 = 30.0;
+const FIGURE_HEIGHT: f32 = 1.7;
+/// A little air over the head and under the feet: the video's figure fills about 92% of the hole at 22:17.
+const FIGURE_MARGIN: f32 = 1.08;
+/// `charmain_light.mdl`'s `camerahook` stands this far in front of the figure, and looks level.
+const CAMERA_AWAY: f32 = 4.87;
+/// How far over the feet the mist's model goes. **Assumed:** by eye and by measure from the video at 22:17, which is bright
+/// at the foot and a little less at the top.
+const MIST_UP: f32 = 0.25;
 const SHEET_MIST: &str = "charmain_light";
 const LEVEL_MIST: &str = "cgmain_light";
 /// Seconds of mist made at once when a screen opens, so that it is there already.
@@ -53,9 +57,9 @@ impl Stage {
         let w = &self.game.world;
         let at = w.object(w.pc)?.position;
         let (sin, cos) = w.pc_mover.heading.sin_cos();
-        let tan = (FIGURE_FOV.to_radians() / 2.0).tan();
+        let depth = CAMERA_AWAY;
+        let tan = FIGURE_MARGIN * FIGURE_HEIGHT / (2.0 * depth * (height / 480.0));
         let aspect = self.ui_width as f32 / 480.0;
-        let depth = FIGURE_MARGIN * FIGURE_HEIGHT / (2.0 * tan * (height / 480.0));
         // How far the middle of the hole is from the middle of the window, at that depth.
         let across = ((left + width / 2.0) / 320.0 - 1.0) * depth * tan * aspect;
         let down = (1.0 - (top + height / 2.0) / 240.0) * depth * tan;
@@ -69,7 +73,7 @@ impl Stage {
                 at[1] - right[1] * across,
                 middle - down,
             ],
-            fov: FIGURE_FOV,
+            fov: 2.0 * tan.atan().to_degrees(),
         })
     }
 
@@ -126,7 +130,7 @@ impl Stage {
                     &[
                         [cos, -sin, 0.0, at[0]],
                         [sin, cos, 0.0, at[1]],
-                        [0.0, 0.0, 1.0, at[2]],
+                        [0.0, 0.0, 1.0, at[2] + MIST_UP],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                 );

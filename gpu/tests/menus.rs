@@ -3171,6 +3171,43 @@ fn a_number_key_is_a_step_on_the_numbered_panels() {
 }
 
 #[test]
+fn a_slot_under_the_cursor_says_its_key() {
+    let Some((mut s, _)) = in_game("slot_words") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 0.1, p[1], p[2]]);
+    s.game.world.object_mut(foe).unwrap().faction = 1;
+    s.update(DT);
+    let plain = frame(&mut s);
+    // The words run from the left slot across the other two, a little below their middles.
+    let next = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    let last = s.hud_pixel("BTN_TARGET2", SIZE).unwrap();
+    let row = (next.1 + 1.5 * 21.0 - 1.5 * 29.5 + 1.5 * 7.0) as usize;
+    let strip = |o: &[u8]| -> Vec<u8> {
+        let w = SIZE.0 as usize;
+        (row - 8..row + 8)
+            .flat_map(|y| (next.0 as usize..last.0 as usize).map(move |x| (y * w + x) * 4))
+            .map(|i| o[i])
+            .collect()
+    };
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    s.hover(slot, SIZE);
+    let lit = frame(&mut s);
+    assert!(strip(&lit) != strip(&plain), "the words show");
+    s.hover((1.0, 300.0), SIZE);
+    let (drawn, too_big) = {
+        frame(&mut s);
+        s.words_fit()
+    };
+    assert!(drawn > 0 && too_big.is_empty(), "{too_big:?}");
+}
+
+#[test]
 fn keys_one_two_and_three_are_the_slots_under_an_enemy() {
     let Some((mut s, _)) = in_game("number_slots") else {
         return;

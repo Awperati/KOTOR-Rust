@@ -18,6 +18,9 @@ pub const SCREEN: (u32, u32) = (640, 480);
 const LETTERBOX_TOP: i32 = 60;
 /// Noto Sans's size for a stock font of a line height: its letters and their gaps then fill the line as the stock's do.
 const NOTO_EM_OF_LINE: f32 = 0.72;
+/// What each slot under an enemy's bar is called, for its key, and the font: `LBL_NAME`'s.
+const SLOT_WORDS: [u32; 3] = [48303, 48307, 48311];
+const SLOT_WORDS_FONT: &str = "dialogfont10x10";
 /// What darkens a picture that cannot be used.
 const GREYED: [u8; 4] = [0, 0, 0, 170];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
@@ -937,6 +940,17 @@ impl<'a> Ui<'a> {
         }
         if self.paused && !self.pause_note.is_empty() {
             self.draw_pause_note(&mut cv);
+        }
+        // Under the cursor a slot says its key, where the video has it at 6:05.
+        if let Some(n) = self.combat.hover.as_ref().map(|h| h.0) {
+            let at = gui
+                .find(&format!("BTN_TARGET{n}"))
+                .map(|c| c.extent.clone());
+            if let (Some(e), Some(words)) = (at, SLOT_WORDS.get(n)) {
+                let words = format!("{} : {}", self.strref(*words), n + 1);
+                let r = [e.left + 22, e.top + 21, 200, 14];
+                self.draw_text(&mut cv, SLOT_WORDS_FONT, &words, r, 17, [0.9; 3]);
+            }
         }
         for f in self.floats.clone() {
             let r = [f.x - 60, f.y, 120, 20];
