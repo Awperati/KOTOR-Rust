@@ -186,6 +186,10 @@ fn every_endar_spire_script_runs_in_the_world() {
         failed.len(),
         w.stubbed
     );
-    assert!(failed.is_empty(), "script failures: {failed:#?}");
+    assert!(
+        failed.is_empty(),
+        "script failures: {failed:#?}\nwhy: {:#?}",
+        w.errors
+    );
     assert_eq!(ok, names.len());
 }
