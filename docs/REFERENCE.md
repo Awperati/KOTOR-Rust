@@ -15,7 +15,11 @@ Rules: the video and its frames stay out of git and out of the install. Frames a
 
 ## Open: the colour of that body
 
-Our column a body draws `PMBAM01` from `swpc_tex_tpa`, a 512x512 texture with no TXI. Its top and shorts are dark brown with gold trim, in the same places as the video's pale top and orange trim. Room light does not turn brown pale, so the video's texture seems to differ from ours. I don't know why. The owner's `Override` folder holds its own `pmbam01.tpc`, which this engine ignores and I have not opened.
+Neither texture on this machine matches the video. `PMBAM01` in `swpc_tex_tpa` is 512x512. The owner's `Override\pmbam01.tpc` is 2048x2048 and looks like an upscale of the same picture. Both have a dark brown top and shorts with gold trim, and the top has no sleeves on our model. The video's top is pale with orange trim and short sleeves, and room light does not turn brown pale.
+
+So an opt-in for `Override` textures would not bring this look back, and I did not add one. The video's game may have mods of its own, which I have not confirmed. If so, its other looks need the same care, and its timings and distances are less affected.
+
+Only the bare arms, bare legs and shorts support column a. No other column of the row was compared by eye.
 
 ## Changed because of them
 
