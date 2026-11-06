@@ -180,9 +180,7 @@ fn a_creature_leaves_what_is_marked_droppable_on_its_body() {
     assert_eq!(w.object(foe).unwrap().name, "Remains");
     let items = w.object(foe).unwrap().inventory.clone();
     assert!(!items.is_empty());
-    for i in &items {
-        assert!(w.object(*i).unwrap().droppable);
-    }
+    // Bug 34: whatever it carried is there, marked droppable or not.
     let names: Vec<String> = items
         .iter()
         .map(|i| w.object(*i).unwrap().template.clone())
@@ -221,26 +219,22 @@ fn a_creature_leaves_what_is_marked_droppable_on_its_body() {
 }
 
 #[test]
-fn what_is_not_marked_goes_with_the_creature() {
+fn what_is_not_marked_droppable_is_still_in_the_remains() {
     let Some(mut w) = world_in("end_m01aa") else {
         return;
     };
     let pc = w.pc;
-    // A Sith soldier's rifle or blade is not marked, and it carries nothing else.
+    // A Sith soldier's rifle or blade is not marked. The owner's rule (bug 34): remains always hold what was carried.
     let soldier = w
         .objects
         .values()
         .find(|o| o.template == "n_sithsoldier003")
         .unwrap()
         .id;
+    let weapon = w.object(soldier).unwrap().equipped[&4];
     let hp = w.object(soldier).unwrap().hp;
     assert!(w.hurt(pc, soldier, hp + 1));
-    assert!(!w.lootable(soldier));
-    assert!(w.object(soldier).unwrap().inventory.is_empty());
-    assert!(
-        w.object(soldier).unwrap().equipped.contains_key(&4),
-        "it still holds its weapon"
-    );
-    let at = w.object(soldier).unwrap().position;
-    assert_eq!(w.pick([at[0], at[1], at[2] + 3.0], [0.0, 0.0, -1.0]), None);
+    assert!(w.lootable(soldier));
+    assert!(w.object(soldier).unwrap().inventory.contains(&weapon));
+    assert!(!w.object(soldier).unwrap().equipped.contains_key(&4));
 }
