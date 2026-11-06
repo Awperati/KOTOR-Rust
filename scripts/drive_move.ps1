@@ -58,24 +58,10 @@ function Measured($a, $b) { [Math]::Sqrt(($b.x - $a.x) * ($b.x - $a.x) + ($b.y -
 if ($Log) { Remove-Item $Log -ErrorAction SilentlyContinue }
 $tag = $Size -replace 'x.*', ''
 
-# The run: at full speed, then a stop, a walk and a roll, over 20 m of clear floor from the spawn.
+# The run: a walk, a roll, then at full speed and a stop, over 20 m of clear floor from the spawn.
 $s = Open "run" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767")
 Report "In the module" ($s.module -eq $RUN_MODULE) "module=$($s.module) pc=$($s.pc) z=$($s.pcz)"
-$m = Mark
-Down $W; WaitSteps 66
-Shot "move_sprint_$tag"
-WaitSteps 18; Up $W; WaitSteps 42
-$rows = @(Samples $m); Note "sprint and stop" $rows
-$top = TopSpeed $rows
-$fast = @($rows | Where-Object { $_.speed -ge $SPRINT - 0.05 })
-$ground = if ($fast.Count -ge 2) { Measured $fast[0] $fast[-1] } else { 0 }
-Report "Sprint speed" ([Math]::Abs($top - $SPRINT) -lt 0.1) "top $top m/s, want $SPRINT"
-Report "Over the ground" ([Math]::Abs($ground - $SPRINT) -lt 0.5) "$([Math]::Round($ground, 2)) m/s between $($fast.Count) samples"
-Report "1.25 times the run" ([Math]::Abs($top / 5.4 - 1.25) -lt 0.025) "ratio $([Math]::Round($top / 5.4, 3))"
-$ramp = @($rows | Where-Object { $_.speed -gt 0.2 -and $_.speed -lt $SPRINT - 0.2 })
-Report "Speeds up and slows down" ($ramp.Count -ge 1) "$($ramp.Count) samples between a stand and a sprint"
-Report "The view widens" ((($rows | Measure-Object fov -Maximum).Maximum) -gt (($rows | Measure-Object fov -Minimum).Minimum + 2)) "fov $(($rows | Measure-Object fov -Minimum).Minimum) to $(($rows | Measure-Object fov -Maximum).Maximum)"
-
+# Walk and roll first: on a slow frame the sprint can run on until the ground ends, and then nothing moves after it.
 $m = Mark
 Down $SHIFT; Down $W; WaitSteps 48; Up $W; Up $SHIFT; WaitSteps 24
 $rows = @(Samples $m); Note "walk" $rows
@@ -97,6 +83,21 @@ Report "The key rolls" ($rolled.Count -ge 1) "$($rolled.Count) samples rolling, 
 Report "Roll distance" ($dist -gt $ROLL_METRES - 0.2 -and $dist -lt $ROLL_METRES + 1.5) "$([Math]::Round($dist, 2)) m start to stop, the roll itself is $ROLL_METRES m and the rest is its slide"
 if ($rolled.Count -ge 2) { Report "Roll time" (($rolled[-1].t - $rolled[0].t) -lt 0.7) "$([Math]::Round($rolled[-1].t - $rolled[0].t, 2)) s between first and last samples" }
 FocusReport
+
+$m = Mark
+Down $W; WaitSteps 66
+Shot "move_sprint_$tag"
+WaitSteps 18; Up $W; WaitSteps 42
+$rows = @(Samples $m); Note "sprint and stop" $rows
+$top = TopSpeed $rows
+$fast = @($rows | Where-Object { $_.speed -ge $SPRINT - 0.05 })
+$ground = if ($fast.Count -ge 2) { Measured $fast[0] $fast[-1] } else { 0 }
+Report "Sprint speed" ([Math]::Abs($top - $SPRINT) -lt 0.1) "top $top m/s, want $SPRINT"
+Report "Over the ground" ([Math]::Abs($ground - $SPRINT) -lt 0.5) "$([Math]::Round($ground, 2)) m/s between $($fast.Count) samples"
+Report "1.25 times the run" ([Math]::Abs($top / 5.4 - 1.25) -lt 0.025) "ratio $([Math]::Round($top / 5.4, 3))"
+$ramp = @($rows | Where-Object { $_.speed -gt 0.2 -and $_.speed -lt $SPRINT - 0.2 })
+Report "Speeds up and slows down" ($ramp.Count -ge 1) "$($ramp.Count) samples between a stand and a sprint"
+Report "The view widens" ((($rows | Measure-Object fov -Maximum).Maximum) -gt (($rows | Measure-Object fov -Minimum).Minimum + 2)) "fov $(($rows | Measure-Object fov -Minimum).Minimum) to $(($rows | Measure-Object fov -Maximum).Maximum)"
 Close
 
 # The ledge.
@@ -152,5 +153,23 @@ if ($Shots) {
   FocusReport
   Close
 }
+# F8 reads the pose files again, and a mistake is written down. In a folder of its own: never the player's.
+$poses = "$scratch\kotor_move_poses"
+Remove-Item $poses -Recurse -Force -ErrorAction SilentlyContinue
+$s = Open "poses" $RUN_MODULE @("--pose-folder", $poses)
+$roll = "$poses\roll_pose.txt"; $said = "$poses\pose_problems.txt"
+Report "The pose files are written" ((Test-Path $roll) -and (Test-Path "$poses\landing_pose.txt")) "in $poses"
+$good = [IO.File]::ReadAllText($roll)
+[IO.File]::WriteAllText($roll, "turns = 1`n[key]`nat = 0`nlthigh_g = 999`n")
+Key 0x77 0x42; Start-Sleep -Milliseconds 800
+Report "F8 finds a mistake" ((Get-Content $said -Raw) -match "line 4") ((Get-Content $said -Raw).Trim() -replace "`r?`n", " ")
+[IO.File]::WriteAllText($roll, $good)
+Key 0x77 0x42; Start-Sleep -Milliseconds 800
+Report "F8 reads the good file" ((Get-Content $said -Raw) -match "No problems") ((Get-Content $said -Raw).Trim())
+Down $CTRL; Start-Sleep -Milliseconds 80; Up $CTRL; Start-Sleep -Milliseconds 300
+FocusReport
+Close
+Remove-Item $poses -Recurse -Force -ErrorAction SilentlyContinue
+
 "gate: $(if ($script:failed) { 'FAILED ' + $script:failed } else { 'all PASS' })"
 exit $script:failed

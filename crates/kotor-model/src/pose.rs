@@ -212,6 +212,40 @@ impl Model {
         out
     }
 
+    /// Every node as the model itself has it, standing: the skeleton's own pose, with no animation.
+    pub fn bind_pose(&self) -> Pose {
+        let mut pose = Pose::new();
+        self.root.walk(&mut |n: &Node| {
+            pose.insert(
+                n.name.to_ascii_lowercase(),
+                NodePose {
+                    position: n.position,
+                    orientation: n.orientation,
+                },
+            );
+        });
+        pose
+    }
+
+    /// Lower-case name, world transform and parent's world transform of every node, applying `pose` overrides.
+    pub fn joint_frames(&self, pose: Option<&Pose>) -> Vec<(String, [[f32; 4]; 4], [[f32; 4]; 4])> {
+        fn go(n: &Node, parent: &Mat, pose: Option<&Pose>, out: &mut Vec<(String, Mat, Mat)>) {
+            let name = n.name.to_ascii_lowercase();
+            let (p, o) = match pose.and_then(|p| p.get(&name)) {
+                Some(np) => (np.position, np.orientation),
+                None => (n.position, n.orientation),
+            };
+            let m = mul(parent, &matrix(p, o));
+            out.push((name, m, *parent));
+            for c in &n.children {
+                go(c, &m, pose, out);
+            }
+        }
+        let mut out = Vec::new();
+        go(&self.root, &identity(), pose, &mut out);
+        out
+    }
+
     /// Every node that carries a render-flagged mesh, with its world matrix under `pose`.
     pub fn mesh_nodes(&self, pose: Option<&Pose>) -> Vec<(&Node, [[f32; 4]; 4])> {
         fn go<'a>(n: &'a Node, parent: &Mat, pose: Option<&Pose>, out: &mut Vec<(&'a Node, Mat)>) {

@@ -2,15 +2,19 @@
 //! pose, and their dust and sound. The body itself is `kotor_game::Body`.
 //!
 //! **Assumed:** every number here is a feel choice. There is no roll or landing clip in the game's supermodels, so the
-//! joints are bent here: knees to the chest in a roll, a crouch in a landing. A droid has none of these joints and only turns.
+//! joints are bent here, by the keys in `roll_pose.txt` and `landing_pose.txt`, which the owner can edit: see
+//! `docs/MOVEMENT_POSE.md`. A droid has none of these joints and only turns.
 
+use super::bodypose::{self, PoseFile, Side, JOINTS};
 use super::{placement, Mat, Stage};
 use kotor_core::ResType;
 use kotor_game::{Clip, MovementMode, ObjId};
 use kotor_model::{Model, Pose};
 use kotor_render::{Rig, Scene};
 use kotor_tables::TwoDa;
+use std::collections::HashMap;
 use std::f32::consts::TAU;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 /// Seconds the camera's focus is behind the player, at speed.
@@ -30,33 +34,6 @@ const FOV_FROM: f32 = 2.0;
 /// A body in a tight tuck turns around this point of its standing pose, metres forward and up from the feet.
 const TUCK_FORWARD: f32 = 0.15;
 const TUCK_UP: f32 = 1.15;
-/// And that point is this high over the floor at the middle of a roll: as far as the head and feet reach from it.
-const TUCK_RADIUS: f32 = 0.85;
-/// Share of a roll spent going into the tuck, and coming out of it.
-const TUCK_IN: f32 = 0.18;
-const TUCK_OUT: f32 = 0.22;
-/// The joints in a full tuck, by how many degrees they turn forward: knees to the chest, the back curled, the arms round
-/// the shins. A joint turns about the side to side line of the joint above it.
-const TUCK: [(&str, f32); 12] = [
-    ("lthigh_g", 125.0),
-    ("rthigh_g", 125.0),
-    ("lshin_g", -140.0),
-    ("rshin_g", -140.0),
-    ("lfoot_g", 25.0),
-    ("rfoot_g", 25.0),
-    ("torso_g", -30.0),
-    ("torsoupr_g", -30.0),
-    ("necklwr_g", -20.0),
-    ("neck_g", -15.0),
-    ("lbicep_g", 55.0),
-    ("rbicep_g", 55.0),
-];
-const TUCK_ELBOWS: [(&str, f32); 2] = [("lforearm_g", 85.0), ("rforearm_g", 85.0)];
-/// A hard landing bends the knees this many degrees at its deepest, with the feet staying on the floor.
-const LAND_KNEES: f32 = 55.0;
-/// Thigh and shin lengths of the humanoid skeleton, metres (`S_Male01`).
-const THIGH: f32 = 0.45;
-const SHIN: f32 = 0.39;
 /// A stock effect model of the game.
 const DUST: &str = "fx_step_dust";
 /// Slower landings make no sound.
@@ -102,7 +79,154 @@ fn turn_over(a: f32) -> Mat {
     ]
 }
 
+/// The two files of keys, and what is wrong with them.
+pub(super) struct BodyPoses {
+    roll: PoseFile,
+    landing: PoseFile,
+    /// Where the files are. None: the defaults, and nothing is read or written.
+    folder: Option<PathBuf>,
+    problems: Vec<String>,
+    /// For the preview: this pose, whatever the body is doing.
+    preview: Option<Bend>,
+}
+
+impl Default for BodyPoses {
+    fn default() -> Self {
+        BodyPoses {
+            roll: default_roll(),
+            landing: default_landing(),
+            folder: None,
+            problems: Vec::new(),
+            preview: None,
+        }
+    }
+}
+
+fn default_roll() -> PoseFile {
+    PoseFile::parse(bodypose::DEFAULT_ROLL).expect("the roll that comes with the game reads")
+}
+
+fn default_landing() -> PoseFile {
+    PoseFile::parse(bodypose::DEFAULT_LANDING).expect("the landing that comes with the game reads")
+}
+
+/// A file's keys. A missing one is written out for editing. One that cannot be used gives the default and says why.
+fn read_pose(
+    folder: &std::path::Path,
+    name: &str,
+    default_text: &str,
+    default: fn() -> PoseFile,
+    problems: &mut Vec<String>,
+) -> PoseFile {
+    let path = folder.join(name);
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => {
+            let written =
+                std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, default_text));
+            if let Err(e) = written {
+                problems.push(format!("{name}: could not be written: {e}"));
+            }
+            return default();
+        }
+    };
+    match PoseFile::parse(&String::from_utf8_lossy(&bytes)) {
+        Ok(f) => f,
+        Err(e) => {
+            problems.push(format!("{name}: {e}"));
+            default()
+        }
+    }
+}
+
 impl Stage {
+    /// Keep the pose files in this folder: read them now, and write those that are not there.
+    pub fn use_pose_folder(&mut self, folder: PathBuf) {
+        self.body_poses.folder = Some(folder);
+        self.read_poses();
+    }
+
+    fn read_poses(&mut self) {
+        let Some(folder) = self.body_poses.folder.clone() else {
+            return;
+        };
+        let mut problems = Vec::new();
+        self.body_poses.roll = read_pose(
+            &folder,
+            bodypose::ROLL_FILE,
+            bodypose::DEFAULT_ROLL,
+            default_roll,
+            &mut problems,
+        );
+        self.body_poses.landing = read_pose(
+            &folder,
+            bodypose::LANDING_FILE,
+            bodypose::DEFAULT_LANDING,
+            default_landing,
+            &mut problems,
+        );
+        for p in &problems {
+            eprintln!("pose: {p}");
+        }
+        let report = if problems.is_empty() {
+            "No problems: the game is using both pose files.\n".to_string()
+        } else {
+            let mut text = "The game is using its own pose for each file named here:\n".to_string();
+            for p in &problems {
+                text.push_str(p);
+                text.push('\n');
+            }
+            text
+        };
+        // Only a help to the reader: the game goes on without it.
+        let _ = std::fs::write(folder.join("pose_problems.txt"), report);
+        self.body_poses.problems = problems;
+    }
+
+    /// F8: read the pose files again, and say on screen how that went.
+    pub fn reload_poses(&mut self) {
+        if self.body_poses.folder.is_none() {
+            return;
+        }
+        self.read_poses();
+        let words = if self.body_poses.problems.is_empty() {
+            "Poses reloaded".to_string()
+        } else {
+            "Pose file mistake: using the default. See pose_problems.txt".to_string()
+        };
+        self.say_over_player(words);
+    }
+
+    /// What was wrong with the pose files when they were last read.
+    pub fn pose_problems(&self) -> &[String] {
+        &self.body_poses.problems
+    }
+
+    /// Draw the player in the roll, this share of the way through, whatever it is doing. For the preview and a test.
+    pub fn preview_roll(&mut self, p: f32) {
+        self.body_poses.preview = Some(Bend::Roll(p));
+    }
+
+    /// Draw the player in the landing, this share of the way through. For the preview and a test.
+    pub fn preview_landing(&mut self, p: f32) {
+        self.body_poses.preview = Some(Bend::Land(p));
+    }
+
+    /// Where the player's joints are in the body's own frame, feet at the origin, facing +y, without the body's somersault.
+    pub fn bent_joints(&mut self) -> Option<HashMap<String, [f32; 3]>> {
+        let pc = self.game.world.pc;
+        let pose = self.game.poses().into_iter().find(|p| p.id == pc)?;
+        let rig = self.rig_of(pc)?;
+        let bend = self.body_bend(pc)?;
+        let (bent, _) = self.bent_pose(&rig, &pose.clip, bend)?;
+        Some(
+            rig.joint_frames(Some(&bent))
+                .into_iter()
+                .map(|(name, m, _)| (name, [m[0][3], m[1][3], m[2][3]]))
+                .collect(),
+        )
+    }
+
     /// The look button is held or let go. While it is held the keys keep the direction they had: looking round does not
     /// steer. With no key down, they take whatever direction the look ends on.
     pub fn set_looking(&mut self, looking: bool) {
@@ -205,17 +329,59 @@ impl Stage {
     /// What the player's body is doing that no clip has, now.
     fn body_bend(&self, id: ObjId) -> Option<Bend> {
         let w = &self.game.world;
-        if id != w.pc || w.movement != MovementMode::Modern {
+        if id != w.pc {
+            return None;
+        }
+        if let Some(preview) = self.body_poses.preview {
+            return Some(preview);
+        }
+        if w.movement != MovementMode::Modern {
             return None;
         }
         let body = &w.pc_body;
         if body.rolling() {
             Some(Bend::Roll(body.roll_progress(&w.tuning)))
         } else if body.landing() {
-            Some(Bend::Land(body.land_dip()))
+            Some(Bend::Land(1.0 - body.land_dip()))
         } else {
             None
         }
+    }
+
+    /// The body bent: the joints, and how the whole of it is turned over and how tucked, as `tilt_matrix` takes them.
+    fn bent_pose(
+        &self,
+        rig: &Rig,
+        clip: &Option<Clip>,
+        bend: Bend,
+    ) -> Option<(Pose, (f32, f32, f32))> {
+        let name = clip.as_ref().map_or("pause1", |c| c.name);
+        let t = clip.as_ref().map_or(0.0, |c| c.time);
+        let sampled = rig
+            .animation_length(name)
+            .filter(|l| *l > 0.0)
+            .and_then(|l| rig.sample(name, t % l));
+        // The skeleton's own stance, which is even from left to right. The idle clip has one foot forward.
+        let stand = rig.bind_pose();
+        // A clip that was playing shows through as the bend comes and goes.
+        let pose = sampled.unwrap_or_else(|| stand.clone());
+        let (file, p, roll) = match bend {
+            Bend::Roll(p) => (&self.body_poses.roll, p, true),
+            Bend::Land(p) => (&self.body_poses.landing, p, false),
+        };
+        let keys = file.sample(p);
+        // The clip's swing goes as the bend comes, or the legs would scissor in the tuck.
+        let mut pose = kotor_model::blend(&pose, &stand, keys.tuck);
+        turn_joints(&mut pose, rig, &keys.angles);
+        if let Some(root) = pose.get_mut("rootdummy") {
+            root.position[2] -= keys.lower;
+        }
+        let tilt = if roll {
+            (smooth(p) * TAU * file.turns, keys.tuck, file.centre_height)
+        } else {
+            (0.0, 0.0, TUCK_UP)
+        };
+        Some((pose, tilt))
     }
 
     /// Draw the player tucked or crouching, if it is. Otherwise false, and nothing is drawn.
@@ -233,36 +399,10 @@ impl Stage {
         let Some(bend) = self.body_bend(id) else {
             return false;
         };
-        let name = clip.as_ref().map_or("pause1", |c| c.name);
-        let t = clip.as_ref().map_or(0.0, |c| c.time);
-        let sampled = rig
-            .animation_length(name)
-            .filter(|l| *l > 0.0)
-            .and_then(|l| rig.sample(name, t % l));
-        // A clip that was playing shows through as the bend comes and goes.
-        let Some(mut pose) = sampled.or_else(|| rig.sample("pause1", 0.0)) else {
+        let Some((pose, (over, tuck, centre))) = self.bent_pose(rig, clip, bend) else {
             return false;
         };
-        // The clip's swing goes as the bend comes, or the legs would scissor in the tuck.
-        let rest = rig.sample("pause1", 0.0);
-        let mut settle = |share: f32| {
-            if let Some(r) = &rest {
-                pose = kotor_model::blend(&pose, r, share);
-            }
-        };
-        let xf = match bend {
-            Bend::Roll(p) => {
-                let (over, tuck) = roll_pose(p);
-                settle(tuck);
-                bend_joints(&mut pose, tuck);
-                tilt_matrix(at, heading, over, tuck)
-            }
-            Bend::Land(dip) => {
-                settle(dip);
-                crouch(&mut pose, dip);
-                tilt_matrix(at, heading, 0.0, 0.0)
-            }
-        };
+        let xf = tilt_matrix(at, heading, over, tuck, centre);
         let Ok(mut body) = rig.posed(Some(&pose)) else {
             return false;
         };
@@ -300,7 +440,7 @@ impl Stage {
     }
 }
 
-/// What the player's body is doing: how far through a roll, or how deep in a landing.
+/// What the player's body is doing: how far through a roll or a landing, 0 to 1.
 #[derive(Clone, Copy)]
 enum Bend {
     Roll(f32),
@@ -312,18 +452,10 @@ fn smooth(x: f32) -> f32 {
     x * x * (3.0 - 2.0 * x)
 }
 
-/// How far a roll has turned the body over, in radians, and how tucked it is, 0 to 1, `p` of the way through it.
-fn roll_pose(p: f32) -> (f32, f32) {
-    (
-        smooth(p) * TAU,
-        smooth(p / TUCK_IN) * smooth((1.0 - p) / TUCK_OUT),
-    )
-}
-
-/// `[w, x, y, z]` of a turn about the x axis, the body's side to side line.
-fn about_x(degrees: f32) -> [f32; 4] {
+/// `[w, x, y, z]` of a turn about a line of length 1.
+fn about(axis: [f32; 3], degrees: f32) -> [f32; 4] {
     let (s, c) = (degrees.to_radians() / 2.0).sin_cos();
-    [c, s, 0.0, 0.0]
+    [c, s * axis[0], s * axis[1], s * axis[2]]
 }
 
 fn quat_times(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
@@ -335,46 +467,64 @@ fn quat_times(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     ]
 }
 
-/// A joint a share of the way from what the clip has to the turn from the standing pose, about its parent's side to side line.
-fn turn_joint(pose: &mut Pose, joint: &str, degrees: f32) {
-    if let Some(n) = pose.get_mut(joint) {
-        n.orientation = quat_times(about_x(degrees), n.orientation);
-    }
+/// A line in the body's frame, as the frame `m` has it: `m`'s turn, undone.
+fn into_frame(m: &Mat, v: [f32; 3]) -> [f32; 3] {
+    [0, 1, 2].map(|c| m[0][c] * v[0] + m[1][c] * v[1] + m[2][c] * v[2])
 }
 
-/// Knees to the chest, the back curled and the arms in, `share` of the way there.
-fn bend_joints(pose: &mut Pose, share: f32) {
-    for (joint, degrees) in TUCK.iter().chain(&TUCK_ELBOWS) {
-        turn_joint(pose, joint, degrees * share);
-    }
+fn unit(v: [f32; 3]) -> Option<[f32; 3]> {
+    let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    (l > 1e-4).then(|| v.map(|x| x / l))
 }
 
-/// The knees bent, `dip` of the way to the deepest, with the feet flat and the body lowered so that they stay on the floor.
-fn crouch(pose: &mut Pose, dip: f32) {
-    let a = LAND_KNEES * dip;
-    for (joint, degrees) in [
-        ("lthigh_g", a),
-        ("rthigh_g", a),
-        ("lshin_g", -2.0 * a),
-        ("rshin_g", -2.0 * a),
-        ("lfoot_g", a),
-        ("rfoot_g", a),
-        ("torso_g", -0.4 * a),
-    ] {
-        turn_joint(pose, joint, degrees);
-    }
-    if let Some(root) = pose.get_mut("rootdummy") {
-        root.position[2] -= (THIGH + SHIN) * (1.0 - a.to_radians().cos());
+/// Turn the joints by these angles, in the order of `JOINTS`.
+///
+/// The bones' own axes cannot be used: `rcollar_g` is flipped against `lcollar_g`, and an arm's frame leans with the arm, so
+/// a turn about a parent's own x goes a different way on each side, and twists the limb. So each line is said in the body's
+/// frame of the standing pose, and carried into the frame of the joint's parent there. A knee's line still turns with the thigh.
+fn turn_joints(pose: &mut Pose, rig: &Rig, angles: &[[f32; 3]]) {
+    let frames: HashMap<String, (Mat, Mat)> = rig
+        .joint_frames(None)
+        .into_iter()
+        .map(|(name, m, parent)| (name, (m, parent)))
+        .collect();
+    let place = |m: &Mat| [m[0][3], m[1][3], m[2][3]];
+    for (joint, angle) in JOINTS.iter().zip(angles) {
+        if *angle == [0.0; 3] {
+            continue;
+        }
+        let (Some(node), Some((own, parent))) = (pose.get_mut(joint.name), frames.get(joint.name))
+        else {
+            continue;
+        };
+        // Which way "out" and "twist" go, so that left and right are alike.
+        let side = if joint.side == Side::Right { -1.0 } else { 1.0 };
+        // Up the limb, from the joint it reaches for, or up the body.
+        let up = joint
+            .reaches
+            .and_then(|r| frames.get(r))
+            .and_then(|(reach, _)| {
+                let (a, b) = (place(own), place(reach));
+                unit([a[0] - b[0], a[1] - b[1], a[2] - b[2]])
+            })
+            .unwrap_or([0.0, 0.0, 1.0]);
+        let bend = about(
+            into_frame(parent, [1.0, 0.0, 0.0]),
+            joint.flex * angle[0],
+        );
+        let out = about(into_frame(parent, [0.0, 1.0, 0.0]), side * angle[1]);
+        let twist = about(into_frame(parent, up), side * angle[2]);
+        node.orientation = quat_times(bend, quat_times(out, quat_times(twist, node.orientation)));
     }
 }
 
 /// A body at `at` facing `heading`, turned `over` radians over the shoulder around its middle, which comes down from its
-/// standing height to `TUCK_RADIUS` over the floor as it tucks, so that the head and feet clear the floor as they come round.
-fn tilt_matrix(at: [f32; 3], heading: f32, over: f32, tuck: f32) -> Mat {
+/// standing height to `centre` over the floor as it tucks, so that the head and feet clear the floor as they come round.
+fn tilt_matrix(at: [f32; 3], heading: f32, over: f32, tuck: f32, centre: f32) -> Mat {
     // Models face +y at rest.
     let angle = heading - std::f32::consts::FRAC_PI_2;
     // Late, so that the body only comes down once the legs have folded.
-    let height = TUCK_UP + (TUCK_RADIUS - TUCK_UP) * tuck * tuck;
+    let height = TUCK_UP + (centre - TUCK_UP) * tuck * tuck;
     let middle = [at[0], at[1], at[2] + height];
     let inner = times(
         &times(&shift([0.0, TUCK_FORWARD, 0.0]), &turn_over(over)),
@@ -401,7 +551,7 @@ mod tests {
     #[test]
     fn no_tilt_leaves_the_body_where_it_is() {
         let at = [3.0, -2.0, 1.0];
-        let m = tilt_matrix(at, 0.7, 0.0, 0.0);
+        let m = tilt_matrix(at, 0.7, 0.0, 0.0, 0.85);
         for p in [at, [3.0, -2.0, 2.8], [3.5, -1.5, 1.2]] {
             assert!(near(apply(&m, p), p), "{p:?}");
         }
@@ -410,9 +560,10 @@ mod tests {
     #[test]
     fn a_whole_turn_at_the_end_of_a_roll_is_no_turn() {
         let at = [3.0, -2.0, 1.0];
-        let (over, tuck) = roll_pose(1.0);
+        let roll = default_roll();
+        let tuck = roll.sample(1.0).tuck;
         assert_eq!(tuck, 0.0);
-        let m = tilt_matrix(at, 0.7, over, tuck);
+        let m = tilt_matrix(at, 0.7, smooth(1.0) * TAU * roll.turns, tuck, roll.centre_height);
         let p = [3.0, -2.0, 2.8];
         assert!(near(apply(&m, p), p), "{:?}", apply(&m, p));
     }
@@ -420,7 +571,7 @@ mod tests {
     #[test]
     fn a_quarter_turn_puts_the_head_forward_along_the_heading() {
         let heading = 0.7f32;
-        let m = tilt_matrix([0.0; 3], heading, std::f32::consts::FRAC_PI_2, 0.0);
+        let m = tilt_matrix([0.0; 3], heading, std::f32::consts::FRAC_PI_2, 0.0, 0.85);
         let (c, s) = (heading.cos(), heading.sin());
         let head = apply(&m, [c * TUCK_FORWARD, s * TUCK_FORWARD, TUCK_UP + 1.0]);
         let ahead = 1.0 + TUCK_FORWARD;
@@ -430,22 +581,49 @@ mod tests {
     }
 
     #[test]
-    fn a_roll_tucks_in_and_comes_out() {
-        assert_eq!(roll_pose(0.0).1, 0.0);
-        assert_eq!(roll_pose(0.5).1, 1.0);
-        assert_eq!(roll_pose(1.0).1, 0.0);
-    }
-
-    #[test]
     fn turning_a_joint_turns_a_shin_forward() {
         // A point below a joint turned forward by 90 degrees about x comes out in front of it.
-        let q = about_x(90.0);
+        let x_line = [1.0, 0.0, 0.0];
+        let q = about(x_line, 90.0);
         let (w, x) = (q[0], q[1]);
         // The y of (0, 0, -1) under this turn is 2 w x.
         assert!((2.0 * w * x - 1.0).abs() < 1e-5);
         assert!(near(
-            [quat_times(q, about_x(-90.0))[0], 0.0, 0.0],
+            [quat_times(q, about(x_line, -90.0))[0], 0.0, 0.0],
             [1.0, 0.0, 0.0]
         ));
+    }
+
+    #[test]
+    fn a_line_of_the_body_is_carried_into_a_flipped_frame() {
+        // A parent turned half way round about y, as a flipped collar is: the body's x is its -x.
+        let flipped: Mat = [
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+        assert_eq!(into_frame(&flipped, [1.0, 0.0, 0.0]), [-1.0, 0.0, 0.0]);
+        assert_eq!(into_frame(&shift([1.0, 2.0, 3.0]), [1.0, 0.0, 0.0]), [1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn a_file_with_a_mistake_gives_the_default_and_says_why() {
+        let dir = std::env::temp_dir().join(format!("kotor_pose_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let name = "bad_roll.txt";
+        std::fs::write(dir.join(name), "[key]\nat = 0\nlthigh_g = 999\n").unwrap();
+        let mut problems = Vec::new();
+        let f = read_pose(&dir, name, bodypose::DEFAULT_ROLL, default_roll, &mut problems);
+        assert_eq!(f.turns, 1.0);
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("line 3"), "{problems:?}");
+        // One that is missing is written for editing, and is no mistake.
+        problems.clear();
+        let fresh = "fresh_roll.txt";
+        read_pose(&dir, fresh, bodypose::DEFAULT_ROLL, default_roll, &mut problems);
+        assert!(problems.is_empty());
+        assert_eq!(std::fs::read_to_string(dir.join(fresh)).unwrap(), bodypose::DEFAULT_ROLL);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

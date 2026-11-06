@@ -230,6 +230,16 @@ impl Rig {
             .find_map(|m| m.animation(name).map(|a| a.sample(m, t)))
     }
 
+    /// The body standing as its model has it, with no animation.
+    pub fn bind_pose(&self) -> kotor_model::Pose {
+        self.body.bind_pose()
+    }
+
+    /// Each node of the body in `pose`: its lower-case name, its transform and its parent's.
+    pub fn joint_frames(&self, pose: Option<&kotor_model::Pose>) -> Vec<(String, Mat, Mat)> {
+        self.body.joint_frames(pose)
+    }
+
     /// Add `item` to `scene` at a node of the body (`rhand`, `lhand`), for a body in `pose`.
     pub fn attach(
         &self,

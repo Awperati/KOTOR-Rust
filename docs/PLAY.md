@@ -14,6 +14,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 |---|---|
 | W A S D | run in that direction, relative to the camera; Shift walks. While the look button is held, the keys keep the direction they had |
 | Left Ctrl | roll, in Modern movement (Key Mapping has it, under Roll) |
+| F8 | read the roll and landing pose files again: see [MOVEMENT_POSE.md](MOVEMENT_POSE.md) |
 | Right button drag, or the arrow keys | turn the camera round the player |
 | Left click on the floor | run there, unless Click to walk is off in Feedback |
 | Left click on a creature, door or placeable | run up and talk, open or use; an enemy is attacked |

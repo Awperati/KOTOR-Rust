@@ -513,6 +513,7 @@ impl App {
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys[4] = pressed,
             KeyCode::Escape if pressed => self.stage.escape(),
             KeyCode::Enter if pressed => self.stage.continue_line(),
+            KeyCode::F8 if pressed => self.stage.reload_poses(),
             _ if pressed && digit > 0 => self.stage.number_pressed(digit),
             _ => {}
         }
@@ -676,6 +677,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Stage::menu(&module, original)?
     };
+    if let Some(folder) = opt("--pose-folder") {
+        stage.use_pose_folder(folder.into());
+    }
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
     if flag("--no-hd") {
         stage.no_hd();

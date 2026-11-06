@@ -1,0 +1,82 @@
+# THE ROLL. Edit this file, save it, and press F8 in the game. Then press the roll key.
+# Anything after a # is a note and is ignored. docs/MOVEMENT_POSE.md explains everything here.
+# A mistake? The game says so, writes it in pose_problems.txt beside this file, and uses its own roll until you fix it.
+# To start again, delete this file: the game writes a fresh one the next time it starts.
+#
+# EACH JOINT TAKES UP TO THREE ANGLES IN DEGREES: bend  out  twist
+#   bend    curls the joint in. Knee to the chest, heel to the bottom, chin to the chest, elbow closed.
+#   out     moves the limb away from the body, to the side. A minus brings it across the body.
+#   twist   turns the limb about its own length, its front going outward. A minus turns it inward.
+# Left and right work alike: to keep the body even, give both sides the same numbers.
+#
+#   JOINT                       WHAT IT IS         SAFE BEND    SAFE OUT    SAFE TWIST
+#   lthigh_g  rthigh_g          hip                -30 to 140   -30 to 60   -40 to 40
+#   lshin_g   rshin_g           knee                 0 to 150   do not use  do not use
+#   lfoot_g   rfoot_g           ankle              -50 to 35    -20 to 20   -30 to 30
+#   torso_g   torsoupr_g        lower, upper back  -30 to 50    -30 to 30   -40 to 40
+#   necklwr_g neck_g  head_g    neck and head      -30 to 45    -30 to 30   -60 to 60
+#   lcollar_g rcollar_g         shoulder blade     -20 to 20    -20 to 20   do not use
+#   lbicep_g  rbicep_g          shoulder           -60 to 170   -40 to 120  -70 to 70
+#   lforearm_g rforearm_g       elbow                0 to 145   do not use  -70 to 70
+#   lhand_g   rhand_g           wrist              -60 to 60    -20 to 20   do not use
+#   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
+# The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
+#
+# FOR THE WHOLE ROLL
+turns = 1              # whole somersaults: 1 is one. 0 stays upright. A minus rolls backward. It must be a whole number.
+centre_height = 0.90   # how high the middle of the body is over the floor when tuck is 1, in metres. Lower sinks the head and feet.
+
+# THE KEYS. Each one is a moment. The game moves from each key to the next.
+#   at     how far through the roll, 0 to 1. The roll lasts 0.55 seconds, so 0.5 is about a quarter of a second in.
+#   ease   how it moves into this key: smooth, linear, in (starts slow) or out (ends slow).
+#   tuck   0 to 1. At 1 the running animation has gone, and the middle of the body is down at centre_height.
+# A joint a key does not name is at 0 in that key: standing as it was.
+
+[key]            # Standing, at the start.
+at = 0
+tuck = 0
+
+[key]            # Fully tucked.
+at = 0.18
+ease = smooth
+tuck = 1
+#              bend  out  twist
+lthigh_g   =   120    8    0
+rthigh_g   =   120    8    0
+lshin_g    =   135
+rshin_g    =   135
+lfoot_g    =     8
+rfoot_g    =     8
+torso_g    =    30
+torsoupr_g =    30
+necklwr_g  =    20
+neck_g     =    15
+lbicep_g   =    48  -48    0
+rbicep_g   =    48  -48    0
+lforearm_g =    85    0  -20
+rforearm_g =    85    0  -20
+
+[key]            # Still tucked. Copy the numbers above if you change them.
+at = 0.84
+ease = smooth
+tuck = 1
+#              bend  out  twist
+lthigh_g   =   120    8    0
+rthigh_g   =   120    8    0
+lshin_g    =   135
+rshin_g    =   135
+lfoot_g    =     8
+rfoot_g    =     8
+torso_g    =    30
+torsoupr_g =    30
+necklwr_g  =    20
+neck_g     =    15
+lbicep_g   =    48  -48    0
+rbicep_g   =    48  -48    0
+lforearm_g =    85    0  -20
+rforearm_g =    85    0  -20
+
+[key]            # Standing again, at the end.
+at = 1
+ease = smooth
+tuck = 0

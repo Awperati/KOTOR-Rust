@@ -19,6 +19,8 @@ use std::rc::Rc;
 mod deathscreen;
 #[path = "menus.rs"]
 mod menus;
+#[path = "bodypose.rs"]
+mod bodypose;
 #[path = "moving.rs"]
 mod moving;
 #[path = "racescreen.rs"]
@@ -337,6 +339,8 @@ pub struct Stage {
     steer_yaw: Option<f32>,
     /// How far behind the player the camera's focus is, and the height it was last at.
     camera_lag: [f32; 3],
+    /// The roll's and the landing's poses.
+    body_poses: moving::BodyPoses,
     camera_z: Option<f32>,
     /// Degrees added to the field of view at speed.
     fov_extra: f32,
@@ -466,6 +470,7 @@ impl Stage {
             steer: (0.0, 0.0, false),
             steer_yaw: None,
             camera_lag: [0.0; 3],
+            body_poses: moving::BodyPoses::default(),
             camera_z: None,
             fov_extra: 0.0,
             hover_reply: 0,

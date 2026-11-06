@@ -1,0 +1,72 @@
+# THE LANDING after a fall. Edit this file, save it, and press F8 in the game. Then fall off something.
+# Anything after a # is a note and is ignored. docs/MOVEMENT_POSE.md explains everything here.
+# A mistake? The game says so, writes it in pose_problems.txt beside this file, and uses its own landing until you fix it.
+# To start again, delete this file: the game writes a fresh one the next time it starts.
+#
+# EACH JOINT TAKES UP TO THREE ANGLES IN DEGREES: bend  out  twist
+#   bend    curls the joint in. Knee to the chest, heel to the bottom, chin to the chest, elbow closed.
+#   out     moves the limb away from the body, to the side. A minus brings it across the body.
+#   twist   turns the limb about its own length, its front going outward. A minus turns it inward.
+# Left and right work alike: to keep the body even, give both sides the same numbers.
+#
+#   JOINT                       WHAT IT IS         SAFE BEND    SAFE OUT    SAFE TWIST
+#   lthigh_g  rthigh_g          hip                -30 to 140   -30 to 60   -40 to 40
+#   lshin_g   rshin_g           knee                 0 to 150   do not use  do not use
+#   lfoot_g   rfoot_g           ankle              -50 to 35    -20 to 20   -30 to 30
+#   torso_g   torsoupr_g        lower, upper back  -30 to 50    -30 to 30   -40 to 40
+#   necklwr_g neck_g  head_g    neck and head      -30 to 45    -30 to 30   -60 to 60
+#   lcollar_g rcollar_g         shoulder blade     -20 to 20    -20 to 20   do not use
+#   lbicep_g  rbicep_g          shoulder           -60 to 170   -40 to 120  -70 to 70
+#   lforearm_g rforearm_g       elbow                0 to 145   do not use  -70 to 70
+#   lhand_g   rhand_g           wrist              -60 to 60    -20 to 20   do not use
+#   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
+# The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
+#
+# THE KEYS. Each one is a moment. The game moves from each key to the next.
+#   at     how far through the landing, 0 to 1. 0 is the moment the feet touch, 1 is standing again.
+#          A harder fall makes the landing last longer, up to 0.45 seconds.
+#   ease   how it moves into this key: smooth, linear, in (starts slow) or out (ends slow).
+#   tuck   0 to 1. At 1 the running animation has gone.
+#   lower  how far the body sinks, in metres, so that the feet stay on the floor as the knees bend.
+#          Knees bent further need more of it. Too little and the feet leave the floor. Too much and they go through it.
+# A joint a key does not name is at 0 in that key: standing as it was.
+
+[key]            # The deepest, the moment the feet touch.
+at = 0
+tuck = 1
+lower = 0.358
+#              bend  out  twist
+lthigh_g   =    55
+rthigh_g   =    55
+lshin_g    =   110
+rshin_g    =   110
+lfoot_g    =    55
+rfoot_g    =    55
+torso_g    =    22
+lbicep_g   =    20  -24    0
+rbicep_g   =    20  -24    0
+lforearm_g =    25
+rforearm_g =    25
+
+[key]            # Halfway up.
+at = 0.5
+ease = linear
+tuck = 0.5
+lower = 0.12
+lthigh_g   =  27.5
+rthigh_g   =  27.5
+lshin_g    =    55
+rshin_g    =    55
+lfoot_g    =  27.5
+rfoot_g    =  27.5
+torso_g    =    11
+lbicep_g   =    10  -12    0
+rbicep_g   =    10  -12    0
+lforearm_g =    12
+rforearm_g =    12
+
+[key]            # Standing again.
+at = 1
+ease = linear
+tuck = 0
+lower = 0

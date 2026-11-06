@@ -224,3 +224,109 @@ fn the_settings_file_keeps_both_rows() {
     assert!(again.contains("click_to_walk=false"), "{again}");
     std::fs::remove_file(&file).ok();
 }
+
+/// The left and the right joint of a pair are mirror images, to within the skeleton's own difference: the
+/// female skeleton stands with its knees 3 cm apart front to back, and a bent knee carries that to the foot.
+fn even(joints: &std::collections::HashMap<String, [f32; 3]>, left: &str, right: &str) {
+    let (l, r) = (joints[left], joints[right]);
+    let off = [(l[0] + r[0]).abs(), (l[1] - r[1]).abs(), (l[2] - r[2]).abs()];
+    assert!(off.iter().all(|d| *d < 0.06), "{left} {l:?} and {right} {r:?}");
+}
+
+#[test]
+fn a_roll_bends_both_sides_alike_with_the_knees_up_and_the_hands_on_the_shins() {
+    let Some((mut s, file)) = stage("even", "") else {
+        return;
+    };
+    s.preview_roll(0.5);
+    let j = s.bent_joints().unwrap();
+    for (l, r) in [
+        ("lshin_g", "rshin_g"),
+        ("lfoot_g", "rfoot_g"),
+        ("lforearm_g", "rforearm_g"),
+        ("lhand_g", "rhand_g"),
+    ] {
+        even(&j, l, r);
+    }
+    // Knees over the hips, and in front.
+    assert!(j["lshin_g"][2] > j["lthigh_g"][2], "{:?}", j["lshin_g"]);
+    assert!(j["lshin_g"][1] > j["lthigh_g"][1] + 0.3, "{:?}", j["lshin_g"]);
+    // Heels back under the knees.
+    assert!(j["lfoot_g"][2] < j["lshin_g"][2] - 0.3, "{:?}", j["lfoot_g"]);
+    // Each hand within a hand's length of its shin, and neither side of the body is crossed.
+    for (hand, knee, foot) in [("lhand_g", "lshin_g", "lfoot_g"), ("rhand_g", "rshin_g", "rfoot_g")] {
+        let middle = [0, 1, 2].map(|i| (j[knee][i] + j[foot][i]) / 2.0);
+        let d: f32 = (0..3).map(|i| (j[hand][i] - middle[i]).powi(2)).sum::<f32>().sqrt();
+        assert!(d < 0.3, "{hand} is {d} m from its shin: {:?}", j[hand]);
+    }
+    assert!(j["lhand_g"][0] < 0.0 && j["rhand_g"][0] > 0.0);
+    std::fs::remove_file(file).ok();
+}
+
+#[test]
+fn a_landing_bends_both_sides_alike_and_keeps_the_feet_down() {
+    let Some((mut s, file)) = stage("land_even", "") else {
+        return;
+    };
+    s.preview_landing(1.0);
+    let standing = s.bent_joints().unwrap();
+    for p in [0.0, 0.5] {
+        s.preview_landing(p);
+        let j = s.bent_joints().unwrap();
+        // Only at the deepest is the idle clip, which has one foot forward, gone.
+        if p == 0.0 {
+            even(&j, "lshin_g", "rshin_g");
+            even(&j, "lfoot_g", "rfoot_g");
+            even(&j, "lhand_g", "rhand_g");
+        }
+        for foot in ["lfoot_g", "rfoot_g"] {
+            let lifted = (j[foot][2] - standing[foot][2]).abs();
+            assert!(lifted < 0.05, "{foot} moved {lifted} m up or down at {p}");
+        }
+        assert!(j["pelvis_g"][2] < standing["pelvis_g"][2] - 0.05);
+    }
+    std::fs::remove_file(file).ok();
+}
+
+#[test]
+fn f8_reads_the_pose_files_again_and_a_mistake_gives_the_default() {
+    let Some((mut s, file)) = stage("reload", "") else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("kotor_pose_reload_{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    s.use_pose_folder(dir.clone());
+    assert!(s.pose_problems().is_empty(), "{:?}", s.pose_problems());
+    let roll = dir.join("roll_pose.txt");
+    let default_text = std::fs::read_to_string(&roll).unwrap();
+    assert!(dir.join("landing_pose.txt").exists());
+    s.preview_roll(0.5);
+    let knee = |s: &mut Stage| s.bent_joints().unwrap()["lshin_g"];
+    let usual = knee(&mut s);
+
+    // Legs straight: the knee comes down.
+    std::fs::write(&roll, "turns = 1\n[key]\nat = 0\ntuck = 1\n").unwrap();
+    s.reload_poses();
+    assert!(s.pose_problems().is_empty(), "{:?}", s.pose_problems());
+    let straight = knee(&mut s);
+    assert!(straight[2] < usual[2] - 0.3, "{straight:?} {usual:?}");
+
+    // A mistake: the default, and it says where.
+    std::fs::write(&roll, "turns = 1\n[key]\nat = 0\nlthigh_g = 999\n").unwrap();
+    s.reload_poses();
+    assert!(s.pose_problems()[0].contains("line 4"), "{:?}", s.pose_problems());
+    assert_eq!(knee(&mut s), usual);
+    let said = std::fs::read_to_string(dir.join("pose_problems.txt")).unwrap();
+    assert!(said.contains("line 4"), "{said}");
+    // The owner's file is left as it was.
+    assert!(std::fs::read_to_string(&roll).unwrap().contains("999"));
+
+    // Fixed again.
+    std::fs::write(&roll, &default_text).unwrap();
+    s.reload_poses();
+    assert!(s.pose_problems().is_empty());
+    assert_eq!(knee(&mut s), usual);
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_file(file).ok();
+}
+

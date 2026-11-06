@@ -687,6 +687,18 @@ impl Stage {
         out
     }
 
+    /// Words rising over the player.
+    pub(in crate::stage) fn say_over_player(&mut self, text: String) {
+        let p = self.game.world.pc_mover.pos;
+        let born = self.game.world.time;
+        self.menus.fight.rising.push(Rising {
+            at: p,
+            text,
+            color: XP_COLOR,
+            born,
+        });
+    }
+
     /// The words rising now. For tests.
     pub fn floats_shown(&self) -> Vec<String> {
         self.floats_view().into_iter().map(|f| f.text).collect()

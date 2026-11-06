@@ -1204,6 +1204,9 @@ impl Stage {
     /// Read the player's settings from their file, and keep them there from now on.
     pub fn use_saved_settings(&mut self) {
         if let Some(path) = default_settings_file() {
+            if let Some(folder) = path.parent() {
+                self.use_pose_folder(folder.to_path_buf());
+            }
             self.use_settings_file(path);
         }
     }
