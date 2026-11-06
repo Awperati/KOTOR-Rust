@@ -82,6 +82,24 @@ impl Rig {
         })
     }
 
+    /// Every animation the body's supermodels carry, nearest first.
+    pub fn animation_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for m in &self.sup {
+            for a in &m.animations {
+                if !names.iter().any(|n| n.eq_ignore_ascii_case(&a.name)) {
+                    names.push(a.name.clone());
+                }
+            }
+        }
+        names
+    }
+
+    /// The texture the head is drawn with.
+    pub fn head_texture(&self) -> Option<&str> {
+        self.head_tex.as_deref()
+    }
+
     /// Length in seconds of a named animation of the supermodel.
     pub fn animation_length(&self, name: &str) -> Option<f32> {
         self.sup
