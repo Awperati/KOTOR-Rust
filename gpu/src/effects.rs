@@ -236,16 +236,20 @@ impl Effects {
         }
     }
 
-    /// Turn the emitters' colours from blue toward red: 0 leaves them, 1 swaps the two and takes most of the green, which
-    /// with the red would make orange.
+    /// Turn the emitters' colours from blue through grey to red: 0 leaves them, a half makes them grey of the same
+    /// brightness, and 1 swaps blue and red and takes most of the green, which with the red would make orange.
     pub fn redden(&mut self, amount: f32) {
         for c in self.sources.iter_mut().flat_map(|s| s.colors.iter_mut()) {
             let [red, green, blue] = *c;
-            *c = [
-                mix(red, blue, amount),
-                green * (1.0 - RED_TAKES_GREEN * amount),
-                mix(blue, red, amount),
-            ];
+            let grey = (red + green + blue) / 3.0;
+            let dark = [blue, green * (1.0 - RED_TAKES_GREEN), red];
+            *c = [0, 1, 2].map(|k| {
+                if amount < 0.5 {
+                    mix(c[k], grey, amount * 2.0)
+                } else {
+                    mix(grey, dark[k], amount * 2.0 - 1.0)
+                }
+            });
         }
     }
 

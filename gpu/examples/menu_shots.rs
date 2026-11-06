@@ -218,7 +218,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "character", &out);
     // The mist follows the alignment.
     let start = s.game.world.object(pc).map_or(50, |o| o.alignment);
-    for (alignment, name) in [(100, "mist_light"), (50, "mist_neutral"), (0, "mist_dark")] {
+    for (alignment, name) in [
+        (100, "mist_light"),
+        (80, "alignment_80"),
+        (50, "alignment_50"),
+        (20, "alignment_20"),
+        (0, "mist_dark"),
+    ] {
         if let Some(o) = s.game.world.object_mut(pc) {
             o.alignment = alignment;
         }

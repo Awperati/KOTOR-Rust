@@ -6,8 +6,9 @@
 //!
 //! The mist behind them is the emitters of `charmain_light.mdl`, as making a character has `cgmain_light.mdl`. The install
 //! has no dark model, so a dark figure's mist is the same mist with its blue and red swapped: the owner's words are blue for
-//! the light side and red for the dark. **Assumed:** where that starts, `MIST_BLUE_FROM` and `MIST_RED_FROM`: the video has
-//! clean blue at about 65, and a dark player is not in the frames I looked at.
+//! the light side, red for the dark, and "The middle is grey". The video has Carth, 75 in his file, in blue at 50:12 and
+//! Canderous, 30, in red at 7:17:02. **Assumed:** where it changes, `MIST_BLUE_FROM` and `MIST_RED_FROM`, and that the owner's
+//! grey is this mist: I found no frame of someone at 50.
 
 use super::{Screen, Stage};
 use crate::effects::Effects;

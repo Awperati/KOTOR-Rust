@@ -121,9 +121,14 @@ video does: a conversation and the target's bar have none. Frame: `hud_trask`.
 
 The character sheet and the party screen have the emitters of `charmain_light.mdl` behind the figure, as at 1:23:50 and
 3:12:00. The level-up panel has those of `cgmain_light.mdl`, as making a character does. The install has no dark model, so
-the owner's red for the dark side is the same mist with blue and red swapped. It is all blue from alignment 60 and all red
-from 40, and between them it mixes. Those two numbers are assumed: the video shows clean blue at about 65. Frames:
-`mist_light`, `mist_neutral`, `mist_dark`. On the party screen it follows whoever is chosen.
+the owner's red for the dark side is the same mist with blue and red swapped. It is all blue from alignment 60, grey at 50
+and all red from 40. Those numbers are assumed. The video has Carth, 75, in blue, and Canderous, 30, in red at 7:17:02, and
+no frame I found of anyone at 50. Its mist is thicker and brighter at the foot than ours. Frames: `mist_light`,
+`alignment_80`, `alignment_50`, `alignment_20`, `mist_dark`. On the party screen it follows whoever is chosen.
+
+The alignment bar is the stock picture on `SLD_ALIGN`, and the needle is its stock thumb. In the video at 1:23:50 the bar runs
+blue, purple, red, with the same small needle beside it, as ours does. The owner's "The middle is grey" is taken to be
+the mist, not this bar.
 
 ## The owner's text style
 

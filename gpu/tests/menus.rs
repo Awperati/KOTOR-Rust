@@ -3024,6 +3024,47 @@ fn mist_colour(s: &mut Stage) -> [f32; 3] {
     sum.map(|c| c / count)
 }
 
+/// Where the needle beside the alignment bar is, in pixels down a 720 high frame. Beside the bar the sheet leaves a hole
+/// for the figure, so all that is solid in that strip is the needle.
+fn needle_y(s: &mut Stage) -> f32 {
+    let (left, right) = (2 * 105, 2 * 115);
+    let o = frame(s);
+    let mut rows = Vec::new();
+    for y in 2 * 70..(SIZE.1 as usize) * 8 / 10 {
+        let solid = (left..right).any(|x| o[(y * SIZE.0 as usize + x) * 4 + 3] > 200);
+        if solid {
+            rows.push(y as f32);
+        }
+    }
+    assert!(!rows.is_empty(), "there is a needle");
+    rows.iter().sum::<f32>() / rows.len() as f32
+}
+
+#[test]
+fn the_needle_beside_the_alignment_bar_follows_the_alignment() {
+    let Some((mut s, _)) = in_game("needle") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.open_character();
+    s.set_view(SIZE);
+    let mut at = |alignment: i32| {
+        s.game.world.object_mut(pc).unwrap().alignment = alignment;
+        needle_y(&mut s)
+    };
+    let places = [0, 20, 50, 80, 100].map(&mut at);
+    assert!(
+        places.windows(2).all(|p| p[0] > p[1]),
+        "light is higher: {places:?}"
+    );
+    // Evenly along it.
+    let (dark, light) = (places[0], places[4]);
+    for (place, alignment) in places.iter().zip([0.0, 20.0, 50.0, 80.0, 100.0]) {
+        let even = dark + (light - dark) * alignment / 100.0;
+        assert!((place - even).abs() < 3.0, "{alignment}: {places:?}");
+    }
+}
+
 #[test]
 fn the_mist_behind_the_figure_follows_the_alignment() {
     let Some((mut s, _)) = in_game("figure_mist") else {
@@ -3041,10 +3082,9 @@ fn the_mist_behind_the_figure_follows_the_alignment() {
     let video = at(&mut s, 65);
     assert!(video[2] > video[0] * 1.5, "still blue: {video:?}");
     let neutral = at(&mut s, 50);
-    assert!(
-        (neutral[0] - neutral[2]).abs() < 0.02,
-        "between: {neutral:?}"
-    );
+    let spread = neutral.iter().cloned().fold(f32::MIN, f32::max)
+        - neutral.iter().cloned().fold(f32::MAX, f32::min);
+    assert!(spread < 0.02, "grey: {neutral:?}");
     let dark = at(&mut s, 0);
     assert!(dark[0] > dark[2] * 1.5, "red: {dark:?}");
     // It moves.
