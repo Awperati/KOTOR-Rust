@@ -155,6 +155,32 @@ impl World {
         }
     }
 
+    /// Route to a place within `stop` metres of a spot that cannot be walked to, the nearest to it that can.
+    fn route_beside(&mut self, to: [f32; 3], stop: f32) -> Option<Vec<[f32; 3]>> {
+        const RINGS: [f32; 3] = [0.5, 0.75, 1.0];
+        const DIRECTIONS: usize = 12;
+        let from = self.objects.get(&self.pc)?.position;
+        let nav = self.nav.as_mut()?;
+        for share in RINGS {
+            for d in 0..DIRECTIONS {
+                let turn = d as f32 / DIRECTIONS as f32 * std::f32::consts::TAU;
+                let at = [
+                    to[0] + turn.cos() * stop * share,
+                    to[1] + turn.sin() * stop * share,
+                    to[2],
+                ];
+                // Nobody is spoken to through a closed door: Trask waits behind one.
+                if nav.crosses_block(at, to) {
+                    continue;
+                }
+                if let Some(route) = nav.find_path(from, at) {
+                    return Some(route);
+                }
+            }
+        }
+        None
+    }
+
     /// Route from the player to within `stop` metres of `to`, or `None` when unreachable. A route shorter than `stop`
     /// is empty (already in range).
     fn route_near(
@@ -203,7 +229,13 @@ impl World {
             return true;
         }
         let lift = (kind == Kind::Door).then_some(target);
-        let Some(route) = self.route_near(pos, stop, lift) else {
+        let route = self.route_near(pos, stop, lift).or_else(|| {
+            // Someone behind a counter stands where nobody can walk, as Janice Nall does: go to where they can be spoken to.
+            (kind == Kind::Creature)
+                .then(|| self.route_beside(pos, stop))
+                .flatten()
+        });
+        let Some(route) = route else {
             self.events
                 .push(format!("cannot reach {}", self.describe(target)));
             return false;

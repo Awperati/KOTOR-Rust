@@ -18,6 +18,46 @@ fn effect(w: &mut World, name: &str, nums: &[f32]) -> u32 {
 }
 
 #[test]
+fn someone_behind_a_counter_can_be_spoken_to() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("tar_m02ab").unwrap();
+    let janice = w
+        .objects
+        .values()
+        .find(|o| o.tag.eq_ignore_ascii_case("Janice021"))
+        .map(|o| (o.id, o.position))
+        .unwrap();
+    // From somewhere on the floor near her, past talking range.
+    let mut stood = false;
+    'look: for reach in [4.0f32, 5.0, 6.0, 7.0, 8.0] {
+        for d in 0..16 {
+            let turn = d as f32 / 16.0 * std::f32::consts::TAU;
+            let at = [
+                janice.1[0] + turn.cos() * reach,
+                janice.1[1] + turn.sin() * reach,
+                janice.1[2],
+            ];
+            let pc = w.pc;
+            let from = w.object(pc).unwrap().position;
+            w.teleport(pc, at);
+            if w.click(janice.0) {
+                stood = true;
+                // The spot she stands on is not a place anyone can walk to, which is the point.
+                assert!(!w.walk_to(janice.1));
+                break 'look;
+            }
+            w.teleport(pc, from);
+        }
+    }
+    assert!(stood, "no place near her to speak from");
+}
+
+#[test]
 fn the_right_slot_has_what_can_be_thrown_and_not_what_cannot() {
     let Some(mut w) = world() else {
         return;
