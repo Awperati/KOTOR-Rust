@@ -6,7 +6,7 @@
 
 use super::Stage;
 use kotor_game::{CombatAction, CombatChoice, Kind, ObjId};
-use kotor_ui::Float;
+use kotor_ui::{Float, SlotShown};
 
 const STR_MISS: u32 = 42134;
 /// The video's box: "ENEMY SIGHTED!", then how to go on.
@@ -30,7 +30,7 @@ const MISS_COLOR: [f32; 3] = [0.8, 0.8, 0.8];
 const XP_COLOR: [f32; 3] = [0.8, 0.3, 1.0];
 
 /// What the slots show, each with whether it has more, and the one under the cursor with its name.
-type SlotsView = ([Option<(String, bool)>; 3], Option<(usize, String)>);
+type SlotsView = ([Option<SlotShown>; 3], Option<(usize, String)>);
 
 /// What one thing in a slot does.
 #[derive(Clone, Copy, PartialEq)]
@@ -45,6 +45,8 @@ struct SlotChoice {
     does: SlotDoes,
     name: String,
     icon: String,
+    /// False when it is too dear for now.
+    usable: bool,
 }
 
 /// A word rising over someone.
@@ -95,6 +97,7 @@ impl Stage {
             does: SlotDoes::Queue(c.action),
             name: ui.strref(c.name),
             icon: c.icon,
+            usable: c.usable,
         };
         match slot {
             0 => {
@@ -102,6 +105,7 @@ impl Stage {
                     does: SlotDoes::Attack,
                     name: self.ui.strref(STR_ATTACK),
                     icon: super::ATTACK_PICTURE.to_string(),
+                    usable: true,
                 }];
                 let feats = self.game.world.combat_feats(pc);
                 out.extend(feats.into_iter().map(|c| queued(&mut self.ui, c)));
@@ -142,6 +146,7 @@ impl Stage {
                     .cloned()
                     .unwrap_or_default(),
                 name: v.name,
+                usable: true,
             })
             .collect()
     }
@@ -174,7 +179,11 @@ impl Stage {
             }
             let pick = self.menus.fight.picks[slot] % choices.len();
             let shown = &choices[pick];
-            *shows = Some((shown.icon.clone(), choices.len() > 1));
+            *shows = Some(SlotShown {
+                picture: shown.icon.clone(),
+                more: choices.len() > 1,
+                greyed: !shown.usable,
+            });
             if over.as_deref().and_then(target_slot) == Some(slot) {
                 hover = Some((slot, shown.name.clone()));
             }
@@ -189,6 +198,9 @@ impl Stage {
             return false;
         }
         let pick = self.menus.fight.picks[slot] % choices.len();
+        if !choices[pick].usable {
+            return false;
+        }
         match choices[pick].does {
             SlotDoes::Attack => true,
             SlotDoes::Queue(action) => {

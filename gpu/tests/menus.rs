@@ -2928,6 +2928,46 @@ fn the_mist_behind_the_figure_follows_the_alignment() {
 }
 
 #[test]
+fn a_power_too_dear_shows_greyed_and_a_click_does_nothing() {
+    let Some(mut s) = at_menu() else {
+        return;
+    };
+    s.enable_early_force(true);
+    press(&mut s, "BTN_NEWGAME");
+    for _ in 0..12000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.number_key(1);
+            s.continue_line();
+        } else if s.game.world.transcript.len() > 3 && s.game.world.delayed.is_empty() {
+            break;
+        }
+    }
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 0.1, p[1], p[2]]);
+    s.game.world.object_mut(foe).unwrap().faction = 1;
+    s.game.world.object_mut(pc).unwrap().force = 0;
+    let dear = frame(&mut s);
+    let power = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    s.click(power, SIZE);
+    assert!(s.game.world.combat_queue.is_empty());
+    s.game.world.pc_mover.stop();
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.force = o.max_force;
+    assert!(frame(&mut s) != dear, "with the Force for it, it lights up");
+    let power = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    s.click(power, SIZE);
+    assert_eq!(
+        s.game.world.combat_queue.front(),
+        Some(&kotor_game::CombatAction::Power(kotor_game::FORCE_PUSH))
+    );
+}
+
+#[test]
 fn the_options_box_gives_the_build_and_the_fonts_notice() {
     let words = kotor_gpu::stage::about_words();
     assert!(words.starts_with(&kotor_gpu::build_line()), "{words}");
@@ -2972,6 +3012,23 @@ fn the_font_and_box_rows_change_the_picture_and_the_file_keeps_them() {
     assert!(saved.contains("noto_font=false"));
 
     // Another run reads them back.
-    s.use_settings_file(file);
+    s.use_settings_file(file.clone());
     assert!(!s.settings().noto_font && !s.settings().glow_boxes);
+
+    // The last two rows are further down the list. Early Force asks a new game for it, and this game keeps what it has.
+    let before = s.game.world.early_force;
+    s.menu_wheel(-1.0);
+    s.menu_wheel(-1.0);
+    assert!(s.settings().conventional_underwear && s.settings().early_force);
+    click_row(&mut s, "LB_OPTIONS", 7);
+    click_row(&mut s, "LB_OPTIONS", 8);
+    assert!(!s.settings().conventional_underwear && !s.settings().early_force);
+    assert_eq!(s.game.world.early_force, before);
+    let saved = std::fs::read_to_string(&file).unwrap();
+    assert!(saved.contains("conventional_underwear=false") && saved.contains("early_force=false"));
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_FEEDBACK");
+    let top = s.menu_pixel("LB_OPTIONS", Some(0), SIZE).unwrap();
+    s.hover(top, SIZE);
+    assert!(frame(&mut s) != back, "the list starts from the top again");
 }

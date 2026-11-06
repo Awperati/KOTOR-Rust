@@ -13,8 +13,8 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42283, 42289),
     (42285, 42291),
 ];
-/// The owner's two rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 2] = [
+/// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
+const STYLE_ROWS: [(&str, &str, &str); 4] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -24,6 +24,16 @@ const STYLE_ROWS: [(&str, &str, &str); 2] = [
         "Text box style: Glow",
         "Text box style: Original",
         "Text boxes black with a glowing blue and yellow edge, or as the game has them.",
+    ),
+    (
+        "Underwear style: Conventional",
+        "Underwear style: Original",
+        "The player's female bodies in conventional underwear, or as the game has them.",
+    ),
+    (
+        "Early Force sensitivity: On",
+        "Early Force sensitivity: Off (original)",
+        "The main character feels the Force from the first room, or from Dantooine as the game has it. For new games only: a game keeps what it started with.",
     ),
 ];
 /// A box on the Auto-Pause page, and its words.
@@ -84,6 +94,8 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         4 => &mut s.floating_numbers,
         5 => &mut s.noto_font,
         6 => &mut s.glow_boxes,
+        7 => &mut s.conventional_underwear,
+        8 => &mut s.early_force,
         _ => return None,
     })
 }
@@ -154,7 +166,6 @@ impl Stage {
             "BTN_DEFAULT" => s.vsync = Settings::default().vsync,
             "BTN_BACK" => {
                 self.menus.option_words = None;
-                self.menus.first = 0;
                 self.menus.stack.pop();
                 return;
             }
@@ -200,7 +211,7 @@ impl Stage {
                 ..Row::default()
             });
         }
-        // Seven rows, and six fit: the wheel brings up the last.
+        // Nine rows, and six fit: the wheel brings up the rest.
         v.lists
             .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
         self.option_words(&mut v, "LB_DESC");
@@ -267,6 +278,7 @@ impl Stage {
         match tag {
             "BTN_BACK" => {
                 self.menus.option_words = None;
+                self.menus.first = 0;
                 self.menus.stack.pop();
             }
             "BTN_DEFAULT" => {

@@ -18,6 +18,8 @@ pub const SCREEN: (u32, u32) = (640, 480);
 const LETTERBOX_TOP: i32 = 60;
 /// Noto Sans's size for a stock font of a line height: its letters and their gaps then fill the line as the stock's do.
 const NOTO_EM_OF_LINE: f32 = 0.72;
+/// What darkens a picture that cannot be used.
+const GREYED: [u8; 4] = [0, 0, 0, 170];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
 const HUD_TEXT_BOXES: [&str; 2] = ["LBL_NAMEBG", "LBL_ACTIONDESCBG"];
 /// How many words that do not fit are kept for whoever asks.
@@ -67,6 +69,16 @@ pub struct Ui<'a> {
     words_too_big: Vec<String>,
 }
 
+/// What a slot under an enemy's bar shows now.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SlotShown {
+    pub picture: String,
+    /// It has more to go through, with its arrows.
+    pub more: bool,
+    /// It is too dear for now: greyed.
+    pub greyed: bool,
+}
+
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CombatHud {
@@ -77,8 +89,7 @@ pub struct CombatHud {
     pub queue: Vec<String>,
     /// The target is an enemy: its bar is red, with slots under it.
     pub attack: Option<String>,
-    /// The picture each slot shows now, and whether it has more to go through.
-    pub slots: [Option<(String, bool)>; 3],
+    pub slots: [Option<SlotShown>; 3],
     /// The slot under the cursor, and what it does, for the name bar.
     pub hover: Option<(usize, String)>,
 }
@@ -134,6 +145,8 @@ pub struct Patch {
     pub from_end: Option<usize>,
     /// A list of words starts this many layout units higher, for more lines than the file left room for.
     pub rise: i32,
+    /// Its picture is darkened: it cannot be used now.
+    pub greyed: bool,
 }
 
 /// What the dialogue box shows.
@@ -409,14 +422,14 @@ impl<'a> Ui<'a> {
     /// take less of that width.
     pub(crate) fn measure_for_menus(&mut self) {
         let ratio = self.scale * SCREEN.0 as f32 / self.pixels.0.max(1) as f32;
-        if let Some(Some(f)) = &self.noto {
+        if let Some(f) = self.noto_face() {
             f.set_across(ratio);
         }
     }
 
     /// Text is about to be laid out on a canvas with the same scale both ways.
     pub(crate) fn measure_for_hud(&mut self) {
-        if let Some(Some(f)) = &self.noto {
+        if let Some(f) = self.noto_face() {
             f.set_across(1.0);
         }
     }
@@ -606,6 +619,9 @@ impl<'a> Ui<'a> {
             crate::glow::boxed(cv, r);
         } else if c.kind != 11 {
             self.draw_border(cv, &c.border, r, patch.fill.as_deref());
+        }
+        if patch.greyed {
+            cv.fill_rect(r[0], r[1], r[2], r[3], GREYED);
         }
         if let Some(t) = &c.text {
             let text = patch.text.clone().unwrap_or_else(|| match t.strref {
@@ -1012,11 +1028,12 @@ impl<'a> Ui<'a> {
                     Some(HOSTILE_SLOT.to_string());
             }
             for (n, slot) in combat.slots.iter().enumerate() {
-                if let Some((icon, more)) = slot {
+                if let Some(shown) = slot {
                     let picture = patches.entry(format!("LBL_TARGET{n}")).or_default();
                     picture.hidden = false;
-                    picture.fill = Some(icon.clone());
-                    if *more {
+                    picture.fill = Some(shown.picture.clone());
+                    picture.greyed = shown.greyed;
+                    if shown.more {
                         for arrow in ["UP", "DOWN"] {
                             let tag = format!("BTN_TARGET{arrow}{n}");
                             patches.entry(tag).or_default().hidden = false;

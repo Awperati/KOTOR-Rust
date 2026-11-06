@@ -106,7 +106,8 @@ from 40, and between them it mixes. Those two numbers are assumed: the video sho
 ## The owner's text style
 
 The owner asked for these. They are not in the video, so they are not compared. Both are on by default, and both are
-rows on the Feedback page. Six rows fit there, so the wheel brings up the seventh.
+rows on the Feedback page, with Underwear style and Early Force sensitivity. Six rows fit there, so the wheel brings up
+the rest.
 
 | Row | On | Off |
 |---|---|---|
