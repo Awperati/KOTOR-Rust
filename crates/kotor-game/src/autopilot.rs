@@ -117,9 +117,25 @@ const MEDPACK_SECONDS: f32 = 3.0;
 const GEAR_SECONDS: f32 = 1.0;
 /// Taken off how far a placeable is when a mortal pilot picks what to do next: more than across any module.
 const LOOK_FIRST: f32 = 10_000.0;
+const SKILL_COMPUTER: usize = 0;
+const SKILL_SECURITY: usize = 6;
 const SLOT_ARMOUR: i32 = 1;
 const SLOT_RIGHT_HAND: i32 = 4;
 const SLOT_LEFT_HAND: i32 = 5;
+
+/// The party member best at a skill leads, if better than the leader.
+pub fn lead_with_the_best_at(w: &mut World, skill: usize) {
+    let rank = |w: &World, id: ObjId| {
+        w.object(id)
+            .filter(|o| !o.dead && !o.down)
+            .and_then(|o| o.skills.get(skill).copied())
+            .unwrap_or(-1)
+    };
+    let best = w.party.iter().copied().max_by_key(|id| rank(w, *id));
+    if let Some(id) = best.filter(|id| rank(w, *id) > rank(w, w.pc)) {
+        w.switch_leader(id);
+    }
+}
 
 /// How one fight of the pilot's went.
 #[derive(Clone, Debug, PartialEq)]
@@ -286,6 +302,7 @@ impl Autopilot {
             return;
         }
         let w = &mut g.world;
+        self.spend_what_levels_give(w);
         // Two modules with only each other to go to would hold it for good: `tar_m04aa` and `tar_m05aa` did.
         if self.time - self.new_module_at > NEW_MODULE_SECONDS {
             self.stall(
@@ -307,7 +324,6 @@ impl Autopilot {
                 }
             }
         } else {
-            self.spend_what_levels_give(w);
             if w.game_over {
                 self.die(w);
                 return;
@@ -973,6 +989,16 @@ impl Autopilot {
         if exploring {
             let target = self.nearest_new(w, here);
             if let Some((id, label)) = target {
+                // Whoever is best at it goes up to it. Scripts read the leader's skill: a person changes character for this.
+                let skill = w.object(id).and_then(|o| match o.kind {
+                    // A door with a say of its own answers to who it answers to, as the Endar Spire's first does.
+                    Kind::Door if o.locked && !door_has_a_say(o) => Some(SKILL_SECURITY),
+                    Kind::Placeable if !o.conversation.is_empty() => Some(SKILL_COMPUTER),
+                    _ => None,
+                });
+                if let Some(skill) = skill {
+                    lead_with_the_best_at(w, skill);
+                }
                 if w.click(id) {
                     self.note_use(w, id);
                     self.set_goal(Goal::Use(id, label));

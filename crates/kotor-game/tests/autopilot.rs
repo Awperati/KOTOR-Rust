@@ -173,6 +173,24 @@ fn the_pilot_takes_along_who_is_on_offer_and_leads_itself() {
 }
 
 #[test]
+fn whoever_is_best_at_it_goes_up_to_a_lock() {
+    let Some(mut w) = world() else {
+        return;
+    };
+    w.load_module("tar_m02aa").unwrap();
+    w.enter_area();
+    w.available.insert(6, "p_mission".to_string());
+    w.choose_party(&[6], "");
+    let mission = w.npc_slots[&6];
+    w.object_mut(mission).unwrap().skills = vec![0, 0, 0, 0, 0, 0, 6, 0];
+    w.object_mut(w.pc).unwrap().skills = vec![0; 8];
+    kotor_game::lead_with_the_best_at(&mut w, 6);
+    assert_eq!(w.pc, mission);
+    kotor_game::lead_with_the_best_at(&mut w, 6);
+    assert_eq!(w.pc, mission, "nobody better now");
+}
+
+#[test]
 fn a_foe_with_something_to_say_is_still_fought() {
     let Some(mut w) = world() else {
         return;

@@ -60,45 +60,45 @@ Most to least blocking, all absent unless stated:
 ## How far the autopilot gets
 `cargo run --release -p kotor-game --example autopilot -- end_m01aa 80000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 14,860 game seconds in 46 wall seconds, 123 kills, experience 9,455, level 4, 5,558 door tries, 95 items, 5,454 lines. It ends when no new module has come for 8,000 s. Script errors: 1. The 692 `locked` stalls are doors it tried and gave up on.
+Last run: 15,796 game seconds in 60 wall seconds, 121 kills, experience 9,721, level 4, 3,265 door tries, 87 items, 9,531 lines. It ends when no new module has come for 8,000 s. Script errors: 4. The 387 `locked` stalls are doors it tried and gave up on.
 
 | Module | First entered, game s | Visits |
 |---|---|---|
 | `end_m01aa`, Endar Spire | 0 | 1 |
-| `end_m01ab`, its second half | 253 | 1 |
-| `STUNT_00`, cutscene | 396 | 1 |
-| `tar_m02af`, upper city start | 396 | 1 |
-| `tar_m02aa`, upper city | 423 | 1 |
-| `tar_m02ac` | 487 | 2 |
-| `tar_m02ae`, cantina and duel ring | 696 | 1 |
-| `tar_m02ab` | 982 | 5 |
-| `tar_m03aa`, lower city | 1,229 | 30 |
-| `tar_m03ab` | 1,403 | 1 |
-| `tar_m03ae` | 1,758 | 1 |
-| `tar_m11aa`, hidden Bek base | 2,000 | 23 |
-| `tar_m04aa`, undercity | 2,501 | 2 |
-| `tar_m03ad` | 2,979 | 1 |
-| `tar_m10aa`, Black Vulkar base | 3,376 | 3 |
-| `tar_m05ab`, sewers | 3,980 | 2 |
-| `tar_m10ac` | 4,468 | 1 |
-| `tar_m05aa`, sewers | 4,959 | 1 |
-| `tar_m09aa`, Sith base | 5,574 | 3 |
-| `tar_m02ad` | 6,264 | 1 |
-| `tar_m09ab`, Sith base, governor | 6,860 | 1 |
+| `end_m01ab`, its second half | 259 | 1 |
+| `STUNT_00`, cutscene | 441 | 1 |
+| `tar_m02af`, upper city start | 441 | 1 |
+| `tar_m02aa`, upper city | 468 | 1 |
+| `tar_m02ac` | 613 | 2 |
+| `tar_m02ae`, cantina and duel ring | 1,030 | 1 |
+| `tar_m02ab` | 1,620 | 5 |
+| `tar_m03aa`, lower city | 1,920 | 30 |
+| `tar_m03ab` | 2,142 | 1 |
+| `tar_m03ae` | 2,690 | 1 |
+| `tar_m11aa`, hidden Bek base | 3,024 | 23 |
+| `tar_m04aa`, undercity | 3,448 | 2 |
+| `tar_m03ad` | 3,923 | 1 |
+| `tar_m09aa`, Sith base | 4,467 | 3 |
+| `tar_m02ad` | 5,110 | 1 |
+| `tar_m09ab`, Sith base, governor | 5,786 | 1 |
+| `tar_m10aa`, Black Vulkar base | 6,186 | 3 |
+| `tar_m05ab`, sewers | 6,798 | 1 |
+| `tar_m05aa`, sewers | 7,110 | 1 |
+| `tar_m10ac` | 7,796 | 1 |
 
 That is 20 of the 97 named modules in the install, not counting `STUNT_` ones, and 18 of Taris's 23. Being in a module does not mean its story is done.
 
-**Quests:** 15 of the 101 in `global.jrl` were started, and 2 completed: `end_attack`, `tar_rancor`. Still open with the state reached: `tar_bastsearch` 35, `k_swg_carthtalk` 10, `tar_duelring` 10, `tar_largobounty` 10, `tar_rakghoulserum` 2, `k_rapidtransit` 1, `tar_bendakbounty` 1, `tar_diabounty` 1, `tar_matrik` 1, `tar_planetinfo` 1, `tar_rukilapprentice` 1, `tar_selvenbounty` 1, `tar_vulkarbase` 1.
+**Quests:** 16 of the 101 in `global.jrl` were started, and 4 completed: `end_attack`, `tar_infectedoutcasts`, `tar_rancor`, `tar_selvenbounty`. Still open with the state reached: `tar_largobounty` 66, `tar_matrik` 66, `tar_bastsearch` 35, `k_swg_carthtalk` 20, `tar_diabounty` 20, `tar_duelring` 10, `tar_rakghoulserum` 2, `k_rapidtransit` 1, `tar_bendakbounty` 1, `tar_planetinfo` 1, `tar_rukilapprentice` 1, `tar_vulkarbase` 1.
 
 **No module holds it now. What it cannot reach:** every way left is story, a talk or a door it cannot open.
 
 | Not reached | What leads there | What stops the pilot |
 |---|---|---|
-| `tar_m11ab` | door `ptar_secdoor` in `tar_m11aa` | `tar11_secdoor`, DC 100, tried 25 times. I found no script in that module naming it. Not read further. |
-| `tar_m03af`, then `tar_m03mg`, the swoop race | `k_ptar_kandrace`, `k_ptar_bekrace`, then `k_ptar_swooprun` | Talks it did not reach. Which replies, not read. The minigame is not built. |
-| `tar_m08aa`, Davik's estate | `k_ptar_davikest`, `k_ptar_freeda_ud`, `k_ptar_godav_en` | Not reached. Not read further. |
-| `tar_m10ab` | I found no link or script naming it. | I do not know. |
-| `ebo_m12aa`, the way off Taris | `k_ptar_goebhawk` in `tar_m02aa` | Not reached. Not read further. |
+| `tar_m03af`, then `tar_m03mg`, the swoop race | Gadon's `tar11_gadon112` runs `k_ptar_racecs0` once `Tar_SwoopEng` is set, by `k_ptar_takeaccel` taking the item `tar10_accelerator`. `k_ptar_kandrace` is Kandon's way to the same race. | The accelerator is in `tar_m10ac` behind `tar10_dockdoor`, plot, DC 100. A droid opens it with `k_ptar_junkdro1`, which needs repair parts and Repair. `tar10_accompdlg` opens it with `k_ptar_unlockdrs`, which needs spikes and Computer Use. The pilot held 3 spikes and no parts, and did not get it open. **Past that, the swoop minigame is not built, so the Taris story stops there for anyone.** |
+| `tar_m08aa`, Davik's estate | `k_ptar_davikest`, `k_ptar_freeda_ud`, `k_ptar_godav_en` | Comes after the race, as far as I read. Not reached. |
+| `ebo_m12aa`, the way off Taris | `k_ptar_goebhawk` in `tar_m02aa` | Comes after the estate, as far as I read. Not reached. |
+| `tar_m11ab` | door `ptar_secdoor` in `tar_m11aa`, past `tar11_secdoor`, DC 100 | `k_ptar_lockdoor2` opens that door only if `Tar_KandonMission` is set. Otherwise the Bek base turns hostile. The pilot never had that mission. Not read: which reply gives it. |
+| `tar_m10ab` | I found no link or script naming it in the Taris modules. | I do not know. |
 
 The pilot takes the way out nearest to a module it has not seen, then the one it has used least, so it finds things by itself. It takes along whoever is on offer. I do not know that this is the intended order of the story.
 
@@ -130,17 +130,18 @@ Fixed on the way, earliest first, each with a test:
 20. **Talks did not move quests.** Their state is in `QuestEntry`, and the code read `PlotIndex`, which is nearly always -1. Only scripts moved quests before this.
 21. **The pilot took a reply a real player dies of.** `k_ptar_killpc` sets the plot guard at `tar03_underdoor`, who hits at +21, on the player. It now avoids a reply that can turn someone who cannot be hurt. **That this rule covers all such replies is an assumption.** It takes one only when nothing else is on offer.
 22. **`ActionUnlockObject` and `ActionLockObject` did nothing.** So the guard could not let anyone by, and the undercity's inside was out of reach. **That they always work, with no skill check, is an assumption.**
+24. **A skill counts for the leader.** The pilot now sends whoever is best: Security for a plain lock, Computer Use for a terminal. A door with a say of its own still answers to who it answers to. It also takes skills and feats when immortal.
 23. **The pilot never took Carth along.** Nothing in a run with no party screen brought him. It now fills the party once a visit, leaving out those a script took aside: the duel ring empties the party and puts it back, and a second Carth made `k_ptar_duelring` loop to the step limit.
 
 ## A pilot that can die
 
 `AUTOPILOT_MORTAL=1` turns off `Autopilot::immortal`. It then takes levels as Auto Level Up does, wears the best armour and melee weapon it has found, and gives whoever is worst off a medpack below half their hit points, at most one every 3 s. It uses the first feat on offer with each attack. A party that is down ends the run. A leader knocked out hands over to someone standing, and takes the lead back when up. Each fight is logged as `FIGHT won` or `FIGHT lost`.
 
-Last run: **it never died.** It reached the same 21 modules by 7,186 game seconds, all by 15,186 s, at level 5, with 140 fights won and 12 not. No fight wiped the party. It stopped because nothing new came for 8,000 s. The medpack count matters less than this: the main character was knocked out 217 times, Mission 9 and Carth 4, and everyone stands up with 1 hit point when the fight ends. So it survives on that rule, which is `update_knockouts`, and on Carth and Mission. **Standing up at 1 hit point is an assumption.** If the game is harsher, this result is too kind.
+Last run: **the party is wiped in `tar_m10aa` at 4,628 game seconds**, after 15 modules, level 3 to 4, with 70 fights won and 4 not. The main character was knocked out 83 times, Mission 4 and Carth once. Small changes move this: the run before the pilot sent its best to terminals had the same pilot reach all 21 modules with no wipe, by 7,186 s, knocked out 217 times.
 
-The 12 not won: 4 to `tar09_wardrd`, 2 to `g_sithcomm02`, 1 each to `tar04_rakghoulr`, `VulkarPool`, `SithPatrol091`, `SithTech2`, `tar09_sithbarracks` and `tar05_stampy`. Most started at 1 hit point, straight after getting back up. Balance reading: fights are survivable with a party, and the pilot picks them with no rest. Missing rule to check first: how the game stands people up.
+**Why, and it is a missing rule more than balance.** It carried no medpacks by then, and nothing else heals. There is no shop to buy more (`OpenStore` only records itself), no healing out of combat, and getting up after a fight gives 1 hit point. So it walked into `VulkarPool`, 58 hit points, at 1 hit point, with Mission hurt. It held 3 frag grenades it cannot throw, as the engine has no grenades yet. It does not retreat, as nothing would heal it if it did. **Standing up at 1 hit point is an assumption.**
 
-Not done, since nothing needed them: it does not retreat. It cannot throw grenades, because the engine has no grenades yet.
+The reference video's hero goes from 28 of 85 at 425 s to full by 1,605 s. Those stretches hold cutscenes and menus, so I do not know how. Finding that out comes first, before any reading of balance. See `docs/GAPS.md`.
 
 Balance still cannot be judged. Only medpacks and a new level heal. The video shows no healing over 30 s out of combat, but it does not rule out a rest button. The player's feats are the class's recommended ones, not what the video's player chose.
 

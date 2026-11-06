@@ -84,6 +84,21 @@ fn main() {
         "--- routines answering a fixed value: {:?}",
         g.world.constant_defaults
     );
+    let carried: Vec<String> = g
+        .world
+        .carried(g.world.pc)
+        .into_iter()
+        .filter_map(|i| g.world.object(i))
+        .map(|o| format!("{} x{}", o.template, o.stack))
+        .collect();
+    println!("--- carried {carried:?}");
+    for id in std::iter::once(g.world.pc).chain(g.world.party.iter().copied()) {
+        let o = g.world.object(id).unwrap();
+        println!(
+            "--- member {} level {} hp {}/{} skills {:?}",
+            o.tag, o.level, o.hp, o.max_hp, o.skills
+        );
+    }
     let pc = g.world.object(g.world.pc).unwrap();
     println!(
         "--- player {:?} level {} hp {} of {}, {} carried, wearing {:?}",
