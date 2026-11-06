@@ -206,6 +206,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.open_map();
     shot(&mut gpu, &mut s, "map", &out);
     s.escape();
+    s.update(0.1);
+    shot(&mut gpu, &mut s, "hud_minimap", &out);
 
     // Who can come along: the party.
     for (slot, template) in [(2, "end_trask"), (6, "n_calonord"), (8, "n_calonord")] {

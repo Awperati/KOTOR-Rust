@@ -1105,6 +1105,21 @@ fn the_map_shows_the_area_the_party_and_its_notes() {
         "{u} {v}"
     );
 
+    // The small map on the HUD: a click on it opens the map, and it moves and turns with the player.
+    s.update(DT);
+    let moved_from = frame(&mut s);
+    let w = &mut s.game.world;
+    let heading = w.pc_mover.heading;
+    w.pc_mover.heading = heading + 1.5;
+    assert!(frame(&mut s) != moved_from, "the arrow turns");
+    s.game.world.pc_mover.heading = heading;
+    assert!(frame(&mut s) == moved_from, "and back");
+    let corner = s.hud_pixel("BTN_MINIMAP", SIZE).unwrap();
+    assert!(corner.0 < 200.0 && corner.1 < 120.0, "{corner:?}");
+    s.click(corner, SIZE);
+    assert_eq!(s.menu_name(), "map");
+    s.escape();
+
     // M opens it and closes it, so do the HUD's button and the tab.
     s.open_map();
     assert_eq!(s.menu_name(), "map");

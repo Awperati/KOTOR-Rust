@@ -40,7 +40,22 @@ pub struct Ui<'a> {
     /// The talk table, read the first time a control needs it.
     tlk: Option<Option<kotor_tables::Tlk>>,
     target_at: Option<(i32, i32)>,
+    minimap: Option<MiniMap>,
 }
+
+/// The small map on the HUD.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MiniMap {
+    pub picture: String,
+    /// Where the player is, in the picture's own 512 by 256.
+    pub at: [f32; 2],
+    /// Which way the player faces: radians clockwise from up.
+    pub facing: f32,
+}
+
+/// The picture a small map is cut from is written for this many units across, and the arrow's picture.
+const MINIMAP_FILE_WIDTH: f32 = 512.0;
+const MINIMAP_ARROW: &str = "mm_barrow";
 
 /// Per-control changes a screen applies on top of the file: replacement fill, text, bar value, or hiding.
 #[derive(Clone, Debug, Default)]
@@ -96,6 +111,7 @@ impl<'a> Ui<'a> {
             fonts: HashMap::new(),
             tlk: None,
             target_at: None,
+            minimap: None,
         }
     }
 
@@ -675,11 +691,58 @@ impl<'a> Ui<'a> {
                 }
             }
         }
+        if self.minimap.is_some() {
+            hide(&mut patches, "LBL_ARROW".to_string());
+        }
         // File order: later controls lie on top, as in the menus.
         for c in gui.panel.children.iter().filter(|c| c.kind != 9) {
             self.draw_control(&mut cv, c, (0, 0), &patches);
+            if c.tag == "LBL_MAPVIEW" {
+                let e = &c.extent;
+                self.draw_minimap(&mut cv, [e.left, e.top, e.width, e.height]);
+            }
         }
         Some(cv.into_image())
+    }
+
+    /// The part of the map round the player, with an arrow that turns. The file gives the map 120 units of its 800,
+    /// and they are the picture's own pixels, so the piece is the same whatever the window is.
+    fn draw_minimap(&mut self, cv: &mut Canvas, r: [i32; 4]) {
+        let Some(m) = self.minimap.clone() else {
+            return;
+        };
+        cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 0, 255]);
+        if let Some(img) = self.texture(&m.picture).cloned() {
+            let k = img.width as f32 / MINIMAP_FILE_WIDTH;
+            let side = HUD_FILE_MINIMAP * k;
+            let (left, top) = (m.at[0] * k - side / 2.0, m.at[1] * k - side / 2.0);
+            let (x0, y0) = (left.max(0.0), top.max(0.0));
+            let x1 = (left + side).min(img.width as f32);
+            let y1 = (top + side).min(img.height as f32);
+            if x1 > x0 && y1 > y0 {
+                let scale = (r[2] as f32 / side, r[3] as f32 / side);
+                let dst = [
+                    r[0] + ((x0 - left) * scale.0) as i32,
+                    r[1] + ((y0 - top) * scale.1) as i32,
+                    ((x1 - x0) * scale.0) as i32,
+                    ((y1 - y0) * scale.1) as i32,
+                ];
+                let region = [x0 as i32, y0 as i32, (x1 - x0) as i32, (y1 - y0) as i32];
+                cv.draw_image(&img, region, dst, [1.0; 3], 1.0, Default::default());
+            }
+        }
+        if let Some(arrow) = self.texture(MINIMAP_ARROW).cloned() {
+            let at = (
+                r[0] as f32 + r[2] as f32 / 2.0,
+                r[1] as f32 + r[3] as f32 / 2.0,
+            );
+            cv.draw_turned(&arrow, at, r[3] as f32 / 3.75, m.facing, [1.0; 3]);
+        }
+    }
+
+    /// The small map on the HUD, if the area has one.
+    pub fn set_minimap(&mut self, map: Option<MiniMap>) {
+        self.minimap = map;
     }
 
     /// Where the target's name bar goes, in layout units: above it on the screen.
@@ -876,6 +939,7 @@ impl<'a> Ui<'a> {
 /// left, the menu buttons at the top right. It is written for 800x600.
 const HUD_GUI: &str = "mipc28x6";
 const HUD_FILE_SIZE: (i32, i32) = (800, 600);
+const HUD_FILE_MINIMAP: f32 = 120.0;
 /// What the HUD does not show now: combat, notices, the action queue and the map's picture are not built.
 const HUD_HIDDEN: [&str; 25] = [
     "LBL_CMBT",
@@ -904,7 +968,7 @@ const HUD_HIDDEN: [&str; 25] = [
     "LBL_ACTION1",
     "LBL_ACTION2",
 ];
-const HUD_BUTTONS: [&str; 9] = [
+const HUD_BUTTONS: [&str; 10] = [
     "BTN_EQU",
     "BTN_INV",
     "BTN_CHAR",
@@ -912,6 +976,7 @@ const HUD_BUTTONS: [&str; 9] = [
     "BTN_MSG",
     "BTN_JOU",
     "BTN_MAP",
+    "BTN_MINIMAP",
     "BTN_OPT",
     "BTN_ACTION0",
 ];

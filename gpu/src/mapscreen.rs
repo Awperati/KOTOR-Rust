@@ -1,11 +1,11 @@
 //! `map.gui`, as the reference video has it at 3:50:35: the area's picture, the party and the notes on it. The pictures
 //! are 512 wide and only the left 440 are the map: the video shows a black strip for the rest, and the Bridge note of
 //! `m01aa` only lands on the bridge like that. The video draws it smaller, pixel for pixel. **Not built:** the dark over what has not
-//! been seen, and an arrow that turns with the player, so the player is a plain mark. Return to Hideout is greyed.
+//! been seen. Return to Hideout is greyed.
 
 use super::{Screen, Stage};
 use kotor_game::AreaMap;
-use kotor_ui::{Mark, MenuView};
+use kotor_ui::{Mark, MenuView, MiniMap};
 
 const STR_MAP_NOTE: u32 = 349;
 /// The file's place for the picture.
@@ -14,10 +14,12 @@ const PICTURE_PART: [f32; 2] = [440.0 / 512.0, 1.0];
 const NOTE_PICTURE: &str = "lbl_mapcircle";
 const NOTE_COLOR: [f32; 3] = [0.0, 0.65, 0.97];
 const CHOSEN_COLOR: [f32; 3] = [1.0, 1.0, 0.3];
-const PLAYER_COLOR: [f32; 3] = [0.2, 1.0, 0.4];
+const PLAYER_PICTURE: &str = "mm_barrow";
+const PLAYER_SIDE: i32 = 24;
 
 /// The map on show, and the note chosen.
 pub(super) struct Shown {
+    area: u32,
     map: Option<AreaMap>,
     note: usize,
 }
@@ -32,6 +34,7 @@ fn mark(at: [f32; 2], side: i32, tint: [f32; 3]) -> Mark {
         size: (side, side),
         part: [1.0, 1.0],
         tint,
+        angle: None,
     }
 }
 
@@ -39,13 +42,10 @@ impl Stage {
     /// Read the map if the party has moved to another area since.
     fn current_map(&mut self) {
         let area = self.game.world.area;
-        let fresh = self
-            .menus
-            .map
-            .as_ref()
-            .is_some_and(|s| s.map.as_ref().is_some_and(|m| m.area == area));
+        let fresh = self.menus.map.as_ref().is_some_and(|s| s.area == area);
         if !fresh {
             self.menus.map = Some(Shown {
+                area,
                 map: self.game.world.area_map(),
                 note: 0,
             });
@@ -58,6 +58,7 @@ impl Stage {
         let w = &self.game.world;
         let area = w.object(w.area).map_or(String::new(), |a| a.name.clone());
         let player = w.object(w.pc).map(|o| o.position);
+        let heading = w.pc_mover.heading;
         v.text("LBL_Area", area);
         v.inert(&["BTN_RETURN"]);
         if self.party_blocked() {
@@ -79,6 +80,7 @@ impl Stage {
             size: (PICTURE[2] as i32, PICTURE[3] as i32),
             part: PICTURE_PART,
             tint: [1.0; 3],
+            angle: None,
         });
         for (n, m) in map.notes.iter().enumerate() {
             if n != note {
@@ -93,9 +95,28 @@ impl Stage {
             None => v.hide(&["LBL_MapNote", "BTN_UP", "BTN_DOWN"]),
         }
         if let Some(p) = player {
-            v.marks.push(mark(map.place(p[0], p[1]), 10, PLAYER_COLOR));
+            let mut arrow = mark(map.place(p[0], p[1]), PLAYER_SIDE, [1.0; 3]);
+            arrow.picture = PLAYER_PICTURE.to_string();
+            arrow.angle = Some(map.facing(p[0], p[1], heading));
+            v.marks.push(arrow);
         }
         v
+    }
+
+    /// The small map on the HUD. What moves it is rounded, so the HUD is drawn again only when it shows.
+    pub(in crate::stage) fn minimap_view(&mut self) -> Option<MiniMap> {
+        self.current_map();
+        let map = self.menus.map.as_ref()?.map.as_ref()?;
+        let w = &self.game.world;
+        let p = w.object(w.pc)?.position;
+        let at = map.pixel(p[0], p[1]);
+        let facing = map.facing(p[0], p[1], w.pc_mover.heading);
+        const FACING_STEP: f32 = 0.05;
+        Some(MiniMap {
+            picture: map.picture.clone(),
+            at: [at[0].round(), at[1].round()],
+            facing: (facing / FACING_STEP).round() * FACING_STEP,
+        })
     }
 
     /// The party cannot change in a fight.

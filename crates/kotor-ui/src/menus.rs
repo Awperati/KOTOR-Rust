@@ -58,6 +58,8 @@ pub struct Mark {
     /// How much of the picture across and down shows, from its top left.
     pub part: [f32; 2],
     pub tint: [f32; 3],
+    /// Turned this many radians clockwise, for a square picture.
+    pub angle: Option<f32>,
 }
 
 /// What is under the cursor.
@@ -225,6 +227,10 @@ impl Ui<'_> {
                     (img.width as f32 * m.part[0]) as i32,
                     (img.height as f32 * m.part[1]) as i32,
                 ];
+                if let Some(angle) = m.angle {
+                    cv.draw_turned(&img, m.at, m.size.1 as f32, angle, m.tint);
+                    continue;
+                }
                 let (w, h) = m.size;
                 let at = [m.at.0 as i32 - w / 2, m.at.1 as i32 - h / 2, w, h];
                 cv.draw_image(&img, shown, at, m.tint, 1.0, Default::default());

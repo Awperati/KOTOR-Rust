@@ -106,7 +106,7 @@ J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `Worl
 
 
 ## Map
-M, the HUD's button or the tab opens `map.gui` with the area's name and its picture, `lbl_map<area>`. Marks show the player and the notes the area's waypoints have, and the arrows go through them. Party Selection opens that screen, except in a fight. Return to Hideout is greyed. **Not built:** the dark over what has not been seen, an arrow that turns with the player, the small map on the HUD, and `SetMapPinEnabled`. **Assumed:** see the top of `crates/kotor-game/src/area_map.rs`.
+M, the HUD's button or the tab opens `map.gui` with the area's name and its picture, `lbl_map<area>`. Marks show the player, with an arrow that turns, and the notes the area's waypoints have, and the arrows go through them. The HUD's small map shows the picture round the player, and a click on it opens the map. Party Selection opens that screen, except in a fight. Return to Hideout is greyed. **Not built:** the dark over what has not been seen, and `SetMapPinEnabled`. **Assumed:** see the top of `crates/kotor-game/src/area_map.rs`.
 
 
 ## Loot

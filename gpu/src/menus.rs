@@ -1097,7 +1097,7 @@ impl Stage {
             "BTN_INV" => self.open_inventory(),
             "BTN_CHAR" => self.open_character(),
             "BTN_JOU" => self.open_journal(),
-            "BTN_MAP" => self.open_map(),
+            "BTN_MAP" | "BTN_MINIMAP" => self.open_map(),
             "BTN_OPT" => self.escape(),
             _ => {}
         }

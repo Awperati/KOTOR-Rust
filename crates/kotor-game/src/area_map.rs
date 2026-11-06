@@ -9,6 +9,11 @@ use crate::world::{ObjId, World};
 use kotor_core::ResType;
 use kotor_gff::{Gff, Struct, Value};
 
+/// The part of a 512 by 256 picture that is the map: the left 440, as the video's black strip at 3:50:35 shows, and only
+/// like that does the Bridge note of `m01aa` land on the bridge.
+const SHOWN_WIDTH: f32 = 440.0;
+const SHOWN_HEIGHT: f32 = 256.0;
+
 /// A waypoint with a note on the map.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MapNote {
@@ -46,6 +51,23 @@ impl AreaMap {
         } else {
             [along(x, wx, mx), along(y, wy, my)]
         }
+    }
+}
+
+impl AreaMap {
+    /// Which way a heading in the world's radians points on the picture: radians clockwise from up.
+    pub fn facing(&self, x: f32, y: f32, heading: f32) -> f32 {
+        let (a, b) = (
+            self.place(x, y),
+            self.place(x + heading.cos(), y + heading.sin()),
+        );
+        ((b[0] - a[0]) * SHOWN_WIDTH).atan2(-(b[1] - a[1]) * SHOWN_HEIGHT)
+    }
+
+    /// Where a point of the world is in the picture's own pixels, for a picture 512 by 256.
+    pub fn pixel(&self, x: f32, y: f32) -> [f32; 2] {
+        let [u, v] = self.place(x, y);
+        [u * SHOWN_WIDTH, v * SHOWN_HEIGHT]
     }
 }
 

@@ -229,6 +229,47 @@ impl Canvas {
         }
     }
 
+    /// Draw a whole picture centred on a point of the layout, `side` layout units high and square in pixels, turned
+    /// `angle` radians clockwise.
+    pub fn draw_turned(
+        &mut self,
+        img: &Image,
+        at: (f32, f32),
+        side: f32,
+        angle: f32,
+        tint: [f32; 3],
+    ) {
+        let (cx, cy) = (at.0 * self.scale_x, at.1 * self.scale);
+        let half = side * self.scale / 2.0;
+        if half < 0.5 || img.width == 0 || img.height == 0 {
+            return;
+        }
+        let (sin, cos) = angle.sin_cos();
+        let reach = (half * std::f32::consts::SQRT_2).ceil() as i32;
+        let region = [0, 0, img.width as i32, img.height as i32];
+        for y in -reach..=reach {
+            for x in -reach..=reach {
+                let (dx, dy) = (x as f32 + 0.5, y as f32 + 0.5);
+                let u = (dx * cos + dy * sin) / (half * 2.0) + 0.5;
+                let v = (-dx * sin + dy * cos) / (half * 2.0) + 0.5;
+                if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+                    continue;
+                }
+                let p = bilinear(img, region, u, v);
+                self.blend(
+                    cx as i32 + x,
+                    cy as i32 + y,
+                    [
+                        (p[0] * tint[0]).min(255.0) as u8,
+                        (p[1] * tint[1]).min(255.0) as u8,
+                        (p[2] * tint[2]).min(255.0) as u8,
+                        p[3] as u8,
+                    ],
+                );
+            }
+        }
+    }
+
     /// Nearest-neighbour enlargement by a whole factor.
     pub fn scaled(&self, k: u32) -> Canvas {
         let mut out = Canvas::new(self.width * k, self.height * k);

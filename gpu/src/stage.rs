@@ -1607,6 +1607,7 @@ impl Stage {
         let target = self.target_view();
         let target_at = self.target_on_screen();
         self.ui.set_target_at(target_at);
+        let minimap = self.minimap_view();
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -1614,7 +1615,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{cut}",
+                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}",
                 self.module,
                 party
                     .iter()
@@ -1633,6 +1634,7 @@ impl Stage {
             return;
         }
         self.overlay_key = key;
+        self.ui.set_minimap(minimap);
         self.overlay = match view {
             // A wordless beat: the scene alone.
             Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
