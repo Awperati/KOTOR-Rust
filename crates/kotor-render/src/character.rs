@@ -86,10 +86,58 @@ impl Rig {
         })
     }
 
-    /// Every animation the body's supermodels carry, nearest first.
+    /// The body, then its chain of supermodels: a droid or a rakghoul carries its clips in its own model, with no chain.
+    fn models(&self) -> impl Iterator<Item = &Model> {
+        std::iter::once(&self.body).chain(&self.sup)
+    }
+
+    /// The name this body has for a clip. The game asks for a person's names. A creature has its own set, `cpause1` and
+    /// `cwalk`, and its fighting clips carry digit 0 whatever it holds, or another digit for a droid like T3-M4.
+    ///
+    /// **Assumption, read from the names in the models:** which of a creature's clips stands in for which.
+    pub fn clip_name(&self, want: &str) -> Option<&str> {
+        let has = |name: &str| {
+            self.models()
+                .find_map(|m| m.animation(name))
+                .map(|a| a.name.as_str())
+        };
+        if let Some(found) = has(want) {
+            return Some(found);
+        }
+        let fallback: &[&str] = match want {
+            "pause1" => &["cpause1", "creadyr"],
+            "walk" => &["cwalk", "crun"],
+            "run" => &["crun", "cwalk"],
+            "die" => &["cdie"],
+            "dead" => &["cdead"],
+            _ => &[],
+        };
+        if let Some(found) = fallback.iter().find_map(|n| has(n)) {
+            return Some(found);
+        }
+        // `g5r1`: a stance letter, the weapon's digit, what it does, which one.
+        let b = want.as_bytes();
+        if b.len() != 4 || !b[1].is_ascii_digit() {
+            return None;
+        }
+        let (stance, doing) = (b[0] as char, b[2] as char);
+        let other_digit = |letter: char| {
+            (0..10).find_map(|d| has(&format!("{letter}{d}{doing}{}", b[3] as char)))
+        };
+        match doing {
+            'r' => other_digit('g').or_else(|| has("creadyr")),
+            'g' => other_digit('g').or_else(|| has("cdamages")),
+            'd' => other_digit('g').or_else(|| has("cdodgeg")),
+            'a' => other_digit(stance)
+                .or_else(|| ['g', 'b', 'c', 'm'].iter().find_map(|l| other_digit(*l))),
+            _ => None,
+        }
+    }
+
+    /// Every animation the body and its supermodels carry, nearest first.
     pub fn animation_names(&self) -> Vec<String> {
         let mut names: Vec<String> = Vec::new();
-        for m in &self.sup {
+        for m in self.models() {
             for a in &m.animations {
                 if !names.iter().any(|n| n.eq_ignore_ascii_case(&a.name)) {
                     names.push(a.name.clone());
@@ -99,6 +147,20 @@ impl Rig {
         names
     }
 
+    /// Animations in the body model itself.
+    pub fn body_animation_names(&self) -> Vec<String> {
+        self.body
+            .animations
+            .iter()
+            .map(|a| a.name.clone())
+            .collect()
+    }
+
+    /// The names of the supermodels, nearest first.
+    pub fn chain(&self) -> Vec<String> {
+        self.sup.iter().map(|m| m.name.clone()).collect()
+    }
+
     /// The texture the head is drawn with.
     pub fn head_texture(&self) -> Option<&str> {
         self.head_tex.as_deref()
@@ -106,10 +168,32 @@ impl Rig {
 
     /// Length in seconds of a named animation of the supermodel.
     pub fn animation_length(&self, name: &str) -> Option<f32> {
-        self.sup
-            .iter()
+        let name = self.clip_name(name)?;
+        self.models()
             .find_map(|m| m.animation(name))
             .map(|a| a.length)
+    }
+
+    /// How far a clip takes the body from its rest pose, at most, over its length: 0 is standing in the bind pose.
+    pub fn distance_from_rest(&self, name: &str) -> f32 {
+        let rest = self.body.world_matrices(None);
+        let Some(length) = self.animation_length(name) else {
+            return 0.0;
+        };
+        let mut most = 0.0f32;
+        for k in 0..=8 {
+            let Some(pose) = self.sample(name, length * k as f32 / 8.0) else {
+                return 0.0;
+            };
+            for ((_, a), (_, b)) in self.body.world_matrices(Some(&pose)).iter().zip(&rest) {
+                for r in 0..3 {
+                    for c in 0..4 {
+                        most = most.max((a[r][c] - b[r][c]).abs());
+                    }
+                }
+            }
+        }
+        most
     }
 
     /// The character in `animation` (name, time in seconds) at the origin, feet on z = 0, facing +y.
@@ -118,18 +202,14 @@ impl Rig {
     /// The head is attached at the body's `head_g`: rigid head parts follow the posed node and the
     /// skinned head is blended by the body's bones (see `SkinCtx`).
     pub fn pose(&self, animation: Option<(&str, f32)>) -> Result<Scene> {
-        let pose = animation.and_then(|(name, t)| {
-            self.sup
-                .iter()
-                .find_map(|m| m.animation(name).map(|a| a.sample(m, t)))
-        });
+        let pose = animation.and_then(|(name, t)| self.sample(name, t));
         self.posed(pose.as_ref())
     }
 
     /// A named animation sampled at `t`, from the nearest supermodel that has it.
     pub fn sample(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
-        self.sup
-            .iter()
+        let name = self.clip_name(name)?;
+        self.models()
             .find_map(|m| m.animation(name).map(|a| a.sample(m, t)))
     }
 
