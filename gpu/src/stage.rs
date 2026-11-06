@@ -211,6 +211,10 @@ fn load_model(inst: &mut Install, name: &str) -> Option<Model> {
 
 pub struct Stage {
     pub game: Game,
+    /// Game seconds to each second of wall-clock time. Only game time speeds up: see `docs/FASTTEST.md`.
+    pub speed: f32,
+    /// A scripted player at the controls. It alone moves conversations on.
+    pub pilot: Option<kotor_game::Autopilot>,
     inst: Install,
     ui: Ui<'static>,
     dir: PathBuf,
@@ -326,6 +330,8 @@ impl Stage {
         let ui_inst: &'static mut Install = Box::leak(Box::new(Install::open(&dir).map_err(e)?));
         let mut s = Stage {
             game: Game::new(world),
+            speed: 1.0,
+            pilot: None,
             inst,
             ui: Ui::new(ui_inst),
             dir,
@@ -488,7 +494,17 @@ impl Stage {
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
         let len = dir[0].hypot(dir[1]);
         self.game.world.steer = (len > 0.01).then(|| ([dir[0] / len, dir[1] / len], !walk));
-        self.game.advance(dt);
+        let speed = self.speed;
+        if let Some(p) = self.pilot.as_mut() {
+            // A scripted player opens no screens: levels and forced party members come straight away.
+            self.game.world.hold_levels = false;
+            self.game.world.party_screen = false;
+            let n = self.game.steps_due(dt, speed);
+            p.run_steps(&mut self.game, n);
+        } else {
+            self.game.advance_at(dt, speed);
+        }
+        let dt_game = dt * speed;
         if self.game.world.module != self.module {
             if let Err(e) = self.enter_module() {
                 self.game.world.errors.push(format!("stage: {e}"));
@@ -496,16 +512,16 @@ impl Stage {
             self.autosave();
         }
         self.scan_music_events();
-        self.play_world_sounds(dt);
+        self.play_world_sounds(dt_game);
         if let Some(id) = self.game.world.opened {
             self.lids.entry(id).or_insert(0.0);
         }
         for t in self.lids.values_mut() {
-            *t += dt;
+            *t += dt_game;
         }
         let eye = self.camera().eye;
-        self.effects.update(dt, eye);
-        self.update_line(dt);
+        self.effects.update(dt_game, eye);
+        self.update_line(dt_game);
         self.update_camera(dt);
         self.refresh_overlay();
         std::mem::take(&mut self.cues)
@@ -702,7 +718,6 @@ impl Stage {
                 None => Cue::StopVoice,
             });
             self.beat = self.game.world.dialogue_beat();
-            self.face_speaker();
             self.beat_time = 0.0;
             if let Some(c) = self.game.world.dialogue_conversation() {
                 self.camera_model = c.camera_model;
@@ -720,6 +735,9 @@ impl Stage {
             self.beat_time += dt;
         }
         if self.game.world.conversation_paused() {
+            return;
+        }
+        if self.pilot.is_some() {
             return;
         }
         if let Some(left) = self.line_left.as_mut() {
@@ -802,23 +820,6 @@ impl Stage {
             target: [at[0], at[1], at[2] + 1.5],
             fov: 40.0,
         })
-    }
-
-    /// Speaker and player turn to each other.
-    fn face_speaker(&mut self) {
-        let w = &self.game.world;
-        let pc = w.pc;
-        let Some(owner) = w.dialogue_owner().filter(|o| *o != pc) else {
-            return;
-        };
-        let is_creature = w.object(owner).is_some_and(|o| o.kind == Kind::Creature);
-        let at = w.object(owner).map_or([0.0; 3], |o| o.position);
-        let here = self.pc_position();
-        let to_speaker = (at[1] - here[1]).atan2(at[0] - here[0]);
-        self.game.face(pc, to_speaker);
-        if is_creature {
-            self.game.face(owner, to_speaker + std::f32::consts::PI);
-        }
     }
 
     /// The pose a creature's cutscene stunt puts it in this beat.

@@ -8,7 +8,65 @@ use crate::follow::dist2d;
 use crate::game::Game;
 use crate::world::{DoorState, Kind, ObjId, World};
 use kotor_core::ResType;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+
+/// Fixed steps between two entries of [`Autopilot::digests`].
+const DIGEST_STEPS: u64 = 600;
+
+/// A fingerprint of what the game remembers: the clock, the module, every object's place and condition, everything said,
+/// the fight log and the global numbers. Two runs with the same digests have played the same game.
+pub fn state_digest(w: &World) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8423_2325;
+    let mut feed = |bytes: &[u8]| {
+        for b in bytes {
+            h = (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3);
+        }
+    };
+    feed(&w.time.to_le_bytes());
+    feed(w.module.as_bytes());
+    feed(&w.pc.to_le_bytes());
+    for o in w.objects.values() {
+        feed(&o.id.to_le_bytes());
+        for v in o.position {
+            feed(&v.to_le_bytes());
+        }
+        feed(&o.hp.to_le_bytes());
+        feed(&[
+            u8::from(o.dead),
+            u8::from(o.down),
+            u8::from(o.open),
+            u8::from(o.locked),
+        ]);
+        for i in &o.inventory {
+            feed(&i.to_le_bytes());
+        }
+        let mut worn: Vec<_> = o.equipped.iter().map(|(s, i)| (*s, *i)).collect();
+        worn.sort_unstable();
+        for (slot, item) in worn {
+            feed(&slot.to_le_bytes());
+            feed(&item.to_le_bytes());
+        }
+    }
+    for l in &w.transcript {
+        feed(l.dialogue.as_bytes());
+        feed(&l.node.to_le_bytes());
+        feed(l.text.as_bytes());
+    }
+    for a in &w.combat.log {
+        feed(&a.attacker.to_le_bytes());
+        feed(&a.target.to_le_bytes());
+        feed(&a.roll.to_le_bytes());
+        feed(&a.damage.to_le_bytes());
+        feed(&a.target_hp.to_le_bytes());
+    }
+    let mut globals: Vec<_> = w.global_numbers.iter().collect();
+    globals.sort_unstable();
+    for (k, v) in globals {
+        feed(k.as_bytes());
+        feed(&v.to_le_bytes());
+    }
+    h
+}
 
 /// Whether a door can answer back when it is tried.
 fn door_has_a_say(o: &crate::world::Object) -> bool {
@@ -63,13 +121,15 @@ pub struct Autopilot {
     pub immortal: bool,
     /// Nothing more to try.
     pub finished: bool,
-    /// Leave lines that want no answer to whoever is showing them, as the window does.
+    /// Hold lines that want no answer for as long as a person would read them, in game time.
     pub read_lines: bool,
+    /// The state of the world every ten game seconds: (fixed step, [`state_digest`]).
+    pub digests: Vec<(u64, u64)>,
     pub time: f32,
     goal: Option<Goal>,
     goal_time: f32,
-    tried: HashSet<ObjId>,
-    unreachable: HashSet<ObjId>,
+    tried: BTreeSet<ObjId>,
+    unreachable: BTreeSet<ObjId>,
     lock_tries: BTreeMap<ObjId, u32>,
     /// How many doors were unlocked plus how many stood fully open when last looked at. A change means more of the
     /// module may be in reach.
@@ -114,11 +174,12 @@ impl Autopilot {
             immortal: true,
             finished: false,
             read_lines: false,
+            digests: Vec::new(),
             time: 0.0,
             goal: None,
             goal_time: 0.0,
-            tried: HashSet::new(),
-            unreachable: HashSet::new(),
+            tried: BTreeSet::new(),
+            unreachable: BTreeSet::new(),
             lock_tries: BTreeMap::new(),
             doors_free: 0,
             line_serial: None,
@@ -155,6 +216,19 @@ impl Autopilot {
         };
         self.log.push(format!("STALL {s:?}"));
         self.stalls.push(s);
+    }
+
+    /// Play `n` fixed steps. The pilot decides once per step, so the run depends only on how many steps have passed, not
+    /// on how they are grouped into frames or how fast they go.
+    pub fn run_steps(&mut self, g: &mut Game, n: usize) {
+        let dt = g.dt;
+        for _ in 0..n {
+            self.step(g, dt);
+            g.step_once();
+            if g.steps.is_multiple_of(DIGEST_STEPS) {
+                self.digests.push((g.steps, state_digest(&g.world)));
+            }
+        }
     }
 
     /// Decide and act for `dt` seconds. The caller advances the game.
@@ -308,7 +382,7 @@ impl Autopilot {
         if w.conversation_paused() {
             return;
         }
-        // In a window a spoken line ends by itself. A silent one waits for a key, so the pilot presses it after a while.
+        // The pilot alone moves a conversation on, so that a window and a headless run go through the same lines.
         let serial = w.dialogue_serial();
         if serial != self.line_serial {
             self.line_serial = serial;
@@ -469,6 +543,10 @@ impl Autopilot {
                     if self.nearest_foe(w).is_some() {
                         w.pc_mover.stop();
                         w.pending = None;
+                        // It never got there: the escape pod in `end_m01ab` stays to be used after the fight.
+                        if let Some(Goal::Use(id, _)) = self.goal {
+                            self.tried.remove(&id);
+                        }
                         self.goal = None;
                         return;
                     }
@@ -589,7 +667,7 @@ impl Autopilot {
         }
         // 4. Nothing new: what is left unreachable or locked may have opened up, once.
         if !self.unreachable.is_empty() && self.doors_opened > 0 {
-            let left: Vec<ObjId> = self.unreachable.drain().collect();
+            let left: Vec<ObjId> = std::mem::take(&mut self.unreachable).into_iter().collect();
             let mut any = false;
             for id in left {
                 if w.click(id) {

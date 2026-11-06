@@ -1,5 +1,6 @@
 # Drive the viewer through its OWN window handle with posted messages. No global mouse or keyboard, and no focus.
-param([string]$Shots)
+# It sleeps on the wall clock between real key presses, so its checks hold only at 1x: see docs/FASTTEST.md.
+param([string]$Shots, [int]$Speed = 1)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 # It writes one save to %LOCALAPPDATA%\kotor-rs\saves, deletes it through the screen, and leaves other saves alone.
 $scratch = $env:TEMP
@@ -21,7 +22,7 @@ public static class Drv {
   }
 }
 "@
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--state-log","--skip-menu","--near","end_locker01","--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--state-log","--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle

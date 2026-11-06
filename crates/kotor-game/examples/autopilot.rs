@@ -1,6 +1,9 @@
 //! Play from the start with no window, and print everything that stalled.
 //! Usage: autopilot [module] [seconds] [real seconds]
 //!
+//! It runs as fast as the CPU allows, with no window, sound or particles: see `docs/FASTTEST.md`.
+//! `AUTOPILOT_UNTIL` names a module to stop at, `AUTOPILOT_DIGEST` a file for the state digests,
+//! `AUTOPILOT_READ_LINES` holds lines as long as a person would read them.
 //! `AUTOPILOT_TRACE` adds the last lines said, everyone alive, every door and a map of where the player can walk.
 //! `AUTOPILOT_EVENTS` names a file for the whole event log.
 
@@ -24,10 +27,28 @@ fn main() {
     let mut g = Game::new(w);
     let mut p = Autopilot::new();
     let started = std::time::Instant::now();
-    let dt = 1.0 / 30.0;
-    while p.time < seconds && !p.finished && started.elapsed().as_secs_f32() < limit {
-        p.step(&mut g, dt);
-        g.advance(dt);
+    p.read_lines = std::env::var_os("AUTOPILOT_READ_LINES").is_some();
+    let until = std::env::var("AUTOPILOT_UNTIL").unwrap_or_default();
+    while p.time < seconds
+        && !p.finished
+        && started.elapsed().as_secs_f32() < limit
+        && g.world.module != until
+    {
+        p.run_steps(&mut g, 60);
+    }
+    let wall = started.elapsed().as_secs_f32();
+    println!(
+        "--- {:.1} game seconds in {wall:.2} wall seconds: {:.0} game seconds per wall second",
+        p.time,
+        p.time / wall
+    );
+    if let Some(path) = std::env::var_os("AUTOPILOT_DIGEST") {
+        let lines: Vec<String> = p
+            .digests
+            .iter()
+            .map(|(s, d)| format!("{s} {d:016x}"))
+            .collect();
+        std::fs::write(path, lines.join("\n") + "\n").unwrap();
     }
     for l in &p.log {
         println!("{l}");
@@ -81,6 +102,17 @@ fn trace(w: &World) {
                 o.max_hp,
                 o.faction,
                 w.combat.target.get(&o.id)
+            );
+        }
+        if o.kind == Kind::Placeable {
+            let route = w
+                .nav
+                .as_ref()
+                .and_then(|n| n.find_path(at, o.position))
+                .is_some();
+            println!(
+                "thing {} at [{:.1},{:.1}] route {route} conv {:?}",
+                o.tag, o.position[0], o.position[1], o.conversation
             );
         }
         if o.kind == Kind::Door {

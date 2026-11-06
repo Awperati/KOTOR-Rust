@@ -35,6 +35,8 @@ pub struct Game {
     log_seen: usize,
     names: HashMap<String, &'static str>,
     headings: HashMap<ObjId, f32>,
+    /// The line of a conversation last turned to.
+    line_seen: Option<usize>,
     /// Steps run so far.
     pub steps: u64,
 }
@@ -54,6 +56,8 @@ enum Move {
 /// Longest stretch of real time one `advance` call will simulate; the rest is dropped, so a slow frame does not
 /// make the next ones run ever more steps.
 const MAX_CATCH_UP: f32 = 0.25;
+/// Most fixed steps one call may run: about a fifth of a second of simulation at its slowest.
+pub const MAX_STEPS_PER_CALL: usize = 4096;
 
 impl Game {
     pub fn new(world: World) -> Game {
@@ -67,23 +71,38 @@ impl Game {
             log_seen: 0,
             names: HashMap::new(),
             headings: HashMap::new(),
+            line_seen: None,
             steps: 0,
         }
     }
 
     /// Feed `real_dt` seconds of wall-clock time; runs as many whole fixed steps as fit. Returns how many ran.
     pub fn advance(&mut self, real_dt: f32) -> usize {
-        self.accumulator = (self.accumulator + real_dt.max(0.0)).min(MAX_CATCH_UP);
-        let mut n = 0;
-        while self.accumulator >= self.dt {
-            self.accumulator -= self.dt;
-            self.fixed_step();
-            n += 1;
+        self.advance_at(real_dt, 1.0)
+    }
+
+    /// Like [`Game::advance`], with `speed` game seconds to each second of wall-clock time.
+    pub fn advance_at(&mut self, real_dt: f32, speed: f32) -> usize {
+        let n = self.steps_due(real_dt, speed);
+        for _ in 0..n {
+            self.step_once();
         }
         n
     }
 
-    fn fixed_step(&mut self) {
+    /// How many fixed steps `real_dt` seconds at `speed` come to, at most [`MAX_STEPS_PER_CALL`]. Time beyond what a call
+    /// can catch up on is dropped, so a slow frame does not make the next ones run ever more steps.
+    pub fn steps_due(&mut self, real_dt: f32, speed: f32) -> usize {
+        let limit = MAX_CATCH_UP * speed.max(1.0);
+        self.accumulator = (self.accumulator + real_dt.max(0.0) * speed).min(limit);
+        let n = ((self.accumulator / self.dt) as usize).min(MAX_STEPS_PER_CALL);
+        self.accumulator -= n as f32 * self.dt;
+        n
+    }
+
+    /// One fixed step. All game time passes here, however fast the caller goes.
+    pub fn step_once(&mut self) {
+        self.face_speaker();
         let walking = self.world.pc_walking();
         self.world.step(self.dt);
         self.steps += 1;
@@ -227,6 +246,30 @@ impl Game {
             _ => 8,
         };
         (stance as i32, ranged)
+    }
+
+    /// Speaker and player turn to each other at each new line. This is here and not in the window's loop because the
+    /// player's heading steers its next walk: it has to fall on the same step at any speed.
+    fn face_speaker(&mut self) {
+        let serial = self.world.dialogue_serial();
+        if serial == self.line_seen {
+            return;
+        }
+        self.line_seen = serial;
+        let pc = self.world.pc;
+        let Some(owner) = self.world.dialogue_owner().filter(|o| *o != pc) else {
+            return;
+        };
+        let (Some(at), Some(here)) = (self.world.object(owner), self.world.object(pc)) else {
+            return;
+        };
+        let is_creature = at.kind == Kind::Creature;
+        let to_speaker =
+            (at.position[1] - here.position[1]).atan2(at.position[0] - here.position[0]);
+        self.face(pc, to_speaker);
+        if is_creature {
+            self.face(owner, to_speaker + std::f32::consts::PI);
+        }
     }
 
     /// Turn a creature to face an angle in radians; it keeps it until it moves.

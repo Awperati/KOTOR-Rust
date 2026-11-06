@@ -58,9 +58,9 @@ Most to least blocking, all absent unless stated:
 10. **The rest of the game.** The autopilot below plays into Taris with an unkillable hero; nobody has judged those modules by eye. Vendors, minigames, the galaxy map and stealth are not built.
 
 ## How far the autopilot gets
-`cargo run --release -p kotor-game --example autopilot -- end_m01aa 6000 280` plays with no window. `--autopilot` does the same in the viewer. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
+`cargo run --release -p kotor-game --example autopilot -- end_m01aa 6000 280` plays with no window. `--autopilot` does the same in the viewer. Speeds and the proof that they play the same game are in `docs/FASTTEST.md`. The pilot uses only what a player has: clicks, replies, taking items, attacks, changing leader, swapping a weapon. It cannot die (`Autopilot::immortal`), so none of this says the fights can be won.
 
-Last run: 2,230 game seconds in 5.9 real seconds. `end_m01aa` -> `end_m01ab` -> `STUNT_00` -> `tar_m02af` -> `tar_m02aa` -> `tar_m02ac` -> `tar_m02ab` -> `tar_m02ac` -> `tar_m02ae`. 23 kills, 98 door uses, 12 items, 633 lines, no routine left unhandled. The window run covered the first 240 seconds, as far as the medpac talk.
+Last run: 2,502 game seconds in 4.9 wall seconds. `end_m01aa` -> `end_m01ab` (382 s) -> `STUNT_00` and `tar_m02af` (677 s) -> `tar_m02aa` -> `tar_m02ac` -> `tar_m02ab` -> `tar_m02ac` -> `tar_m02ae`. 24 kills, 106 door uses, 12 items, 1,005 lines, no routine left unhandled.
 
 What is left, by how early it blocks:
 1. **Item use and level-up by hand.** Nothing can use a medpac, so `Mod_OnActvtItem` (`k_pend_activate`) never fires. Experience levels the hero by itself, with no choices. The pilot gets past both because later scripts set the tutorial step too.
@@ -68,7 +68,7 @@ What is left, by how early it blocks:
 3. **Talents ignore their category** (`GetCreatureTalentBest`, `GetCreatureTalentRandom`): a creature casts the first power it can pay for, helpful or not.
 4. **Grenades fly unseen.** Their rows in `spells.2da` name a projectile model, which is not drawn. No Force power has a projectile in that table.
 5. **Slipping past a locked door.** Once, at `ptar_lockde` in `tar_m02aa`, the hero ended up on the far side of a closed locked door after many tries. Cause not found. The pilot now tries plain locked doors twice, which hides it.
-6. **The crowded cantina, `tar_m02ae`: where the last run stops.** From about (120, 113) on, 27 walks make under a metre of progress in 8 seconds, ending at (104, 108), and the way back to `tar_m02ac` fails too. Cause not found; freeing steps away from people pressing on the hero changed nothing.
+6. **The crowded cantina, `tar_m02ae`: where the last run stops.** Most walks there make under a metre of progress in 8 seconds, ending at (104, 108), and the way back to `tar_m02ac` fails too. The same happens for a while in `tar_m02ac` at (122, 98) and `tar_m02ab` at (150, 104). Cause not found; freeing steps away from people pressing on the hero changed nothing.
 7. **`tar03_cutdlg` in `tar_m03aa`**, reached by one earlier run: its pause was never lifted. A pause now ends after 60 seconds and is logged as a script error, so a player cannot be stuck there, but the cause is not found and no test covers it.
 
 Logged but no block: `end_door10_cut2`, `end_door19`, `end_door07` and `ptar_lockde` are shut as far as the pilot can tell and the way on lies elsewhere. `k_pend_carth11` and `k_swg_gizka01` are named by conversations but are not in the game's files.

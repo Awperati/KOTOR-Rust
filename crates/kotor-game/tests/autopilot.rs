@@ -24,10 +24,8 @@ fn the_pilot_plays_off_the_endar_spire() {
     };
     let mut g = Game::new(w);
     let mut p = Autopilot::new();
-    let dt = 1.0 / 30.0;
     while p.time < 1500.0 && !p.finished && g.world.module != "tar_m02af" {
-        p.step(&mut g, dt);
-        g.advance(dt);
+        p.run_steps(&mut g, 60);
     }
     assert_eq!(
         g.world.module,
@@ -44,6 +42,31 @@ fn the_pilot_plays_off_the_endar_spire() {
     assert!(events.contains("Sith Apprentice (end_darkjedi01) dies"));
     assert!(events.contains("Trask (end_trask) leads the party"));
     assert!(g.world.stubbed.is_empty(), "{:?}", g.world.stubbed);
+}
+
+/// What must come out the same whatever the speed: the digests on the way, the last one, and a save file.
+type Played = (Vec<(u64, u64)>, u64, Vec<u8>);
+
+fn play_in_chunks(chunk: usize) -> Option<Played> {
+    let mut g = Game::new(world()?);
+    let mut p = Autopilot::new();
+    // About 150 game seconds, and a whole number of the largest chunk.
+    let total = 1024 * 9;
+    for _ in 0..total / chunk {
+        p.run_steps(&mut g, chunk);
+    }
+    let digest = kotor_game::state_digest(&g.world);
+    Some((p.digests, digest, g.world.save_bytes("speed").ok()?))
+}
+
+#[test]
+fn how_steps_are_grouped_into_frames_changes_nothing() {
+    let Some(one) = play_in_chunks(1) else {
+        return;
+    };
+    assert!(one.0.len() >= 15, "{} digests", one.0.len());
+    assert_eq!(Some(&one), play_in_chunks(16).as_ref());
+    assert_eq!(Some(&one), play_in_chunks(1024).as_ref());
 }
 
 #[test]

@@ -122,9 +122,11 @@ struct App {
     hidden: bool,
     max_frames: Option<u32>,
     state_log: bool,
-    /// A scripted player at the controls (`--autopilot`).
-    pilot: Option<kotor_game::Autopilot>,
     pilot_seen: usize,
+    /// Draw only every so many frames, so that more of the time goes to the game.
+    render_every: u32,
+    /// Stop when this many fixed steps have run.
+    max_steps: Option<u64>,
     frames: u32,
     started: std::time::Instant,
     last: std::time::Instant,
@@ -214,18 +216,17 @@ impl App {
             axis(self.keys[3], self.keys[2]),
             self.keys[4],
         );
-        if let Some(p) = self.pilot.as_mut() {
-            // A scripted player opens no screens: levels and forced party members come straight away.
-            self.stage.game.world.hold_levels = false;
-            self.stage.game.world.party_screen = false;
-            p.step(&mut self.stage.game, dt);
+        for c in self.stage.update(dt) {
+            // Sound runs on the wall clock and cannot keep up with a faster game.
+            if self.stage.speed <= 1.0 {
+                self.sound.cue(c);
+            }
+        }
+        if let Some(p) = self.stage.pilot.as_ref() {
             for l in &p.log[self.pilot_seen..] {
                 println!("pilot: {l}");
             }
             self.pilot_seen = p.log.len();
-        }
-        for c in self.stage.update(dt) {
-            self.sound.cue(c);
         }
         self.sound.pump();
         if let Some((w, h)) = self.stage.take_wanted_size() {
@@ -245,22 +246,27 @@ impl App {
             st.overlay_seen = stage.overlay_version;
             st.presenter.set_overlay(&st.gpu, stage.overlay());
         }
-        let scene = stage.dynamic_scene();
-        let cam = stage.camera();
-        st.gpu.set_particles(stage.particles());
-        if let Err(e) = st
-            .gpu
-            .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)
-        {
-            self.failed = Some(e);
-            el.exit();
-            return;
+        if self.frames.is_multiple_of(self.render_every) {
+            let scene = stage.dynamic_scene();
+            let cam = stage.camera();
+            st.gpu.set_particles(stage.particles());
+            if let Err(e) = st
+                .gpu
+                .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)
+            {
+                self.failed = Some(e);
+                el.exit();
+                return;
+            }
         }
         self.frames += 1;
         if self.state_log && self.frames.is_multiple_of(6) {
             println!("{}", self.stage.state_line());
         }
-        if self.stage.wants_exit() || self.max_frames.is_some_and(|m| self.frames >= m) {
+        if self.stage.wants_exit()
+            || self.max_frames.is_some_and(|m| self.frames >= m)
+            || self.max_steps.is_some_and(|m| self.stage.game.steps >= m)
+        {
             el.exit();
         }
     }
@@ -435,7 +441,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .unwrap_or((1280, 720));
     let original = !flag("--installed-mod");
-    let mut stage = if flag("--skip-menu") {
+    let mut stage = if (flag("--skip-menu") || flag("--autopilot")) {
         Stage::open(&module, original)?
     } else {
         Stage::menu(&module, original)?
@@ -444,7 +450,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if flag("--no-hd") {
         stage.no_hd();
     }
-    if !flag("--skip-menu") {
+    if !(flag("--skip-menu") || flag("--autopilot")) {
         stage.use_saved_settings();
     }
     if let Some(tag) = opt("--near") {
@@ -464,6 +470,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let (tx, rx) = channel();
+    // A scripted player has no need of real time unless someone means to watch it: `--speed 1`.
+    let speed: f32 = opt("--speed")
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(if flag("--autopilot") { 16.0 } else { 1.0 });
+    stage.speed = speed;
+    if flag("--autopilot") {
+        let mut p = kotor_game::Autopilot::new();
+        // Lines are held to be read only when someone can read them.
+        p.read_lines = speed <= 1.0 && !flag("--fast-lines");
+        stage.pilot = Some(p);
+    }
+    let digest_file = opt("--digest");
     let mut app = App {
         stage,
         sound: Sound {
@@ -478,12 +496,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hidden: flag("--hidden"),
         max_frames: opt("--frames").and_then(|n| n.parse().ok()),
         state_log: flag("--state-log"),
-        pilot: flag("--autopilot").then(|| {
-            let mut p = kotor_game::Autopilot::new();
-            p.read_lines = true;
-            p
-        }),
         pilot_seen: 0,
+        render_every: opt("--render-every")
+            .and_then(|n| n.parse().ok())
+            .unwrap_or((speed / 16.0) as u32)
+            .max(1),
+        max_steps: opt("--game-seconds")
+            .and_then(|n| n.parse::<u64>().ok())
+            .map(|s| s * 60),
         frames: 0,
         started: std::time::Instant::now(),
         last: std::time::Instant::now(),
@@ -508,5 +528,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app.stage.lines_shown,
         app.stage.game.world.errors.len()
     );
+    let played = app.stage.game.steps as f32 / 60.0;
+    println!(
+        "{played:.1} game seconds, {:.1} game seconds per wall second",
+        played / secs
+    );
+    if let (Some(path), Some(p)) = (digest_file, app.stage.pilot.as_ref()) {
+        let lines: Vec<String> = p
+            .digests
+            .iter()
+            .map(|(s, d)| format!("{s} {d:016x}"))
+            .collect();
+        std::fs::write(path, lines.join("\n") + "\n")?;
+    }
     Ok(())
 }
