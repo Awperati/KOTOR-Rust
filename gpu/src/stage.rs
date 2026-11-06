@@ -1554,8 +1554,7 @@ impl Stage {
     /// Sounds and bolts of what happened since the last frame: attacks, doors and the player's steps. Sound names come
     /// from `ammunitiontypes.2da`, `weaponsounds.2da`, `placeableobjsnds.2da` and `footstepsounds.2da`.
     ///
-    /// **Assumed:** which `weaponsounds.2da` row a melee weapon uses (by its `baseitems.2da` label and wield), that the
-    /// floor sounds like metal, and the pace of steps.
+    /// **Assumed:** that the floor sounds like metal, and the pace of steps.
     fn play_world_sounds(&mut self, dt: f32) {
         let n = self.game.world.combat.log.len();
         let new: Vec<_> = self.game.world.combat.log[self.log_seen.min(n)..].to_vec();
@@ -1676,19 +1675,12 @@ impl Stage {
             }
             return;
         }
-        let label = base
-            .and_then(|b| self.baseitem(b, "label"))
-            .unwrap_or_default();
-        let wield = base.and_then(|b| self.baseitem(b, "weaponwield"));
-        let row = if base.is_none() {
-            0
-        } else if label.contains("Lightsaber") {
-            1
-        } else if wield.as_deref() == Some("3") {
-            3
-        } else {
-            2
-        };
+        // The row of `weaponsounds.2da` is the item's own `weaponmattype` in `baseitems.2da`: 0 unarmed, 1 lightsaber, 2 blade,
+        // 3 large blade. A stun baton, a staff or a quarterstaff once got a blade's sound by a guess from the label.
+        let row = base
+            .and_then(|b| self.baseitem(b, "weaponmattype"))
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
         let Some(table) = self
             .inst
             .read("weaponsounds", ResType::TWODA)

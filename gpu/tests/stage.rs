@@ -1078,3 +1078,50 @@ fn a_cutscene_waits_for_a_click_when_auto_advance_is_off() {
     );
     let _ = std::fs::remove_file(file);
 }
+
+/// Bytes of the `.wav` the game ships under `name`.
+fn wav(name: &str) -> Vec<u8> {
+    let mut inst = kotor_archive::Install::open(kotor_core::install_dir().unwrap()).unwrap();
+    inst.read(name, kotor_core::ResType::WAV).unwrap()
+}
+
+#[test]
+fn a_stun_baton_sounds_unarmed_and_a_long_sword_sounds_like_a_large_blade() {
+    let Some(mut s) = stage() else {
+        return;
+    };
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    let pc = s.game.world.pc;
+    let at = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 1.0, at[1], at[2]]);
+    // `weaponmattype` of `baseitems.2da` names the `weaponsounds.2da` row: baton 0 (unarmed), long sword 3.
+    for (item, swing) in [
+        ("g_w_stunbaton01", "cb_sw_unarmed1"),
+        ("g_w_lngswrd01", "cb_sw_bldlrg1"),
+    ] {
+        let it = s.game.world.spawn_item(item);
+        s.game.world.equip(pc, it, Some(4)).unwrap();
+        s.game.world.combat.log.push(kotor_game::AttackLog {
+            round: 1,
+            attacker: pc,
+            target: foe,
+            roll: 10,
+            bonus: 0,
+            defense: 10,
+            outcome: kotor_game::Outcome::Hit,
+            damage: 1,
+            target_hp: 10,
+        });
+        let cues = s.update(DT);
+        let want = wav(swing);
+        assert!(
+            cues.iter()
+                .any(|c| matches!(c, Cue::Effect(b) | Cue::FaintEffect(b, _) if *b == want)),
+            "{item} should swing as {swing}"
+        );
+    }
+}
