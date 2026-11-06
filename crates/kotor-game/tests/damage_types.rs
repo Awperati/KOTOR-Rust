@@ -2,6 +2,7 @@
 
 use kotor_archive::Install;
 use kotor_game::{EffectRec, World, DURATION_INSTANT, DURATION_PERMANENT};
+use kotor_script::disassemble;
 
 const ELECTRICAL: f32 = 128.0;
 const FIRE: f32 = 256.0;
@@ -122,4 +123,64 @@ fn an_immune_creature_shrugs_off_the_effect_it_is_immune_to() {
     let p = w.effects.len() as u32;
     w.apply_effect(pc, foe, p, DURATION_PERMANENT, 0.0);
     assert!(w.is_disabled(foe), "stun immunity does not stop paralysis");
+}
+
+fn const_obj(v: u32) -> Vec<u8> {
+    let mut b = vec![0x04, 0x06];
+    b.extend_from_slice(&v.to_be_bytes());
+    b
+}
+
+/// `SetGlobalNumber("RESISTED", ResistForce(caster, target))`, run as a script.
+fn resist_force(w: &mut World, caster: u32, target: u32) -> i32 {
+    let call = |name: &str, argc: u8, w: &World| {
+        let mut b = vec![0x05, 0x00];
+        b.extend_from_slice(&w.routine_id(name).unwrap().to_be_bytes());
+        b.push(argc);
+        b
+    };
+    let mut body = Vec::new();
+    body.extend(const_obj(target));
+    body.extend(const_obj(caster));
+    body.extend(call("ResistForce", 2, w));
+    body.extend([0x04, 0x05, 0, 8]);
+    body.extend(b"RESISTED");
+    body.extend(call("SetGlobalNumber", 2, w));
+    let mut b = vec![0x1E, 0x00, 0, 0, 0, 8, 0x20, 0x00];
+    b.extend(body);
+    b.extend([0x20, 0x00]);
+    let mut v = b"NCS V1.0B".to_vec();
+    v.extend_from_slice(&((13 + b.len()) as u32).to_be_bytes());
+    v.extend(b);
+    let prog = disassemble(&v).unwrap();
+    w.run_program(&prog, caster).unwrap();
+    w.global_numbers["RESISTED"]
+}
+
+#[test]
+fn force_resistance_turns_a_power_aside_by_its_rating_against_the_casters_roll() {
+    let Some((mut w, pc, foe)) = world() else {
+        return;
+    };
+    assert_eq!(
+        resist_force(&mut w, pc, foe),
+        0,
+        "no resistance, no resisting"
+    );
+    // 100 beats a d20 plus a first-level caster every time, 0 beats none.
+    put(&mut w, foe, "EffectForceResistanceIncrease", &[100.0]);
+    for _ in 0..20 {
+        assert_eq!(resist_force(&mut w, pc, foe), 1);
+    }
+    // A decrease of the same size takes it away again.
+    put(&mut w, foe, "EffectForceResistanceDecrease", &[100.0]);
+    for _ in 0..20 {
+        assert_eq!(resist_force(&mut w, pc, foe), 0);
+    }
+    // Between: 15 against d20 + 1 turns aside about 13 in 20.
+    put(&mut w, foe, "EffectForceResistanceIncrease", &[15.0]);
+    let turned = (0..400)
+        .filter(|_| resist_force(&mut w, pc, foe) == 1)
+        .count();
+    assert!((190..330).contains(&turned), "{turned} of 400");
 }
