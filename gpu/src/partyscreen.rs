@@ -1,6 +1,6 @@
 //! `partyselection.gui`: who comes along. A script asks for it with `ShowPartySelectionGUI`, and the map's button opens it.
-//! Nothing changes until OK. The reference video has it at 3:12:00 and 7:17:05. **Assumed:** a click shows someone and
-//! Add takes them: the video shows the screen, not the clicks.
+//! Nothing changes until OK, which asks first, as `confirm.gui` over the screen at 3:12:00. The reference video also has it
+//! at 7:17:05. **Assumed:** a click shows someone and Add takes them: the video shows the screen, not the clicks.
 
 use super::{Screen, Stage};
 use kotor_game::{PartyRequest, PARTY_SIZE};
@@ -9,6 +9,7 @@ use kotor_ui::MenuView;
 const STR_ADD: u32 = 38455;
 const STR_REMOVE: u32 = 38456;
 const STR_LEVEL: u32 = 32154;
+const STR_SURE: u32 = 38328;
 /// Who each slot is in the game, from the file's own `LBL_NA` pictures: these with a 2 are for those not on offer.
 const PORTRAITS: [&str; 9] = [
     "po_pbastila",
@@ -28,6 +29,8 @@ pub(super) struct Draft {
     /// The slot whose name is on show.
     shown: Option<i32>,
     request: Option<PartyRequest>,
+    /// OK has asked whether this is the party wanted.
+    asking: bool,
 }
 
 impl Stage {
@@ -47,6 +50,7 @@ impl Stage {
             chosen,
             shown: None,
             request,
+            asking: false,
         });
         self.menus.stack.push(Screen::Party);
         self.menus.hover = None;
@@ -72,10 +76,10 @@ impl Stage {
 
     pub(super) fn party_view_screen(&mut self) -> MenuView {
         let mut v = MenuView::new("partyselection");
-        let Some((chosen, shown, forced, required)) = self.menus.party.as_ref().map(|d| {
+        let Some((chosen, shown, forced, required, asking)) = self.menus.party.as_ref().map(|d| {
             let forced = d.request.as_ref().map_or(Vec::new(), |r| r.forced.clone());
             let required = d.request.is_some();
-            (d.chosen.clone(), d.shown, forced, required)
+            (d.chosen.clone(), d.shown, forced, required, d.asking)
         }) else {
             return v;
         };
@@ -132,6 +136,14 @@ impl Stage {
                 v.text("LBL_NPC_LEVEL", "");
             }
         }
+        if asking {
+            let mut d = MenuView::new("confirm");
+            d.text("LB_MESSAGE", self.ui.strref(STR_SURE));
+            // The file's font runs off the box; the video has the small one.
+            d.font("LB_MESSAGE", "fnt_d16x16");
+            d.hover = self.menus.hover.clone();
+            v.dialog = Some(Box::new(d));
+        }
         v
     }
 
@@ -147,8 +159,27 @@ impl Stage {
     }
 
     pub(super) fn party_press(&mut self, tag: &str) {
+        let asking = self.menus.party.as_ref().is_some_and(|d| d.asking);
+        match (asking, tag) {
+            (true, "BTN_OK") => {
+                self.close_party(true);
+                return;
+            }
+            (true, _) => {
+                if let Some(d) = self.menus.party.as_mut() {
+                    d.asking = false;
+                }
+                return;
+            }
+            _ => {}
+        }
         match tag {
-            "BTN_DONE" => self.close_party(true),
+            "BTN_DONE" => {
+                if let Some(d) = self.menus.party.as_mut() {
+                    d.asking = true;
+                }
+                self.menus.hover = None;
+            }
             "BTN_BACK" => {
                 let required = self
                     .menus

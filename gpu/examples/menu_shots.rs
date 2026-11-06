@@ -349,6 +349,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     click(&mut s, "BTN_NPC2", None);
     click(&mut s, "BTN_ACCEPT", None);
     shot(&mut gpu, &mut s, "party", &out);
+    click(&mut s, "BTN_DONE", None);
+    shot(&mut gpu, &mut s, "party_ok", &out);
+    click(&mut s, "BTN_CANCEL", None);
     s.escape();
 
     // Someone else in the party: their portrait at the foot of the screen, and on the HUD.

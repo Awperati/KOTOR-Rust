@@ -1114,6 +1114,7 @@ fn the_party_screen_adds_removes_and_answers_a_script() {
         press(&mut s, "BTN_ACCEPT");
     }
     press(&mut s, "BTN_DONE");
+    press(&mut s, "BTN_OK");
     assert_eq!(s.menu_name(), "-");
     let w = &s.game.world;
     assert_eq!(w.party.len(), 2);
@@ -1126,6 +1127,7 @@ fn the_party_screen_adds_removes_and_answers_a_script() {
     press(&mut s, "BTN_NPC2");
     press(&mut s, "BTN_ACCEPT");
     press(&mut s, "BTN_DONE");
+    press(&mut s, "BTN_OK");
     let w = &s.game.world;
     assert_eq!(w.party_slots(), vec![6]);
     assert!(w.object(member).is_none());
@@ -1144,6 +1146,7 @@ fn the_party_screen_adds_removes_and_answers_a_script() {
     press(&mut s, "BTN_NPC8");
     press(&mut s, "BTN_ACCEPT");
     press(&mut s, "BTN_DONE");
+    press(&mut s, "BTN_OK");
     assert_eq!(s.menu_name(), "-");
     assert_eq!(s.game.world.party_slots(), vec![6, 8]);
 }
@@ -2092,6 +2095,7 @@ fn the_party_screen_shows_whoever_is_chosen_in_3d() {
     // Once with the party, they are here and look the same.
     press(&mut s, "BTN_ACCEPT");
     press(&mut s, "BTN_DONE");
+    press(&mut s, "BTN_OK");
     assert!(s.game.world.npc_slots.contains_key(&2));
     s.open_party();
     press(&mut s, "BTN_NPC2");
@@ -2322,6 +2326,33 @@ fn a_random_name_comes_from_the_games_letter_tables() {
             }
         }
     }
+}
+
+#[test]
+fn the_party_screens_ok_asks_first() {
+    let Some((mut s, _)) = in_game("party_ok") else {
+        return;
+    };
+    s.game.world.available.insert(2, "end_trask".to_string());
+    s.open_party();
+    press(&mut s, "BTN_NPC2");
+    press(&mut s, "BTN_ACCEPT");
+    let chosen = frame(&mut s);
+    press(&mut s, "BTN_DONE");
+    assert_eq!(s.menu_name(), "party");
+    assert!(frame(&mut s) != chosen, "the question");
+    assert!(!s.game.world.npc_slots.contains_key(&2), "nothing yet");
+    // Cancel goes back to choosing, as Esc does.
+    press(&mut s, "BTN_CANCEL");
+    assert_eq!(s.menu_name(), "party");
+    press(&mut s, "BTN_DONE");
+    s.escape();
+    assert_eq!(s.menu_name(), "party");
+    assert!(!s.game.world.npc_slots.contains_key(&2));
+    press(&mut s, "BTN_DONE");
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.menu_name(), "-");
+    assert!(s.game.world.npc_slots.contains_key(&2));
 }
 
 #[test]
