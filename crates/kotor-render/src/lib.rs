@@ -6,6 +6,7 @@ mod character;
 mod objects;
 mod scene;
 mod soft;
+pub mod underwear;
 mod walk;
 
 pub use character::{

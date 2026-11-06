@@ -241,6 +241,9 @@ pub struct Stage {
     step_turn: usize,
     /// Upscaled 3D textures, when `scripts/upscale_area.ps1` has made them.
     hd3d: Option<PathBuf>,
+    /// "Underwear style: Conventional". See `kotor_render::underwear`.
+    conventional_underwear: bool,
+    underwear_plans: HashMap<String, Option<kotor_render::underwear::Plan>>,
     baseitems: Option<TwoDa>,
     /// An item's model, by item.
     held: HashMap<ObjId, Option<Rc<Model>>>,
@@ -355,6 +358,8 @@ impl Stage {
             hd3d: default_hd_dir()
                 .and_then(|d| d.parent().map(|p| p.join("hd3d")))
                 .filter(|d| d.is_dir()),
+            conventional_underwear: true,
+            underwear_plans: HashMap::new(),
             held: HashMap::new(),
             doors: HashMap::new(),
             textures: HashMap::new(),
@@ -1168,14 +1173,37 @@ impl Stage {
     }
 
     /// A named texture, decoded once.
+    /// Change the underwear style. Takes effect as textures load, so with the next module or start.
+    pub fn set_conventional_underwear(&mut self, on: bool) {
+        if self.conventional_underwear != on {
+            self.conventional_underwear = on;
+            self.textures
+                .retain(|name, _| kotor_render::underwear::body_of_texture(name).is_none());
+            self.static_version += 1;
+        }
+    }
+
     pub fn texture(&mut self, name: &str) -> Option<Image> {
         let inst = &mut self.inst;
         let hd = self.hd3d.clone();
+        let conventional = self.conventional_underwear;
+        let plans = &mut self.underwear_plans;
         self.textures
             .entry(name.to_string())
             .or_insert_with(|| {
-                hd.and_then(|d| upscaled(&d, name))
-                    .or_else(|| kotor_render::load_texture(inst, name))
+                let mut img = hd
+                    .and_then(|d| upscaled(&d, name))
+                    .or_else(|| kotor_render::load_texture(inst, name))?;
+                let body = kotor_render::underwear::body_of_texture(name).filter(|_| conventional);
+                if let Some(body) = body {
+                    let plan = plans
+                        .entry(body.clone())
+                        .or_insert_with(|| kotor_render::underwear::plan_for(inst, &body));
+                    if let Some(plan) = plan {
+                        plan.apply(&mut img);
+                    }
+                }
+                Some(img)
             })
             .clone()
     }
