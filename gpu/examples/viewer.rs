@@ -21,9 +21,10 @@
 //!                     in ! is put on
 //!     --gold N        give the player these credits when a game starts, for a test driver
 //!     --store TAG     open this store when a game starts, as its script would, for a test driver
-//!     --global NAME=N set this global number when a game starts, for a test driver
+//!     --global NAME=N set these global numbers, split by commas, when a game starts, for a test driver
 //!     --pazaak MAX    start a game of Pazaak with this most to wager when a game starts, for a test driver
 //!     --alignment N   the player's alignment when a game starts, for a test driver
+//!     --auto-aim      the turret points itself at the next fighter, for a test driver
 //!     --xp N          give the player this much experience when a game starts, for a test driver
 //!     --appearance N  the player has this row of `appearance.2da` when a game starts, for a test driver
 //!     --original-underwear  the game's own underwear style, whatever Settings says, for a test driver
@@ -158,6 +159,9 @@ struct App {
     global: Option<String>,
     pazaak: Option<i32>,
     alignment: Option<i32>,
+    turret_cursor: bool,
+    /// The turret has seen where the cursor is: till then, how far it has come means nothing.
+    turret_cursor_known: bool,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -251,19 +255,20 @@ impl App {
             if let Some(gold) = self.gold.take() {
                 self.stage.game.world.gold += gold;
             }
-            if let Some((name, value)) = self
-                .global
-                .take()
-                .as_deref()
-                .and_then(|g| g.split_once('='))
-            {
-                if let Ok(value) = value.parse() {
-                    self.stage
-                        .game
-                        .world
-                        .global_numbers
-                        .insert(name.to_ascii_uppercase(), value);
+            for global in self.global.take().unwrap_or_default().split(',') {
+                if let Some((name, value)) = global.split_once('=') {
+                    if let Ok(value) = value.parse() {
+                        self.stage
+                            .game
+                            .world
+                            .global_numbers
+                            .insert(name.to_ascii_uppercase(), value);
+                    }
                 }
+            }
+            // The turret's sky asks for its number as the area is entered.
+            if self.stage.game.world.minigame.is_some() {
+                self.stage.game.world.enter_area();
             }
             if let Some(alignment) = self.alignment.take() {
                 let w = &mut self.stage.game.world;
@@ -324,6 +329,11 @@ impl App {
             }
         }
         self.stage.turn = self.turning;
+        if self.turret_cursor != self.stage.turret_on() {
+            self.turret_cursor = !self.turret_cursor;
+            self.turret_cursor_known = false;
+            st.window.set_cursor_visible(!self.turret_cursor);
+        }
         let axis = |a: bool, b: bool| a as i32 as f32 - b as i32 as f32;
         self.stage.steer = (
             axis(self.keys[0], self.keys[1]),
@@ -373,6 +383,9 @@ impl App {
         if self.frames.is_multiple_of(self.render_every) {
             let (scene, cam, figure) = stage.frame_scene();
             st.gpu.set_figure_only(figure);
+            // A turret's sky has its ships and planets far off in it, each too wide to be anything else's sky.
+            st.gpu
+                .set_sky_at_infinity(stage.game.world.minigame.is_none());
             st.gpu.set_particles(stage.frame_particles());
             if let Err(e) = st
                 .gpu
@@ -431,6 +444,7 @@ impl App {
             return;
         }
         match self.stage.action_for_key(&name) {
+            Some("Pause") if self.stage.turret_on() => return self.stage.turret_fire(pressed),
             Some("MoveForward") => return self.keys[0] = pressed,
             Some("MoveBack") => return self.keys[1] = pressed,
             Some("MoveLeft") => return self.keys[2] = pressed,
@@ -498,7 +512,26 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let now = (position.x as f32, position.y as f32);
-                if self.looking {
+                if self.stage.turret_on() {
+                    if self.turret_cursor_known {
+                        self.stage
+                            .turret_look(now.0 - self.cursor.0, now.1 - self.cursor.1);
+                    }
+                    self.turret_cursor_known = true;
+                    if let Some(st) = &self.state {
+                        // A cursor at the window's edge stops giving movement. Only with the window in use: a driver's has no focus.
+                        let z = st.window.inner_size();
+                        let middle = (z.width as f32 / 2.0, z.height as f32 / 2.0);
+                        let off = (now.0 - middle.0).abs().max((now.1 - middle.1).abs());
+                        if st.window.has_focus() && off > middle.1 / 2.0 {
+                            let spot = winit::dpi::PhysicalPosition::new(middle.0, middle.1);
+                            if st.window.set_cursor_position(spot).is_ok() {
+                                self.cursor = middle;
+                                return;
+                            }
+                        }
+                    }
+                } else if self.looking {
                     self.stage
                         .look(now.0 - self.cursor.0, now.1 - self.cursor.1);
                 } else if let Some(st) = &self.state {
@@ -514,6 +547,11 @@ impl ApplicationHandler for App {
                 self.keys = [false; 5];
                 self.looking = false;
                 self.turning = 0.0;
+            }
+            WindowEvent::MouseInput { state, button, .. }
+                if button == self.click_button() && self.stage.turret_on() =>
+            {
+                self.stage.turret_fire(state == ElementState::Pressed);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -613,6 +651,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.enable_auto_pause(!flag("--no-auto-pause") && !flag("--autopilot"));
     stage.enable_chargen(!flag("--no-chargen"));
     stage.enable_early_force(!flag("--no-early-force") && !flag("--autopilot"));
+    stage.turret_assist = flag("--auto-aim");
     if flag("--original-underwear") {
         stage.set_conventional_underwear(false);
     }
@@ -678,6 +717,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         global: opt("--global"),
         pazaak: opt("--pazaak").and_then(|n| n.parse().ok()),
         alignment: opt("--alignment").and_then(|n| n.parse().ok()),
+        turret_cursor: false,
+        turret_cursor_known: false,
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,

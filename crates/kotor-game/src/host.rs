@@ -51,7 +51,6 @@ const PRESENTATION: &[&str] = &[
     "PauseGame",
     "DisplayFeedBackText",
     "ApplyEffectAtLocation",
-    "PlayRoomAnimation",
     "SetDialogPlaceableCamera",
     "HoldWorldFadeInForDialog",
     "MusicBattlePlay",
@@ -1153,6 +1152,133 @@ impl Host for Adapter<'_> {
                     .object(self.obj(caller, args, 0))
                     .map_or(0, |o| o.alignment),
             )),
+            // ---- the minigame
+            "PlayRoomAnimation" => {
+                let room = string(args, 0).to_ascii_lowercase();
+                let number = int(args, 1)?;
+                self.world.room_animation = Some((room, number));
+                self.record(name, args);
+                None
+            }
+            "SWMG_GetPlayer" => Some(Value::Object(
+                self.world
+                    .minigame
+                    .as_ref()
+                    .map_or(OBJECT_INVALID, |g| g.player.id),
+            )),
+            "SWMG_GetEnemyCount" => Some(Value::Int(
+                self.world.minigame.as_ref().map_or(0, |g| g.alive() as i32),
+            )),
+            "SWMG_GetEnemy" => {
+                let n = int(args, 0)?.max(0) as usize;
+                let id = self.world.minigame.as_ref().and_then(|g| {
+                    g.enemies
+                        .iter()
+                        .filter(|e| e.dying.is_none() && !e.gone)
+                        .nth(n)
+                        .map(|e| e.id)
+                });
+                Some(Value::Object(id.unwrap_or(OBJECT_INVALID)))
+            }
+            "SWMG_GetPlayerOffset" => Some(Value::Vector(
+                self.world.minigame.as_ref().map_or([0.0; 3], |g| g.offset),
+            )),
+            "SWMG_GetPosition" => {
+                let id = self.obj(caller, args, 0);
+                let at = self
+                    .world
+                    .minigame
+                    .as_ref()
+                    .and_then(|g| g.follower(id))
+                    .map(|f| f.at);
+                Some(Value::Vector(at.unwrap_or([0.0; 3])))
+            }
+            "SWMG_GetHitPoints" | "SWMG_GetMaxHitPoints" => {
+                let id = self.obj(caller, args, 0);
+                let f = self.world.minigame.as_ref().and_then(|g| g.follower(id));
+                Some(Value::Int(f.map_or(0, |f| {
+                    if name == "SWMG_GetHitPoints" {
+                        f.hit_points
+                    } else {
+                        f.max_hit_points
+                    }
+                })))
+            }
+            "SWMG_SetFollowerHitPoints" => {
+                let id = self.obj(caller, args, 0);
+                let hp = int(args, 1)?;
+                if let Some(f) = self
+                    .world
+                    .minigame
+                    .as_mut()
+                    .and_then(|g| g.follower_mut(id))
+                {
+                    f.hit_points = hp;
+                }
+                None
+            }
+            "SWMG_GetLastHPChange" => Some(Value::Int(
+                self.world.minigame.as_ref().map_or(0, |g| g.last_hp_change),
+            )),
+            "SWMG_GetLastBulletHitDamage" => Some(Value::Int(
+                self.world
+                    .minigame
+                    .as_ref()
+                    .map_or(0, |g| g.last_hit_damage),
+            )),
+            "SWMG_GetLastBulletHitShooter" => Some(Value::Object(
+                self.world
+                    .minigame
+                    .as_ref()
+                    .map_or(OBJECT_INVALID, |g| g.last_hit_shooter),
+            )),
+            "SWMG_IsPlayer" => {
+                let id = self.obj(caller, args, 0);
+                b(self
+                    .world
+                    .minigame
+                    .as_ref()
+                    .is_some_and(|g| g.player.id == id))
+            }
+            "SWMG_IsEnemy" => {
+                let id = self.obj(caller, args, 0);
+                b(self
+                    .world
+                    .minigame
+                    .as_ref()
+                    .is_some_and(|g| g.enemies.iter().any(|e| e.id == id)))
+            }
+            "SWMG_IsFollower" => {
+                let id = self.obj(caller, args, 0);
+                b(self
+                    .world
+                    .minigame
+                    .as_ref()
+                    .is_some_and(|g| g.follower(id).is_some()))
+            }
+            "SWMG_PlayAnimation" => {
+                let id = self.obj(caller, args, 0);
+                let animation = string(args, 1);
+                let looping = int(args, 2).unwrap_or(1) != 0;
+                let overlay = int(args, 4).unwrap_or(0) != 0;
+                if let Some(f) = self
+                    .world
+                    .minigame
+                    .as_mut()
+                    .and_then(|g| g.follower_mut(id))
+                {
+                    f.play(&animation, looping, overlay);
+                }
+                None
+            }
+            "SWMG_OnDamage" => {
+                self.world.minigame_on_damage(caller);
+                None
+            }
+            "SWMG_OnDeath" => {
+                self.world.minigame_on_death(caller);
+                None
+            }
             "GetSoloMode" => b(self.world.solo_mode),
             "SetSoloMode" => {
                 self.world.solo_mode = int(args, 0)? != 0;

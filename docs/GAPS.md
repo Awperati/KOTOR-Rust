@@ -8,7 +8,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 
 | # | Gap | Evidence | Size |
 |---|---|---|---|
-| 1 | **Swoop race and turret minigames.** | The Taris story goes through `tar_m03mg`: `k_ptar_swooprun` leads there, and nothing else I found does. The video has the race at about 14,700 s. `nwscript.nss` has 97 `SWMG_` routines and our code answers none by name. `manm26mg` and `tat_m17mg` are more of the kind. | L |
+| 1 | **Swoop race. The turret is built:** `drive_turret.ps1`, and it hands back to the story. | The Taris story goes through `tar_m03mg`: `k_ptar_swooprun` leads there, and nothing else I found does. The video has the race at about 14,700 s. `nwscript.nss` has 97 `SWMG_` routines and our code answers none by name. `manm26mg` and `tat_m17mg` are more of the kind. | L |
 | 2 | **Galaxy map: built. Leaving a planet: not reached.** | The console on the Ebon Hawk opens the map, and Travel runs `k_sup_galaxymap`, live in `drive_galaxy.ps1`. No game has reached the ship yet: `tar_m02aa`'s `k_ptar_goebhawk` goes to `ebo_m12aa`, and the video leaves Taris at about 18,000 s. Half of the plain jumps go to the turret minigame in `m12ab`, which is row 1. | S left |
 | 3 | **Store screen: built.** | `store.gui`, compared with the video at 50:10. The price formula is still unchecked. | Done |
 

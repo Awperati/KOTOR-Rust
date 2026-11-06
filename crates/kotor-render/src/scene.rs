@@ -89,6 +89,8 @@ pub struct SceneMesh {
     pub triangles: Vec<[u32; 3]>,
     pub texture: Option<String>,
     pub lightmap: Option<String>,
+    /// How much of the light it gets, where it is not all: 0 means all, for most things.
+    pub shade: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -259,6 +261,7 @@ impl Scene {
                 ]
             };
             let mut out = SceneMesh {
+                shade: 0.0,
                 name: node.name.clone(),
                 positions: match &skinned {
                     Some((p, _)) => p.clone(),

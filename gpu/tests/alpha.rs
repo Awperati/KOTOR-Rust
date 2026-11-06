@@ -7,6 +7,7 @@ const SIZE: u32 = 64;
 
 fn sheet(z: f32, texture: &str) -> SceneMesh {
     SceneMesh {
+        shade: 0.0,
         name: texture.to_string(),
         positions: vec![
             [-2.0, -2.0, z],

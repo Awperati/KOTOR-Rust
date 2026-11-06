@@ -35,7 +35,7 @@ struct Globals {
 @group(1) @binding(0) var diffuse_tex: texture_2d<f32>;
 @group(1) @binding(1) var lightmap_tex: texture_2d<f32>;
 @group(1) @binding(2) var samp: sampler;
-@group(1) @binding(3) var<uniform> params: vec4<f32>; // x = 1 with a lightmap, y = alpha below this is cut, z = 1 to blend
+@group(1) @binding(3) var<uniform> params: vec4<f32>; // x = 1 with a lightmap, y = alpha below this is cut, z = 1 to blend, w = shade or 0
 
 struct VsIn {
     @location(0) pos: vec3<f32>,
@@ -71,6 +71,9 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
     var lit = vec3<f32>(0.55 + 0.45 * abs(dot(normalize(i.normal + vec3<f32>(0.0, 0.0, 1e-4)), g.light.xyz)));
     if (params.x > 0.5) {
         lit = textureSample(lightmap_tex, samp, i.uv2).rgb;
+    }
+    if (params.w > 0.0) {
+        lit = lit * params.w;
     }
     return vec4<f32>(base * lit, mix(1.0, tex.a, params.z));
 }
@@ -553,7 +556,7 @@ impl GpuRenderer {
                 if lightmap.is_some() { 1.0f32 } else { 0.0 },
                 cut,
                 blend,
-                0.0,
+                m.shade,
             ];
             let params_buf = self
                 .device

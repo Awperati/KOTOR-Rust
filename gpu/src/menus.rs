@@ -24,6 +24,8 @@ mod levelup;
 mod mainscene;
 #[path = "mapscreen.rs"]
 mod mapscreen;
+#[path = "turretscreen.rs"]
+mod turretscreen;
 pub(super) use fightscreen::target_slot;
 #[path = "galaxyscreen.rs"]
 mod galaxyscreen;

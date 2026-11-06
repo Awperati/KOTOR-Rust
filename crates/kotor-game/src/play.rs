@@ -597,6 +597,7 @@ impl World {
     /// interaction waiting at the end of it, trigger enter/exit, and any requested module change.
     pub fn step(&mut self, dt: f32) {
         self.tick(dt);
+        self.update_minigame(dt);
         self.resume_conversation();
         self.update_doors(dt);
         let before = self.pc_mover.pos;

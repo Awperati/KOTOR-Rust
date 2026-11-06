@@ -380,6 +380,10 @@ pub struct World {
     pub selected_planet: i32,
     /// A game of Pazaak is up, and how the last one went, for its end script.
     pub pazaak: Option<crate::pazaak::PazaakGame>,
+    /// The room a script has set going, and the number of its `scriptloop`.
+    pub room_animation: Option<(String, i32)>,
+    /// The turret, while its area is the one here.
+    pub minigame: Option<Box<crate::minigame::MiniGame>>,
     /// The party does not follow the leader (`SetSoloMode`, and the Solo Mode key).
     pub solo_mode: bool,
     pub restrict_mode: bool,
@@ -581,6 +585,8 @@ impl World {
             planet_lines: BTreeMap::new(),
             selected_planet: -1,
             pazaak: None,
+            room_animation: None,
+            minigame: None,
             solo_mode: false,
             restrict_mode: false,
             unselectable: BTreeSet::new(),
@@ -998,6 +1004,7 @@ impl World {
         self.build_nav(&area_name)?;
         let pos = self.objects.get(&pc).map_or([0.0; 3], |p| p.position);
         self.pc_mover = Mover::new(pos, std::f32::consts::FRAC_PI_2);
+        self.start_minigame(&area_name);
         Ok(())
     }
 

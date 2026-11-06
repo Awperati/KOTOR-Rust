@@ -272,6 +272,8 @@ pub struct Stage {
     ui_width: u32,
     overlay: Option<Image>,
     overlay_key: String,
+    /// A test driver has the turret aim for it.
+    pub turret_assist: bool,
     /// Goes up whenever the overlay changes.
     pub overlay_version: u64,
     cues: Vec<Cue>,
@@ -383,6 +385,7 @@ impl Stage {
             ui_width: 853,
             overlay: None,
             overlay_key: String::new(),
+            turret_assist: false,
             overlay_version: 0,
             cues: Vec::new(),
             events_seen: 0,
@@ -456,10 +459,24 @@ impl Stage {
         self.module = self.game.world.module.clone();
         self.inst.load_module(&self.module).map_err(e)?;
         let area = self.area_name();
-        let mut scene = kotor_render::load_area(&mut self.inst, &area).map_err(e)?;
+        // The turret's sky moves, so it is drawn with what moves.
+        let turret = self.game.world.minigame.is_some();
+        let mut scene = if turret {
+            Scene::default()
+        } else {
+            kotor_render::load_area(&mut self.inst, &area).map_err(e)?
+        };
         let chests = chest_templates(&mut self.inst, &area);
-        kotor_render::add_area_objects_except(&mut scene, &mut self.inst, &area, false, &chests)
+        if !turret {
+            kotor_render::add_area_objects_except(
+                &mut scene,
+                &mut self.inst,
+                &area,
+                false,
+                &chests,
+            )
             .map_err(e)?;
+        }
         self.chests = chests;
         self.chest_bodies.clear();
         self.lids.clear();
@@ -469,7 +486,11 @@ impl Stage {
         self.doors.clear();
         self.events_seen = 0;
         self.fixed_cameras = fixed_cameras(&mut self.inst, &area);
-        self.effects.load_area(&mut self.inst, &area);
+        if turret {
+            self.effects = Default::default();
+        } else {
+            self.effects.load_area(&mut self.inst, &area);
+        }
         self.log_seen = 0;
         self.door_seen.clear();
         let music = (|| {
@@ -477,7 +498,10 @@ impl Stage {
             let props = git.root.strukt("AreaProperties")?;
             Some(props.int("MusicDay")? as usize)
         })();
-        match music.and_then(|row| self.music_file(row)) {
+        match self
+            .turret_music()
+            .or_else(|| music.and_then(|row| self.music_file(row)))
+        {
             Some(p) => self.cues.push(Cue::Music(p)),
             None => self.cues.push(Cue::StopMusic),
         }
@@ -523,13 +547,14 @@ impl Stage {
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
         }
+        self.turret_tick(dt);
         let (ahead, right, walk) = self.steer;
         let (cos, sin) = (self.yaw.cos(), self.yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
         let len = dir[0].hypot(dir[1]);
         let held = !self.settings().combat_movement && self.party_blocked();
-        self.game.world.steer =
-            (len > 0.01 && !held).then(|| ([dir[0] / len, dir[1] / len], !walk));
+        self.game.world.steer = (len > 0.01 && !held && self.game.world.minigame.is_none())
+            .then(|| ([dir[0] / len, dir[1] / len], !walk));
         let speed = self.speed;
         if let Some(p) = self.pilot.as_mut() {
             // A scripted player opens no screens: levels and forced party members come straight away.
@@ -919,7 +944,11 @@ impl Stage {
 
     /// The camera behind the player, drawn in where the floor ends so that it stays on this side of the walls.
     pub fn camera(&self) -> Camera {
-        if let Some(c) = self.beat_camera().or_else(|| self.speaker_camera()) {
+        if let Some(c) = self
+            .beat_camera()
+            .or_else(|| self.speaker_camera())
+            .or_else(|| self.turret_camera())
+        {
             return c;
         }
         let p = self.pc_position();
@@ -1635,6 +1664,9 @@ impl Stage {
         if !self.started {
             return scene;
         }
+        if let Some(turret) = self.turret_scene() {
+            return turret;
+        }
         let here = self.pc_position();
         for pose in self.game.poses() {
             match pose.kind {
@@ -1779,6 +1811,15 @@ impl Stage {
 
     /// The HUD, or the conversation's box.
     fn refresh_game_overlay(&mut self) {
+        if self.turret_on() {
+            // No HUD: the cockpit's own dials, as the video has it.
+            if self.overlay.is_some() {
+                self.overlay = None;
+                self.overlay_key.clear();
+                self.overlay_version += 1;
+            }
+            return;
+        }
         let mut view = self.choice_view();
         if !self.settings().subtitles {
             // **Assumed:** with subtitles off the line being said goes, and the replies stay.
@@ -1922,6 +1963,15 @@ impl Stage {
         let row1 = at(self.menu_pixel("LB_ITEMS", Some(1), (640, 480)));
         let pc = self.game.world.pc;
         let solo = self.game.world.solo_mode;
+        // The turret's hit points, how many fighters are flying, and how far round it is.
+        let turret = self
+            .game
+            .world
+            .minigame
+            .as_ref()
+            .map_or("-".to_string(), |g| {
+                format!("{}/{}/{:.0}", g.player.hit_points, g.alive(), g.offset[2])
+            });
         let attack = self.game.world.attack_bonus_of(pc, 4);
         let defense = self.game.world.defense_of(pc);
         let (paused, note) = self.pause_view();
@@ -1935,7 +1985,7 @@ impl Stage {
         let here = self.pc_position();
         let view = w.dialogue_view();
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} align={align} attack={attack} defense={defense} row0={row0} row1={row1} foe={foe} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

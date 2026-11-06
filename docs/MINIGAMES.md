@@ -1,6 +1,6 @@
 # Minigames: a brief for the job
 
-Nothing here is built. The swoop race stops the Taris story for anyone, as `tar_m03af`'s `k_ptar_swooprun` leads to `tar_m03mg` and I found no other way on. See `docs/GAPS.md`, number 1.
+**The turret is built:** `crates/kotor-game/src/minigame.rs` and `gpu/src/turretscreen.rs`, live in `drive_turret.ps1`, compared with the video at 19,533 s. The rest of this page is the swoop race, `Type` 1, which is not. The swoop race stops the Taris story for anyone, as `tar_m03af`'s `k_ptar_swooprun` leads to `tar_m03mg` and I found no other way on. See `docs/GAPS.md`, number 1.
 
 ## What exists in the install
 
