@@ -20,8 +20,6 @@ pub struct Font {
     pub image: Image,
     pub glyphs: Vec<Glyph>,
     pub line_height: i32,
-    /// Source pixels of `image` per pixel of `glyphs`: more than 1 once an upscaled picture is in use.
-    pub image_scale: i32,
 }
 
 /// The glyph cells named by a font TXI, as `(upper_left, lower_right)` texture coordinates.
@@ -92,20 +90,7 @@ impl Font {
             image,
             glyphs,
             line_height,
-            image_scale: 1,
         }
-    }
-
-    /// Draw from a larger copy of the font's picture. Glyph sizes stay as they are, so text keeps its layout.
-    pub fn with_larger_image(mut self, image: Image) -> Font {
-        let k = (image.width / self.image.width.max(1)).max(1) as i32;
-        if image.width == self.image.width * k as u32
-            && image.height == self.image.height * k as u32
-        {
-            self.image = image;
-            self.image_scale = k;
-        }
-        self
     }
 
     /// Load a font by resource name (for example `fnt_d16x16`). Needs `Install::load_texture_packs`.
@@ -179,16 +164,12 @@ impl Font {
     pub fn draw_line(&self, canvas: &mut Canvas, x: i32, y: i32, s: &str, color: [f32; 3]) -> i32 {
         let mut pen = x;
         // Thin stock letters enlarged smoothly go faint; upscaled pictures keep their weight.
-        let strength = if canvas.scale != 1.0 && self.image_scale == 1 {
-            1.6
-        } else {
-            1.0
-        };
+        let strength = if canvas.scale != 1.0 { 1.6 } else { 1.0 };
         for c in s.chars() {
             let Some(g) = self.glyph(c) else { continue };
             canvas.draw_image(
                 &self.image,
-                g.rect.map(|v| v * self.image_scale),
+                g.rect,
                 [pen, y, g.rect[2], g.rect[3]],
                 color,
                 strength,

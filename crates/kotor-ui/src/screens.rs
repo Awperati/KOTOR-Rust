@@ -147,7 +147,6 @@ impl<'a> Ui<'a> {
     pub fn picture_names(&mut self) -> Vec<String> {
         let mut names: Vec<String> = ["i_attack", "i_dialog", "i_opendoor", "i_openplace"]
             .iter()
-            .chain(["fnt_console", "fnt_dialog16x16", "fnt_d16x16"].iter())
             .map(|s| s.to_string())
             .collect();
         for g in [
@@ -228,29 +227,10 @@ impl<'a> Ui<'a> {
         if !self.fonts.contains_key(&key) {
             // **Assumption:** a font whose TXI does not fit its picture is replaced by the dialogue font of the
             // same family, `fnt_dialog16x16`.
+            // Fonts stay as the game has them: upscaling fills in the gaps inside `fnt_console`'s tiny letters and turns
+            // them into blocks at 4K.
             let f =
                 Font::load(self.inst, &key).or_else(|| Font::load(self.inst, "fnt_dialog16x16"));
-            let f = f.map(|f| {
-                let name = f.name.to_ascii_lowercase();
-                // A font's letters are white and only their alpha counts. The colours hidden under the clear parts,
-                // once upscaled, would fringe the letters. The upscaled console font has its letters run together.
-                let big = if name == "fnt_console" {
-                    None
-                } else {
-                    self.hd_picture(&name)
-                };
-                match big {
-                    Some(mut big) => {
-                        for p in big.rgba.chunks_mut(4) {
-                            p[0] = 255;
-                            p[1] = 255;
-                            p[2] = 255;
-                        }
-                        f.with_larger_image(big)
-                    }
-                    None => f,
-                }
-            });
             self.fonts.insert(key.clone(), f);
         }
         self.fonts[&key].as_ref()
