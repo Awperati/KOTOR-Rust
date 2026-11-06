@@ -854,6 +854,29 @@ impl World {
         }
     }
 
+    /// **Assumption:** a creature not on the player's side with under a third of its hit points left, and a medpac in its
+    /// bag, uses it instead of attacking that round (GAPS row 8). The game's own scripts never did.
+    fn enemy_heals(&mut self, id: ObjId) -> bool {
+        if self.on_player_side(id) {
+            return false;
+        }
+        let Some(o) = self.objects.get(&id) else {
+            return false;
+        };
+        if o.hp * 3 >= o.max_hp {
+            return false;
+        }
+        let pack = o.inventory.iter().copied().find(|i| {
+            self.objects
+                .get(i)
+                .is_some_and(|x| x.template.starts_with("g_i_medeqpmnt"))
+        });
+        let Some(pack) = pack else {
+            return false;
+        };
+        self.use_item(id, pack).is_ok()
+    }
+
     fn run_round(&mut self) {
         self.assist_leader();
         let pairs: Vec<(ObjId, ObjId)> = self.combat.target.iter().map(|(a, t)| (*a, *t)).collect();
@@ -873,6 +896,11 @@ impl World {
                 continue;
             }
             if self.is_disabled(a) {
+                continue;
+            }
+            // An enemy low on hit points spends a round on a medpac it carries, as the player would.
+            if self.enemy_heals(a) {
+                involved.insert(a);
                 continue;
             }
             let reach = self.reach_of(a);
