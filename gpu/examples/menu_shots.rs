@@ -532,6 +532,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     s.update(0.05);
     shot(&mut gpu, &mut s, "combat_slots", &out);
+    s.set_view(SIZES[0]);
+    if let Some(p) = s.hud_pixel("BTN_TARGET0", SIZES[0]) {
+        s.hover(p, SIZES[0]);
+    }
+    s.update(0.05);
+    shot(&mut gpu, &mut s, "combat_slot_words", &out);
+    s.set_view(SIZES[0]);
+    s.hover((1.0, 300.0), SIZES[0]);
     s.game.world.combat.target.clear();
     // An enemy comes into sight, and the game waits.
     s.enable_auto_pause(true);
