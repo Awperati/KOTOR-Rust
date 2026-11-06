@@ -46,6 +46,8 @@ const USE_REACH: f32 = 2.5;
 const CAMERA_BEHIND: f32 = 3.3;
 const CAMERA_ABOVE: f32 = 1.7;
 const CAMERA_LOOKS_AT: f32 = 1.2;
+/// How far from the player the walls count when the camera is kept under the ceiling.
+const WALL_TOP_RADIUS: f32 = 6.0;
 
 /// Something the window should play. Files are found here; decoding and output belong to the window.
 #[derive(Clone, Debug, PartialEq)]
@@ -987,6 +989,14 @@ impl Stage {
         }
     }
 
+    /// Where the walls around the player end, which the camera stays under.
+    pub fn wall_top(&self) -> Option<f32> {
+        let p = self.pc_position();
+        self.floor
+            .as_ref()?
+            .wall_top_near(p[0], p[1], p[2] + 1.5, WALL_TOP_RADIUS)
+    }
+
     fn pc_position(&self) -> [f32; 3] {
         let w = &self.game.world;
         w.object(w.pc).map_or([0.0; 3], |o| o.position)
@@ -1024,6 +1034,15 @@ impl Stage {
                     break;
                 }
                 t += 0.1;
+            }
+        }
+        // Not above the walls: tilted up, the camera went over the ceiling and looked at what lies outside the room (bug 26).
+        if let (Some(f), true) = (&self.floor, up > 0.05) {
+            if let Some(top) = f.wall_top_near(p[0], p[1], p[2] + 1.5, WALL_TOP_RADIUS) {
+                let room = top - 0.3 - (p[2] + CAMERA_LOOKS_AT);
+                if room > 0.0 {
+                    d = d.min(room / up);
+                }
             }
         }
         // Closed doors are not in the walkmesh.

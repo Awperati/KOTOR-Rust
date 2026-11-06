@@ -905,3 +905,13 @@ fn the_jedi_duel_ends_without_any_click() {
     assert!(ended.is_some(), "end_cut04 waits for a click");
     assert!(ev.iter().any(|e| e.contains("end_darkjedi01) dies")));
 }
+
+#[test]
+fn tilted_right_up_the_camera_stays_under_the_ceiling() {
+    let Some(mut s) = stage() else { return };
+    s.pitch = 1.2;
+    s.distance = 6.0;
+    let top = s.wall_top().expect("no walls near the start");
+    let eye = s.camera().eye;
+    assert!(eye[2] <= top - 0.25, "eye {} over the walls {top}", eye[2]);
+}
