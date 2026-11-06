@@ -154,6 +154,10 @@ pub struct Patch {
     pub greyed: bool,
     /// Its words stand this many layout units in from each side.
     pub inset: i32,
+    /// A thin line of this colour instead of the file's border.
+    pub line: Option<[u8; 3]>,
+    /// In place of the control, this rectangle of layout units in this colour.
+    pub cover: Option<([i32; 4], [u8; 3])>,
 }
 
 /// What the dialogue box shows.

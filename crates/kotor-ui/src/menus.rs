@@ -21,6 +21,24 @@ const SCROLLBAR: i32 = 9;
 const CHECKBOX: i32 = 7;
 const SLIDER: i32 = 8;
 
+/// A line one pixel wide round a rectangle of layout units.
+fn thin_line(cv: &mut Canvas, r: [i32; 4], color: [u8; 3]) {
+    let (sx, sy) = (cv.scale_x, cv.scale);
+    let left = (r[0] as f32 * sx).round() as i32;
+    let top = (r[1] as f32 * sy).round() as i32;
+    let right = ((r[0] + r[2]) as f32 * sx).round() as i32 - 1;
+    let bottom = ((r[1] + r[3]) as f32 * sy).round() as i32 - 1;
+    let pixel = [color[0], color[1], color[2], 255];
+    for x in left..=right {
+        cv.blend(x, top, pixel);
+        cv.blend(x, bottom, pixel);
+    }
+    for y in top..=bottom {
+        cv.blend(left, y, pixel);
+        cv.blend(right, y, pixel);
+    }
+}
+
 /// One row of a list.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Row {
@@ -346,6 +364,16 @@ impl Ui<'_> {
             Some(Hit::Button(t)) | Some(Hit::Slider(t, _)) => t == &c.tag,
             _ => false,
         };
+        if let Some((at, color)) = patch.cover {
+            cv.fill_rect(
+                at[0],
+                at[1],
+                at[2],
+                at[3],
+                [color[0], color[1], color[2], 255],
+            );
+            return;
+        }
         if c.kind == SLIDER {
             return self.draw_slider(cv, c, r, &patch, lit);
         }
@@ -373,10 +401,12 @@ impl Ui<'_> {
             self.draw_text(cv, &t.font, &text, words, 17, color);
             return;
         }
-        if !patch.plain {
+        if let Some(line) = patch.line {
+            thin_line(cv, r, line);
+        } else if !patch.plain {
             self.draw_border(cv, &c.border, r, patch.fill.as_deref());
         }
-        if let (true, Some(h)) = (lit, &c.hilight) {
+        if let (true, Some(h), None) = (lit, &c.hilight, patch.line) {
             self.draw_border(cv, h, r, None);
         }
         let Some(t) = &c.text else { return };
