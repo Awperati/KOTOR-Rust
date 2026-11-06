@@ -231,7 +231,13 @@ impl World {
         let lift = (kind == Kind::Door).then_some(target);
         let route = self.route_near(pos, stop, lift).or_else(|| {
             // Someone behind a counter stands where nobody can walk, as Janice Nall does: go to where they can be spoken to.
-            (kind == Kind::Creature)
+            // A thing with no floor under it is the same, as the Garage Head's desk is. It holds the pass to the Vulkars' lab.
+            let no_floor = kind == Kind::Placeable
+                && self
+                    .nav
+                    .as_ref()
+                    .is_some_and(|n| n.height_at(pos[0], pos[1], pos[2] + 1.0).is_none());
+            (kind == Kind::Creature || no_floor)
                 .then(|| self.route_beside(pos, stop))
                 .flatten()
         });
@@ -548,6 +554,11 @@ impl World {
             self.left_modules.insert(self.module.clone(), left);
         }
         self.objects.retain(|id, _| keep.contains(id));
+        // What they were about to do belongs to the module they leave. Kandon's talk ended with the player due to jump to a
+        // place in the Vulkar base, which is off the floor of the swoop track.
+        for o in self.objects.values_mut() {
+            o.actions.clear();
+        }
         self.delayed.clear();
         self.inside.clear();
         self.pending = None;

@@ -1,6 +1,7 @@
 use kotor_archive::Install;
 use kotor_game::{
-    save_passes, skill_passes, EffectRec, ObjId, Save, World, DURATION_INSTANT, DURATION_TEMPORARY,
+    save_passes, skill_passes, Action, EffectRec, ObjId, Save, World, DURATION_INSTANT,
+    DURATION_TEMPORARY,
 };
 
 fn world() -> Option<World> {
@@ -26,6 +27,12 @@ fn a_module_entered_with_no_waypoint_starts_at_its_entry_point() {
     inst.set_prefer_rim(true);
     let mut w = World::new(inst).unwrap();
     w.load_module("end_m01aa").unwrap();
+    // What the player was about to do stays behind: Kandon's talk leaves a jump in the queue.
+    let pc = w.pc;
+    w.object_mut(pc)
+        .unwrap()
+        .actions
+        .push_back(Action::Jump([178.7, 118.8, 2.25]));
     // The swoop race's module, as `k_ptar_bekrace` starts it. Its file gives the entry point.
     w.transition("tar_m03af", "").unwrap();
     let at = w.object(w.pc).unwrap().position;
@@ -38,6 +45,31 @@ fn a_module_entered_with_no_waypoint_starts_at_its_entry_point() {
     assert!(
         (at[0] - 246.196).abs() < 0.5 && (at[1] - 218.443).abs() < 0.5,
         "{at:?}"
+    );
+}
+
+#[test]
+fn a_thing_with_no_floor_under_it_can_be_used_from_beside_it() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.set_prefer_rim(true);
+    let mut w = World::new(inst).unwrap();
+    w.load_module("end_m01aa").unwrap();
+    w.transition("tar_m10ac", "tar10_sw10ac29").unwrap();
+    // The Garage Head's desk holds the key to the Vulkars' lab, and the Swoop Accelerator lies behind that door.
+    let desk = w.by_tag("tar10_headdesk")[0];
+    let at = w.object(desk).unwrap().position;
+    let nav = w.nav.as_mut().unwrap();
+    assert!(
+        nav.height_at(at[0], at[1], at[2] + 1.0).is_none(),
+        "no floor"
+    );
+    nav.clear_lines();
+    assert!(
+        w.click(desk),
+        "the doors on the way aside, it can be reached"
     );
 }
 
