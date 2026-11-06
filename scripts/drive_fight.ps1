@@ -17,7 +17,13 @@ function ToPixel($s, [string]$place) {
   $p = $place -split ','
   @([int]([double]$p[0] * 1280 / [double]$s.width), [int]([double]$p[1] * 1.5))
 }
-function ClickSlot($s, [string]$slot) { $p = ToPixel $s $s[$slot]; Click $p[0] $p[1] }
+# The bar is over the target, and the camera may still be turning: wait until it has stopped.
+function ClickSlot($s, [string]$slot) {
+  $until = (Get-Date).AddSeconds(5)
+  do { $a = State; Start-Sleep -Milliseconds 60; $s = State } while ($a[$slot] -ne $s[$slot] -and (Get-Date) -lt $until)
+  $p = ToPixel $s $s[$slot]
+  Click $p[0] $p[1]
+}
 function HoverLayout($s, [string]$place) { $p = ToPixel $s $place; Hover $p[0] $p[1] }
 
 function FindFoe {
