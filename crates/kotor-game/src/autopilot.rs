@@ -112,6 +112,8 @@ const GIVE_UP_SECONDS: f32 = 15.0;
 const LOCK_TRIES: u32 = 8;
 /// How long it goes on with no module it has not seen. Its longest wait so far is 4,100 s, in the Sith base and back.
 const NEW_MODULE_SECONDS: f32 = 8000.0;
+/// Times it comes to a way out of a module it never gets through before it stops heading there.
+const CHASE_VISITS: u32 = 3;
 /// A mortal pilot takes a medpack below half its hit points, at most one a round.
 const MEDPACK_SECONDS: f32 = 3.0;
 const GEAR_SECONDS: f32 = 1.0;
@@ -175,6 +177,8 @@ pub struct Autopilot {
     grenade_wait: f32,
     /// Where each module's ways out go, as far as it has seen.
     links: BTreeMap<String, BTreeSet<String>>,
+    /// How often it has stood in a module with a way out to each module it has not reached.
+    chased: BTreeMap<String, u32>,
     /// The things that took it to another module, by module and tag, and where to.
     exits: BTreeMap<(String, String), String>,
     /// Nothing more to try.
@@ -239,6 +243,7 @@ impl Autopilot {
             party_filled: false,
             grenade_wait: 0.0,
             links: BTreeMap::new(),
+            chased: BTreeMap::new(),
             exits: BTreeMap::new(),
             finished: false,
             read_lines: false,
@@ -690,6 +695,11 @@ impl Autopilot {
                 self.new_module_at = self.time;
             }
             self.modules.push(self.module.clone());
+            for to in self.links.get(&self.module).into_iter().flatten() {
+                if !self.modules.contains(to) {
+                    *self.chased.entry(to.clone()).or_default() += 1;
+                }
+            }
             self.log
                 .push(format!("entered {} at {:.0} s", self.module, self.time));
             self.goal = None;
@@ -1200,6 +1210,8 @@ impl Autopilot {
             .values()
             .flatten()
             .filter(|m| !self.modules.contains(m))
+            // A gate it cannot open held it between two modules, with Kandon waiting in a third.
+            .filter(|m| self.chased.get(*m).is_none_or(|n| *n < CHASE_VISITS))
             .map(|m| (m.clone(), 0))
             .collect();
         for n in 1..=self.links.len() as u32 {
