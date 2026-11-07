@@ -330,7 +330,7 @@ fn the_variants_are_the_standard_paint_and_each_mod_folder() {
     let list = underwear::list_underwear_variants();
     assert_eq!(list[0].id, "", "the standard paint comes first");
     assert!(list[0].fits);
-    for v in &list[1..] {
+    for v in list[1..].iter().filter(|v| !underwear::is_pack(&v.id)) {
         assert!(!v.id.is_empty() && v.fits, "{v:?}");
         assert!(underwear::variant_dir(&v.id).is_some(), "{v:?}");
         assert!(underwear::variant_palette(&v.id).is_some(), "{v:?}");
@@ -490,5 +490,30 @@ fn the_skin_is_shaded_by_the_shape_of_the_body_at_three_strengths() {
                 "{name}: the mean light moves"
             );
         }
+    }
+}
+
+/// A texture pack of the owner's is a choice in its own right: its sheets are the body's paint as the author made it. A
+/// machine without the pack has none of this to check.
+#[test]
+fn a_texture_pack_is_a_variant_whose_sheets_are_the_bodys_paint() {
+    for yes in ["pfbam01", "pfbamA01", "PFBASB01", "pmbal01", "pmbasb01"] {
+        assert!(underwear::is_body_sheet(yes), "{yes}");
+    }
+    for no in ["pfbbm01", "pfbamd01", "pfhc01", "pfbam1", "p_bastilaba01"] {
+        assert!(!underwear::is_body_sheet(no), "{no}");
+    }
+    assert!(underwear::pack_sheet("", "pfbam01").is_none());
+    assert!(underwear::pack_sheet("pack:..", "pfbam01").is_none());
+    assert!(underwear::pack_sheet("pack:a/b", "pfbam01").is_none());
+    for v in underwear::list_underwear_variants()
+        .iter()
+        .filter(|v| underwear::is_pack(&v.id))
+    {
+        assert!(v.fits, "{v:?}");
+        let sheet =
+            underwear::pack_sheet(&v.id, "PFBAM01").expect("a pack has a sheet of the middle body");
+        assert!(sheet.width >= 256 && sheet.height >= 256, "{v:?}");
+        assert!(underwear::pack_sheet(&v.id, "nothing01").is_none());
     }
 }

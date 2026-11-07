@@ -2077,6 +2077,10 @@ impl Stage {
             .entry(name.to_string())
             .or_insert_with(|| {
                 let name = plain.as_str();
+                // A texture pack's own sheet of this body is the paint, as its author made it.
+                if let Some(sheet) = kotor_render::underwear::pack_sheet(&variant, name) {
+                    return Some(sheet);
+                }
                 // An upscaled copy has no TXI of its own: the game's picture says whether it adds its light.
                 let stock = hd
                     .and_then(|d| upscaled(&d, name))
@@ -4108,6 +4112,8 @@ fn wear_underwear(scene: &mut Scene, from: usize, underwear: &str) {
         if let Some(t) = &m.texture {
             if kotor_render::underwear::body_of_texture(t).is_some()
                 || kotor_render::underwear::is_hero_head(t)
+                || (kotor_render::underwear::is_pack(underwear)
+                    && kotor_render::underwear::is_body_sheet(t))
             {
                 m.texture = Some(kotor_render::underwear::variant_texture_name(t, underwear));
             }

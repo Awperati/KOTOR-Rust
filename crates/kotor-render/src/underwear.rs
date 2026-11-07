@@ -23,6 +23,9 @@ use kotor_archive::Install;
 use kotor_core::ResType;
 use kotor_image::Image;
 use kotor_model::{Mesh, Model};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Where the fill and the masks are worked out, whatever the texture's own size.
 const WORK: usize = 512;
@@ -2259,7 +2262,118 @@ pub fn list_underwear_variants() -> Vec<UnderwearVariant> {
         .collect();
     found.sort_by_key(|a| a.name.to_lowercase());
     out.extend(found);
+    out.extend(list_packs());
     out
+}
+
+/// What a texture pack's id starts with: `pack:` and the name of its folder under [`mods_root`].
+pub const PACK_PREFIX: &str = "pack:";
+
+/// Whether an id is a texture pack's, whose sheets are the body's paint as they are, with none of ours over them.
+pub fn is_pack(id: &str) -> bool {
+    id.starts_with(PACK_PREFIX)
+}
+
+/// Whether a texture is a hero body's sheet of any sex: `pfbam01`, `pmbasb01`, but no armour's.
+pub fn is_body_sheet(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    let Some(rest) = n.strip_prefix("pfba").or_else(|| n.strip_prefix("pmba")) else {
+        return false;
+    };
+    let Some(size) = rest.chars().next().filter(|c| "sml".contains(*c)) else {
+        return false;
+    };
+    let rest = &rest[size.len_utf8()..];
+    let rest = rest.strip_prefix(['a', 'b']).unwrap_or(rest);
+    rest.len() == 2 && rest.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// The body sheets of a folder and those under it, to three levels, by lower-case name without the extension.
+fn collect_sheets(dir: &std::path::Path, depth: usize, out: &mut HashMap<String, PathBuf>) {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<PathBuf> = read.flatten().map(|e| e.path()).collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            if depth > 0 {
+                collect_sheets(&path, depth - 1, out);
+            }
+            continue;
+        }
+        let is_tga = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("tga"));
+        let stem = path
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .map(str::to_ascii_lowercase);
+        if let (true, Some(stem)) = (is_tga, stem) {
+            if is_body_sheet(&stem) {
+                out.entry(stem).or_insert(path);
+            }
+        }
+    }
+}
+
+/// A pack's sheets, found once per id and kept: the files are on the owner's disk and read at run time.
+fn pack_sheets(id: &str) -> Option<Arc<HashMap<String, PathBuf>>> {
+    static KEPT: OnceLock<Mutex<HashMap<String, Arc<HashMap<String, PathBuf>>>>> = OnceLock::new();
+    let name = id.strip_prefix(PACK_PREFIX)?;
+    if name.is_empty() || name.contains(['/', '\\', ':']) || name.contains("..") {
+        return None;
+    }
+    let mut kept = KEPT.get_or_init(Default::default).lock().ok()?;
+    let key = format!("{}|{id}", mods_root().display());
+    if let Some(found) = kept.get(&key) {
+        return Some(found.clone());
+    }
+    let dir = mods_root().join(name);
+    let mut sheets = HashMap::new();
+    if dir.is_dir() {
+        collect_sheets(&dir, 3, &mut sheets);
+    }
+    let sheets = Arc::new(sheets);
+    kept.insert(key, sheets.clone());
+    Some(sheets)
+}
+
+/// A pack's own sheet of a body texture, read from its file: none if the pack has no sheet of that name or it cannot be read.
+pub fn pack_sheet(id: &str, texture: &str) -> Option<Image> {
+    let path = pack_sheets(id)?.get(&texture.to_ascii_lowercase())?.clone();
+    kotor_image::parse_tga(&std::fs::read(path).ok()?).ok()
+}
+
+/// A folder under [`mods_root`] that holds body sheets in it or in a folder of its own, and no sheet of the blue variants' kind
+/// directly: a texture pack. Each is a choice that puts its sheets on the hero's body instead of our paint.
+fn list_packs() -> Vec<UnderwearVariant> {
+    let Ok(read) = std::fs::read_dir(mods_root()) else {
+        return Vec::new();
+    };
+    let mut found: Vec<UnderwearVariant> = read
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter(|e| {
+            !['a', 'b', 'c']
+                .iter()
+                .any(|f| sheet_file(&e.path(), *f).is_some())
+        })
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            let mut sheets = HashMap::new();
+            collect_sheets(&e.path(), 3, &mut sheets);
+            (!sheets.is_empty()).then(|| UnderwearVariant {
+                id: format!("{PACK_PREFIX}{name}"),
+                name,
+                fits: true,
+                note: format!("Its own sheets, {} of them, as painted", sheets.len()),
+            })
+        })
+        .collect();
+    found.sort_by_key(|a| a.name.to_lowercase());
+    found
 }
 
 /// The folder of a variant, none for the standard paint or a folder that is gone.
