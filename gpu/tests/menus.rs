@@ -3241,6 +3241,31 @@ fn every_body_stands_inside_the_hole_of_its_screen() {
     let zaalbar = sizes.iter().find(|x| x.0 == 9).unwrap().1;
     assert!(t3 < zaalbar * 0.9, "{t3} {zaalbar}");
 
+    const RIGHT_HAND: i32 = 4;
+    // A rifle or a double saber in the hands changes nothing here: these screens show empty hands, as the video has them.
+    s.set_view(SIZE);
+    s.game.world.objects.get_mut(&pc).unwrap().appearance = 138;
+    s.open_character();
+    s.update(DT);
+    let bare = s.figure_scene().meshes.len();
+    s.escape();
+    for template in ["g_w_blstrrfl001", "g_w_dblsbr001"] {
+        let item = s.game.world.spawn_item(template);
+        s.game.world.carry(pc, item);
+        // Straight into the right hand: a new character has not the feats for these.
+        let o = s.game.world.objects.get_mut(&pc).unwrap();
+        o.equipped.insert(RIGHT_HAND, item);
+        s.open_character();
+        s.update(DT);
+        assert_eq!(
+            s.figure_scene().meshes.len(),
+            bare,
+            "{template}: empty hands"
+        );
+        inside(&mut s, [55.0, 110.0, 259.0, 295.0], template);
+        s.escape();
+    }
+
     // The level-up panel, and the party screen.
     s.set_view(SIZE);
     s.game.world.objects.get_mut(&pc).unwrap().appearance = 138;

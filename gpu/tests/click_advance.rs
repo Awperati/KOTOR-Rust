@@ -111,3 +111,65 @@ fn the_pilot_clicks_its_way_through_the_opening() {
     assert!(p.lines_clicked > 5, "{} lines", p.lines_clicked);
     assert!(p.lines_not_clicked.is_empty(), "{:?}", p.lines_not_clicked);
 }
+
+/// The owner's question to Trask, through the stage: its words are up, its three answers can be clicked, and his line follows.
+#[test]
+fn the_trask_choice_shows_its_words_and_goes_on_with_a_click() {
+    let Some(mut s) = at_start("trask") else {
+        return;
+    };
+    for _ in 0..600 {
+        s.update(DT);
+        if s.game.world.dialogue_view().is_some() {
+            s.number_key(1);
+            s.continue_line();
+        }
+    }
+    let scene = s.game.world.by_tag("end01_sceneobj03")[0];
+    let pc = s.game.world.pc;
+    s.game.world.queue(
+        scene,
+        kotor_game::Action::StartConversation {
+            target: pc,
+            dialogue: "end_cut01".to_string(),
+            anywhere: true,
+        },
+    );
+    let mut up = false;
+    for _ in 0..20000 {
+        s.update(DT);
+        let w = &s.game.world;
+        if w.conversation_paused() {
+            continue;
+        }
+        let Some((_, said, _, _)) = w.dialogue_view() else {
+            continue;
+        };
+        if said == "What should we do?" {
+            up = true;
+            break;
+        }
+        s.number_key(1);
+        s.continue_line();
+    }
+    assert!(up, "the question never came");
+    let (speaker, _, _, replies) = s.game.world.dialogue_view().unwrap();
+    assert_eq!(speaker, "Trask");
+    assert_eq!(replies.len(), 3);
+    assert!(s.overlay().is_some(), "the words are drawn");
+    // Each answer has a row of its own.
+    let rows: Vec<_> = (0..3).map(|n| pixel(&mut s, n)).collect();
+    assert!(rows[0].1 < rows[1].1 && rows[1].1 < rows[2].1, "{rows:?}");
+    s.hover(rows[1], SIZE);
+    s.click(rows[1], SIZE);
+    let (speaker, said, _, _) = s.game.world.dialogue_view().unwrap();
+    assert_eq!(
+        (speaker.as_str(), said.as_str()),
+        ("Trask", "For the Republic!")
+    );
+    assert_eq!(
+        s.game.world.transcript.last().map(|l| l.text.as_str()),
+        Some("For the Republic!"),
+        "and it is written down"
+    );
+}
