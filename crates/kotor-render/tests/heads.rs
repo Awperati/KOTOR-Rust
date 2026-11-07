@@ -386,3 +386,59 @@ fn no_pose_pulls_the_neck_away_from_the_collar() {
         }
     }
 }
+
+/// "During cinematics the neck still has a gap": a cutscene poses the body from a stunt model of its own, whose bones rest a little
+/// differently from the body's (its `headhook` 2.5 cm higher), so its keys took the head off the collar. Posed through
+/// `Rig::retarget`, the neck's lowest ring is as far from the body as at rest, to within 5 mm, in every stunt clip of the
+/// opening that has a stunt model in the install.
+#[test]
+fn a_cutscene_stunt_keeps_the_head_on_the_collar() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let Ok(bytes) = inst.read("m01aa_c01_char01", kotor_core::ResType::MDL) else {
+        return;
+    };
+    let mdx = inst
+        .read("m01aa_c01_char01", kotor_core::ResType::MDX)
+        .unwrap_or_default();
+    let stunt = kotor_model::parse_model(&bytes, &mdx).unwrap();
+    let gap = |s: &Scene, neck: &Vertices, head_tex: &str| {
+        let mut worst = 0.0f32;
+        for (a, b) in neck {
+            let p = s.meshes[*a].positions[*b];
+            let near = s
+                .meshes
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !is_head(s, *i, head_tex))
+                .flat_map(|(_, m)| m.positions.iter())
+                .map(|q| apart(*q, p))
+                .fold(f32::MAX, f32::min);
+            worst = worst.max(near);
+        }
+        worst
+    };
+    for row in [137, 92] {
+        let rig = rig_for_outfit(&mut inst, row, 1, None).unwrap();
+        let head_tex = rig.head_texture().unwrap().to_string();
+        let rest = rig.pose(None).unwrap();
+        let (neck, _) = join_vertices(&rest, &head_tex);
+        let at_rest = gap(&rest, &neck, &head_tex);
+        for a in &stunt.animations {
+            for k in 0..4 {
+                let t = a.length * k as f32 / 4.0;
+                let pose = rig.retarget(&stunt, a.sample(&stunt, t));
+                let s = rig.posed_with_face(Some(&pose), None).unwrap();
+                let g = gap(&s, &neck, &head_tex);
+                assert!(
+                    (g - at_rest).abs() < 0.005,
+                    "row {row} {} at {t:.2}: {g:.3} m from the body, {at_rest:.3} at rest",
+                    a.name
+                );
+            }
+        }
+    }
+}

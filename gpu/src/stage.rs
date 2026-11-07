@@ -1421,7 +1421,7 @@ impl Stage {
     }
 
     /// The pose a creature's cutscene stunt puts it in this beat.
-    fn stunt_pose(&self, id: ObjId) -> Option<kotor_model::Pose> {
+    fn stunt_pose(&self, id: ObjId, rig: &Rig) -> Option<kotor_model::Pose> {
         let w = &self.game.world;
         let beat = self.beat.as_ref()?;
         let tag = w.object(id)?.tag.clone();
@@ -1436,7 +1436,8 @@ impl Stage {
         let a = stunt
             .animations
             .get(anim.checked_sub(FIRST_STUNT_ANIMATION)? as usize)?;
-        Some(a.sample(stunt, self.beat_time.min(a.length)))
+        let raw = a.sample(stunt, self.beat_time.min(a.length));
+        Some(rig.retarget(stunt, raw))
     }
 
     fn update_camera(&mut self, dt: f32) {
@@ -2922,7 +2923,7 @@ impl Stage {
                         .object(pose.id)
                         .map(|o| o.underwear.clone())
                         .unwrap_or_default();
-                    if let Some(p) = self.stunt_pose(pose.id) {
+                    if let Some(p) = self.stunt_pose(pose.id, &rig) {
                         // A stunt is in world space, like the camera beside it.
                         let face = self.stunt_face(pose.id, &rig);
                         if let Ok(mut body) = rig.posed_with_face(Some(&p), face.as_ref()) {

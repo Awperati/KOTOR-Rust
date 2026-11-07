@@ -307,6 +307,23 @@ impl Rig {
             .collect()
     }
 
+    /// A pose sampled against the rest of another model of the same character (a cutscene's stunt model), as this body's own rest
+    /// has it: the keys of each node but the root's, which places the body in the world, are what they move it by from `from`'s
+    /// rest, added to the body's. The head rides on `headhook` of the posed body, so a neck whose bones rest elsewhere in the stunt
+    /// model than in the body left the head standing off the collar through a cutscene.
+    pub fn retarget(&self, from: &Model, pose: kotor_model::Pose) -> kotor_model::Pose {
+        let root = self.body.root.name.to_ascii_lowercase();
+        let (keep, moved): (Vec<_>, Vec<_>) = pose.into_iter().partition(|(n, _)| {
+            n == &root
+                || n == "rootdummy"
+                || n == "cutscenedummy"
+                || n == &from.root.name.to_ascii_lowercase()
+        });
+        let mut out = self.to_body_rest(from, moved.into_iter().collect());
+        out.extend(keep);
+        out
+    }
+
     /// The body standing as its model has it, with no animation.
     pub fn bind_pose(&self) -> kotor_model::Pose {
         self.body.bind_pose()
