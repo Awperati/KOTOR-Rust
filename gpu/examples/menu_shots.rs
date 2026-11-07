@@ -1,10 +1,10 @@
-//! Frames of the menus for looking at, at 1280x720 and 3840x2160, with no window and no screen capture.
+//! Frames of the menus for looking at, at 1280x720, 1920x1080 and 3840x2160, with no window and no screen capture.
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example menu_shots -- [out_dir]
 use kotor_gpu::stage::Stage;
 use kotor_gpu::{composite, GpuRenderer};
 
-const SIZES: [(u32, u32); 2] = [(1280, 720), (3840, 2160)];
+const SIZES: [(u32, u32); 3] = [(1280, 720), (1920, 1080), (3840, 2160)];
 const DT: f32 = 1.0 / 30.0;
 
 fn shot(gpu: &mut GpuRenderer, s: &mut Stage, name: &str, out: &std::path::Path) {
@@ -12,8 +12,13 @@ fn shot(gpu: &mut GpuRenderer, s: &mut Stage, name: &str, out: &std::path::Path)
     gpu.set_static_scene(&scene, &mut |n| s.texture(n));
     for size in SIZES {
         gpu.resize(size.0, size.1);
+        s.words_fit();
         s.set_view(size);
         s.update(0.0);
+        let (_, too_big) = s.words_fit();
+        if !too_big.is_empty() {
+            println!("does not fit on {name} at {}: {too_big:?}", size.1);
+        }
         let (moving, cam, figure) = s.frame_scene();
         gpu.set_figure_only(figure);
         gpu.set_particles(s.frame_particles());

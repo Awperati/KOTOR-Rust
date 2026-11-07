@@ -944,6 +944,17 @@ fn the_words_for_a_row_name_the_key_it_has_now() {
 }
 
 #[test]
+fn the_words_on_the_map_fit_at_each_size() {
+    let Some((mut s, _)) = in_game("map_words") else {
+        return;
+    };
+    s.open_map();
+    let mut found = Vec::new();
+    words_too_big(&mut s, "map", &mut found);
+    assert!(found.is_empty(), "{found:?}");
+}
+
+#[test]
 fn a_rounded_button_has_no_square_plate_behind_it() {
     let Some((mut s, _)) = in_game("rounded") else {
         return;

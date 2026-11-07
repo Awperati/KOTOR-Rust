@@ -104,6 +104,10 @@ impl Stage {
         let heading = w.pc_mover.heading;
         v.text("LBL_Area", area);
         v.inert(&["BTN_RETURN"]);
+        // Two buttons 13 high, one over the other: the file's font for them is too tall to stay apart.
+        for tag in ["BTN_PRTYSLCT", "BTN_RETURN"] {
+            v.font(tag, "dialogfont10x10");
+        }
         if self.party_blocked() {
             v.inert(&["BTN_PRTYSLCT"]);
         }
