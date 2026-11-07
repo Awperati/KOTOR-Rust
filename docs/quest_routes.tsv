@@ -1,0 +1,13 @@
+# Where to go next for a quest, by hand: a row beats what the install says (crates/kotor-game/src/quest_route.rs).
+# Columns, split by one tab: quest, state it is in now, module, kind (door elevator talk item area kill), target tag, label.
+# An empty tag means go to the module. An empty label means the game's own name. Rows are ours, not the game's text.
+tar_bastsearch	30	tar_m03ae	talk	Mission031	Find Mission in the cantina
+tar_bastsearch	33	tar_m03ae	talk	Mission031	Talk to Mission again
+tar_bastsearch	35	tar_m05aa	item	tar05_celltalker	Free the Wookiee
+tar_bastsearch	37	tar_m11aa	talk	GadonThek112	Bring the accelerator to Gadon
+tar_bastsearch	40	tar_m10ac	item	tar10_accelerator	Find the swoop accelerator
+tar_bastsearch	50	tar_m03af	talk	RaceAnnoun031	Enter the swoop race
+tar_bastsearch	55	tar_m03af	talk	RaceAnnoun031	Enter the swoop race
+tar_escape	10	tar_m03ae	area		Meet Canderous in the cantina
+tar_escape	20	tar_m09ab	kill	DarkJediap091	Recover the departure codes
+tar_escape	25	tar_m03ae	area		Bring the codes to Canderous

@@ -126,7 +126,11 @@ fn a_party_members_line_in_someone_elses_talk_is_shot_on_them() {
             s.continue_line();
             continue;
         }
-        assert_eq!(w.dialogue_owner(), Some(hunter), "the talk stays the hunter's");
+        assert_eq!(
+            w.dialogue_owner(),
+            Some(hunter),
+            "the talk stays the hunter's"
+        );
         s.update(DT);
         let w = &s.game.world;
         let at = w.object(carth).unwrap().position;

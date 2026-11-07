@@ -24,6 +24,7 @@ mod journal;
 mod k2feats;
 mod labels;
 mod law;
+pub mod quest_route;
 mod respawn;
 mod slots;
 mod soundset;
@@ -108,6 +109,7 @@ pub use pazaak::{PazaakCard, PazaakGame, PazaakMove, PazaakSide, PazaakView};
 pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,
 };
+pub use quest_route::{NextStep, StepKind};
 pub use respawn::{Pending, RespawnState, RespawnTable, SpawnPoint};
 pub use rules::{
     save_passes, skill_passes, Check, DeathPhase, LevelUp, Save, DEATH_FADE_SECONDS,
