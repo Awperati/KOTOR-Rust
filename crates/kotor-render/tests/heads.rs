@@ -442,3 +442,58 @@ fn a_cutscene_stunt_keeps_the_head_on_the_collar() {
         }
     }
 }
+
+/// Owner, 7 Nov: "facial 'talking' animations move way too fast for the actual spoken dialogue". The `talk` clip's jaw opens and
+/// shuts 7 to 9 times a second; played at `MOUTH_RATE` of its speed it does so 4 to 5.5 times a second, as a voice has syllables.
+#[test]
+fn the_mouth_opens_and_shuts_at_the_rate_of_syllables() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    for (body, head) in [
+        ("N_RepSold", "N_TraskH"),
+        ("P_BastilaBB", "P_BastilaH"),
+        ("N_RepSold", "N_comAMH01"),
+    ] {
+        let Ok(rig) = Rig::load(&mut inst, body, Some(head), None) else {
+            continue;
+        };
+        let Some(len) = rig.animation_length("talk").filter(|l| *l > 0.0) else {
+            continue;
+        };
+        // The jaw over two seconds of the clip, as the clip has it and as the stage plays it.
+        let cycles = |rate: f32| -> Option<f32> {
+            let n = 400;
+            let series: Vec<f32> = (0..n)
+                .filter_map(|i| {
+                    let clock = 2.0 * i as f32 / n as f32 * rate;
+                    rig.sample_face("talk", clock % len)
+                        .and_then(|f| f.get("f_jaw_g").map(|p| p.orientation[1]))
+                })
+                .collect();
+            if series.len() < n {
+                return None;
+            }
+            let mean = series.iter().sum::<f32>() / n as f32;
+            let crossings = series
+                .windows(2)
+                .filter(|w| (w[0] - mean) * (w[1] - mean) < 0.0)
+                .count();
+            Some(crossings as f32 / 4.0)
+        };
+        let (Some(own), Some(played)) = (cycles(1.0), cycles(kotor_render::MOUTH_RATE)) else {
+            continue;
+        };
+        // The clip is as fast as speech or faster; played at MOUTH_RATE of its speed it is slower, and no faster than a voice.
+        assert!(
+            own >= 2.0,
+            "{head}: the clip's jaw cycles {own:.1} times a second"
+        );
+        assert!(
+            played <= own * 0.85 && played <= 6.2,
+            "{head}: played, {played:.1} against {own:.1} a second"
+        );
+    }
+}

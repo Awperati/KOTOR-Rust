@@ -535,6 +535,8 @@ pub struct Stage {
     /// How loud the voice of the line on now is, in 50ths of a second from 0 to 1: what opens the speaker's mouth. Empty for a
     /// line with no voice, which is then spoken by its length alone.
     voice_energy: Vec<f32>,
+    /// Voice lines whose files the install does not have, said once each.
+    voice_missing: std::collections::HashSet<String>,
     /// A creature held in one clip for a look at it (`force_clip`), and the clip's name.
     forced_clip: Option<(ObjId, &'static str)>,
     camera_model: String,
@@ -702,6 +704,7 @@ impl Stage {
             beat: None,
             beat_time: 0.0,
             voice_energy: Vec::new(),
+            voice_missing: Default::default(),
             forced_clip: None,
             camera_model: String::new(),
             stunts: Vec::new(),
@@ -1201,7 +1204,14 @@ impl Stage {
             self.lines_shown += 1;
             self.cues.push(match self.sound_file(&vo) {
                 Some(p) => Cue::Voice(p),
-                None => Cue::StopVoice,
+                None => {
+                    if !vo.is_empty() && self.voice_missing.insert(vo.clone()) {
+                        eprintln!(
+                            "voice: this install has no file for {vo}, so the line is silent"
+                        );
+                    }
+                    Cue::StopVoice
+                }
             });
             self.beat = self.game.world.dialogue_beat();
             self.beat_time = 0.0;
@@ -1334,13 +1344,14 @@ impl Stage {
                     .sum::<f32>()
                     / (2 * k + 1) as f32
             };
-            around(2)
+            // Over a sixth of a second, which is a syllable: the mouth opens for a syllable and not for each wobble of the voice.
+            around(4)
         };
         // The mouth shuts at the line's very start and end.
         let edge = (self.beat_time / 0.12)
             .min((said - self.beat_time) / 0.12)
             .clamp(0.0, 1.0);
-        Some((open * edge, self.beat_time))
+        Some((open * edge, self.beat_time * kotor_render::MOUTH_RATE))
     }
 
     /// Whether a fixed camera stands closer to whoever says the line than `TOO_CLOSE_METRES`. Carth's on the

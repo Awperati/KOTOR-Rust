@@ -50,6 +50,10 @@ pub struct Rig {
     neck_shading: bool,
 }
 
+/// The `talk` clip's jaw opens and shuts 7 to 9 times a second, as fast as a line could be said; a voice has 4 to 5 syllables a
+/// second. The clip is played at this share of its own speed, so that the mouth follows the voice: 4 to 5.5 times a second.
+pub const MOUTH_RATE: f32 = 0.6;
+
 /// How much further than the `talk` clip the mouth goes at full voice: the clip's jaw turns about three degrees, which a head
 /// seen from across a room does not show.
 const MOUTH_GAIN: f32 = 1.0;
