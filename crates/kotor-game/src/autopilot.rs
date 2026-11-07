@@ -946,7 +946,15 @@ impl Autopilot {
             .iter()
             .copied()
             .find(|k| replies[*k].starts_with('[') && !seen(self, &replies[*k]));
+        // Many replies of which one goes anywhere is a test. Zhar sends away whoever gets a line of the Jedi Code wrong.
+        let goes_on: Vec<usize> = choices
+            .iter()
+            .copied()
+            .filter(|k| w.reply_leads_on(*k))
+            .collect();
+        let answer = (choices.len() >= 3 && goes_on.len() == 1).then(|| goes_on[0]);
         let pick = skilled
+            .or(answer)
             .or_else(|| choices.iter().copied().find(|k| !seen(self, &replies[*k])))
             .or_else(|| {
                 (!choices.is_empty()).then(|| choices[(self.reply_turn >> 8) % choices.len()])
@@ -1228,6 +1236,7 @@ impl Autopilot {
                     o.kind == Kind::Trigger
                         && o.polygon.len() >= 3
                         && o.scripts.contains_key("ScriptOnEnter")
+                        && o.link_module.is_empty()
                         && !self.tried.contains(&o.id)
                 })
                 .map(|o| (o.id, o.tag.clone(), polygon_middle(o)))

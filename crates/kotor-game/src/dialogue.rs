@@ -205,29 +205,19 @@ impl World {
         }
     }
 
-    /// Whether reply `k` of the held line sets someone who cannot be hurt on the player: a fight it cannot win, as
-    /// `k_ptar_killpc` starts with the Sith guard at the undercity door. Conditions on the way are not weighed.
-    ///
-    /// **Assumption:** this is what such replies have in common. A foe that can be hurt is a fight, not a death.
-    pub fn reply_is_fatal(&mut self, k: usize) -> bool {
-        let Some(run) = self.conv.as_ref() else {
-            return false;
-        };
-        if !self.object(run.owner).is_some_and(|o| o.plot) {
-            return false;
-        }
-        let Some(h) = run.held.as_ref() else {
-            return false;
-        };
-        let Some(first) = h.shown.get(k).and_then(|t| {
+    /// The scripts reply `k` runs as far as the next choice, and whether there is a next choice. Conditions on the way are
+    /// not weighed.
+    fn what_reply_leads_to(&self, k: usize) -> Option<(Vec<String>, bool)> {
+        let run = self.conv.as_ref()?;
+        let h = run.held.as_ref()?;
+        let first = h.shown.get(k).and_then(|t| {
             h.options
                 .iter()
                 .find_map(|(r, text)| (text == t).then_some(*r))
-        }) else {
-            return false;
-        };
+        })?;
         let d = &run.dialog;
         let mut scripts: Vec<String> = Vec::new();
+        let mut choice_next = false;
         let mut seen = std::collections::BTreeSet::new();
         let mut todo = vec![first];
         while let Some(r) = todo.pop() {
@@ -240,18 +230,44 @@ impl World {
                 let entry = &d.entries[l.index as usize];
                 scripts.extend(entry.script.clone());
                 // A reply with words is another choice. One without is said on the way.
-                let wordless = entry
-                    .links
-                    .iter()
-                    .map(|l| l.index as usize)
-                    .filter(|r| self.node_text(&d.replies[*r]).is_empty());
-                todo.extend(wordless);
+                for r in entry.links.iter().map(|l| l.index as usize) {
+                    if self.node_text(&d.replies[r]).is_empty() {
+                        todo.push(r);
+                    } else {
+                        choice_next = true;
+                    }
+                }
             }
         }
+        scripts.retain(|s| !s.is_empty());
+        Some((scripts, choice_next))
+    }
+
+    /// Whether reply `k` does anything more than end the talk: a script, or another choice. A wrong answer to Zhar's Jedi
+    /// Code is told so and sent away, and a right one goes on to the next line.
+    pub fn reply_leads_on(&self, k: usize) -> bool {
+        self.what_reply_leads_to(k)
+            .is_some_and(|(scripts, choice_next)| choice_next || !scripts.is_empty())
+    }
+
+    /// Whether reply `k` of the held line sets someone who cannot be hurt on the player: a fight it cannot win, as
+    /// `k_ptar_killpc` starts with the Sith guard at the undercity door. Conditions on the way are not weighed.
+    ///
+    /// **Assumption:** this is what such replies have in common. A foe that can be hurt is a fight, not a death.
+    pub fn reply_is_fatal(&mut self, k: usize) -> bool {
+        let Some(run) = self.conv.as_ref() else {
+            return false;
+        };
+        if !self.object(run.owner).is_some_and(|o| o.plot) {
+            return false;
+        }
+        let Some((scripts, _)) = self.what_reply_leads_to(k) else {
+            return false;
+        };
         let Some(turn) = self.routine_id("ChangeToStandardFaction") else {
             return false;
         };
-        scripts.iter().filter(|s| !s.is_empty()).any(|s| {
+        scripts.iter().any(|s| {
             self.program(s)
                 .is_some_and(|p| p.reachable_routines().contains(&turn))
         })

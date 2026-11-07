@@ -402,6 +402,29 @@ fn the_pilot_walks_down_the_ramp_of_the_ebon_hawk() {
 }
 
 #[test]
+fn the_pilot_passes_zhars_test_of_the_jedi_code() {
+    let Some(mut w) = world_before_entering("danm13") else {
+        return;
+    };
+    w.enter_area();
+    w.global_numbers.insert("DAN_JEDI_PLOT".to_string(), 2);
+    // Past his first word on it, which sends the student away to get ready.
+    w.global_booleans.insert("DAN_TEMP2".to_string(), true);
+    let zhar = w.by_tag("dan13_zhar")[0];
+    let at = w.object(zhar).unwrap().position;
+    let pc = w.pc;
+    w.object_mut(pc).unwrap().position = at;
+    assert!(w.click(zhar));
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    assert!(g.world.in_dialogue());
+    while p.time < 600.0 && g.world.in_dialogue() {
+        p.step(&mut g, 0.05);
+    }
+    assert_eq!(g.world.global_numbers.get("DAN_JEDI_PLOT"), Some(&3));
+}
+
+#[test]
 fn the_pilot_goes_to_each_planet_on_the_map_once() {
     let Some(mut w) = aboard_the_hawk() else {
         return;

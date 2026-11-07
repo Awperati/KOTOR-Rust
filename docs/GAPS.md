@@ -9,7 +9,7 @@ Sizes are guesses, for one builder: **S** a day or so, **M** a few days, **L** a
 | # | Gap | Evidence | Size |
 |---|---|---|---|
 | 1 | **The rest of the races. The turret and Taris's race are built:** `drive_turret.ps1`, `drive_race.ps1`, `docs/MINIGAMES.md`. | Taris's race has no sound or speed blur yet. `manm26mg` and `tat_m17mg` are the same kind and have not been run. | S |
-| 2 | **Galaxy map: built. The immortal pilot left Taris through it and reached Dantooine (`docs/STATUS.md` item 38).** | The console on the Ebon Hawk opens the map, and Travel runs `k_sup_galaxymap`, live in `drive_galaxy.ps1`. The immortal pilot boards at 23,913 s. The owner's reference video leaves Taris at about 18,000 s. Half of the plain jumps go to the turret minigame in `m12ab`, which is row 1. | S left |
+| 2 | **Galaxy map: built. The immortal pilot left Taris through it and reached Dantooine (`docs/STATUS.md` item 38).** | The console on the Ebon Hawk opens the map, and Travel runs `k_sup_galaxymap`, live in `drive_galaxy.ps1`. The immortal pilot boards at 24,745 s. The owner's reference video leaves Taris at about 18,000 s. Half of the plain jumps go to the turret minigame in `m12ab`, which is row 1. | S left |
 | 3 | **Store screen: built.** | `store.gui`, compared with the video at 50:10. The price formula is still unchecked. | Done |
 
 ## Stops fights being judged
