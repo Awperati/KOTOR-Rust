@@ -238,5 +238,9 @@ Beside the hourglass, in the place `mipc28x6` keeps for stealth, which has no bu
 
 `$env:KOTOR_DRIVE_SIZE = "3840x2160"` runs any `drive_*.ps1` at that size: the viewer reads it, and `drive_common.ps1` scales what a driver clicks. A driver's own `-Size` still wins.
 
+## Spelling and keys, checked
+
+`crates/kotor-ui/tests/spelling.rs` scans the talk table and every string in the code as shown, against a list of American words. It found `organizations`, `civilizations`, `regionalized`, `pretenses`, `judgment` and `aging` still American, now put right. Key Mapping lists all 28 actions with F6 to F10 among them, and Shift and the digits can no longer be taken. Only Cancel Combat and Pickup share a key, on purpose. Test: `every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

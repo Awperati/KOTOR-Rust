@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 /// The roll and the jump are not in the game, so they have no words in the talk table.
 const NOT_IN_TALK_TABLE: u32 = 0;
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 23] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 28] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
@@ -38,6 +38,11 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 23] = [
     ("Pickup", NOT_IN_TALK_TABLE, 1, "KeyF"),
     ("AttackMode", NOT_IN_TALK_TABLE, 1, "KeyB"),
     ("SoloMode", 48035, 1, "KeyV"),
+    ("Nameplates", NOT_IN_TALK_TABLE, 1, "F6"),
+    ("CelShading", NOT_IN_TALK_TABLE, 1, "F7"),
+    ("ReloadCustom", NOT_IN_TALK_TABLE, 1, "F8"),
+    ("CustomClip", NOT_IN_TALK_TABLE, 1, "F9"),
+    ("CustomGarment", NOT_IN_TALK_TABLE, 1, "F10"),
 ];
 /// Each action's name in `keymap.2da`. Not Pause: the table's key for it is Space, which jumps here, as the owner asked.
 const ORIGINAL_NAMES: [(&str, &str); 18] = [
@@ -66,7 +71,23 @@ const FILTERS: [&str; 3] = ["BTN_Filter_Move", "BTN_Filter_Game", "BTN_Filter_Mi
 const STR_REVERSE_WORDS: u32 = 48450;
 const LIST: &str = "LST_EventList";
 /// Keys that always mean the same, whatever the page says.
-const FIXED_KEYS: [&str; 3] = ["Escape", "Enter", "NumpadEnter"];
+const FIXED_KEYS: [&str; 15] = [
+    "Escape",
+    "Enter",
+    "NumpadEnter",
+    "ShiftLeft",
+    "ShiftRight",
+    "Digit0",
+    "Digit1",
+    "Digit2",
+    "Digit3",
+    "Digit4",
+    "Digit5",
+    "Digit6",
+    "Digit7",
+    "Digit8",
+    "Digit9",
+];
 
 /// The keys in use, by action.
 #[derive(Clone, PartialEq)]
@@ -123,6 +144,18 @@ impl KeyMap {
     }
 }
 
+/// An action with no words in the talk table, as the page says it: `AttackMode` is Attack Mode.
+fn spaced(action: &str) -> String {
+    let mut out = String::new();
+    for c in action.chars() {
+        if c.is_uppercase() && !out.is_empty() {
+            out.push(' ');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// A key as `keymap.2da` writes it, by `winit`'s name: `W` is `KeyW`, `1` is `Digit1`.
 fn key_from_table(key: &str) -> String {
     match key.chars().next() {
@@ -160,6 +193,12 @@ impl Stage {
         } else {
             first
         })
+    }
+
+    /// Each action and its key.
+    pub fn key_bindings(&self) -> Vec<(&'static str, String)> {
+        let keys = &self.menus.keys.0;
+        keys.iter().map(|(a, k)| (*a, k.clone())).collect()
     }
 
     /// A key was pressed. If the page is waiting for one it takes it, and Esc gives up waiting.
@@ -209,10 +248,8 @@ impl Stage {
         let capture = self.menus.key_capture;
         let mut rows = Vec::new();
         for (action, words) in self.page_actions() {
-            let name = if action == "AttackMode" {
-                "Attack Mode".to_string()
-            } else if words == NOT_IN_TALK_TABLE {
-                action.to_string()
+            let name = if words == NOT_IN_TALK_TABLE {
+                spaced(action)
             } else {
                 self.ui.strref(words)
             };

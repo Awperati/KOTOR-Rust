@@ -771,6 +771,96 @@ fn the_attack_mode_button_beside_the_hourglass_turns_it_on_and_off() {
 }
 
 #[test]
+fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
+    let Some((mut s, dir)) = in_game("controls") else {
+        return;
+    };
+    s.use_settings_file(dir.join("settings.txt"));
+    for (key, action) in [
+        ("Space", "Jump"),
+        ("KeyX", "Pause"),
+        ("KeyB", "AttackMode"),
+        ("KeyF", "Pickup"),
+        ("F6", "Nameplates"),
+        ("F7", "CelShading"),
+        ("F8", "ReloadCustom"),
+        ("F9", "CustomClip"),
+        ("F10", "CustomGarment"),
+    ] {
+        assert_eq!(s.action_for_key(key), Some(action), "{key}");
+    }
+    // No two on a key, but the one that does two things by whether there is a fight.
+    let bindings = s.key_bindings();
+    for (n, (action, key)) in bindings.iter().enumerate() {
+        for (other, theirs) in &bindings[n + 1..] {
+            let shared = matches!((*action, *other), ("CancelCombat", "Pickup"));
+            assert!(key != theirs || shared, "{action} and {other} on {key}");
+        }
+    }
+    // Every one has a row with its key.
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "BTN_KEYMAP");
+    let mut rows = s.menu_rows("LST_EventList");
+    press(&mut s, "BTN_Filter_Game");
+    let game = s.menu_rows("LST_EventList");
+    rows.extend(game.clone());
+    assert_eq!(rows.len(), bindings.len());
+    for word in [
+        "Jump: Space",
+        "Attack Mode: B",
+        "Pickup: F",
+        "Nameplates: F6",
+        "Cel Shading: F7",
+        "Reload Custom: F8",
+        "Custom Clip: F9",
+        "Custom Garment: F10",
+    ] {
+        assert!(rows.iter().any(|r| r.text == word), "{word}");
+    }
+    let row = game
+        .iter()
+        .position(|r| r.text.starts_with("Cel Shading"))
+        .unwrap();
+
+    // It moves, and a key that has a fixed meaning is not taken. Six rows fit, and the wheel brings up the rest.
+    let choose = |s: &mut Stage, row: usize| {
+        for _ in 0..game.len() {
+            s.menu_wheel(1.0);
+        }
+        for _ in 0..row.saturating_sub(5) {
+            s.menu_wheel(-1.0);
+        }
+        click_row(s, "LST_EventList", row);
+    };
+    choose(&mut s, row);
+    assert!(s.capture_key("ShiftLeft"));
+    assert_eq!(s.action_for_key("F7"), Some("CelShading"));
+    choose(&mut s, row);
+    assert!(s.capture_key("Digit3"));
+    assert_eq!(s.action_for_key("F7"), Some("CelShading"));
+    choose(&mut s, row);
+    assert!(s.capture_key("KeyG"));
+    assert_eq!(s.action_for_key("KeyG"), Some("CelShading"));
+    assert_eq!(s.action_for_key("F7"), None);
+    // Onto one in use, the other takes the old key.
+    choose(&mut s, row);
+    assert!(s.capture_key("F9"));
+    assert_eq!(s.action_for_key("F9"), Some("CelShading"));
+    assert_eq!(s.action_for_key("KeyG"), Some("CustomClip"));
+
+    // Pickup can leave F to Cancel Combat.
+    let pickup = game
+        .iter()
+        .position(|r| r.text.starts_with("Pickup"))
+        .unwrap();
+    choose(&mut s, pickup);
+    assert!(s.capture_key("KeyH"));
+    assert_eq!(s.action_for_key("KeyF"), Some("CancelCombat"));
+    assert_eq!(s.action_for_key("KeyH"), Some("Pickup"));
+}
+
+#[test]
 fn a_rounded_button_has_no_square_plate_behind_it() {
     let Some((mut s, _)) = in_game("rounded") else {
         return;

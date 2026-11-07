@@ -588,18 +588,6 @@ impl App {
         if pressed && self.stage.capture_key(&name) {
             return;
         }
-        if code == KeyCode::F6 {
-            if pressed {
-                self.stage.toggle_nameplates();
-            }
-            return;
-        }
-        if code == KeyCode::F7 {
-            if pressed {
-                self.stage.toggle_cel_shading();
-            }
-            return;
-        }
         match self.stage.action_for_key(&name) {
             Some("Jump") if self.stage.turret_on() => return self.stage.turret_fire(pressed),
             Some("MoveForward") => return self.keys[0] = pressed,
@@ -628,6 +616,16 @@ impl App {
                         "CancelCombat" => self.stage.hud_disengage(),
                         "Pickup" => self.stage.pickup(),
                         "AttackMode" => self.stage.attack_mode_key(),
+                        "Nameplates" => self.stage.toggle_nameplates(),
+                        "CelShading" => self.stage.toggle_cel_shading(),
+                        "ReloadCustom" => {
+                            self.stage.reload_poses();
+                            self.stage.reload_textures();
+                            self.stage.reload_custom_clips();
+                            self.stage.reload_custom_meshes();
+                        }
+                        "CustomClip" => self.stage.cycle_custom_clip(),
+                        "CustomGarment" => self.stage.cycle_garment(),
                         "SoloMode" => self.stage.solo_key(),
                         "Roll" => self.stage.roll_key(),
                         _ => {}
@@ -641,14 +639,6 @@ impl App {
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.keys[4] = pressed,
             KeyCode::Escape if pressed => self.stage.escape(),
             KeyCode::Enter if pressed => self.stage.continue_line(),
-            KeyCode::F8 if pressed => {
-                self.stage.reload_poses();
-                self.stage.reload_textures();
-                self.stage.reload_custom_clips();
-                self.stage.reload_custom_meshes();
-            }
-            KeyCode::F10 if pressed => self.stage.cycle_garment(),
-            KeyCode::F9 if pressed => self.stage.cycle_custom_clip(),
             _ if pressed && digit > 0 => self.stage.number_pressed(digit),
             _ => {}
         }
