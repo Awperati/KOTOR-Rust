@@ -388,6 +388,8 @@ pub struct World {
     pub(crate) exptable: Vec<i32>,
     /// Seconds the player has pressed on people without getting nearer where it is going.
     pub(crate) pc_pressed: f32,
+    /// How long each walker has pressed on people it cannot get round, getting no nearer: past `PRESSED_SECONDS` it walks through.
+    pub(crate) walker_pressed: BTreeMap<ObjId, f32>,
     /// The objects of each module the player has left, in the form a save keeps them.
     pub(crate) left_modules: BTreeMap<String, Vec<Struct>>,
     /// Seamless areas: neighbours joined through doors. See `docs/SEAMLESS.md`.
@@ -745,6 +747,7 @@ impl World {
             repute: None,
             exptable: Vec::new(),
             pc_pressed: 0.0,
+            walker_pressed: BTreeMap::new(),
             left_modules: BTreeMap::new(),
             seamless: Default::default(),
             door_widths: HashMap::new(),

@@ -302,3 +302,68 @@ fn walkers_do_not_stand_in_doorways() {
         }
     }
 }
+
+/// The owner: "Taris citizen's pathing bugs out when encountering" things in the middle of the walk. A walker held up by a
+/// person standing in a narrow walk went round and round against them for good (Taris Upper City: a woman shuddering for over
+/// ten seconds at one man; Bek's men in the Black Vulkar base the same). Held up and getting no nearer for half a second, it
+/// now walks through, as the player does.
+#[test]
+fn a_walker_held_up_by_a_person_in_the_way_does_not_shudder_against_them_for_good() {
+    for (module, seconds) in [("tar_m02ac", 200), ("tar_m11aa", 100), ("tar_m02ab", 100)] {
+        let Some(mut g) = at(module) else { return };
+        let (pc, party) = (g.world.pc, g.world.party.clone());
+        // Where each walker was, ten times a second, and whether it had a walk to do.
+        let mut trail: std::collections::BTreeMap<ObjId, Vec<([f32; 3], bool)>> =
+            Default::default();
+        for sec in 0..seconds {
+            for _ in 0..10 {
+                for _ in 0..STEPS_A_SECOND / 10 {
+                    g.step_once();
+                }
+                for o in g.world.objects.values() {
+                    if o.kind != Kind::Creature || o.dead || o.id == pc || party.contains(&o.id) {
+                        continue;
+                    }
+                    let walking = matches!(o.actions.front(), Some(Action::MoveTo { .. }));
+                    trail.entry(o.id).or_default().push((o.position, walking));
+                }
+            }
+            if sec % 6 != 5 {
+                continue;
+            }
+            for (id, t) in &trail {
+                if t.len() < 61 {
+                    continue;
+                }
+                let w = &t[t.len() - 61..];
+                let ground: f32 = w.windows(2).map(|p| apart(p[0].0, p[1].0)).sum();
+                let steps: Vec<[f32; 2]> = w
+                    .windows(2)
+                    .map(|p| [p[1].0[0] - p[0].0[0], p[1].0[1] - p[0].0[1]])
+                    .filter(|v| v[0].hypot(v[1]) > 0.01)
+                    .collect();
+                let flips = steps
+                    .windows(2)
+                    .filter(|p| p[0][0] * p[1][0] + p[0][1] * p[1][1] < 0.0)
+                    .count();
+                let tag = g
+                    .world
+                    .object(*id)
+                    .map(|o| o.tag.clone())
+                    .unwrap_or_default();
+                assert!(
+                    flips < 10,
+                    "{module}: {tag} went back and forth {flips} times in 6 s at {:?} (t={}s)",
+                    w[60].0,
+                    sec + 1
+                );
+                assert!(
+                    !(w.iter().all(|p| p.1) && ground < 0.3),
+                    "{module}: {tag} stood still on a walk for 6 s at {:?} (t={}s)",
+                    w[60].0,
+                    sec + 1
+                );
+            }
+        }
+    }
+}

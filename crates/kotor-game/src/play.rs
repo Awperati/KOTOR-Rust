@@ -1,7 +1,7 @@
 //! Interaction and movement on top of the world: picking, click-to-walk, doors, triggers, module
 //! transitions and the per-step update.
 
-use crate::follow::{dist2d, slide_around, trim_route};
+use crate::follow::{dist2d, slide_around, trim_route, PRESSED_SECONDS};
 use crate::movement::{Body, Ground, Input, MovementMode};
 use crate::world::{Action, DoorState, Kind, ObjId, Object, World};
 use kotor_core::{Error, ResType, Result};
@@ -1140,7 +1140,9 @@ impl World {
             return true;
         };
         let status = mover.step(nav, &params, dt);
-        // Walkers go round the people in their way (bug 15), except the one they walk to.
+        // Walkers go round the people in their way (bug 15), except the one they walk to. One that is held up by them, getting
+        // no nearer, for half a second walks through, as the player does: a person standing in a narrow walk held a passer-by
+        // shuddering against them for good.
         if id != self.pc && mover.pos != pos {
             let blockers: Vec<[f32; 2]> = self
                 .objects
@@ -1150,7 +1152,49 @@ impl World {
                 })
                 .map(|o| [o.position[0], o.position[1]])
                 .collect();
-            mover.pos = slide_around(nav, pos, mover.pos, &blockers);
+            let mut pressed = self.walker_pressed.get(&id).copied().unwrap_or(0.0);
+            let free = mover.pos;
+            let slid = if pressed >= PRESSED_SECONDS {
+                free
+            } else {
+                slide_around(nav, pos, free, &blockers)
+            };
+            let reach = 2.0 * crate::follow::CREATURE_RADIUS;
+            let touching = blockers
+                .iter()
+                .any(|c| (free[0] - c[0]).hypot(free[1] - c[1]) < reach);
+            // Going round counts as getting on only when it gains over half of what a free step would.
+            let step = dist2d(pos, free);
+            let nearer = mover
+                .next_waypoint()
+                .is_none_or(|n| dist2d(pos, n) - dist2d(slid, n) > 0.5 * step);
+            pressed = if pressed >= PRESSED_SECONDS {
+                if touching {
+                    pressed
+                } else {
+                    0.0
+                }
+            } else if touching && !nearer {
+                pressed + dt
+            } else if touching {
+                // A step that gained keeps what was counted: going round them is a slide, and slides alternate.
+                pressed
+            } else {
+                0.0
+            };
+            if pressed > 0.0 {
+                self.walker_pressed.insert(id, pressed);
+            } else {
+                self.walker_pressed.remove(&id);
+            }
+            mover.pos = slid;
+        } else if id != self.pc {
+            // A step spent turning on the spot still counts as held up, once it has begun to be.
+            if let Some(p) = self.walker_pressed.get_mut(&id) {
+                if *p < PRESSED_SECONDS {
+                    *p += dt;
+                }
+            }
         }
         let now = mover.pos;
         if let Some(o) = self.objects.get_mut(&id) {

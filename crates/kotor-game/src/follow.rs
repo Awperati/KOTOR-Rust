@@ -8,7 +8,7 @@ use kotor_walkmesh::{Mover, NavMesh};
 use std::collections::BTreeMap;
 
 /// How long the player presses on people, getting no nearer, before it walks through them.
-const PRESSED_SECONDS: f32 = 0.5;
+pub(crate) const PRESSED_SECONDS: f32 = 0.5;
 /// Radius of the disc a creature occupies (metres).
 pub const CREATURE_RADIUS: f32 = 0.4;
 /// A party member this far from the player starts walking towards it.
