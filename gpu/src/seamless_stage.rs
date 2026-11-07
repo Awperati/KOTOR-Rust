@@ -245,7 +245,7 @@ type Ahead = (Preloaded, Vec<(String, Image)>);
 /// A preload in flight.
 struct PreJob {
     module: String,
-    rx: Receiver<Option<Ahead>>,
+    rx: Receiver<Result<Ahead, bool>>,
 }
 
 /// Free memory under which nothing is loaded ahead, in MB. `KOTOR_PRELOAD_MIN_MB` changes it.
@@ -284,6 +284,8 @@ pub(super) struct Seam {
     pre_job: Option<PreJob>,
     /// Modules that could not be loaded ahead (or not for want of memory): not tried again in this module.
     pre_failed: HashSet<String>,
+    /// When a load ahead last stopped for want of memory.
+    pre_wait: Option<std::time::Instant>,
     /// The loaded module's sites, made once the player is near a door.
     sketch: Option<Sketch>,
     jobs: Vec<Job>,
@@ -354,7 +356,7 @@ impl Stage {
     pub(super) fn preload_tick(&mut self) {
         if let Some(job) = &self.seam.pre_job {
             match job.rx.try_recv() {
-                Ok(Some((mut p, images))) => {
+                Ok(Ok((mut p, images))) => {
                     for (n, img) in images {
                         self.textures.entry(n).or_insert(Some(img));
                     }
@@ -367,7 +369,12 @@ impl Stage {
                     self.seam.pre = Some(p);
                     self.seam.pre_job = None;
                 }
-                Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                // Memory was short: tried again in a while, as the other programs may have let go of some.
+                Ok(Err(true)) => {
+                    self.seam.pre_wait = Some(std::time::Instant::now());
+                    self.seam.pre_job = None;
+                }
+                Ok(Err(false)) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     let m = job.module.clone();
                     self.seam.pre_failed.insert(m);
                     self.seam.pre_job = None;
@@ -411,13 +418,20 @@ impl Stage {
                 self.seam.pre = None;
             }
         }
-        if self.seam.pre_job.is_some() {
+        if self.seam.pre_job.is_some()
+            || self
+                .seam
+                .pre_wait
+                .is_some_and(|t| t.elapsed().as_secs() < 10)
+        {
             return;
         }
         // While they talk, the exits are not the way out: what the conversation ends in is.
         let talking = w.conversation_name().map(str::to_ascii_lowercase);
         let near = exits.into_iter().find(|(d, m)| {
-            talking.is_none()
+            talking
+                .as_ref()
+                .is_none_or(|t| self.seam.pre_failed.contains(&format!("talk:{t}")))
                 && *d < PRELOAD_RANGE
                 && !self.seam.pre_failed.contains(m)
                 && self.seam.pre.as_ref().is_none_or(|p| p.module != *m)
@@ -446,66 +460,71 @@ impl Stage {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(PRELOAD_MIN_FREE_MB);
-            let load = || -> Option<Ahead> {
+            let load = || -> Result<Ahead, bool> {
                 if free_ram_mb().is_some_and(|f| f < min) {
-                    return None;
+                    return Err(true);
                 }
-                let mut inst = Install::open(&dir).ok()?;
-                let name = match (&exit, &talk) {
-                    (Some(m), _) => m.clone(),
-                    (None, Some(t)) => {
-                        inst.load_module(&current).ok()?;
-                        module_a_talk_goes_to(&mut inst, &dir, t, &current)?
-                    }
-                    (None, None) => return None,
-                };
-                inst.load_module(&name).ok()?;
-                let ifo = Gff::parse(&inst.read("module", ResType::IFO).ok()?).ok()?;
-                let area = ifo.root.str("Mod_Entry_Area")?.to_string();
-                let chests = chest_templates(&mut inst, &area);
-                let mut scene = kotor_render::load_area(&mut inst, &area).ok()?;
-                kotor_render::add_area_objects_except(&mut scene, &mut inst, &area, false, &chests)
+                (|| -> Option<Ahead> {
+                    let mut inst = Install::open(&dir).ok()?;
+                    let name = match (&exit, &talk) {
+                        (Some(m), _) => m.clone(),
+                        (None, Some(t)) => {
+                            inst.load_module(&current).ok()?;
+                            module_a_talk_goes_to(&mut inst, &dir, t, &current)?
+                        }
+                        (None, None) => return None,
+                    };
+                    inst.load_module(&name).ok()?;
+                    let ifo = Gff::parse(&inst.read("module", ResType::IFO).ok()?).ok()?;
+                    let area = ifo.root.str("Mod_Entry_Area")?.to_string();
+                    let chests = chest_templates(&mut inst, &area);
+                    let mut scene = kotor_render::load_area(&mut inst, &area).ok()?;
+                    kotor_render::add_area_objects_except(
+                        &mut scene, &mut inst, &area, false, &chests,
+                    )
                     .ok()?;
-                // The creatures' bodies and their textures too, which the stage would otherwise build on the main thread.
-                let rigs = Install::open(&dir)
-                    .ok()
-                    .and_then(|i| kotor_game::World::new(i).ok())
-                    .and_then(|mut w| {
-                        w.load_module(&name).ok()?;
-                        Some(prepare_rigs(&mut inst, &w.scenery()))
-                    })
-                    .unwrap_or_default();
-                let mut names = texture_names(&scene);
-                for (_, rig) in &rigs {
-                    if let Ok(body) = rig.posed(None) {
-                        names.extend(texture_names(&body).into_iter().filter(|n| {
-                            kotor_render::underwear::body_of_texture(n).is_none()
-                                && !kotor_render::underwear::is_hero_head(n)
-                        }));
+                    // The creatures' bodies and their textures too, which the stage would otherwise build on the main thread.
+                    let rigs = Install::open(&dir)
+                        .ok()
+                        .and_then(|i| kotor_game::World::new(i).ok())
+                        .and_then(|mut w| {
+                            w.load_module(&name).ok()?;
+                            Some(prepare_rigs(&mut inst, &w.scenery()))
+                        })
+                        .unwrap_or_default();
+                    let mut names = texture_names(&scene);
+                    for (_, rig) in &rigs {
+                        if let Ok(body) = rig.posed(None) {
+                            names.extend(texture_names(&body).into_iter().filter(|n| {
+                                kotor_render::underwear::body_of_texture(n).is_none()
+                                    && !kotor_render::underwear::is_hero_head(n)
+                            }));
+                        }
                     }
-                }
-                names.sort();
-                names.dedup();
-                let images = names
-                    .into_iter()
-                    .filter_map(|n| {
-                        let img = hd
-                            .as_deref()
-                            .and_then(|d| super::upscaled(d, &n))
-                            .or_else(|| kotor_render::load_texture(&mut inst, &n))?;
-                        Some((n, img))
-                    })
-                    .collect();
-                Some((
-                    Preloaded {
-                        module: name.clone(),
-                        scene,
-                        chests,
-                        talk: talk.is_some().then_some(here),
-                        rigs,
-                    },
-                    images,
-                ))
+                    names.sort();
+                    names.dedup();
+                    let images = names
+                        .into_iter()
+                        .filter_map(|n| {
+                            let img = hd
+                                .as_deref()
+                                .and_then(|d| super::upscaled(d, &n))
+                                .or_else(|| kotor_render::load_texture(&mut inst, &n))?;
+                            Some((n, img))
+                        })
+                        .collect();
+                    Some((
+                        Preloaded {
+                            module: name.clone(),
+                            scene,
+                            chests,
+                            talk: talk.is_some().then_some(here),
+                            rigs,
+                        },
+                        images,
+                    ))
+                })()
+                .ok_or(false)
             };
             let _ = tx.send(load());
         });
