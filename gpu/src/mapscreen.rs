@@ -87,7 +87,11 @@ impl Stage {
             let cells = cells.clone();
             self.ui
                 .compose_seen_map(SEEN_PICTURE, &picture, &cells, SEEN_COLS, SEEN_ROWS);
-            self.overlay_key.clear();
+            // On the HUD only the small map shows it, and the map's own screen is drawn whole.
+            if self.menu_open() {
+                self.overlay_key.clear();
+            }
+            self.map_seen_more = true;
         }
     }
 

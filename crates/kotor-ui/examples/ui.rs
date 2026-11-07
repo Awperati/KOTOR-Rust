@@ -6,15 +6,7 @@ use kotor_game::{LineKind, World};
 use kotor_ui::{Canvas, DialogueView, HudMember, Ui};
 
 fn save(img: kotor_image::Image, scale: u32, path: &std::path::Path) {
-    let big = Canvas {
-        width: img.width,
-        height: img.height,
-        scale: 1.0,
-        scale_x: 1.0,
-        rgba: img.rgba,
-    }
-    .scaled(scale)
-    .into_image();
+    let big = Canvas::over(img, 1.0).scaled(scale).into_image();
     std::fs::write(path, kotor_image::to_png(&big)).unwrap();
     println!("wrote {}", path.display());
 }

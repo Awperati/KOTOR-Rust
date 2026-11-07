@@ -58,6 +58,9 @@ pub struct Ui<'a> {
     second_install: Option<Option<Install>>,
     target_at: Option<(i32, i32)>,
     minimap: Option<MiniMap>,
+    hud_drawn: Option<HudDrawn>,
+    /// The picture `compose_seen_map` last made, what it was made from, and what had been seen.
+    seen_made: Option<(String, String, Vec<bool>)>,
     combat: CombatHud,
     /// The icons flashing at the top.
     notices: Vec<String>,
@@ -113,6 +116,65 @@ pub struct CombatHud {
     pub quick_hover: Option<String>,
 }
 
+/// One control as the HUD last drew it.
+#[derive(Clone, Debug, PartialEq)]
+struct ControlDrawn {
+    place: [i32; 4],
+    patch: Patch,
+    font: Option<String>,
+}
+
+/// What the HUD on screen was drawn from, for [`Ui::hud_part`] to see what has changed.
+#[derive(Clone, Debug, PartialEq)]
+struct HudDrawn {
+    pixels: (u32, u32),
+    controls: Vec<ControlDrawn>,
+    minimap: Option<MiniMap>,
+    floats: Vec<Float>,
+    target_at: Option<(i32, i32)>,
+    hover: Option<(usize, String)>,
+    paused: bool,
+    pause_note: String,
+}
+
+/// The lines rising words can wrap to.
+const FLOAT_MOST_LINES: i32 = 3;
+/// A text box's glow reaches past it, in layout units.
+const CONTROL_BOX_PAD: i32 = 8;
+
+/// The box that holds both of two: left, top, width, height.
+fn union_box(a: Option<[u32; 4]>, b: Option<[u32; 4]>) -> Option<[u32; 4]> {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            let (left, top) = (a[0].min(b[0]), a[1].min(b[1]));
+            let right = (a[0] + a[2]).max(b[0] + b[2]);
+            let bottom = (a[1] + a[3]).max(b[1] + b[3]);
+            Some([left, top, right - left, bottom - top])
+        }
+        (a, b) => a.or(b),
+    }
+}
+
+/// Boxes that overlap enough to be cheaper as one, as one.
+fn merged_boxes(mut boxes: Vec<[u32; 4]>) -> Vec<[u32; 4]> {
+    let area = |b: [u32; 4]| b[2] as u64 * b[3] as u64;
+    let mut n = 0;
+    while n < boxes.len() {
+        let near = (n + 1..boxes.len()).find(|&m| {
+            let both = union_box(Some(boxes[n]), Some(boxes[m])).expect("both are there");
+            area(both) <= area(boxes[n]) + area(boxes[m])
+        });
+        match near {
+            Some(m) => {
+                let other = boxes.swap_remove(m);
+                boxes[n] = union_box(Some(boxes[n]), Some(other)).expect("both are there");
+            }
+            None => n += 1,
+        }
+    }
+    boxes
+}
+
 /// Words rising over someone in a fight, in layout units.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Float {
@@ -147,7 +209,7 @@ const MINIMAP_FILE_WIDTH: f32 = 512.0;
 const MINIMAP_ARROW: &str = "mm_barrow";
 
 /// Per-control changes a screen applies on top of the file: replacement fill, text, bar value, or hiding.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Patch {
     pub fill: Option<String>,
     pub text: Option<String>,
@@ -218,6 +280,8 @@ impl<'a> Ui<'a> {
             second_install: None,
             target_at: None,
             minimap: None,
+            hud_drawn: None,
+            seen_made: None,
             combat: CombatHud::default(),
             notices: Vec::new(),
             minimap_off: false,
@@ -385,32 +449,70 @@ impl<'a> Ui<'a> {
             (inside && seen[r as usize * cols + c as usize]) as i32 as f32
         };
         let grid = (MAP_GRID * w as f32 / MINIMAP_FILE_WIDTH).max(1.0) as usize;
-        let mut rgba = img.rgba.clone();
-        for (y, line) in rgba.chunks_mut(w * 4).enumerate() {
+        let key = out.to_ascii_lowercase();
+        // A cell seen as the player walks changes a few pixels of the map. An upscaled map is millions of them.
+        let made = self.seen_made.take();
+        let before = made
+            .filter(|m| {
+                (m.0.as_str(), m.1.as_str()) == (key.as_str(), picture) && m.2.len() == seen.len()
+            })
+            .map(|m| m.2);
+        let held = self.textures.remove(&key).flatten();
+        let held = held.filter(|i| before.is_some() && i.rgba.len() == img.rgba.len());
+        let cells_changed = before.as_ref().filter(|_| held.is_some()).map(|b| {
+            let changed = (0..seen.len()).filter(|&n| b[n] != seen[n]);
+            changed.fold(None, |all: Option<[usize; 4]>, n| {
+                let (c, r) = (n % cols, n / cols);
+                Some(all.map_or([c, r, c, r], |a| {
+                    [a[0].min(c), a[1].min(r), a[2].max(c), a[3].max(r)]
+                }))
+            })
+        });
+        // Each pixel falls between two cells, and the cell's edge is soft.
+        let [left, top, right, bottom] = match cells_changed {
+            Some(None) => [0, 0, 0, 0],
+            Some(Some([c0, r0, c1, r1])) => [
+                (((c0 as f32 - 1.0) / across).floor() as i32 - 1).max(0) as usize,
+                (((r0 as f32 - 1.0) / down).floor() as i32 - 1).max(0) as usize,
+                ((((c1 + 2) as f32 / across).ceil() as usize) + 2).min(w),
+                ((((r1 + 2) as f32 / down).ceil() as usize) + 2).min(h),
+            ],
+            None => [0, 0, w, h],
+        };
+        let mut shown = match held {
+            Some(rc) => match Rc::try_unwrap(rc) {
+                Ok(image) => image,
+                Err(rc) => (*rc).clone(),
+            },
+            None => (*img).clone(),
+        };
+        crate::canvas::forget_content(&shown);
+        let from = &img.rgba;
+        for y in top..bottom {
             let fy = y as f32 * down - 0.5;
             let (r0, ty) = (fy.floor() as i32, fy - fy.floor());
-            for (x, p) in line.chunks_mut(4).enumerate() {
+            for x in left..right {
                 let fx = x as f32 * across - 0.5;
                 let (c0, tx) = (fx.floor() as i32, fx - fx.floor());
-                let top = cell(c0, r0) * (1.0 - tx) + cell(c0 + 1, r0) * tx;
-                let bottom = cell(c0, r0 + 1) * (1.0 - tx) + cell(c0 + 1, r0 + 1) * tx;
-                let seen = top * (1.0 - ty) + bottom * ty;
+                let up = cell(c0, r0) * (1.0 - tx) + cell(c0 + 1, r0) * tx;
+                let low = cell(c0, r0 + 1) * (1.0 - tx) + cell(c0 + 1, r0 + 1) * tx;
+                let seen = up * (1.0 - ty) + low * ty;
                 let line = x % grid == 0 || y % grid == 0;
                 let unseen = if line { MAP_GRID_LINE } else { MAP_GRID_BACK };
+                let at = (y * w + x) * 4;
                 for k in 0..3 {
-                    p[k] = (p[k] as f32 * seen + unseen[k] * (1.0 - seen)) as u8;
+                    shown.rgba[at + k] =
+                        (from[at + k] as f32 * seen + unseen[k] * (1.0 - seen)) as u8;
                 }
-                p[3] = 255;
+                shown.rgba[at + 3] = 255;
             }
         }
-        self.textures.insert(
-            out.to_ascii_lowercase(),
-            Some(Rc::new(Image {
-                width: img.width,
-                height: img.height,
-                rgba,
-            })),
-        );
+        // The small map shows it, and has to be drawn again.
+        if let Some(d) = self.hud_drawn.as_mut() {
+            d.minimap = None;
+        }
+        self.seen_made = Some((key.clone(), picture.to_string(), seen.to_vec()));
+        self.textures.insert(key, Some(Rc::new(shown)));
     }
 
     pub fn texture(&mut self, name: &str) -> Option<&Image> {
@@ -761,7 +863,10 @@ impl<'a> Ui<'a> {
         let gui = self.gui("dialog")?;
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
         let extra = (self.width - SCREEN.0) as i32;
-        cv.clear(clear);
+        // A new canvas is clear already, and its untouched pages cost nothing until they are.
+        if clear != [0; 4] {
+            cv.clear(clear);
+        }
         if let Some(s) = scene {
             let full = [0, 0, s.width as i32, s.height as i32];
             cv.draw_image(
@@ -923,15 +1028,143 @@ impl<'a> Ui<'a> {
         icon: &str,
     ) -> Option<Image> {
         self.hud_party = party.len();
-        let mut gui = self.gui(HUD_GUI)?;
-        place_hud(
-            &mut gui.panel,
-            self.width,
-            self.target_at,
-            self.slots_above_bar,
-        );
+        let gui = self.hud_layout(self.target_at)?;
         self.measure_for_hud();
+        let patches = self.hud_patches(&gui, party, target, action, icon);
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        self.hud_pass(&mut cv, &gui, &patches);
+        self.hud_drawn = Some(self.hud_as_drawn(&gui, &patches));
+        Some(cv.into_image())
+    }
+
+    /// Draw again only what has changed since the HUD was last drawn, on that picture. The whole of it takes 6 ms at
+    /// 3840x2160, copying it another 6 and sending it to the card another 6, and in a fight something changes on it several
+    /// times a second. Gives the picture and the box of pixels that changed, or nothing if the whole has to be drawn.
+    pub fn hud_part(
+        &mut self,
+        picture: Image,
+        party: &[HudMember],
+        target: Option<(&str, i32, i32)>,
+        action: &str,
+        icon: &str,
+    ) -> Option<(Image, [u32; 4])> {
+        self.hud_party = party.len();
+        let was = self.hud_drawn.take()?;
+        if (picture.width, picture.height) != self.pixels || was.pixels != self.pixels {
+            return None;
+        }
+        // Under the cursor a slot says its key, past the slot. The pause is drawn over the controls.
+        let hover = self.combat.hover.clone();
+        if was.hover != hover
+            || (hover.is_some() && was.target_at != self.target_at)
+            || was.paused != self.paused
+            || was.pause_note != self.pause_note
+        {
+            return None;
+        }
+        let gui = self.hud_layout(self.target_at)?;
+        self.measure_for_hud();
+        let patches = self.hud_patches(&gui, party, target, action, icon);
+        let now = self.hud_as_drawn(&gui, &patches);
+        if was.controls.len() != now.controls.len() {
+            return None;
+        }
+        let mut boxes = Vec::new();
+        for (a, b) in was.controls.iter().zip(&now.controls) {
+            if a != b {
+                boxes.extend(self.control_box(a));
+                boxes.extend(self.control_box(b));
+            }
+        }
+        if was.minimap != now.minimap {
+            let map = gui.panel.children.iter().find(|c| c.tag == "LBL_MAPVIEW")?;
+            let e = &map.extent;
+            boxes.extend(self.pixel_box([e.left, e.top, e.width, e.height], 0));
+        }
+        if was.floats != now.floats {
+            let high = self.font_shared(FLOAT_FONT)?.line_height * FLOAT_MOST_LINES;
+            for f in was.floats.iter().chain(&now.floats) {
+                // Centred on the line's box, so more lines than fit in it spread up as well as down.
+                boxes.extend(self.pixel_box([f.x - 70, f.y - high, 140, high * 2 + 20], 0));
+            }
+        }
+        let mut cv = Canvas::over(picture, self.scale);
+        let mut changed = None;
+        for b in merged_boxes(boxes) {
+            cv.redraw_only(b);
+            self.hud_pass(&mut cv, &gui, &patches);
+            changed = union_box(changed, Some(b));
+        }
+        self.hud_drawn = Some(now);
+        Some((cv.into_image(), changed.unwrap_or([0; 4])))
+    }
+
+    /// What the HUD is drawn from now.
+    fn hud_as_drawn(&self, gui: &Gui, patches: &HashMap<String, Patch>) -> HudDrawn {
+        let mut controls = Vec::new();
+        for c in gui.panel.children.iter().filter(|c| c.kind != 9) {
+            controls_drawn(c, (0, 0), patches, &mut controls);
+        }
+        HudDrawn {
+            pixels: self.pixels,
+            controls,
+            minimap: self.minimap.clone(),
+            floats: self.floats.clone(),
+            target_at: self.target_at,
+            hover: self.combat.hover.clone(),
+            paused: self.paused,
+            pause_note: self.pause_note.clone(),
+        }
+    }
+
+    /// The pixels a control can have drawn on. Words too long for it go past it.
+    fn control_box(&mut self, c: &ControlDrawn) -> Option<[u32; 4]> {
+        if c.patch.hidden {
+            return None;
+        }
+        let [_, _, w, h] = c.place;
+        let past = match (&c.font, &c.patch.text) {
+            (Some(font), Some(text)) => {
+                let f = self.font_shared(font)?;
+                let lines = f.wrap(text, w);
+                let wide = lines.iter().map(|l| f.measure(l)).max().unwrap_or(0);
+                (wide - w)
+                    .max(lines.len() as i32 * f.line_height - h)
+                    .max(0)
+            }
+            _ => 0,
+        };
+        self.pixel_box(c.place, CONTROL_BOX_PAD + past)
+    }
+
+    fn hud_layout(&mut self, target_at: Option<(i32, i32)>) -> Option<Gui> {
+        let mut gui = self.gui(HUD_GUI)?;
+        place_hud(&mut gui.panel, self.width, target_at, self.slots_above_bar);
+        Some(gui)
+    }
+
+    /// The pixels of a box of layout units, with room round it for rounding and `pad` more units.
+    fn pixel_box(&self, [x, y, w, h]: [i32; 4], pad: i32) -> Option<[u32; 4]> {
+        let k = self.scale;
+        let low = |v: i32| (((v - pad) as f32 * k).floor() as i32 - 1).max(0) as u32;
+        let high = |v: i32, most: u32| {
+            (((v + pad) as f32 * k).ceil() as i32 + 1)
+                .max(0)
+                .min(most as i32) as u32
+        };
+        let (left, top) = (low(x), low(y));
+        let (right, bottom) = (high(x + w, self.pixels.0), high(y + h, self.pixels.1));
+        (right > left && bottom > top).then_some([left, top, right - left, bottom - top])
+    }
+
+    fn hud_patches(
+        &self,
+        gui: &Gui,
+        party: &[HudMember],
+        target: Option<(&str, i32, i32)>,
+        action: &str,
+        icon: &str,
+    ) -> HashMap<String, Patch> {
         let mut patches: HashMap<String, Patch> = HashMap::new();
         for tag in all_tags(&gui.panel) {
             let solo = self.solo && tag == "TB_SOLO";
@@ -1009,12 +1242,16 @@ impl<'a> Ui<'a> {
         for tag in &self.notices {
             patches.entry(tag.clone()).or_default().hidden = false;
         }
+        patches
+    }
+
+    fn hud_pass(&mut self, cv: &mut Canvas, gui: &Gui, patches: &HashMap<String, Patch>) {
         // File order: later controls lie on top, as in the menus.
         for c in gui.panel.children.iter().filter(|c| c.kind != 9) {
-            self.draw_control(&mut cv, c, (0, 0), &patches);
+            self.draw_control(cv, c, (0, 0), patches);
             if c.tag == "LBL_MAPVIEW" && !self.minimap_off {
                 let e = &c.extent;
-                self.draw_minimap(&mut cv, [e.left, e.top, e.width, e.height]);
+                self.draw_minimap(cv, [e.left, e.top, e.width, e.height]);
             }
             if c.tag == "TB_PAUSE" && self.paused {
                 let [x, y, w, h] = [c.extent.left, c.extent.top, c.extent.width, c.extent.height];
@@ -1025,7 +1262,7 @@ impl<'a> Ui<'a> {
             }
         }
         if self.paused && !self.pause_note.is_empty() {
-            self.draw_pause_note(&mut cv);
+            self.draw_pause_note(cv);
         }
         // Under the cursor a slot says its key, where the video has it at 6:05.
         if let Some(n) = self.combat.hover.as_ref().map(|h| h.0) {
@@ -1035,14 +1272,13 @@ impl<'a> Ui<'a> {
             if let (Some(e), Some(words)) = (at, SLOT_WORDS.get(n)) {
                 let words = format!("{} : {}", self.strref(*words), n + 1);
                 let r = [e.left + 22, e.top + 21, 200, 14];
-                self.draw_text(&mut cv, SLOT_WORDS_FONT, &words, r, 17, [0.9; 3]);
+                self.draw_text(cv, SLOT_WORDS_FONT, &words, r, 17, [0.9; 3]);
             }
         }
         for f in self.floats.clone() {
             let r = [f.x - 60, f.y, 120, 20];
-            self.draw_text(&mut cv, FLOAT_FONT, &f.text, r, 18, f.color);
+            self.draw_text(cv, FLOAT_FONT, &f.text, r, 18, f.color);
         }
-        Some(cv.into_image())
     }
 
     /// The part of the map round the player, with an arrow that turns. The file gives the map 120 units of its 800,
@@ -1068,7 +1304,7 @@ impl<'a> Ui<'a> {
                     ((y1 - y0) * scale.1) as i32,
                 ];
                 let region = [x0 as i32, y0 as i32, (x1 - x0) as i32, (y1 - y0) as i32];
-                cv.draw_image(&img, region, dst, [1.0; 3], 1.0, Default::default());
+                cv.draw_moving(&img, region, dst);
             }
         }
         if let Some(arrow) = self.texture_shared(MINIMAP_ARROW) {
@@ -1658,6 +1894,35 @@ fn gather_pictures(c: &Control, out: &mut Vec<String>) {
     }
     for k in &c.children {
         gather_pictures(k, out);
+    }
+}
+
+/// A control and its children as `draw_control` draws them.
+fn controls_drawn(
+    c: &Control,
+    origin: (i32, i32),
+    patches: &HashMap<String, Patch>,
+    out: &mut Vec<ControlDrawn>,
+) {
+    let patch = patches.get(&c.tag).cloned().unwrap_or_default();
+    if patch.hidden {
+        // Where a hidden one is makes no difference.
+        out.push(ControlDrawn {
+            place: [0; 4],
+            patch: Patch {
+                hidden: true,
+                ..Patch::default()
+            },
+            font: None,
+        });
+        return;
+    }
+    let e = &c.extent;
+    let place = [origin.0 + e.left, origin.1 + e.top, e.width, e.height];
+    let font = c.text.as_ref().map(|t| t.font.clone());
+    out.push(ControlDrawn { place, patch, font });
+    for k in c.children.iter().filter(|k| k.kind != 9) {
+        controls_drawn(k, (place[0], place[1]), patches, out);
     }
 }
 

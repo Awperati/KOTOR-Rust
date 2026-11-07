@@ -34,6 +34,7 @@
 //!     --pilot-until W with --autopilot: hand over to the player when an enemy is seen (`fight`), or one whose death
 //!                     gives a level (`level`), for a test driver
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
+//!     --frame-log F   write where each frame's time went to this file, as comma-separated lines
 //!
 //! W A S D: run, relative to the camera (Shift walks). Left Ctrl: roll, in Modern movement. Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
@@ -155,6 +156,7 @@ struct App {
     fullscreen: bool,
     hidden: bool,
     max_frames: Option<u32>,
+    frame_log: Option<std::io::BufWriter<std::fs::File>>,
     state_log: bool,
     pilot_seen: usize,
     /// Draw only every so many frames, so that more of the time goes to the game.
@@ -264,6 +266,7 @@ impl App {
         let now = std::time::Instant::now();
         let dt = (now - self.last).as_secs_f32();
         self.last = now;
+        let ms = |from: std::time::Instant| from.elapsed().as_secs_f32() * 1000.0;
         if self.stage.in_game() {
             if let Some(tag) = self.near.take() {
                 if !self.stage.stand_near(&tag) {
@@ -369,7 +372,10 @@ impl App {
             axis(self.keys[3], self.keys[2]),
             self.keys[4],
         );
-        for c in self.stage.update(dt) {
+        let updating = std::time::Instant::now();
+        let cues = self.stage.update(dt);
+        let update_ms = ms(updating);
+        for c in cues {
             // Sound runs on the wall clock and cannot keep up with a faster game.
             if self.stage.speed <= 1.0 {
                 self.sound.cue(c);
@@ -392,6 +398,7 @@ impl App {
             println!("{s}");
         }
         let stage = &mut self.stage;
+        let uploading = std::time::Instant::now();
         if st.static_seen != stage.static_version {
             // What the launcher has to say, then what the viewer always says.
             let note = std::env::var("KOTOR_BUILD_NOTE").unwrap_or_default();
@@ -423,6 +430,9 @@ impl App {
                 (_, picture) => st.presenter.set_overlay(&st.gpu, picture),
             }
         }
+        let upload_ms = ms(uploading);
+        let building = std::time::Instant::now();
+        let mut scene_ms = 0.0;
         if self.frames.is_multiple_of(self.render_every) {
             let (scene, cam, figure) = stage.frame_scene();
             st.gpu.set_figure_only(figure);
@@ -434,6 +444,7 @@ impl App {
             st.gpu
                 .set_sky_at_infinity(stage.game.world.minigame.is_none());
             st.gpu.set_particles(stage.frame_particles());
+            scene_ms = ms(building);
             if let Err(e) = st
                 .gpu
                 .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)
@@ -444,6 +455,31 @@ impl App {
             }
         }
         self.frames += 1;
+        if let Some(log) = &mut self.frame_log {
+            use std::io::Write;
+            let t = st.gpu.frame_times;
+            let fight = self
+                .stage
+                .game
+                .world
+                .combat
+                .in_combat(self.stage.game.world.pc);
+            let _ = writeln!(
+                log,
+                "{},{:.3},{update_ms:.3},{:.3},{},{upload_ms:.3},{scene_ms:.3},{:.3},{:.3},{},{:.3},{},{},{}",
+                self.frames,
+                dt * 1000.0,
+                self.stage.overlay_ms,
+                self.stage.hud_drawn,
+                t.draw_ms,
+                t.textures_ms,
+                t.new_textures,
+                t.show_ms,
+                t.meshes,
+                u8::from(fight),
+                self.stage.game.world.module,
+            );
+        }
         if self.state_log && self.frames.is_multiple_of(6) {
             println!("{}", self.stage.state_line());
         }
@@ -770,6 +806,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fullscreen: flag("--fullscreen"),
         hidden: flag("--hidden"),
         max_frames: opt("--frames").and_then(|n| n.parse().ok()),
+        frame_log: opt("--frame-log").and_then(|path| {
+            use std::io::Write;
+            let mut f = std::io::BufWriter::new(std::fs::File::create(path).ok()?);
+            writeln!(
+                f,
+                "frame,dt,update,overlay,hud,upload,scene,draw,textures,new_textures,show,meshes,fight,module"
+            )
+            .ok()?;
+            Some(f)
+        }),
         state_log: flag("--state-log"),
         pilot_seen: 0,
         render_every: opt("--render-every")

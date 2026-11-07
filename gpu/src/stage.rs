@@ -323,6 +323,11 @@ pub struct Stage {
     /// Party members the camera is too close to draw.
     at_the_eye: std::collections::HashSet<ObjId>,
     hud_under_plates: Option<Image>,
+    /// What moves all the time on the HUD, as last drawn.
+    /// The HUD is what was last drawn, and not a conversation's box, so part of it can be drawn again.
+    hud_is_up: bool,
+    /// More of the small map has been seen since it was drawn.
+    map_seen_more: bool,
     plate_key: String,
     plate_box: Option<[u32; 4]>,
     /// The version the plates began moving at, the latest one, and the box they have moved in since.
@@ -389,6 +394,11 @@ pub struct Stage {
     pub turret_assist: bool,
     /// Goes up whenever the overlay changes.
     pub overlay_version: u64,
+    /// How long the last look at the overlay took, for `--frame-log`.
+    pub overlay_ms: f32,
+    /// What it last did on the HUD: 0 nothing, 1 the plates, 2 part of it, 3 the whole, 4 a conversation's box, 5 the whole
+    /// after part of it could not be drawn.
+    pub hud_drawn: u8,
     cues: Vec<Cue>,
     events_seen: usize,
     line_key: Option<usize>,
@@ -476,6 +486,8 @@ impl Stage {
             plates: Default::default(),
             at_the_eye: Default::default(),
             hud_under_plates: None,
+            hud_is_up: false,
+            map_seen_more: false,
             plate_key: String::new(),
             plate_box: None,
             plates_moved: None,
@@ -522,6 +534,8 @@ impl Stage {
             armed: None,
             turret_assist: false,
             overlay_version: 0,
+            overlay_ms: 0.0,
+            hud_drawn: 0,
             cues: Vec::new(),
             events_seen: 0,
             line_key: None,
@@ -2224,6 +2238,12 @@ impl Stage {
     }
 
     fn refresh_overlay(&mut self) {
+        let began = std::time::Instant::now();
+        self.refresh_overlay_now();
+        self.overlay_ms = began.elapsed().as_secs_f32() * 1000.0;
+    }
+
+    fn refresh_overlay_now(&mut self) {
         let s = self.settings();
         if self.ui.set_text_style(s.noto_font, s.glow_boxes) {
             self.overlay_key.clear();
@@ -2242,6 +2262,7 @@ impl Stage {
                     self.overlay.take()
                 });
                 self.overlay_key = key;
+                self.hud_is_up = false;
                 self.overlay = self.ui.menu_overlay(&view);
                 self.apply_brightness();
                 if let (Some(Some(mut under)), Some(over)) = (hud, self.overlay.as_ref()) {
@@ -2304,7 +2325,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{cut}{minimap:?}{combat:?}{notices:?}{floats:?}{pause:?}",
+                "{}h{:?}{target:?}{target_at:?}{cut}{combat:?}{notices:?}{pause:?}{minimap:?}{floats:?}",
                 self.module,
                 party
                     .iter()
@@ -2316,21 +2337,27 @@ impl Stage {
                         m.max_force,
                         m.level_up
                     ))
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>(),
             ),
         };
         // What is under the plates depends on whether one is the target's, which takes the place of its bar.
         let key = format!("{key}{}", plates.iter().any(|p| p.framed));
         let plate_key = format!("{plates:?}");
-        let redraw = key != self.overlay_key;
+        let map_seen_more = std::mem::take(&mut self.map_seen_more) && view.is_none();
+        let redraw = key != self.overlay_key || map_seen_more;
+        // Something has asked for all of it, by forgetting what was drawn.
+        let part = view.is_none() && self.hud_is_up && !self.overlay_key.is_empty();
+        self.hud_drawn = 0;
         if !redraw && plate_key == self.plate_key {
             return;
         }
+        self.hud_drawn = 3;
         self.overlay_key = key;
         self.plate_key = plate_key;
         self.ui.set_plates(plates);
         if !redraw {
-            self.plates_on_hud(true);
+            self.hud_drawn = 1;
+            self.plates_on_hud(true, None);
             return;
         }
         self.ui.set_minimap(minimap);
@@ -2339,6 +2366,30 @@ impl Stage {
         self.ui.set_solo(self.game.world.solo_mode);
         self.ui.set_pause(pause.0, pause.1);
         self.ui.set_combat(combat);
+        self.hud_is_up = view.is_none();
+        if part {
+            let t = target.as_ref();
+            let action = t.map_or("", |t| t.3);
+            let drawn = self.hud_under_plates.take().and_then(|picture| {
+                self.ui.hud_part(
+                    picture,
+                    &party,
+                    t.map(|t| (t.0.as_str(), t.1, t.2)),
+                    action,
+                    action_icon(action),
+                )
+            });
+            if let Some((picture, changed)) = drawn {
+                self.hud_under_plates = Some(picture);
+                self.hud_drawn = 2;
+                self.plates_on_hud(true, Some(changed));
+                return;
+            }
+            self.hud_drawn = 5;
+        }
+        if view.is_some() {
+            self.hud_drawn = 4;
+        }
         self.hud_under_plates = match view {
             // A wordless beat: the scene alone.
             Some(v) if v.subtitle.trim().is_empty() && v.replies.is_empty() => {
@@ -2356,12 +2407,14 @@ impl Stage {
                 )
             }
         };
-        self.plates_on_hud(false);
+        self.plates_on_hud(false, None);
     }
 
-    /// What goes on screen: the HUD as last drawn, and the plates on it. With `same_hud`, only the plates have moved.
-    fn plates_on_hud(&mut self, same_hud: bool) {
-        if !self.settings().nameplates {
+    /// What goes on screen: the HUD as last drawn, and the plates on it. With `same_hud`, only the plates have moved, and what
+    /// has changed on the HUD inside the box `hud_box`.
+    fn plates_on_hud(&mut self, same_hud: bool, hud_box: Option<[u32; 4]>) {
+        // A conversation's box has no plates to move and is not drawn on again, so it need not be kept apart.
+        if !self.settings().nameplates || !self.hud_is_up {
             self.overlay = self.hud_under_plates.take();
             self.plate_box = None;
             self.apply_brightness();
@@ -2371,7 +2424,7 @@ impl Stage {
         let new_box = self.ui.plates_box();
         let plain = self.settings().brightness == 0.5;
         let quick = same_hud && plain && self.overlay.is_some();
-        let dirty = union_box(self.plate_box, new_box);
+        let dirty = union_box(union_box(self.plate_box, new_box), hud_box);
         self.plate_box = new_box;
         if let (true, Some(hud), Some(picture)) =
             (quick, self.hud_under_plates.as_ref(), self.overlay.as_ref())

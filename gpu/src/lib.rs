@@ -251,6 +251,7 @@ pub struct GpuRenderer {
     sky_at_infinity: bool,
     particle_layout: wgpu::BindGroupLayout,
     additive_pipeline: wgpu::RenderPipeline,
+    pub frame_times: FrameTimes,
     smoke_pipeline: wgpu::RenderPipeline,
     particles: Vec<effects::ParticleBatch>,
     blend_pipeline: wgpu::RenderPipeline,
@@ -507,6 +508,7 @@ impl GpuRenderer {
         Ok(GpuRenderer {
             particle_layout,
             additive_pipeline,
+            frame_times: FrameTimes::default(),
             smoke_pipeline,
             particles: Vec::new(),
             sky_pipeline,
@@ -627,8 +629,11 @@ impl GpuRenderer {
     ) -> Option<wgpu::TextureView> {
         let key = name.as_ref()?.to_ascii_lowercase();
         if !self.tex_cache.contains_key(&key) {
+            let began = std::time::Instant::now();
             let t = textures(&key).map(|img| upload_image(&self.device, &self.queue, &img));
             self.tex_cache.insert(key.clone(), t);
+            self.frame_times.new_textures += 1;
+            self.frame_times.textures_ms += began.elapsed().as_secs_f32() * 1000.0;
         }
         self.tex_cache[&key].as_ref().map(|t| t.view.clone())
     }
@@ -1029,9 +1034,30 @@ impl GpuRenderer {
         textures: &mut dyn FnMut(&str) -> Option<Image>,
         cam: &Camera,
     ) -> Result<(), String> {
+        self.frame_times = FrameTimes::default();
+        let began = std::time::Instant::now();
         self.draw(scene, textures, cam);
-        presenter.show(self)
+        let drawn = std::time::Instant::now();
+        let shown = presenter.show(self);
+        self.frame_times.draw_ms = (drawn - began).as_secs_f32() * 1000.0;
+        self.frame_times.show_ms = drawn.elapsed().as_secs_f32() * 1000.0;
+        self.frame_times.meshes = scene.meshes.len() as u32;
+        shown
     }
+}
+
+/// Where the last frame's time went on this side of the GPU, for `--frame-log`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FrameTimes {
+    /// Everything that puts the scene on the GPU, the textures among it.
+    pub draw_ms: f32,
+    /// Reading and uploading textures not seen before.
+    pub textures_ms: f32,
+    pub new_textures: u32,
+    /// Waiting for the window's next picture, and handing this one over.
+    pub show_ms: f32,
+    /// Meshes built anew this frame.
+    pub meshes: u32,
 }
 
 /// **Assumption:** a mesh wider than this with no lightmap is a sky (the Endar Spire's star sphere is 409 m across).

@@ -15,6 +15,8 @@ pub struct Canvas {
     pub scale_x: f32,
     /// RGBA, first row at the top.
     pub rgba: Vec<u8>,
+    /// Only these pixels are drawn on, left, top, right and bottom, when part of a picture is drawn again.
+    clip: Option<[i32; 4]>,
 }
 
 /// How a texture is turned the right way up when it is drawn.
@@ -95,6 +97,40 @@ fn content_of(img: &Image) -> u64 {
             content
         }
     })
+}
+
+/// Forget what a picture held, when it is about to be changed where it is.
+pub(crate) fn forget_content(img: &Image) {
+    let key = (img.rgba.as_ptr() as usize, img.rgba.len(), img.width);
+    CONTENTS.with_borrow_mut(|known| {
+        known.remove(&key);
+    });
+}
+
+/// For each pixel of a line, the whole pixel of the picture it falls on, the next, and how far it is to the next in 256ths.
+fn smooth_stops(from: i32, side: i32, pixels: i32, most: i32) -> Vec<(u32, u32, u32)> {
+    (0..pixels)
+        .map(|n| {
+            let at = ((n as f32 + 0.5) / pixels as f32 * side as f32 - 0.5)
+                .clamp(0.0, (side - 1) as f32);
+            let whole = at as i32;
+            let next = (from + (whole + 1).min(side - 1)).clamp(0, most);
+            (
+                (from + whole).clamp(0, most) as u32,
+                next as u32,
+                ((at - whole as f32) * 256.0) as u32,
+            )
+        })
+        .collect()
+}
+
+/// Red and blue, and green, each `t` 256ths of the way from one colour to another. Both halves of a pixel in one number each.
+#[inline]
+fn towards(a: [u32; 2], b: [u32; 2], t: u32) -> [u32; 2] {
+    [
+        ((a[0] * (256 - t) + b[0] * t) >> 8) & 0x00ff_00ff,
+        ((a[1] * (256 - t) + b[1] * t) >> 8) & 0x00ff_00ff,
+    ]
 }
 
 /// A smooth sample of `region` at fractions `u`, `v` of it, staying inside it so that a font's cells do not bleed.
@@ -253,6 +289,7 @@ impl Canvas {
             scale: 1.0,
             scale_x: 1.0,
             rgba: vec![0; (width * height * 4) as usize],
+            clip: None,
         }
     }
 
@@ -272,7 +309,27 @@ impl Canvas {
             scale,
             scale_x: scale,
             rgba: image.rgba,
+            clip: None,
         }
+    }
+
+    /// Empty this box of pixels (left, top, width, height), and draw on nothing else until the next.
+    pub fn redraw_only(&mut self, [left, top, wide, high]: [u32; 4]) {
+        let (right, bottom) = ((left + wide).min(self.width), (top + high).min(self.height));
+        let row = self.width as usize * 4;
+        for y in top..bottom {
+            let start = y as usize * row + left as usize * 4;
+            self.rgba[start..y as usize * row + right as usize * 4].fill(0);
+        }
+        self.clip = Some([left as i32, top as i32, right as i32, bottom as i32]);
+    }
+
+    /// The part of this box of pixels (left, top, right, bottom) that may be drawn on.
+    fn in_clip(&self, [left, top, right, bottom]: [i32; 4]) -> [i32; 4] {
+        let [l, t, r, b] = self
+            .clip
+            .unwrap_or([0, 0, self.width as i32, self.height as i32]);
+        [left.max(l), top.max(t), right.min(r), bottom.min(b)]
     }
 
     fn to_pixels(&self, x: i32, y: i32, w: i32, h: i32) -> [i32; 4] {
@@ -312,7 +369,8 @@ impl Canvas {
 
     /// Blend `src` (straight alpha, 0..=255) over the pixel at `(x, y)`; outside the canvas is ignored.
     pub fn blend(&mut self, x: i32, y: i32, src: [u8; 4]) {
-        if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 || src[3] == 0 {
+        let [l, t, r, b] = self.in_clip([x, y, x + 1, y + 1]);
+        if l >= r || t >= b || src[3] == 0 {
             return;
         }
         let i = ((y as u32 * self.width + x as u32) * 4) as usize;
@@ -326,9 +384,27 @@ impl Canvas {
 
     pub fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: [u8; 4]) {
         let [x, y, w, h] = self.to_pixels(x, y, w, h);
-        for yy in y..y + h {
-            for xx in x..x + w {
-                self.blend(xx, yy, c);
+        let [left, top, right, bottom] = self.in_clip([x, y, x + w, y + h]);
+        let [left, top] = [left.max(0), top.max(0)];
+        let [right, bottom] = [right.min(self.width as i32), bottom.min(self.height as i32)];
+        if left >= right || c[3] == 0 {
+            return;
+        }
+        // A conversation's black bars are millions of pixels at 3840x2160.
+        let a = c[3] as u32;
+        for yy in top..bottom {
+            let at = yy as usize * self.width as usize + left as usize;
+            let (row, _) =
+                self.rgba[at * 4..(at + (right - left) as usize) * 4].as_chunks_mut::<4>();
+            if a == 255 {
+                row.fill(c);
+                continue;
+            }
+            for d in row {
+                for (d, s) in d.iter_mut().zip(c).take(3) {
+                    *d = ((s as u32 * a + *d as u32 * (255 - a)) / 255) as u8;
+                }
+                d[3] = (a + d[3] as u32 * (255 - a) / 255) as u8;
             }
         }
     }
@@ -336,8 +412,9 @@ impl Canvas {
     /// Leave only a veil of black, of this opacity, in a rectangle of layout units, for what lies behind the picture to show.
     pub fn clear_rect(&mut self, x: i32, y: i32, w: i32, h: i32, veil: u8) {
         let [x, y, w, h] = self.to_pixels(x, y, w, h);
-        for yy in y.max(0)..(y + h).min(self.height as i32) {
-            for xx in x.max(0)..(x + w).min(self.width as i32) {
+        let [left, top, right, bottom] = self.in_clip([x, y, x + w, y + h]);
+        for yy in top..bottom {
+            for xx in left..right {
                 let i = ((yy as u32 * self.width + xx as u32) * 4) as usize;
                 self.rgba[i..i + 4].copy_from_slice(&[0, 0, 0, veil]);
             }
@@ -359,14 +436,13 @@ impl Canvas {
         if dw <= 0 || dh <= 0 || region[2] <= 0 || region[3] <= 0 {
             return;
         }
+        let [left, top, right, bottom] = self.in_clip([dx, dy, dx + dw, dy + dh]);
+        if left >= right || top >= bottom {
+            return;
+        }
         if self.scale != 1.0 || self.scale_x != 1.0 {
             let scaled = scaled_picture(img, region, [dw, dh], tint, alpha, orient);
             // As `blend` has it, a row at a time: most of a window's pixels are all or nothing.
-            let (left, right) = (dx.max(0), (dx + dw).min(self.width as i32));
-            let (top, bottom) = (dy.max(0), (dy + dh).min(self.height as i32));
-            if left >= right {
-                return;
-            }
             let across = (right - left) as usize;
             for y in top..bottom {
                 let from = ((y - dy) * dw + left - dx) as usize;
@@ -419,6 +495,44 @@ impl Canvas {
                         (p[3] as f32 * alpha).min(255.0) as u8,
                     ],
                 );
+            }
+        }
+    }
+
+    /// Draw `region` of a picture with nothing to see through, smoothly, into the rectangle `dst` of layout units. What is
+    /// shown of a picture that moves all the time is another piece at every step: nothing here is kept, and it is quick.
+    pub fn draw_moving(&mut self, img: &Image, region: [i32; 4], dst: [i32; 4]) {
+        let [dx, dy, dw, dh] = self.to_pixels(dst[0], dst[1], dst[2], dst[3]);
+        if dw <= 0 || dh <= 0 || region[2] <= 0 || region[3] <= 0 || img.width == 0 {
+            return;
+        }
+        let [left, top, right, bottom] = self.in_clip([dx, dy, dx + dw, dy + dh]);
+        let [left, top] = [left.max(0), top.max(0)];
+        let [right, bottom] = [right.min(self.width as i32), bottom.min(self.height as i32)];
+        if left >= right || top >= bottom {
+            return;
+        }
+        let across = smooth_stops(region[0], region[2], dw, img.width as i32 - 1);
+        let down = smooth_stops(region[1], region[3], dh, img.height as i32 - 1);
+        let width = self.width as usize;
+        let from_width = img.width as usize;
+        let (pixels, _) = img.rgba.as_chunks::<4>();
+        let parts = |p: &[u8; 4]| {
+            let v = u32::from_le_bytes(*p);
+            [v & 0x00ff_00ff, (v >> 8) & 0x0000_00ff]
+        };
+        for y in top..bottom {
+            let (y0, y1, ty) = down[(y - dy) as usize];
+            let (upper, lower) = (y0 as usize * from_width, y1 as usize * from_width);
+            let at = y as usize * width + left as usize;
+            let (row, _) =
+                self.rgba[at * 4..(at + (right - left) as usize) * 4].as_chunks_mut::<4>();
+            for (d, &(x0, x1, tx)) in row.iter_mut().zip(&across[(left - dx) as usize..]) {
+                let (x0, x1) = (x0 as usize, x1 as usize);
+                let up = towards(parts(&pixels[upper + x0]), parts(&pixels[upper + x1]), tx);
+                let low = towards(parts(&pixels[lower + x0]), parts(&pixels[lower + x1]), tx);
+                let [rb, g] = towards(up, low, ty);
+                *d = (rb | (g << 8) | 0xff00_0000).to_le_bytes();
             }
         }
     }
