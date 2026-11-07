@@ -13,6 +13,7 @@
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
+//!     --loot T*N,...  the object of --near holds these too, this many of each template, for a test driver
 //!     --place X,Y,Z,H start at this spot facing this many radians, with the camera behind, when a game starts, for a test driver
 //!     --no-chargen    New Game starts at once, with the preset character
 //!     --no-early-force New games play by the game's own rules, whatever Settings says
@@ -165,6 +166,7 @@ struct App {
     max_steps: Option<u64>,
     /// What a test driver asked for once a game has started, from the menu or at once.
     near: Option<String>,
+    loot: Option<String>,
     place: Option<[f32; 4]>,
     xp: Option<i32>,
     appearance: Option<i32>,
@@ -271,6 +273,20 @@ impl App {
             if let Some(tag) = self.near.take() {
                 if !self.stage.stand_near(&tag) {
                     eprintln!("no floor beside {tag}");
+                }
+                if let Some(loot) = self.loot.take() {
+                    let w = &mut self.stage.game.world;
+                    let holder = w.by_tag(&tag).first().copied();
+                    for (n, entry) in loot.split(',').enumerate() {
+                        let (template, count) = entry.split_once('*').unwrap_or((entry, "1"));
+                        let item = w.spawn_item(template);
+                        if let Some(o) = w.object_mut(item) {
+                            o.stack = count.parse().unwrap_or(1);
+                        }
+                        if let Some(o) = holder.and_then(|h| w.object_mut(h)) {
+                            o.inventory.insert(n, item);
+                        }
+                    }
                 }
             }
             if let Some([x, y, z, heading]) = self.place.take() {
@@ -521,6 +537,11 @@ impl App {
             KeyCode::Digit9 | KeyCode::Numpad9 => 9,
             _ => 0,
         };
+        match code {
+            KeyCode::ControlLeft | KeyCode::ControlRight => self.stage.set_ctrl(pressed),
+            KeyCode::ShiftLeft | KeyCode::ShiftRight => self.stage.set_shift(pressed),
+            _ => {}
+        }
         // The Key Mapping page takes a key first, then what it says each key does.
         let name = format!("{code:?}");
         if pressed && self.stage.capture_key(&name) {
@@ -627,6 +648,8 @@ impl ApplicationHandler for App {
                 self.looking = state == ElementState::Pressed
             }
             WindowEvent::Focused(false) => {
+                self.stage.set_ctrl(false);
+                self.stage.set_shift(false);
                 self.keys = [false; 5];
                 self.looking = false;
                 self.turning = 0.0;
@@ -826,6 +849,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|n| n.parse::<u64>().ok())
             .map(|s| s * 60),
         near: opt("--near"),
+        loot: opt("--loot"),
         place: opt("--place").and_then(|p| {
             let n: Vec<f32> = p.split(',').filter_map(|v| v.parse().ok()).collect();
             <[f32; 4]>::try_from(n).ok()

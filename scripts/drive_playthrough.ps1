@@ -38,17 +38,11 @@ $s = WaitFor "opened" "true"
 Report "E opens the locker" ($s.opened -eq "true" -and [int]$s.items -gt 0) "opened=$($s.opened) items=$($s.items)"
 Shot "play_locker"
 $items = [int]$s.items
-for ($i = 0; $i -lt $items -and [int]$s.items -gt 0; $i++) {
-  $was = [int]$s.items
-  Click 648 222   # the first row of container.gui
-  $until = (Get-Date).AddSeconds(3)
-  do { $s = State } while ([int]$s.items -eq $was -and (Get-Date) -lt $until)
-}
+Press 174 311 285 22   # Take All
+$s = WaitFor "opened" "false"
 # Its two Medpacs make one stack in the bag.
 Report "Takes all of it" ([int]$s.items -eq 0 -and [int]$s.inv -eq [int]$start.inv + $items - 1) "items=$($s.items) inv $($start.inv) -> $($s.inv)"
-Key $SPACE[0] $SPACE[1]
-$s = WaitFor "opened" "false"
-Report "Space closes it" ($s.opened -eq "false") "opened=$($s.opened)"
+Report "Take All closes it" ($s.opened -eq "false") "opened=$($s.opened)"
 
 # Level up: the sheet's button, then the panel's steps. Level 2 asks for skills and feats.
 Key $KEY_C[0] $KEY_C[1]

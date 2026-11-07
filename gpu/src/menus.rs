@@ -8,6 +8,7 @@ use kotor_game::{
     SLOT_RIGHT_HAND,
 };
 use kotor_ui::{CombatHud, Hit, MenuView, Row};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 #[path = "abilityscreen.rs"]
@@ -46,6 +47,13 @@ mod workbenchscreen;
 
 /// Longest name a save can be given, and the characters the interface font has.
 const SAVE_NAME_MAX: usize = 32;
+/// A container's top two buttons, as the owner named them. The file's words are "Get Items" and "Switch To".
+const TAKE_ALL: &str = "Take All";
+const TAKE_SELECTED: &str = "Take Selected";
+const BTN_TAKE_SELECTED: &str = "BTN_GIVEITEMS";
+/// How far an arrow of a stepper goes with Shift down.
+const STEP_WITH_SHIFT: i32 = 10;
+
 /// The interface's narrow font, for text the wide button font would not fit.
 const SMALL_FONT: &str = "fnt_d16x16";
 /// Strings of the save screen in `dialog.tlk`.
@@ -563,6 +571,12 @@ pub(super) struct Menus {
     about: Option<ObjId>,
     /// The last slot under the cursor: the list shows what fits it.
     hover_slot: Option<i32>,
+    /// The rows chosen in an open container, and how many of a stack where that has been changed.
+    take_chosen: BTreeSet<ObjId>,
+    take_counts: BTreeMap<ObjId, i32>,
+    /// Control and Shift are down: a click means something more on some screens.
+    ctrl: bool,
+    shift: bool,
     /// The item chosen could not go on.
     refused: bool,
     /// The level being taken.
@@ -1421,17 +1435,131 @@ impl Stage {
         self.settings_changed();
     }
 
-    /// `container.gui`, over the scene. Nothing can be put into a container yet, so its button is hidden.
+    /// `container.gui`, over the scene. Nothing can be put into a container yet, so the middle button, the file's
+    /// "Switch To", takes what is chosen. A stack has a stepper and starts at 1, as the owner drew it.
     fn container_view(&mut self) -> MenuView {
         let mut v = MenuView::new("container");
         v.over_scene = true;
-        v.hide(&["BTN_GIVEITEMS"]);
+        v.text("BTN_OK", TAKE_ALL);
+        v.text(BTN_TAKE_SELECTED, TAKE_SELECTED);
         let title = self.ui.strref(STR_CONTAINER);
         v.text("LBL_MESSAGE", title);
-        let rows = self.item_rows();
+        let items = self.listed_items();
+        // What has gone from the list, a script's doing perhaps, is no longer chosen.
+        self.menus.take_chosen.retain(|i| items.contains(i));
+        self.menus.take_counts.retain(|i, _| items.contains(i));
+        if self.menus.take_chosen.is_empty() {
+            v.inert(&[BTN_TAKE_SELECTED]);
+        }
+        let mut rows = self.item_rows();
+        for (row, item) in rows.iter_mut().zip(&items) {
+            row.selected = self.menus.take_chosen.contains(item);
+            row.bar = row.selected;
+            row.stepper = (row.count > 1).then(|| self.take_count(*item));
+        }
         v.lists
             .insert("LB_ITEMS".to_string(), (rows, self.menus.first));
         v
+    }
+
+    /// How many of this stack the stepper says.
+    fn take_count(&self, item: ObjId) -> i32 {
+        self.menus.take_counts.get(&item).copied().unwrap_or(1)
+    }
+
+    /// A click on a row of a container chooses that row alone. With Control it adds the row, or leaves it out again.
+    fn choose_container_row(&mut self, row: usize) {
+        let Some(item) = self.listed_items().get(row).copied() else {
+            return;
+        };
+        let chosen = &mut self.menus.take_chosen;
+        if !self.menus.ctrl {
+            chosen.clear();
+            chosen.insert(item);
+        } else if !chosen.remove(&item) {
+            chosen.insert(item);
+        }
+    }
+
+    /// An arrow of a row's stepper, ten at a time with Shift. Changing how many says that row is wanted, so it is chosen
+    /// along with any others.
+    fn step_container_row(&mut self, row: usize, by: i32) {
+        let Some(item) = self.listed_items().get(row).copied() else {
+            return;
+        };
+        let most = self.game.world.object(item).map_or(1, |o| o.stack.max(1));
+        let by = if self.menus.shift {
+            by * STEP_WITH_SHIFT
+        } else {
+            by
+        };
+        let count = (self.take_count(item) + by).clamp(1, most);
+        self.menus.take_counts.insert(item, count);
+        self.menus.take_chosen.insert(item);
+    }
+
+    /// The chosen rows come to the player, in the chosen numbers. The rest stays, and the panel stays until it is empty.
+    fn take_selected(&mut self) {
+        let chosen: Vec<ObjId> = self
+            .listed_items()
+            .into_iter()
+            .filter(|i| self.menus.take_chosen.contains(i))
+            .collect();
+        if chosen.is_empty() {
+            return;
+        }
+        self.effect(SOUND_ITEM_TAKE);
+        for item in chosen {
+            let count = self.take_count(item);
+            let w = &mut self.game.world;
+            if w.object(item).is_some_and(|o| o.stack > 1) {
+                w.take_some(item, count);
+            } else {
+                w.take_item(item);
+            }
+        }
+        self.menus.take_chosen.clear();
+        self.menus.take_counts.clear();
+        let left = self.listed_items().len();
+        self.menus.first = self.menus.first.min(left.saturating_sub(1));
+        if left == 0 {
+            self.game.world.close_container();
+        }
+    }
+
+    /// Whether Control is down, for a screen where it changes what a click does.
+    pub fn set_ctrl(&mut self, held: bool) {
+        self.menus.ctrl = held;
+    }
+
+    /// Whether Shift is down.
+    pub fn set_shift(&mut self, held: bool) {
+        self.menus.shift = held;
+    }
+
+    /// How many rows of the open container are chosen.
+    pub(super) fn container_chosen(&self) -> usize {
+        self.menus.take_chosen.len()
+    }
+
+    /// The rows of a list on the screen, as a test or a driver asks.
+    pub fn menu_rows(&mut self, tag: &str) -> Vec<kotor_ui::Row> {
+        self.menu_view()
+            .and_then(|mut v| v.lists.remove(tag))
+            .map_or(Vec::new(), |l| l.0)
+    }
+
+    /// The words a screen gives a control in place of the file's.
+    pub fn menu_button_words(&mut self, tag: &str) -> Option<String> {
+        self.menu_view()?.patches.get(tag)?.text.clone()
+    }
+
+    /// Nothing stays chosen once a container is shut.
+    pub(super) fn forget_container_choices(&mut self) {
+        if self.game.world.opened.is_none() {
+            self.menus.take_chosen.clear();
+            self.menus.take_counts.clear();
+        }
     }
 
     /// Everything in the open container comes to the player, and it closes.
@@ -1707,17 +1835,11 @@ impl Stage {
         }
     }
 
-    /// A click on an item: from a container it comes to the player. In the inventory it just shows its words.
+    /// A click on an item in the inventory shows its words.
     fn use_listed_item(&mut self, row: usize) {
         let Some(item) = self.listed_items().get(row).copied() else {
             return;
         };
-        if self.container_up() {
-            self.game.world.take_item(item);
-            let left = self.listed_items().len();
-            self.menus.first = self.menus.first.min(left.saturating_sub(1));
-            return;
-        }
         self.menus.about = Some(item);
     }
 
@@ -1848,13 +1970,15 @@ impl Stage {
             Some(Hit::Row(_, row)) => {
                 self.menus.delete_armed = None;
                 self.effect(match self.top() {
-                    Some(Screen::Container) => SOUND_ITEM_TAKE,
-                    Some(Screen::Inventory | Screen::Equip | Screen::Store) => SOUND_ITEM_SELECT,
+                    Some(Screen::Container | Screen::Inventory | Screen::Equip | Screen::Store) => {
+                        SOUND_ITEM_SELECT
+                    }
                     Some(Screen::Feedback) => SOUND_CHECK,
                     _ => SOUND_CLICK,
                 });
                 match self.top() {
-                    Some(Screen::Inventory | Screen::Container) => self.use_listed_item(row),
+                    Some(Screen::Inventory) => self.use_listed_item(row),
+                    Some(Screen::Container) => self.choose_container_row(row),
                     Some(Screen::Feedback) => self.feedback_row(row),
                     Some(Screen::Store) => self.store_row(row),
                     Some(Screen::BenchItems | Screen::Bench) => self.bench_row(row),
@@ -1877,6 +2001,10 @@ impl Stage {
                 if let Some(screen) = self.top() {
                     self.level_cell(screen, row, cell);
                 }
+            }
+            Some(Hit::Step(_, row, by)) => {
+                self.effect(SOUND_CLICK);
+                self.step_container_row(row, by);
             }
             None => self.menus.delete_armed = None,
         }
@@ -1930,6 +2058,7 @@ impl Stage {
             (Screen::Solo, _) => self.solo_press(tag),
             (Screen::GameOver, _) => self.game_over_press(tag),
             (Screen::Container, "BTN_OK") => self.take_everything(),
+            (Screen::Container, BTN_TAKE_SELECTED) => self.take_selected(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
             (Screen::Main, "BTN_NEWGAME") => self.new_game(),
             (Screen::Main | Screen::Pause, "BTN_LOADGAME") => self.open_saves(Mode::Load),
@@ -2380,6 +2509,19 @@ impl Stage {
     ) -> Option<(f32, f32)> {
         let view = self.menu_view()?;
         let (x, y) = self.ui.menu_point(&view, tag, row)?;
+        Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
+    }
+
+    /// The point on a window of `size` in the middle of an arrow of a row's stepper: `by` is -1 or 1.
+    pub fn menu_step_pixel(
+        &mut self,
+        tag: &str,
+        row: usize,
+        by: i32,
+        size: (u32, u32),
+    ) -> Option<(f32, f32)> {
+        let view = self.menu_view()?;
+        let (x, y) = self.ui.menu_step_point(&view, tag, row, by)?;
         Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
     }
 

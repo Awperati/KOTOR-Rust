@@ -31,7 +31,7 @@ Report "Reply click" ([int]$s.said -gt $said) "said $said -> $($s.said)"
 for ($i = 0; $i -lt 200 -and $s.dlg -eq "true"; $i++) { Key $ONE[0] $ONE[1]; Key $RETURN[0] $RETURN[1]; $s = State }
 Report "Keys finish the talk" ($s.dlg -eq "false") "dlg=$($s.dlg) said=$($s.said)"
 
-# The footlocker beside the player: E opens it, a click takes the first item, Space closes it.
+# The footlocker beside the player: E opens it, a click chooses the first item, Take Selected takes it, Space closes it.
 $s = State
 "before E: target=$($s.target) opened=$($s.opened)"
 Key $E[0] $E[1]
@@ -40,6 +40,7 @@ Report "E opens the locker" ($s.opened -eq "true" -and [int]$s.items -gt 0) "ope
 if ($Shots) { [Drv]::Save($h, "$Shots\live_locker.png") }
 $inv = [int]$s.inv
 Click 648 222   # the first row of container.gui
+Press 174 336 285 22   # Take Selected
 $s = State
 Report "Click takes an item" ([int]$s.inv -eq $inv + 1) "inv $inv -> $($s.inv)"
 Key $SPACE[0] $SPACE[1]

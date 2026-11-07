@@ -482,15 +482,18 @@ fn a_footlocker_opens_and_gives_up_its_items() {
     assert!(!items.is_empty(), "the opening script fills this locker");
     let before = s.game.world.object(pc).unwrap().inventory.len();
     s.update(DT);
-    // The row list is on screen, and a click on the first row takes the first item.
+    // The row list is on screen: a click on the first row chooses it, and the middle button takes it.
     s.set_view((853, 480));
     assert_eq!(s.menu_name(), "container");
     let row = s.menu_pixel("LB_ITEMS", Some(0), (853, 480)).unwrap();
     s.click(row, (853, 480));
+    assert_eq!(s.game.world.object(pc).unwrap().inventory.len(), before);
+    let take = s.menu_pixel("BTN_GIVEITEMS", None, (853, 480)).unwrap();
+    s.click(take, (853, 480));
     assert_eq!(
         s.game.world.object(pc).unwrap().inventory.len(),
         before + 1,
-        "a click took one item"
+        "Take Selected took one item"
     );
     s.number_key(s.game.world.container_items().len() + 1);
     assert!(s.game.world.container_items().is_empty());
@@ -626,6 +629,8 @@ fn every_resolution_gets_the_interface_pixel_for_pixel() {
         let before = s.game.world.container_items().len();
         let row = s.menu_pixel("LB_ITEMS", Some(0), size).unwrap();
         s.click(row, size);
+        let take = s.menu_pixel("BTN_GIVEITEMS", None, size).unwrap();
+        s.click(take, size);
         assert_eq!(s.game.world.container_items().len(), before - 1, "{size:?}");
     }
 }

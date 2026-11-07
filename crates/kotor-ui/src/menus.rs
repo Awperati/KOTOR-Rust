@@ -54,6 +54,10 @@ pub struct Row {
     pub font: Option<String>,
     /// Pictures across the row in place of its text, each leading to the next.
     pub cells: Vec<Cell>,
+    /// How many of its `count` are chosen, with an arrow each side to change it.
+    pub stepper: Option<i32>,
+    /// A bar behind it: it is one of the rows chosen, in a list whose file has no highlight for that.
+    pub bar: bool,
 }
 
 /// One picture of a row that has several, as a chain of feats does.
@@ -104,6 +108,8 @@ pub enum Hit {
     Cell(String, usize, usize),
     /// A slider, and how far along it, 0 to 1.
     Slider(String, f32),
+    /// An arrow of a row's stepper: the list, the row, and -1 or 1.
+    Step(String, usize, i32),
 }
 
 /// One screen: a GUI file and what to change in it.
@@ -204,6 +210,25 @@ fn cell_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
     let side = row[3] - 8;
     let step = (row[2] - side) / 2;
     [0, 1, 2].map(|i| [row[0] + i * step, row[1] + 4, side, side])
+}
+
+/// Behind a chosen row: the interface's blue, thin enough for the row's words to read.
+const CHOSEN_BAR: [u8; 4] = [0, 166, 247, 70];
+/// A row's stepper, in layout units: each arrow's width, the number's and how tall it is.
+const STEP_ARROW: i32 = 18;
+const STEP_NUMBER: i32 = 36;
+const STEP_HIGH: i32 = 24;
+const STEP_WIDTH: i32 = 2 * STEP_ARROW + STEP_NUMBER + 4;
+
+/// Where a stepper goes, at the right of its row: less, the number, and more.
+fn stepper_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
+    let x = row[0] + row[2] - STEP_WIDTH;
+    let y = row[1] + (row[3] - STEP_HIGH) / 2;
+    [
+        [x, y, STEP_ARROW, STEP_HIGH],
+        [x + STEP_ARROW, y, STEP_NUMBER, STEP_HIGH],
+        [x + STEP_ARROW + STEP_NUMBER, y, STEP_ARROW, STEP_HIGH],
+    ]
 }
 
 /// How far across a shaded hole the dark comes, and how dark it starts: by eye from the video at 8:29:45.
@@ -601,6 +626,9 @@ impl Ui<'_> {
                 continue;
             }
             self.draw_border(cv, &proto.border, r, None);
+            if row.bar {
+                cv.fill_rect(r[0], r[1] + 1, r[2], r[3] - 2, CHOSEN_BAR);
+            }
             if let (true, Some(h)) = (lit || row.selected, &proto.hilight) {
                 self.draw_border(cv, h, r, None);
             }
@@ -631,6 +659,11 @@ impl Ui<'_> {
                 None => (r, t.alignment),
             };
             let font = row.font.as_deref().unwrap_or(&t.font);
+            let mut text_rect = text_rect;
+            if let Some(chosen) = row.stepper {
+                text_rect[2] -= STEP_WIDTH;
+                self.draw_stepper(cv, view, (&list.tag, i), (chosen, row.count), r);
+            }
             self.draw_text(cv, font, &row.text, text_rect, alignment, color);
         }
         if rows.len() > fits {
@@ -643,6 +676,40 @@ impl Ui<'_> {
                 cv.fill_rect(r[0] + 3, y + 3, r[2] - 6, h - 6, [0, 166, 247, 170]);
             }
         }
+    }
+
+    /// `< 1 >` at the right of a row: `amount` is how many are chosen, and of how many.
+    fn draw_stepper(
+        &mut self,
+        cv: &mut Canvas,
+        view: &MenuView,
+        (tag, row): (&str, usize),
+        (chosen, most): (i32, i32),
+        r: [i32; 4],
+    ) {
+        let [less, number, more] = stepper_rects(r);
+        // A screen is stretched across a wide window, and these pictures are square.
+        let across = cv.scale / cv.scale_x;
+        let arrows = [
+            (less, "lbl_leftplus", -1, chosen > 1),
+            (more, "lbl_rightminus", 1, chosen < most),
+        ];
+        for (at, picture, by, can) in arrows {
+            let lit = matches!(&view.hover, Some(Hit::Step(l, a, b))
+                if l == tag && *a == row && *b == by);
+            let tint = match (can, lit) {
+                (false, _) => [0.3; 3],
+                (true, true) => LIT,
+                (true, false) => [0.0, 0.65, 0.97],
+            };
+            if let Some(img) = self.texture_shared(picture) {
+                let full = [0, 0, img.width as i32, img.height as i32];
+                let side = ((at[3] as f32 * across).round() as i32).min(at[2]);
+                let dst = [at[0] + (at[2] - side) / 2, at[1], side, at[3]];
+                cv.draw_image(&img, full, dst, tint, 1.0, Default::default());
+            }
+        }
+        self.draw_text(cv, "fnt_d16x16", &chosen.to_string(), number, 18, LIT);
     }
 
     /// A row's pictures with an arrow from each to the next, as the reference video has the feats at 1:23:40.
@@ -740,6 +807,15 @@ impl Ui<'_> {
                 let top = r0[1] + (i - first) as i32 * step;
                 let r = [r0[0], top, r0[2], r0[3]];
                 if inside(r) {
+                    if row.stepper.is_some() {
+                        let [less, _, more] = stepper_rects(r);
+                        if inside(less) {
+                            return Some(Hit::Step(c.tag.clone(), i, -1));
+                        }
+                        if inside(more) {
+                            return Some(Hit::Step(c.tag.clone(), i, 1));
+                        }
+                    }
                     if row.cells.is_empty() {
                         return Some(Hit::Row(c.tag.clone(), i));
                     }
@@ -774,6 +850,28 @@ impl Ui<'_> {
             })
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|(_, hit)| hit)
+    }
+
+    /// The layout point in the middle of an arrow of a row's stepper.
+    pub fn menu_step_point(
+        &mut self,
+        view: &MenuView,
+        tag: &str,
+        row: usize,
+        by: i32,
+    ) -> Option<(f32, f32)> {
+        let gui = self.view_gui(view)?;
+        let (ox, oy) = self.panel_origin(&gui.panel);
+        let c = gui.find(tag)?;
+        let first = view.lists.get(tag).map_or(0, |l| l.1);
+        let (r0, step, _) = row_layout(c)?;
+        let top = r0[1] + row.checked_sub(first)? as i32 * step;
+        let [less, _, more] = stepper_rects([r0[0], top, r0[2], r0[3]]);
+        let at = if by < 0 { less } else { more };
+        Some((
+            (ox + at[0]) as f32 + at[2] as f32 / 2.0,
+            (oy + at[1]) as f32 + at[3] as f32 / 2.0,
+        ))
     }
 
     /// The layout point in the middle of a picture of a list's row.

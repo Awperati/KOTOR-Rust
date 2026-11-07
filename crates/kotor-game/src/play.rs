@@ -1187,11 +1187,41 @@ impl World {
     /// Move an item from the open container to the player: its `OnInvDisturbed` script runs, which may destroy the
     /// container.
     pub fn take_item(&mut self, item: ObjId) {
-        let pc = self.pc;
         let Some(from) = self.opened else { return };
         if let Some(c) = self.objects.get_mut(&from) {
             c.inventory.retain(|i| *i != item);
         }
+        self.hand_over(from, item);
+    }
+
+    /// Move `count` of a stack in the open container to the player, and the rest stays. All of it is [`World::take_item`].
+    pub fn take_some(&mut self, item: ObjId, count: i32) {
+        let Some((stack, template)) = self
+            .objects
+            .get(&item)
+            .map(|o| (o.stack, o.template.clone()))
+        else {
+            return;
+        };
+        if count >= stack {
+            return self.take_item(item);
+        }
+        let Some(from) = self.opened.filter(|_| count > 0) else {
+            return;
+        };
+        if let Some(o) = self.objects.get_mut(&item) {
+            o.stack -= count;
+        }
+        let some = self.spawn_item(&template);
+        if let Some(o) = self.objects.get_mut(&some) {
+            o.stack = count;
+        }
+        self.hand_over(from, some);
+    }
+
+    /// An item out of a container goes to the player, and the container hears of it.
+    fn hand_over(&mut self, from: ObjId, item: ObjId) {
+        let pc = self.pc;
         self.last_disturbed_by = pc;
         self.disturbed_item = item;
         self.run_event(from, "OnInvDisturbed");

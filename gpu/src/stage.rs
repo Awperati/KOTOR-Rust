@@ -756,6 +756,7 @@ impl Stage {
         self.take_party_request();
         self.take_galaxy_request();
         self.take_pazaak_request();
+        self.forget_container_choices();
         self.notices_tick();
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
@@ -2702,7 +2703,16 @@ impl Stage {
         let enemy_plate = self
             .enemy_plate()
             .map_or("-".to_string(), |p| format!("{},{}", p.0, p.1));
+        let chosen = self.container_chosen();
         let w = &self.game.world;
+        // What the open container holds: each row's template and how many.
+        let loot = w
+            .container_items()
+            .iter()
+            .filter_map(|(i, _)| w.object(*i))
+            .map(|o| format!("{}*{}", o.template, o.stack))
+            .collect::<Vec<_>>()
+            .join(",");
         let here = self.pc_position();
         let view = w.dialogue_view();
         let race = w.race.as_ref().map_or("-".to_string(), |g| {
@@ -2711,7 +2721,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

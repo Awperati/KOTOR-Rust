@@ -604,10 +604,12 @@ fn a_container_opens_its_own_window_over_the_scene() {
     s.interact();
     assert_eq!(s.menu_name(), "container");
 
-    // A click on a row takes that item.
+    // A click on a row chooses it, and the middle button takes it.
     let items = s.game.world.container_items();
     assert!(items.len() >= 2);
     click_row(&mut s, "LB_ITEMS", 1);
+    assert_eq!(s.game.world.container_items(), items, "only chosen so far");
+    press(&mut s, "BTN_GIVEITEMS");
     let left = s.game.world.container_items();
     assert_eq!(left.len(), items.len() - 1);
     assert!(!left.iter().any(|i| i.0 == items[1].0));
@@ -633,6 +635,155 @@ fn a_container_opens_its_own_window_over_the_scene() {
     assert_eq!(s.menu_name(), "-");
     s.escape();
     assert_eq!(s.menu_name(), "pause");
+}
+
+#[test]
+fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_say() {
+    let Some((mut s, _)) = in_game("take_selected") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    s.game.world.click(locker);
+    assert!(
+        !s.game.world.container_items().is_empty(),
+        "bug 12: this footlocker has its own things"
+    );
+    // Rows 0 to 3: 50 credits, a sword, 3 medpacs and a sword. What the locker had comes after them.
+    let w = &mut s.game.world;
+    let mut stack = |w: &mut kotor_game::World, n: usize, template: &str, count: i32| {
+        let item = w.spawn_item(template);
+        w.object_mut(item).unwrap().stack = count;
+        w.object_mut(locker).unwrap().inventory.insert(n, item);
+        item
+    };
+    let credits = stack(w, 0, "g_i_credits001", 50);
+    let sword = stack(w, 1, "g_w_lngswrd01", 1);
+    let medpacs = stack(w, 2, "g_i_medeqpmnt01", 3);
+    let other = stack(w, 3, "g_w_shortswrd01", 1);
+    let everything = s.game.world.container_items().len();
+    let gold = s.game.world.gold;
+    let chosen = |s: &mut Stage| -> Vec<bool> {
+        s.menu_rows("LB_ITEMS")[..4]
+            .iter()
+            .map(|r| r.selected)
+            .collect()
+    };
+
+    // The buttons have the owner's words, and only a stack has a stepper. It starts at 1.
+    let rows = s.menu_rows("LB_ITEMS");
+    assert_eq!(rows[0].stepper, Some(1));
+    assert_eq!(rows[1].stepper, None);
+    assert_eq!(rows[2].stepper, Some(1));
+    assert_eq!(rows[3].stepper, None);
+    assert_eq!(s.menu_button_words("BTN_OK").as_deref(), Some("Take All"));
+    assert_eq!(
+        s.menu_button_words("BTN_GIVEITEMS").as_deref(),
+        Some("Take Selected")
+    );
+
+    // Nothing chosen: the button does nothing.
+    press(&mut s, "BTN_GIVEITEMS");
+    assert_eq!(s.game.world.container_items().len(), everything);
+
+    // A plain click chooses one row and leaves the last.
+    click_row(&mut s, "LB_ITEMS", 0);
+    assert_eq!(chosen(&mut s), [true, false, false, false]);
+    click_row(&mut s, "LB_ITEMS", 3);
+    assert_eq!(chosen(&mut s), [false, false, false, true]);
+    click_row(&mut s, "LB_ITEMS", 0);
+    // With Control it adds, and takes away again.
+    s.set_ctrl(true);
+    click_row(&mut s, "LB_ITEMS", 1);
+    assert_eq!(chosen(&mut s), [true, true, false, false]);
+    click_row(&mut s, "LB_ITEMS", 3);
+    assert_eq!(chosen(&mut s), [true, true, false, true]);
+    click_row(&mut s, "LB_ITEMS", 3);
+    assert_eq!(chosen(&mut s), [true, true, false, false]);
+    s.set_ctrl(false);
+
+    // The stepper keeps what is chosen. It stops at 1 and at the whole stack, and goes by ten with Shift.
+    let arrow = |s: &mut Stage, row: usize, by: i32| {
+        let p = s.menu_step_pixel("LB_ITEMS", row, by, SIZE).unwrap();
+        s.hover(p, SIZE);
+        s.click(p, SIZE);
+    };
+    arrow(&mut s, 0, -1);
+    assert_eq!(s.menu_rows("LB_ITEMS")[0].stepper, Some(1));
+    assert_eq!(chosen(&mut s), [true, true, false, false]);
+    s.set_shift(true);
+    for _ in 0..6 {
+        arrow(&mut s, 0, 1);
+    }
+    assert_eq!(s.menu_rows("LB_ITEMS")[0].stepper, Some(50));
+    arrow(&mut s, 0, -1);
+    arrow(&mut s, 0, -1);
+    arrow(&mut s, 0, -1);
+    s.set_shift(false);
+    assert_eq!(s.menu_rows("LB_ITEMS")[0].stepper, Some(20));
+
+    // 20 of the 50 credits and the sword come. The container keeps 30 credits and the rest, and stays up.
+    press(&mut s, "BTN_GIVEITEMS");
+    assert_eq!(s.game.world.gold, gold + 20);
+    let w = &s.game.world;
+    assert_eq!(w.object(credits).unwrap().stack, 30);
+    assert_eq!(w.container_items().len(), everything - 1);
+    assert_eq!(w.container_items()[0].0, credits);
+    assert!(w.carried(pc).contains(&sword));
+    assert!(w.container_items().iter().any(|i| i.0 == other));
+    assert!(w.container_items().iter().any(|i| i.0 == medpacs));
+    assert_eq!(s.menu_name(), "container");
+    let rows = s.menu_rows("LB_ITEMS");
+    assert!(rows.iter().all(|r| !r.selected), "nothing stays chosen");
+    assert_eq!(rows[0].stepper, Some(1), "and the stepper starts again");
+    assert_eq!(rows[0].count, 30);
+
+    // An arrow on a row not chosen chooses it too. Two of the 3 medpacs come, and the last has no stepper.
+    let carried = |s: &Stage| -> i32 {
+        let w = &s.game.world;
+        w.carried(pc)
+            .iter()
+            .filter_map(|i| w.object(*i))
+            .filter(|o| o.template == "g_i_medeqpmnt01")
+            .map(|o| o.stack)
+            .sum()
+    };
+    let before = carried(&s);
+    arrow(&mut s, 1, 1);
+    assert_eq!(s.menu_rows("LB_ITEMS")[1].selected, true);
+    press(&mut s, "BTN_GIVEITEMS");
+    assert_eq!(carried(&s), before + 2);
+    assert_eq!(s.game.world.object(medpacs).unwrap().stack, 1);
+    assert_eq!(s.menu_rows("LB_ITEMS")[1].stepper, None);
+    assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
+
+    // Close leaves it all as it is, and it opens with nothing chosen.
+    click_row(&mut s, "LB_ITEMS", 0);
+    let left = s.game.world.container_items();
+    press(&mut s, "BTN_CANCEL");
+    assert_eq!(s.game.world.opened, None);
+    s.update(DT);
+    s.game.world.click(locker);
+    assert_eq!(s.game.world.container_items(), left);
+    assert!(s.menu_rows("LB_ITEMS").iter().all(|r| !r.selected));
+
+    // Take All takes the rest of the stack too, and the panel goes.
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.game.world.gold, gold + 50);
+    assert!(s.game.world.object(locker).unwrap().inventory.is_empty());
+    assert_eq!(s.menu_name(), "-");
+
+    // The last rows taken shut the panel as well.
+    let w = &mut s.game.world;
+    let last = w.spawn_item("g_w_lngswrd01");
+    w.object_mut(locker).unwrap().inventory.push(last);
+    w.click(locker);
+    click_row(&mut s, "LB_ITEMS", 0);
+    press(&mut s, "BTN_GIVEITEMS");
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(s.game.world.opened, None);
 }
 
 /// The middle of a slider is at this share of its width, on the window.
