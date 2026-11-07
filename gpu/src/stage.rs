@@ -552,6 +552,9 @@ pub struct Stage {
     first_module: String,
 }
 
+/// How often the pilot says how its clicks are going.
+const CLICKS_TO_REPORT: usize = 200;
+
 impl Stage {
     /// Load `module` from its original files and enter its area. Conversations wait for the player.
     pub fn new(module: &str) -> Result<Stage, String> {
@@ -1683,6 +1686,14 @@ impl Stage {
         }
         if self.game.world.dialogue_serial() != before {
             p.lines_clicked += 1;
+            if p.lines_clicked.is_multiple_of(CLICKS_TO_REPORT) {
+                let line = format!(
+                    "{} lines moved on by a click, {} not",
+                    p.lines_clicked,
+                    p.lines_not_clicked.len()
+                );
+                p.log.push(line);
+            }
             return;
         }
         let name = self
@@ -1690,6 +1701,8 @@ impl Stage {
             .world
             .dialogue_conversation()
             .map_or(String::new(), |c| c.name);
+        p.log
+            .push(format!("a click did not move on a line of {name}"));
         p.lines_not_clicked.push(name);
         self.game.world.dialogue_choose(reply);
     }
