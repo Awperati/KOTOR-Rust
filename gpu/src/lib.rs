@@ -278,6 +278,16 @@ impl Aperture {
             && (-APERTURE_EDGE..=APERTURE_HEIGHT + APERTURE_EDGE).contains(&up)
     }
 
+    /// Whether `p` is seen through the doorway from `eye`: `eye` is on the world side of it and `p` inside the view that
+    /// the doorway cuts out. What of this area stands there is not drawn, for the other area is.
+    pub fn sees_through(&self, eye: [f32; 3], p: [f32; 3]) -> bool {
+        let (planes, on_world_side) = self.planes(Vec3::from(eye));
+        on_world_side
+            && planes
+                .iter()
+                .all(|n| n[0] * p[0] + n[1] * p[1] + n[2] * p[2] + n[3] >= 0.0)
+    }
+
     /// The five planes that bound the view through the doorway from `eye`, and whether `eye` is on the world side.
     /// Inside all five is the view through the doorway onto the far side.
     fn planes(&self, eye: Vec3) -> ([[f32; 4]; 5], bool) {
@@ -1814,6 +1824,20 @@ mod aperture_tests {
         // Past the door by more than a crossing takes, in line with the opening.
         let target = Vec3::new(0.0, 3.0, 1.2);
         assert!(!door().in_the_picture(Vec3::new(0.0, 6.0, 3.0), target));
+    }
+
+    #[test]
+    fn what_stands_in_the_view_through_a_doorway_is_seen_through_it_and_what_stands_beside_is_not()
+    {
+        let eye = [0.0, -4.0, 1.6];
+        // Ahead of the doorway, inside the view: this area's own door there would show in the other area.
+        assert!(door().sees_through(eye, [0.0, 10.0, 1.0]));
+        // Beside the view, short of the doorway, over it: not in the view.
+        assert!(!door().sees_through(eye, [30.0, 10.0, 1.0]));
+        assert!(!door().sees_through(eye, [0.0, -2.0, 1.0]));
+        assert!(!door().sees_through(eye, [0.0, 10.0, 40.0]));
+        // From the other side nothing of this area is seen through it.
+        assert!(!door().sees_through([0.0, 4.0, 1.6], [0.0, -10.0, 1.0]));
     }
 }
 

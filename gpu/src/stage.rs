@@ -2,6 +2,7 @@
 //! of creatures and doors, the dialogue box and HUD, and what to play. Nothing here touches the GPU or a window,
 //! so it runs in a headless test.
 
+use crate::Aperture;
 use kotor_archive::Install;
 use kotor_core::ResType;
 use kotor_game::{pixel_ray, Beat, CameraShot, Clip, Game, Kind, MovementMode, ObjId, World};
@@ -2979,7 +2980,35 @@ impl Stage {
         // A shot of someone far from the player (Carth on the comm) is a view from beside them.
         let eye = self.camera().eye;
         let speaker = self.game.world.dialogue_owner();
+        // The area seen through a doorway stands where some of this one's doors and creatures stand: they are not drawn
+        // there, or a door shows in the other area with none of its wall.
+        let doorways: Vec<Aperture> = self
+            .game
+            .world
+            .seamless
+            .attached
+            .values()
+            .filter(|a| a.seen_through_doorway() && !a.behind)
+            .map(|a| Aperture {
+                at: a.at,
+                out: a.out,
+                half: a.half,
+            })
+            .collect();
+        let own = self.game.world.pc;
         for pose in self.game.poses() {
+            if pose.id != own
+                && !self.game.world.party.contains(&pose.id)
+                && doorways.iter().any(|a| {
+                    (pose.position[0] - a.at[0]).hypot(pose.position[1] - a.at[1]) >= 1.5
+                        && a.sees_through(
+                            eye,
+                            [pose.position[0], pose.position[1], pose.position[2] + 1.0],
+                        )
+                })
+            {
+                continue;
+            }
             match pose.kind {
                 Kind::Creature => {
                     let from = |at: [f32; 3]| {

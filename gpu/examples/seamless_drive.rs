@@ -332,6 +332,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !near.is_empty() {
             println!("walkers in view of the start: {}", near.join(", "));
         }
+        if std::env::var_os("DRIVE_DEBUG").is_some() {
+            for (t, p) in &a.scenery.doors {
+                let at = a.rigid.apply(*p);
+                println!(
+                    "neighbour door {t} at {:.1} m from the doorway: {:?}",
+                    dist(at, site.at),
+                    at
+                );
+            }
+        }
     }
     r.check(
         "the area behind the door loads in the background",
