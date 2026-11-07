@@ -143,7 +143,6 @@ fn a_look_through_the_folder_says_what_cannot_be_used() {
         "bad.utc",
         "broken.mdl",
         "line.lip",
-        "sounds.ssf",
         "rooms.vis",
         "dialog.tlk",
         "a_name_of_over_sixteen.ncs",
@@ -180,4 +179,17 @@ fn a_file_of_the_wrong_kind_is_passed_over() {
     }
     assert!(kotor_archive::looks_right(ResType::DLG, b"DLG V3.2"));
     assert!(kotor_archive::looks_right(ResType::MDL, &[0, 0, 0, 0, 1]));
+}
+
+/// The game says which pictures add their light, in the TXI, and an upscaled copy adds as the picture does.
+#[test]
+fn the_games_dust_adds_its_light() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(&dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    if kotor_render::load_texture(&mut inst, "lhr_dust01").is_some() {
+        assert!(kotor_render::is_additive("LHR_dust01"));
+    }
 }

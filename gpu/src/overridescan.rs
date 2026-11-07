@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 fn no_reader(ext: &str) -> Option<&'static str> {
     Some(match ext {
         "lip" => "lip sync for a spoken line; mouths here follow the voice's loudness",
-        "ssf" => "a creature's sound set; this game has no reader for it",
         "vis" => "which rooms can be seen from which; this game draws what the camera sees",
         "txt" => "not a game file",
         _ => return None,

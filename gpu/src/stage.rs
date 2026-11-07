@@ -1965,8 +1965,12 @@ impl Stage {
             .entry(name.to_string())
             .or_insert_with(|| {
                 let name = plain.as_str();
+                // An upscaled copy has no TXI of its own: the game's picture says whether it adds its light.
                 let stock = hd
                     .and_then(|d| upscaled(&d, name))
+                    .inspect(|_| {
+                        kotor_render::load_texture(inst, name);
+                    })
                     .or_else(|| kotor_render::load_texture(inst, name));
                 // The owner's own picture of the texture stands in for all of this: it is what he painted.
                 if let Some(folder) = &folder {

@@ -19,6 +19,6 @@ pub use objects::{
     add_area_creatures, add_area_objects, add_area_objects_except, add_area_objects_with,
     CreatureStats, ObjectStats,
 };
-pub use scene::{load_area, load_texture, Scene, SceneMesh, SkinCtx};
+pub use scene::{is_additive, load_area, load_texture, mark_additive, Scene, SceneMesh, SkinCtx};
 pub use soft::{render, Camera};
 pub use walk::{contact_sheet, render_walk, walk_path, Floor, Step, WalkOptions};

@@ -52,6 +52,8 @@ fn textures(name: &str) -> Option<Image> {
         }),
         // All of it half there.
         "soft" => picture(|_| [255, 0, 0, 128]),
+        // A glow: said to add its light.
+        "glow" => picture(|_| [200, 0, 0, 255]),
         _ => return None,
     })
 }
@@ -103,4 +105,17 @@ fn with_transparency_off_everything_is_solid() {
     };
     let left = at(&img, SIZE / 4, SIZE / 2);
     assert!(left[0] > 100 && left[1] < 30, "{left:?}");
+}
+
+/// A dust cloud or a blade's light adds to what is behind it, where a solid or half-there picture would hide some of it.
+#[test]
+fn a_picture_that_adds_its_light_leaves_what_is_behind_it() {
+    kotor_render::mark_additive("glow");
+    let Some(img) = draw("glow", true) else {
+        return;
+    };
+    let [r, g, b] = at(&img, SIZE / 2, SIZE / 2);
+    assert!(r > 100, "its own light: {r} {g} {b}");
+    assert!(g > 100, "the green behind it stays: {r} {g} {b}");
+    assert!(b < 30, "{r} {g} {b}");
 }

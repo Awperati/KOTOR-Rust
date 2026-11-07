@@ -378,6 +378,7 @@ pub struct GpuRenderer {
     smoke_pipeline: wgpu::RenderPipeline,
     particles: Vec<effects::ParticleBatch>,
     blend_pipeline: wgpu::RenderPipeline,
+    adding_pipeline: wgpu::RenderPipeline,
     transparency: bool,
     globals_layout: wgpu::BindGroupLayout,
     mesh_layout: wgpu::BindGroupLayout,
@@ -406,6 +407,8 @@ struct Draw {
     count: u32,
     bind: wgpu::BindGroup,
     blended: bool,
+    /// It adds its light, and is drawn among the blended.
+    adding: bool,
     centre: [f32; 3],
     /// A sky: the centre of its mesh, which is kept on the camera.
     sky: Option<[f32; 3]>,
@@ -548,6 +551,21 @@ impl GpuRenderer {
             Some(wgpu::BlendState::ALPHA_BLENDING),
             plain,
         );
+        // A picture that adds its light: what is behind stays, and this goes on top of it, as far as it is bright.
+        let adding = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let adding_pipeline = make(
+            false,
+            wgpu::CompareFunction::Less,
+            Some(wgpu::BlendState {
+                color: adding,
+                alpha: wgpu::BlendComponent::OVER,
+            }),
+            plain,
+        );
         // The outline is the body again, a little fatter, of which only the faces turned away show.
         let outline_pipeline = make(
             true,
@@ -662,6 +680,7 @@ impl GpuRenderer {
             sky_pipeline,
             sky_at_infinity: true,
             blend_pipeline,
+            adding_pipeline,
             transparency: true,
             white,
             grey,
@@ -846,6 +865,11 @@ impl GpuRenderer {
                     .map_or(AlphaLook::Opaque, |t| t.look),
                 _ => AlphaLook::Opaque,
             };
+            let adding = self.transparency
+                && m.texture
+                    .as_ref()
+                    .is_some_and(|n| kotor_render::is_additive(n));
+            let look = if adding { AlphaLook::Blend } else { look };
             let (cut, blend) = match look {
                 AlphaLook::Opaque => (0.0, 0.0),
                 AlphaLook::Cutout => (0.5, 0.0),
@@ -913,6 +937,7 @@ impl GpuRenderer {
                 count: indices.len() as u32,
                 bind,
                 blended: look == AlphaLook::Blend,
+                adding,
                 centre: mesh_centre(m),
                 sky: sky_centre(m),
             });
@@ -1193,8 +1218,12 @@ impl GpuRenderer {
                 let far = |d: &Draw| Vec3::from(d.centre).distance_squared(eye);
                 far(b.0).total_cmp(&far(a.0))
             });
-            pass.set_pipeline(&self.blend_pipeline);
             for (d, k) in see_through {
+                pass.set_pipeline(if d.adding {
+                    &self.adding_pipeline
+                } else {
+                    &self.blend_pipeline
+                });
                 pass.set_bind_group(0, bind_of(k), &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(..));

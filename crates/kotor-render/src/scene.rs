@@ -378,6 +378,27 @@ pub fn load_area(inst: &mut Install, area: &str) -> Result<Scene> {
 
 /// Texture by name from the texture packs (TPC) or the base data (TGA). The caller must
 /// have called `Install::load_texture_packs` for TPC lookups.
+/// The pictures whose TXI says additive blending, by lower-case name, as they have been read: an `Image` does not say, and a
+/// renderer needs to know. The upscaled copy of a picture adds in the same way as the picture.
+static ADDITIVE: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+/// This picture's light adds to what is behind it.
+pub fn mark_additive(name: &str) {
+    if let Ok(mut set) = ADDITIVE.lock() {
+        set.get_or_insert_with(Default::default)
+            .insert(name.to_ascii_lowercase());
+    }
+}
+
+/// Whether a picture read so far adds its light.
+pub fn is_additive(name: &str) -> bool {
+    ADDITIVE.lock().is_ok_and(|set| {
+        set.as_ref()
+            .is_some_and(|s| s.contains(&name.to_ascii_lowercase()))
+    })
+}
+
 pub fn load_texture(inst: &mut Install, name: &str) -> Option<Image> {
     let mut txi = inst
         .read(name, ResType::TXI)
@@ -393,7 +414,11 @@ pub fn load_texture(inst: &mut Install, name: &str) -> Option<Image> {
             .and_then(|d| kotor_image::parse_tga(&d).map_err(|e| e.to_string()));
         match parsed {
             Ok(mut img) => {
-                apply_txi_alpha(&mut img, &txi.to_ascii_lowercase());
+                let txi = txi.to_ascii_lowercase();
+                if txi_is_additive(&txi) {
+                    mark_additive(name);
+                }
+                apply_txi_alpha(&mut img, &txi);
                 return Some(img);
             }
             Err(e) => kotor_archive::note_override_problem(format!(
@@ -426,7 +451,11 @@ pub fn load_texture(inst: &mut Install, name: &str) -> Option<Image> {
     } else {
         kotor_image::parse_tga(&inst.read_stock(name, ResType::TGA).ok()?).ok()?
     };
-    apply_txi_alpha(&mut img, &txi.to_ascii_lowercase());
+    let txi = txi.to_ascii_lowercase();
+    if txi_is_additive(&txi) {
+        mark_additive(name);
+    }
+    apply_txi_alpha(&mut img, &txi);
     Some(img)
 }
 
@@ -436,13 +465,17 @@ fn flip_rows(img: Image) -> Image {
     Image { rgba, ..img }
 }
 
+fn txi_is_additive(txi: &str) -> bool {
+    txi.contains("blending") && txi.contains("additive")
+}
+
 /// Make the alpha channel mean transparency. With an environment or bump map named in the TXI it is a shininess mask,
 /// so the picture becomes opaque. With additive blending, alpha follows brightness, so dark parts add nothing.
 fn apply_txi_alpha(img: &mut Image, txi: &str) {
     let shiny = ["envmaptexture", "bumpyshinytexture", "bumpmaptexture"]
         .iter()
         .any(|k| txi.contains(k));
-    let additive = txi.contains("blending") && txi.contains("additive");
+    let additive = txi_is_additive(txi);
     if !shiny && !additive {
         return;
     }
