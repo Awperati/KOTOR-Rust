@@ -35,8 +35,15 @@ const CHIP_FALLS: f32 = 0.5;
 /// How often a plate looks again for a wall in the way: nav lines are not free.
 const SIGHT_SECONDS: f32 = 0.2;
 const SPARKLES_A_SECOND: f32 = 2.0;
-/// How far above the floor a plate goes.
+/// How far above the floor a plate goes: over a creature's own head, measured once for each body at rest, by this much, and
+/// at `HEAD` for one not yet measured. The owner: "Lower the nameplate as well as the pills by a little bit so they're a bit
+/// closer to being on top of the NPC rather than floating above it". **Assumed:** 0.26 m: Calo Nord's body stands 1.60 m at
+/// rest, and its plate comes down 0.09 m from the old 1.95 m, about a fifth of the gap over its head on the screen. A short body
+/// has its plate as near its head, and a tall one no longer has it in its head.
 const HEAD: f32 = 1.95;
+const OVER_HEAD: f32 = 0.26;
+/// Bodies measured in one frame at most, so that a crowded area does not stall.
+const MEASURED_A_FRAME: usize = 4;
 const BODY: f32 = 0.9;
 const DOOR_TOP: f32 = 2.6;
 const THING: f32 = 1.1;
@@ -46,6 +53,9 @@ const FROM_BIG_TEXT: i32 = 150;
 /// read and clicked at 1280 by 720.
 const SLOTS_MOST: f32 = 125.0;
 const SLOTS_LEAST: f32 = 60.0;
+/// An enemy's attack slots are this share of that: the owner, "Make the attack pills about 35% smaller". A friend's one button
+/// keeps its size.
+const ATTACK_SLOTS_SHARE: f32 = 0.65;
 const SLOTS_NEAR: f32 = 4.0;
 const SLOTS_FAR: f32 = 24.0;
 const SLOTS_STEP: f32 = 5.0;
@@ -68,6 +78,8 @@ pub(super) struct PlateState {
     pub(super) kept: Option<ObjId>,
     /// When the cursor was last on the target or its slots.
     touched: f32,
+    /// How tall each creature stands at rest, by its body.
+    heads: HashMap<ObjId, f32>,
 }
 
 #[derive(Clone, Copy)]
@@ -99,7 +111,9 @@ impl Stage {
         let here = self.pc_position();
         let far = (o.position[0] - here[0]).hypot(o.position[1] - here[1]);
         let along = ((far - SLOTS_NEAR) / (SLOTS_FAR - SLOTS_NEAR)).clamp(0.0, 1.0);
-        let percent = SLOTS_MOST + (SLOTS_LEAST - SLOTS_MOST) * along;
+        let enemy = o.kind == kotor_game::Kind::Creature && w.reputation(w.pc, o.id) <= ENEMY;
+        let share = if enemy { ATTACK_SLOTS_SHARE } else { 1.0 };
+        let percent = (SLOTS_MOST + (SLOTS_LEAST - SLOTS_MOST) * along) * share;
         ((percent / SLOTS_STEP).round() * SLOTS_STEP) as i32
     }
 
@@ -269,7 +283,12 @@ impl Stage {
                     continue;
                 }
                 let health = hp as f32 / max_hp.max(1) as f32;
-                (name, color, Some(self.chipped(id, health)), None, HEAD)
+                let up = self
+                    .plates
+                    .heads
+                    .get(&id)
+                    .map_or(HEAD, |top| top + OVER_HEAD);
+                (name, color, Some(self.chipped(id, health)), None, up)
             } else {
                 if !(s.object_labels || is_target) || (far > OBJECT_RANGE && !is_target) {
                     continue;
@@ -398,9 +417,51 @@ impl Stage {
         match o.kind {
             kotor_game::Kind::Door => DOOR_TOP,
             kotor_game::Kind::Creature if o.dead => BODY,
-            kotor_game::Kind::Creature => HEAD,
+            kotor_game::Kind::Creature => self
+                .plates
+                .heads
+                .get(&o.id)
+                .map_or(HEAD, |top| top + OVER_HEAD),
             _ => THING,
         }
+    }
+
+    /// How tall the creatures near enough for a plate stand, each measured once at rest: a few a frame.
+    pub(in crate::stage) fn measure_heads(&mut self) {
+        let w = &self.game.world;
+        let here = self.pc_position();
+        let range = self.settings().nameplate_range as f32;
+        let wanted: Vec<ObjId> = w
+            .objects
+            .values()
+            .filter(|o| o.kind == kotor_game::Kind::Creature && !o.dead && o.id != w.pc)
+            .filter(|o| !self.plates.heads.contains_key(&o.id))
+            .filter(|o| (o.position[0] - here[0]).hypot(o.position[1] - here[1]) <= range)
+            .map(|o| o.id)
+            .take(MEASURED_A_FRAME)
+            .collect();
+        for id in wanted {
+            let Some(rig) = self.rig_of(id) else {
+                self.plates.heads.insert(id, HEAD - OVER_HEAD);
+                continue;
+            };
+            let mut scene = kotor_render::Scene::default();
+            // Standing idle: at rest a separate head is not on the body yet.
+            let idle = self.idling(0);
+            self.add_creature(&mut scene, &rig, &[], &idle, [0.0; 3], 0.0, "");
+            let top = scene
+                .meshes
+                .iter()
+                .flat_map(|m| m.positions.iter())
+                .fold(f32::MIN, |a, p| a.max(p[2]));
+            let top = if top > 0.3 { top } else { HEAD - OVER_HEAD };
+            self.plates.heads.insert(id, top);
+        }
+    }
+
+    /// How tall a creature was measured to stand, for a test.
+    pub fn measured_head(&self, id: ObjId) -> Option<f32> {
+        self.plates.heads.get(&id).copied()
     }
 
     /// The plates on the HUD, for a test.

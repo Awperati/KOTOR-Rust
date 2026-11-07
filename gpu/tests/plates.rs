@@ -198,6 +198,57 @@ fn the_slots_over_a_target_are_smaller_the_further_off_and_stop_at_each_end() {
 }
 
 #[test]
+fn a_plate_sits_over_its_own_head_and_an_enemy_s_slots_are_smaller() {
+    let Some(mut s) = stage("heads", "") else {
+        return;
+    };
+    // A Wookiee, a man and a Jawa side by side, as far off.
+    let side = |s: &mut Stage, id: ObjId, by: f32| {
+        let o = s.game.world.object_mut(id).unwrap();
+        o.position[0] += FACING.sin() * by;
+        o.position[1] -= FACING.cos() * by;
+    };
+    let tall = ahead(&mut s, 6.0, true);
+    s.game.world.object_mut(tall).unwrap().appearance = 51;
+    side(&mut s, tall, -2.0);
+    let man = ahead(&mut s, 6.0, true);
+    let short = ahead(&mut s, 6.0, true);
+    s.game.world.object_mut(short).unwrap().appearance = 73;
+    side(&mut s, short, 2.0);
+    for _ in 0..3 {
+        s.update(DT);
+    }
+    let head = |s: &Stage, id: ObjId| s.measured_head(id).expect("measured");
+    assert!(
+        head(&s, tall) > head(&s, man) + 0.3,
+        "{} {}",
+        head(&s, tall),
+        head(&s, man)
+    );
+    assert!(
+        head(&s, man) > head(&s, short) + 0.2,
+        "{} {}",
+        head(&s, man),
+        head(&s, short)
+    );
+    // Higher on the screen over the taller head.
+    let y = |s: &Stage, id: ObjId| plate_of(s, id).expect("a plate").1;
+    assert!(y(&s, tall) < y(&s, man) && y(&s, man) < y(&s, short));
+
+    // An enemy's attack slots are about two thirds of the size they were: 125 near, 60 far, in fives.
+    hover_on(&mut s, man);
+    let line = s.state_line();
+    let percent: i32 = line
+        .split_whitespace()
+        .find_map(|w| w.strip_prefix("slotsize="))
+        .unwrap()
+        .parse()
+        .unwrap();
+    // Six metres off: 125 less a tenth of the way to 60, times 0.65.
+    assert_eq!(percent, 75, "{line}");
+}
+
+#[test]
 fn the_slots_stay_on_their_target_all_the_way_to_a_click() {
     let Some(mut s) = stage("slots_stay", "") else {
         return;

@@ -3531,6 +3531,7 @@ impl Stage {
         let target = self.target_view();
         let minimap = self.minimap_view();
         let combat = self.combat_view(target.as_ref().map(|t| t.3));
+        self.measure_heads();
         let slots_percent = self.slots_percent();
         self.ui.set_slots_percent(slots_percent);
         self.plates.slots_up = combat.attack.is_some();
@@ -3948,7 +3949,8 @@ impl Stage {
         };
         let up = match o.kind {
             Kind::Door => 2.6,
-            Kind::Creature if !o.dead => 2.1,
+            // Over its own head, as a plate is, and a little higher than one.
+            Kind::Creature if !o.dead => self.plate_up(o) + 0.1,
             _ => 1.1,
         };
         let (x, y) = self.on_screen(o.position, up)?;
