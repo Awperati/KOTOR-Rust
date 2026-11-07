@@ -605,6 +605,35 @@ impl Stage {
         true
     }
 
+    /// Where the player's joints are `p` of the way through the roll, in its own frame before it turns over, for a test.
+    pub fn roll_joints(&mut self, p: f32) -> Vec<(String, [f32; 3])> {
+        let pc = self.game.world.pc;
+        let Some(rig) = self.rig_of(pc) else {
+            return Vec::new();
+        };
+        let Some((pose, ..)) = self.bent_pose(&rig, &None, Bend::Roll(p)) else {
+            return Vec::new();
+        };
+        let mut places: Vec<(String, [f32; 3])> = rig
+            .joint_frames(Some(&pose))
+            .into_iter()
+            .map(|(name, m, _)| (name, [m[0][3], m[1][3], m[2][3]]))
+            .collect();
+        // The middle of what is drawn, part by part: the head has no joint of its own in the body.
+        if let Ok(body) = rig.posed(Some(&pose)) {
+            for m in body.meshes.iter().filter(|m| !m.positions.is_empty()) {
+                let mut sum = [0.0; 3];
+                for p in &m.positions {
+                    for k in 0..3 {
+                        sum[k] += p[k] / m.positions.len() as f32;
+                    }
+                }
+                places.push((format!("mesh {}", m.name), sum));
+            }
+        }
+        places
+    }
+
     /// How far under its feet the player's body reaches now, for a test: `None` when it is not tucked or crouching.
     pub fn bent_body_sinks(&mut self) -> Option<f32> {
         let pc = self.game.world.pc;
@@ -674,6 +703,8 @@ fn unit(v: [f32; 3]) -> Option<[f32; 3]> {
     (l > 1e-4).then(|| v.map(|x| x / l))
 }
 
+const NECK_JOINTS: [&str; 3] = ["necklwr_g", "neck_g", "head_g"];
+
 /// Turn the joints by these angles, in the order of `JOINTS`.
 ///
 /// The bones' own axes cannot be used: `rcollar_g` is flipped against `lcollar_g`, and an arm's frame leans with the arm, so
@@ -686,12 +717,18 @@ fn turn_joints(pose: &mut Pose, rig: &Rig, angles: &[[f32; 3]]) {
         .map(|(name, m, parent)| (name, (m, parent)))
         .collect();
     let place = |m: &Mat| [m[0][3], m[1][3], m[2][3]];
+    // A player's head rides the body's `headhook`, which no neck joint carries: bending those moved nothing that shows.
+    let head_on_hook = !frames.contains_key("head_g") && frames.contains_key("headhook");
     for (joint, angle) in JOINTS.iter().zip(angles) {
         if *angle == [0.0; 3] {
             continue;
         }
-        let (Some(node), Some((own, parent))) = (pose.get_mut(joint.name), frames.get(joint.name))
-        else {
+        let name = if head_on_hook && NECK_JOINTS.contains(&joint.name) {
+            "headhook"
+        } else {
+            joint.name
+        };
+        let (Some(node), Some((own, parent))) = (pose.get_mut(name), frames.get(name)) else {
             continue;
         };
         // Which way "out" and "twist" go, so that left and right are alike.

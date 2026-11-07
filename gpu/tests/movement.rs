@@ -334,7 +334,7 @@ fn even(joints: &std::collections::HashMap<String, [f32; 3]>, left: &str, right:
 }
 
 #[test]
-fn a_roll_bends_both_sides_alike_with_the_knees_up_and_the_hands_on_the_shins() {
+fn a_roll_bends_both_sides_alike_with_the_knees_up() {
     let Some((mut s, file)) = stage("even", "") else {
         return;
     };
@@ -361,18 +361,7 @@ fn a_roll_bends_both_sides_alike_with_the_knees_up_and_the_hands_on_the_shins() 
         "{:?}",
         j["lfoot_g"]
     );
-    // Each hand within a hand's length of its shin, and neither side of the body is crossed.
-    for (hand, knee, foot) in [
-        ("lhand_g", "lshin_g", "lfoot_g"),
-        ("rhand_g", "rshin_g", "rfoot_g"),
-    ] {
-        let middle = [0, 1, 2].map(|i| (j[knee][i] + j[foot][i]) / 2.0);
-        let d: f32 = (0..3)
-            .map(|i| (j[hand][i] - middle[i]).powi(2))
-            .sum::<f32>()
-            .sqrt();
-        assert!(d < 0.3, "{hand} is {d} m from its shin: {:?}", j[hand]);
-    }
+    // Neither side of the body is crossed. Where the hands go is `the_tuck_has_its_elbows_on_the_thighs_and_its_hands_by_the_head`.
     assert!(j["lhand_g"][0] < 0.0 && j["rhand_g"][0] > 0.0);
     std::fs::remove_file(file).ok();
 }
@@ -850,5 +839,93 @@ fn a_jump_is_only_for_the_modern_body_on_its_feet() {
     s.update(DT);
     assert_eq!(pc_at(&s)[2], z, "while down");
     assert!(s.game.world.pc_body.grounded, "while down");
+    std::fs::remove_file(&file).ok();
+}
+
+fn apart(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+/// How far `p` is from the line from `a` to `b`, and the nearest place on it.
+fn from_bone(p: [f32; 3], a: [f32; 3], b: [f32; 3]) -> (f32, [f32; 3]) {
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let dot = (p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2];
+    let t = (dot / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2])).clamp(0.0, 1.0);
+    let q = [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t];
+    (apart(p, q), q)
+}
+
+/// The owner's words: "elbows are tucked too close and intersect with the knees, the elbows need to be touching the outer
+/// thighs with the arms positioned up and tucked around the head, the neck is tilted down as well."
+#[test]
+fn the_tuck_has_its_elbows_on_the_thighs_and_its_hands_by_the_head() {
+    let Some((mut s, file)) = stage("tuckarms", "") else {
+        return;
+    };
+    let joints: std::collections::HashMap<String, [f32; 3]> =
+        s.roll_joints(0.5).into_iter().collect();
+    let at = |n: &str| joints[n];
+    let head = at("mesh head");
+    let (l, r) = (at("mesh eyeLA"), at("mesh eyeRA"));
+    let eyes = [0, 1, 2].map(|k| (l[k] + r[k]) / 2.0 - head[k]);
+    let down = (-eyes[2]).atan2(eyes[1]).to_degrees();
+    println!("the face looks {down:.1} degrees below straight ahead");
+    assert!((15.0..=20.0).contains(&down), "{down}");
+    for (side, way) in [("l", 1.0), ("r", -1.0)] {
+        let j = |n: &str| at(&format!("{side}{n}"));
+        let (elbow, wrist, knee) = (j("forearm_g"), j("hand_g"), j("shin_g"));
+        let (on_thigh, near) = from_bone(elbow, j("thigh_g"), knee);
+        let out = (elbow[0] - near[0]) * way * (at("lthigh_g")[0] - at("rthigh_g")[0]).signum();
+        let (to_knee, to_head) = (apart(elbow, knee), apart(wrist, head));
+        let beside = (wrist[0] - head[0]) * way * (at("lthigh_g")[0] - at("rthigh_g")[0]).signum();
+        println!(
+            "{side}: elbow {on_thigh:.3} from the thigh, {to_knee:.3} from the knee, {out:.3} outside it; wrist {to_head:.3} from the head, {beside:.3} beside it"
+        );
+        // A thigh is about 8 cm thick and an arm 4 cm: touching, and not inside.
+        assert!(on_thigh < 0.15, "{side} {on_thigh}");
+        assert!(on_thigh > 0.09, "{side} {on_thigh}");
+        assert!(to_knee > 0.1, "{side} {to_knee}");
+        assert!(out > 0.05, "{side} {out}");
+        assert!(to_head < 0.2, "{side} {to_head}");
+        assert!(beside > 0.06, "{side} {beside}");
+    }
+    std::fs::remove_file(&file).ok();
+}
+
+/// The pose files name the neck, and the head has to go with it.
+#[test]
+fn bending_the_neck_in_the_file_moves_the_head() {
+    let Some((mut s, file)) = stage("neckbends", "") else {
+        return;
+    };
+    let eyes = |s: &mut Stage| {
+        let j: std::collections::HashMap<String, [f32; 3]> =
+            s.roll_joints(0.5).into_iter().collect();
+        let (e, h) = (j["mesh eyeLA"], j["mesh head"]);
+        (h[2] - e[2]).atan2(e[1] - h[1]).to_degrees()
+    };
+    let as_it_is = eyes(&mut s);
+    let dir = std::env::temp_dir().join(format!("kotor_neck_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("roll_pose.txt"),
+        "turns = 0\n[key]\nat = 0\ntuck = 1\nnecklwr_g = 15\nneck_g = 15\n",
+    )
+    .unwrap();
+    s.use_pose_folder(dir.clone());
+    let down = eyes(&mut s);
+    std::fs::write(
+        dir.join("roll_pose.txt"),
+        "turns = 0\n[key]\nat = 0\ntuck = 1\n",
+    )
+    .unwrap();
+    s.reload_poses();
+    let level = eyes(&mut s);
+    assert!(
+        (down - level - 30.0).abs() < 3.0,
+        "{down} and {level}, from {as_it_is}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
     std::fs::remove_file(&file).ok();
 }

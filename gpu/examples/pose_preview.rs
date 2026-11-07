@@ -1,5 +1,5 @@
 //! Pictures of the roll and the landing from the pose files, with no window and no screen capture: six moments from the
-//! front and six from the side, for looking at after an edit. See `docs/MOVEMENT_POSE.md`.
+//! front, the side and above, for looking at after an edit. See `docs/MOVEMENT_POSE.md`.
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example pose_preview -- [out_dir] [--folder pose_folder]
 //!
@@ -106,19 +106,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     gpu.set_static_scene(&scene, &mut |n| s.texture(n));
     let at = s.game.world.pc_mover.pos;
     let (c, n) = (HEADING.cos(), HEADING.sin());
-    // In front of the player, and at its right hand.
-    let views = [("front", [c, n]), ("side", [n, -c])];
+    // In front of the player, at its right hand, and over its head: which way, and how high.
+    let views = [
+        ("front", [c, n], 0.3),
+        ("side", [n, -c], 0.3),
+        ("top", [c * 0.2, n * 0.2], AWAY),
+    ];
     let moves = [
         ("roll", Move::Roll, ROLL_MOMENTS),
         ("landing", Move::Landing, LANDING_MOMENTS),
     ];
     for (what, kind, moments) in moves {
-        for (view, way) in views {
+        for (view, way, high) in views {
             let cam = Camera {
                 eye: [
                     at[0] + way[0] * AWAY,
                     at[1] + way[1] * AWAY,
-                    at[2] + LOOK_AT + 0.3,
+                    at[2] + LOOK_AT + high,
                 ],
                 target: [at[0], at[1], at[2] + LOOK_AT],
                 fov: FOV,

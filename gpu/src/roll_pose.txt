@@ -23,7 +23,7 @@
 #   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
 # The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
 #
-version = 2            # which of the game's own rolls this began as. Leave it alone.
+version = 3            # which of the game's own rolls this began as. Leave it alone.
 
 # FOR THE WHOLE ROLL
 turns = 1              # whole somersaults: 1 is one. 0 stays upright. A minus rolls backward. It must be a whole number.
@@ -40,7 +40,7 @@ at = 0
 ease = smooth
 tuck = 0
 
-[key]            # Going over: leaning forward, the arms reaching ahead and the knees coming up.
+[key]            # Going over: leaning forward, the arms coming up and the knees coming up.
 at = 0.12
 ease = smooth
 tuck = 0.8
@@ -51,54 +51,60 @@ lshin_g    =    70
 rshin_g    =    70
 lfoot_g    =    10
 rfoot_g    =    10
-torso_g    =    30
-torsoupr_g =    25
-necklwr_g  =    20
-neck_g     =    15
-lbicep_g   =    70   -40     0
-rbicep_g   =    70   -40     0
-lforearm_g =    25
-rforearm_g =    25
+torso_g    =    20
+torsoupr_g =    20
+necklwr_g  =     0
+neck_g     =     0
+lbicep_g   =    80   -25   -35
+rbicep_g   =    80   -25   -35
+lforearm_g =    80     0   -30
+rforearm_g =    80     0   -30
+lhand_g    =    20
+rhand_g    =    20
 
-[key]            # Fully tucked: knees together at the chest, heels in, back curled, chin down, arms round the shins.
+[key]            # Fully tucked: elbows on the outside of the thighs, hands on the sides of the head, looking forward and a little down.
 at = 0.25
 ease = smooth
 tuck = 1
 #              bend   out  twist
-lthigh_g   =   130   -10     0
-rthigh_g   =   130   -10     0
+lthigh_g   =   115   -10     0
+rthigh_g   =   115   -10     0
 lshin_g    =   140
 rshin_g    =   140
 lfoot_g    =    10
 rfoot_g    =    10
-torso_g    =    35
-torsoupr_g =    35
-necklwr_g  =    25
-neck_g     =    15
-lbicep_g   =    60   -50   -20
-rbicep_g   =    60   -50   -20
-lforearm_g =    90     0   -30
-rforearm_g =    90     0   -30
+torso_g    =    30
+torsoupr_g =    30
+necklwr_g  =    -4
+neck_g     =    -4
+lbicep_g   =   135   -30   -70
+rbicep_g   =   135   -30   -70
+lforearm_g =   135     0   -60
+rforearm_g =   135     0   -60
+lhand_g    =    40
+rhand_g    =    40
 
 [key]            # Still tucked, coming round. Copy the numbers above if you change them.
 at = 0.72
 ease = smooth
 tuck = 1
 #              bend   out  twist
-lthigh_g   =   130   -10     0
-rthigh_g   =   130   -10     0
+lthigh_g   =   115   -10     0
+rthigh_g   =   115   -10     0
 lshin_g    =   140
 rshin_g    =   140
 lfoot_g    =    10
 rfoot_g    =    10
-torso_g    =    35
-torsoupr_g =    35
-necklwr_g  =    25
-neck_g     =    15
-lbicep_g   =    60   -50   -20
-rbicep_g   =    60   -50   -20
-lforearm_g =    90     0   -30
-rforearm_g =    90     0   -30
+torso_g    =    30
+torsoupr_g =    30
+necklwr_g  =    -4
+neck_g     =    -4
+lbicep_g   =   135   -30   -70
+rbicep_g   =   135   -30   -70
+lforearm_g =   135     0   -60
+rforearm_g =   135     0   -60
+lhand_g    =    40
+rhand_g    =    40
 
 [key]            # Opening out: the feet come under the body.
 at = 0.88
@@ -113,12 +119,12 @@ lfoot_g    =    15
 rfoot_g    =    15
 torso_g    =    15
 torsoupr_g =    15
-necklwr_g  =     5
-neck_g     =     5
-lbicep_g   =    35   -35     0
-rbicep_g   =    35   -35     0
-lforearm_g =    45
-rforearm_g =    45
+necklwr_g  =     0
+neck_g     =     0
+lbicep_g   =    35   -30   -15
+rbicep_g   =    35   -30   -15
+lforearm_g =    45     0   -15
+rforearm_g =    45     0   -15
 
 [key]            # Standing again, at the end.
 at = 1

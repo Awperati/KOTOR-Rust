@@ -62,7 +62,10 @@ pub(super) const DEFAULT_LANDING: &str = include_str!("landing_pose.txt");
 pub(super) const DEFAULT_JUMP: &str = include_str!("jump_pose.txt");
 /// What the game has written before, as it came: a file exactly like one of these was never edited, and gets the new default.
 /// When a default changes, its old text goes in `poses_old` and in this list, and its `version` goes up.
-pub(super) const SHIPPED_ROLLS: [&str; 1] = [include_str!("poses_old/roll_pose_v1.txt")];
+pub(super) const SHIPPED_ROLLS: [&str; 2] = [
+    include_str!("poses_old/roll_pose_v1.txt"),
+    include_str!("poses_old/roll_pose_v2.txt"),
+];
 pub(super) const SHIPPED_LANDINGS: [&str; 1] = [include_str!("poses_old/landing_pose_v1.txt")];
 pub(super) const SHIPPED_JUMPS: [&str; 0] = [];
 pub(super) const ROLL_FILE: &str = "roll_pose.txt";
@@ -304,8 +307,8 @@ mod tests {
     #[test]
     fn each_default_has_a_new_version_and_differs_from_what_was_shipped() {
         for (now, old) in [
-            (DEFAULT_ROLL, &SHIPPED_ROLLS),
-            (DEFAULT_LANDING, &SHIPPED_LANDINGS),
+            (DEFAULT_ROLL, &SHIPPED_ROLLS[..]),
+            (DEFAULT_LANDING, &SHIPPED_LANDINGS[..]),
         ] {
             let version = PoseFile::parse(now).unwrap().version;
             assert!(version >= 2);
