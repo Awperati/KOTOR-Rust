@@ -31,5 +31,5 @@ About 0.1 to 0.2 ms at 2160p. On a machine busy with other work the same runs sc
 
 ## Not done
 
-- The outline is not drawn on what is seen through a doorway into a joined area.
+- Figures seen through a doorway into a joined area get the same outline, cut to the doorway's view like the figure (`fs_outline` has the planes test of `fs_main`; test `a_figure_seen_through_a_doorway_has_its_outline_inside_the_doorway`). Not looked at in a real joined area on screen, only in that test.
 - Hard edges of a body whose vertices are split there (the normal differs on each side) can show a hairline gap in the outline.

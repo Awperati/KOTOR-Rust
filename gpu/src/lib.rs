@@ -118,6 +118,18 @@ fn vs_outline(v: VsIn) -> VsOut {
 
 @fragment
 fn fs_outline(i: VsOut) -> @location(0) vec4<f32> {
+    // The same cut as the body's own: a figure seen through a doorway has its outline only inside the doorway's view.
+    if (g.mode.x > 0.5) {
+        var inside = true;
+        for (var k = 0; k < 5; k = k + 1) {
+            if (dot(g.planes[k].xyz, i.world) + g.planes[k].w < 0.0) {
+                inside = false;
+            }
+        }
+        if (inside == (g.mode.x < 1.5)) {
+            discard;
+        }
+    }
     if (faded_out(i.clip)) {
         discard;
     }
@@ -1153,6 +1165,16 @@ impl GpuRenderer {
                     pass.set_vertex_buffer(0, d.vertices.slice(..));
                     pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..d.count, 0, 0..1);
+                }
+                // The figures of the area seen through a doorway, in the doorway's view only.
+                if let (Some(p), Some(_)) = (&self.portal, &portal_binds) {
+                    for d in p.moving.iter().filter(|d| !d.blended && d.sky.is_none()) {
+                        pass.set_bind_group(0, bind_of(g_portal), &[]);
+                        pass.set_bind_group(1, &d.bind, &[]);
+                        pass.set_vertex_buffer(0, d.vertices.slice(..));
+                        pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.draw_indexed(0..d.count, 0, 0..1);
+                    }
                 }
             }
             let mut see_through: Vec<(&Draw, usize)> =

@@ -57,6 +57,8 @@ Run `cargo run --release -p kotor-game --example seamless_survey -- tar_m02aa ta
 | tar_m02aa | ptar_stnddr | (112.5, 81.8) | tar_m02ac | **placed** shift (22.5, -47.8), turn 0, miss 0.09 m |
 | tar_m02aa | tar02_aprtdoor | (90.8, 134.2) | tar_m02af | **placed** shift (0, 0), turn 0, miss 0.72 m |
 | tar_m02af | tar02_aptdoor | (90.7, 134.3) | tar_m02aa | **placed** shift (0, 0), turn 0, miss 0.72 m |
+
+`tar_m02af` `tar02_aptdoor` out of the apartment is a scripted exit, not a plain link: the door opens `tar02_doordlg`, which runs `ShowPartySelectionGUI("k_ptar_exitapt")`, and that ends in `StartNewModule("tar_m02aa", "tar02_sw02af")` (a waypoint 2 m from the door). The party screen is the game's own and has to be answered, and the module change is by script, so the driver notes the party screen, confirms it, and then sees a 3.04 m step and a load. Coming in from `tar_m02aa` is a plain link and passes.
 | tar_m02ab (Upper City North) | tar02_sithdoor | (112.5, 227.6) | tar_m09aa (Sith base) | **placed** shift (111.8, 249.9), turn 0, miss 0.21 m |
 | tar_m09aa | ptar_secdoor | (0.7, -22.3) | tar_m02ab | **placed** shift (-111.8, -249.9), turn 0, miss 0.21 m |
 | tar_m02ab | tar02_door02ad | (221.2, 142.9) | tar_m02ad | **placed** shift (108.7, 61.1), turn 0, miss 0.20 m |
@@ -148,7 +150,7 @@ Measured at 3840x2160, best of three, Upper City South to the Cantina: no frame 
 
 ## Not done
 
-- Creatures that walk, talk or fight before the crossing: the neighbour is a still scene with idling bodies, as it has no world of its own that runs. A second `World` stepped on the main thread for the neighbour would give it scripts and patrols, at the cost of a script machine's frame time and the neighbour's globals; left out.
+- Creatures that walk, talk or fight before the crossing: the neighbour is a still scene with idling bodies, as it has no world of its own that runs. Two ways to change that, sized in `docs/SEAMLESS_CREATURES.md`: scripted waypoint walks and turning to face the player (about 400 lines, only 74 of 680 counted creatures have a waypoint route), or a second `World` for the neighbour (thousands of lines and the game's global state shared by two worlds; not recommended).
 - **Two Lower City shop doors that overlap within 6 m** (`tar04_stddoor` to `tar_m03ad`, and `tar03_stddoor` back from it) stay on the loading screen. A portal reaching only 3.5 m seemed to join two more shops (`tar_m03ab`, `tar_m03ae`), but only because a face is kept or dropped by where its middle is: the big street face under the door has its middle further than 3.5 m, so it was dropped, and the followers 3 m behind the door stood on no floor after the crossing and were put on the nearest floor, in the shop, 5 to 9 m away (a test of four people failed). Kept by any corner, edge or middle within reach, that face stays, and the shops overlap the street there: they cannot be joined without removing floor the party stands on. That rule also lost one join that works today (`tar_m11aa` `ptar_secdoor` to `tar_m11ab`), so it was not kept.
 - The elevators, two Lower City shop doors and other links that overlap near the door or have no clear side still load the old way.
 - Triggers.

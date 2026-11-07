@@ -132,6 +132,29 @@ fn keep_alive(s: &mut Stage) {
 
 static DOWN_SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// A menu frame the join is to blame for. The party picker is the game's own screen (it comes up as the player
+/// leaves the apartment), so the driver notes it, closes it and goes on.
+fn counts_as_menu(s: &mut Stage) -> bool {
+    if s.menu_open() && s.menu_name() == "party" {
+        // The screen the script asked for cannot be cancelled, so it is confirmed: Done, then OK.
+        for tag in ["BTN_DONE", "BTN_OK"] {
+            if let Some(p) = s.menu_pixel(tag, None, (1280, 720)) {
+                s.hover(p, (1280, 720));
+                s.click(p, (1280, 720));
+            }
+        }
+        println!("note: the game's party screen came up; confirmed, not counted");
+        if std::env::var_os("DRIVE_DEBUG").is_some() {
+            let e = &s.game.world.events;
+            for l in &e[e.len().saturating_sub(25)..] {
+                println!("  after party: {l}");
+            }
+        }
+        return false;
+    }
+    s.menu_open()
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let module = args.get(1).map_or("tar_m02ac", String::as_str).to_string();
@@ -333,6 +356,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "jump {d:.3} in {} from {:?} to {:?}",
                 s.game.world.module, last, p
             );
+            if std::env::var_os("DRIVE_DEBUG").is_some() {
+                let e = &s.game.world.events;
+                for l in &e[e.len().saturating_sub(8)..] {
+                    println!("  event: {l}");
+                }
+            }
         }
         // Someone of the module standing against the player pushes it aside by up to a metre in a frame: that is a shove,
         // not a seam. A step of metres is still a step.
@@ -390,7 +419,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
-        menus += s.menu_open() as u32;
+        menus += counts_as_menu(&mut s) as u32;
         if s.menu_open() && menus == 1 {
             println!(
                 "first menu frame: {} in {} at {:?}",
@@ -498,7 +527,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
-        menus += s.menu_open() as u32;
+        menus += counts_as_menu(&mut s) as u32;
         if s.menu_open() && menus == 1 {
             println!(
                 "first menu frame: {} in {} at {:?}",
@@ -703,7 +732,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
-        menus += s.menu_open() as u32;
+        menus += counts_as_menu(&mut s) as u32;
         if s.menu_open() && menus == 1 {
             println!(
                 "first menu frame: {} in {} at {:?}",

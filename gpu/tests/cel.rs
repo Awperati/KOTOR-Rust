@@ -112,3 +112,58 @@ fn the_outline_is_dark_and_lies_outside_the_ball() {
     }
     assert!(ring > 60, "a dark line round the ball: {ring} pixels");
 }
+
+/// The ball is in another area, seen through a doorway 3 m in front of the camera.
+fn through_a_doorway(level: u8, door_x: f32) -> Option<Image> {
+    let mut gpu = GpuRenderer::new(SIZE, SIZE).ok()?;
+    gpu.set_cel_shading(level);
+    let door = kotor_gpu::Aperture {
+        at: [door_x, -3.0, 0.0],
+        out: std::f32::consts::FRAC_PI_2,
+        half: 2.0,
+    };
+    gpu.set_portal(Some((&Scene::default(), door)), &mut textures);
+    let ball = Scene {
+        meshes: vec![ball()],
+        ..Scene::default()
+    };
+    gpu.set_portal_moving(&ball, &mut textures);
+    let cam = Camera {
+        eye: [0.0, -8.0, 1.0],
+        target: [0.0, 0.0, 0.0],
+        fov: 40.0,
+    };
+    gpu.render(&Scene::default(), &mut textures, &cam).ok()
+}
+
+#[test]
+fn a_figure_seen_through_a_doorway_has_its_outline_inside_the_doorway() {
+    let (Some(off), Some(on), Some(aside)) = (
+        through_a_doorway(0, 0.0),
+        through_a_doorway(2, 0.0),
+        through_a_doorway(2, 40.0),
+    ) else {
+        return;
+    };
+    let sky = at(&off, 1, 1);
+    let ring = |a: &Image| {
+        (0..SIZE)
+            .flat_map(|y| (0..SIZE).map(move |x| (x, y)))
+            .filter(|(x, y)| {
+                let (o, n) = (at(&off, *x, *y), at(a, *x, *y));
+                o == sky && n != o && n.iter().all(|c| *c < 60)
+            })
+            .count()
+    };
+    assert!(
+        ring(&on) > 60,
+        "a dark line round the figure: {}",
+        ring(&on)
+    );
+    // A doorway that is somewhere else shows nothing of the figure, line included.
+    let bare = (0..SIZE)
+        .flat_map(|y| (0..SIZE).map(move |x| (x, y)))
+        .filter(|(x, y)| at(&aside, *x, *y) != sky)
+        .count();
+    assert_eq!(bare, 0, "no figure and no line without the doorway's view");
+}
