@@ -21,7 +21,7 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 | 3 | Figures in the class screen not animated | fixed | `audit_shots`: their vertices move over 0.7 s | |
 | 4 | Portraits low resolution | fixed | 40 at 8 times by Gigapixel, frame `audit_7_equip_2160p`. On this machine only: `scripts/upscale_portraits.ps1` | |
 | 5 | Too many skill points at creation | fixed | `class_saves_and_skill_points_come_from_the_tables`, 8 at Intelligence 12 as the video has it | |
-| 6 | Feats panel squashed | fixed, reading assumed | Pictures stay square on wide windows: frames `chargen_feats_720`, `chargen_feats_2160`. "Squashed" was read as stretched | |
+| 6 | Feats panel squashed | fixed, reading assumed | Pictures stay square on wide windows: frames `chargen_feats_720`, `chargen_feats_2160`. The list rows of the Feats tab and every other list still had them a third too wide: `a_picture_in_a_list_row_stays_square_on_a_wide_window`. The owner's sentence ends unfinished, so "squashed" was read as stretched | |
 | 7 | Delay switching panels | partly | `audit_shots`: first visit 16 to 25 ms at 720p, 195 to 280 ms at 2160p on a quiet machine, over 1 s when other work takes the cores; later visits 2 ms and 20 to 60 ms. Fixed here: scaling a background took 300 to 565 ms and now takes 40 | Menus |
 | 8 | Loud strike sound at intervals | fixed, not heard | `a_duel_in_another_room_cannot_be_heard_from_where_a_new_game_starts` | |
 | 9 | No facial animations | fixed, not watched | `a_face_moves_with_the_clip_and_stays_whole`, commit `fa68538` | |

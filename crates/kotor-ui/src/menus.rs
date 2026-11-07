@@ -797,7 +797,9 @@ impl Ui<'_> {
                     let side = r[3] - 4;
                     if let Some(img) = self.texture_shared(icon) {
                         let full = [0, 0, img.width as i32, img.height as i32];
-                        let dst = [r[0] + 2, r[1] + 2, side, side];
+                        // A screen is stretched across a wide window, and these pictures are square.
+                        let wide = ((side as f32 * cv.scale / cv.scale_x).round() as i32).min(side);
+                        let dst = [r[0] + 2 + (side - wide) / 2, r[1] + 2, wide, side];
                         cv.draw_image(&img, full, dst, [1.0; 3], 1.0, Default::default());
                     }
                     if row.count > 1 {

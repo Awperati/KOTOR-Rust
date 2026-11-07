@@ -1,10 +1,49 @@
 use kotor_archive::Install;
-use kotor_ui::{DialogueView, Hit, HudMember, MenuView, Ui};
+use kotor_ui::{DialogueView, Hit, HudMember, MenuView, Row, Ui};
 
 const WIDTH: u32 = 853;
 
 fn alpha(img: &kotor_image::Image, x: u32, y: u32) -> u8 {
     img.rgba[((y * img.width + x) * 4 + 3) as usize]
+}
+
+#[test]
+fn a_picture_in_a_list_row_stays_square_on_a_wide_window() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let mut ui = Ui::new(&mut inst);
+    for (w, h) in [(1280, 720), (3840, 2160)] {
+        ui.set_view((w, h));
+        let draw = |ui: &mut Ui, icon: &str| {
+            let mut v = MenuView::new("abilities");
+            let row = Row {
+                text: "A feat".into(),
+                icon: Some(icon.into()),
+                ..Row::default()
+            };
+            v.lists.insert("LB_ABILITY".into(), (vec![row], 0));
+            ui.menu_overlay(&v).unwrap()
+        };
+        let with = draw(&mut ui, "po_pfha2");
+        let without = draw(&mut ui, "no_such_picture");
+        let (mut left, mut right, mut top, mut bottom) = (w, 0, h, 0);
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                if with.rgba[i..i + 4] != without.rgba[i..i + 4] {
+                    left = left.min(x);
+                    right = right.max(x);
+                    top = top.min(y);
+                    bottom = bottom.max(y);
+                }
+            }
+        }
+        let (wide, high) = (right + 1 - left, bottom + 1 - top);
+        assert!(high > 20, "{high} high at {w}");
+        assert!(wide.abs_diff(high) <= 3, "{wide} by {high} at {w}");
+    }
 }
 
 #[test]
