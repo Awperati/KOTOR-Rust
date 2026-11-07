@@ -24,6 +24,8 @@ const SLOT_WORDS: [u32; 3] = [48303, 48307, 48311];
 const SLOT_WORDS_FONT: &str = "dialogfont10x10";
 /// What darkens a picture that cannot be used.
 pub(crate) const GREYED: [u8; 4] = [0, 0, 0, 170];
+/// The half-dark fills of the rounded buttons and panels: `BTN_LEVELUP`, `container.gui`, `confirm.gui`.
+pub(crate) const ROUNDED_FILLS: [&str; 2] = ["dialog2", "dialog3"];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
 const HUD_TEXT_BOXES: [&str; 1] = ["LBL_ACTIONDESCBG"];
 /// The Pickup button's picture: see [`pickup_picture`].
@@ -672,11 +674,18 @@ impl<'a> Ui<'a> {
         fill: Option<&str>,
     ) {
         let fill = fill.unwrap_or(&b.fill).to_string();
+        let d = b.dimension;
+        // Its edges are half dark on their inner side and clear beyond the line. The same half dark under them shows as a
+        // square plate, with a lighter bar through the middle: so it goes only where they do not.
+        let within = if ROUNDED_FILLS.contains(&fill.as_str()) {
+            [r[0] + d, r[1] + d, r[2] - 2 * d, r[3] - 2 * d]
+        } else {
+            r
+        };
         if let Some(img) = self.texture_shared(&fill) {
             let full = [0, 0, img.width as i32, img.height as i32];
-            cv.draw_image(&img, full, r, b.color, 1.0, Orient::default());
+            cv.draw_image(&img, full, within, b.color, 1.0, Orient::default());
         }
-        let d = b.dimension;
         if d <= 0 {
             return;
         }

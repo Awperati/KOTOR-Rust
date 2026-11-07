@@ -93,5 +93,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.pickup();
     println!("{}", s.state_line());
     shot(&mut s, "pickup_panel");
+
+    // The rounded buttons on the character sheet.
+    s.game.world.close_container();
+    s.game.world.hold_levels = true;
+    let pc = s.game.world.pc;
+    s.game.world.grant_xp(pc, 4000);
+    s.open_character();
+    shot(&mut s, "levelup_buttons");
     Ok(())
 }

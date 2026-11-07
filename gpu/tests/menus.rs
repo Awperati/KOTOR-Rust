@@ -638,6 +638,45 @@ fn a_container_opens_its_own_window_over_the_scene() {
 }
 
 #[test]
+fn a_rounded_button_has_no_square_plate_behind_it() {
+    let Some((mut s, _)) = in_game("rounded") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.game.world.hold_levels = true;
+    s.open_character();
+    s.update(DT);
+    let without = s.overlay().unwrap().clone();
+    s.escape();
+    s.game.world.grant_xp(pc, 4000);
+    s.open_character();
+    s.update(DT);
+    let (x, y) = s.menu_pixel("BTN_AUTO", None, SIZE).unwrap();
+    let o = s.overlay().unwrap();
+    let at = |img: &kotor_image::Image, dx: f32, dy: f32| -> [u8; 4] {
+        let (px, py) = ((x + dx * 1.5) as u32, (y + dy * 1.5) as u32);
+        let i = ((py * img.width + px) * 4) as usize;
+        [
+            img.rgba[i],
+            img.rgba[i + 1],
+            img.rgba[i + 2],
+            img.rgba[i + 3],
+        ]
+    };
+    // `BTN_AUTO` is 127 by 52 layout units. In a corner, outside the rounded line, it draws nothing.
+    for (dx, dy) in [(-62.0, -25.0), (62.0, -25.0), (-62.0, 25.0), (62.0, 25.0)] {
+        assert_eq!(at(o, dx, dy), at(&without, dx, dy), "corner {dx},{dy}");
+    }
+    // The bar through the middle is gone: its centre is as dark as the rim, on the same ground.
+    let centre = at(o, 40.0, 0.0);
+    let rim = at(o, 40.0, -18.0);
+    let ground = (at(&without, 40.0, 0.0), at(&without, 40.0, -18.0));
+    if ground.0 == ground.1 {
+        assert_eq!(centre, rim);
+    }
+}
+
+#[test]
 fn every_kind_on_the_bench_has_its_picture_and_what_cannot_be_chosen_is_greyed() {
     let Some((mut s, _)) = in_game("bench_pictures") else {
         return;

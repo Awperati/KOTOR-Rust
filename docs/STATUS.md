@@ -215,5 +215,9 @@ All the credits in a container are one row with their sum. The capsule in the fi
 
 Sixteen item templates have a designer's tag for a name in the talk table, such as `end_onedam`, a Blaster Rifle. They now go by the name of their kind, in old saves too. `examples/raw_names.rs` lists them over all 5,334 templates. The rest of its list stays: names shown only to tests or cutscenes (`Run_soldier`, `Extra01`, `zonecontroller`), or real ones with a digit (`T3-M4`, `HK-47`). Every kind on the bench has its picture, greyed where there is nothing to upgrade. Tests: `an_item_the_talk_table_names_with_a_tag_goes_by_its_kind_through_a_save_too`, `every_kind_on_the_bench_has_its_picture_and_what_cannot_be_chosen_is_greyed`.
 
+## Rounded buttons
+
+`BTN_AUTO`, `BTN_LEVELUP`, `LBL_SOLOMODE`, and the panels of `container.gui`, `confirm.gui` and `savename.gui` had a square plate: the half-dark fill lay under edges that are half dark themselves and clear past the line. It now lies only inside them, and a rounded panel over the scene has no square backing. Test: `a_rounded_button_has_no_square_plate_behind_it`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

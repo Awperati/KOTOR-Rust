@@ -495,9 +495,14 @@ impl Ui<'_> {
         let p = &gui.panel;
         let (ox, oy) = self.panel_origin(p);
         let r = [ox, oy, p.extent.width, p.extent.height];
-        // **Assumed:** a panel over the scene gets a dark backing, since its picture is see-through and text must read.
+        // **Assumed:** a panel over the scene gets a dark backing, since its picture is see-through and text must read. A
+        // rounded panel has its own shape twice over, which is as dark and has no square corners.
         if view.over_scene {
-            cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 0, 140]);
+            if crate::screens::ROUNDED_FILLS.contains(&p.border.fill.as_str()) {
+                self.draw_border(cv, &p.border, r, None);
+            } else {
+                cv.fill_rect(r[0], r[1], r[2], r[3], [0, 0, 0, 140]);
+            }
         }
         self.draw_border(cv, &p.border, r, None);
         for c in &p.children {
