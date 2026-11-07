@@ -27,7 +27,7 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 | 9 | No facial animations | fixed, not watched | `a_face_moves_with_the_clip_and_stays_whole`, commit `fa68538` | |
 | 10 | Trask has no lines or speaking animation | fixed, not watched | `trask_opening_conversation_plays_through_with_speakers`, `the_owner_of_a_conversation_talks_and_the_player_listens`, `drive_cinematic` | |
 | 11 | No animation smoothing | fixed | `a_change_of_clip_fades_over_a_fifth_of_a_second` | |
-| 12 | No items in the footlocker panel | fixed | Found here: see below. `a_treasure_footlocker_fills_on_its_heartbeat_and_only_once`, frame `audit_12_footlocker` | |
+| 12 | No items in the footlocker panel | fixed | Found here: see below. `a_treasure_footlocker_fills_on_its_heartbeat_and_only_once`, frame `audit_12_footlocker`, `drive_container`: 6 of its own rows | |
 | 13 | Upscale equipment slot images | fixed | 1,081 pictures in the local folder, frame `audit_7_equip_2160p` | |
 | 14 | Trask's portrait shows Bastila's | fixed | `trask_and_carth_have_their_own_faces`, `every_creature_has_the_portrait_its_file_names` | |
 | 15 | No collision between people | fixed | `the_player_does_not_walk_through_a_teammate_at_once`, `sweep_shots`: closest 0.80 m | |

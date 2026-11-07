@@ -1,7 +1,7 @@
 # Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**657 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**658 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -182,6 +182,14 @@ What is left, by how early it matters:
 Logged but no block: `end_door10_cut2`, `end_door19`, `end_door07`, `end_door08`, `tar02_labdoor`, `tar02_arenadoor` and `ptar_lockde` are shut as far as the pilot can tell and the way on lies elsewhere. `k_pend_carth11` is named by `end_trask01` in `end_m01aa` but only `end_m01ab` has the file. The talk carries on past it, which `the_pilot_plays_off_the_endar_spire` checks. `k_swg_gizka01` and `talktest` are named by conversations and I found neither file.
 
 Routines answering a fixed value on these modules, all others being real: `GetAttemptedSpellTarget`, `GetCreatureTalentBest`, `GetCreatureTalentRandom`, `GetEffectType`, `GetIsDebilitated`, `GetIsEncounterCreature`, `GetIsLinkImmune`, `GetLastAttackAction`, `GetNPCAIStyle`, `GetPartyAIStyle`, `GetPlayerRestrictMode`, `GetSoloMode`, `GetUserActionsPending`, `ResistForce`.
+
+## The container panel (owner's job, 7 Nov)
+
+- `container.gui`'s "Get Items" says Take All. The hidden "Switch To" slot says Take Selected, greyed until a row is chosen.
+- A click chooses one row, Control adds or removes one, and a bar marks what is chosen. A click no longer takes the item.
+- A stack shows `< 1 >`, the skill panel's own arrows. It stops at 1 and at the stack. `World::take_some` splits a stack.
+- **Assumed, not in the owner's words:** a stack of 1 has no stepper. An arrow chooses its row. Shift steps by ten. Take Selected keeps the panel up until it is empty, and nothing stays chosen.
+- Test: `a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_say`. Live: `scripts/drive_container.ps1`, 13 checks at 720p and 2160p.
 
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.
