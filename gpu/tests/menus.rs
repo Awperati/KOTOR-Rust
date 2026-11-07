@@ -4552,3 +4552,40 @@ fn the_seamless_areas_row_flips_and_turns_the_joining_off() {
     s.update(DT);
     assert!(s.game.world.seamless.enabled);
 }
+
+/// The Cel shading row of Feedback goes round Off, Subtle, Strong; the file keeps it; and F7's toggle turns it off and
+/// brings back the level it had.
+#[test]
+fn the_cel_shading_row_goes_round_and_the_key_toggles_it() {
+    let Some((mut s, dir)) = in_game("cel_row") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    let start = s.settings().cel_shading;
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    for _ in 0..30 {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_OPTIONS", 21);
+    assert_eq!(s.settings().cel_shading, (start + 1) % 3);
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains(&format!("cel_shading={}", (start + 1) % 3)));
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    s.update(DT);
+    // The key: off and back to the level it was, or on and off again when the row left it off.
+    let level = s.cel_shading();
+    s.toggle_cel_shading();
+    if level > 0 {
+        assert_eq!(s.cel_shading(), 0, "off");
+        s.toggle_cel_shading();
+        assert_eq!(s.cel_shading(), level, "back to what it was");
+    } else {
+        assert!(s.cel_shading() > 0, "on");
+        s.toggle_cel_shading();
+        assert_eq!(s.cel_shading(), 0, "off again");
+    }
+}

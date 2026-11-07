@@ -497,6 +497,7 @@ impl App {
             st.gpu
                 .set_sky_at_infinity(stage.game.world.minigame.is_none());
             st.gpu.set_particles(stage.frame_particles());
+            st.gpu.set_cel_shading(stage.cel_shading());
             scene_ms = ms(building);
             if let Err(e) =
                 st.gpu
@@ -587,6 +588,12 @@ impl App {
         if code == KeyCode::F6 {
             if pressed {
                 self.stage.toggle_nameplates();
+            }
+            return;
+        }
+        if code == KeyCode::F7 {
+            if pressed {
+                self.stage.toggle_cel_shading();
             }
             return;
         }

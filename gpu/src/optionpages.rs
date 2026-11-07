@@ -87,13 +87,19 @@ const STYLE_ROWS: [(&str, &str, &str); 14] = [
     ),
 ];
 /// The rows after those that go round a list of values.
-const VALUE_ROWS: [(&str, &str); 2] = [
+const VALUE_ROWS: [(&str, &str); 3] = [
     (
         "Nameplate range",
         "How far away an enemy gets a plate, in metres.",
     ),
     ("Nameplate size", "How large plates are, in per cent."),
+    (
+        "Cel shading",
+        "Light in steps and a thin dark outline round characters and props, in the manner of a cartoon. Off, Subtle or Strong. F7 turns it off and on.",
+    ),
 ];
+/// What the Cel shading row says.
+pub(super) const CEL_NAMES: [&str; 3] = ["Off", "Subtle", "Strong"];
 /// A box on the Auto-Pause page, and its words.
 const AUTOPAUSE: [(&str, u32); 6] = [
     ("CB_ENDROUND", 42445),
@@ -302,6 +308,15 @@ impl Stage {
                 ..Row::default()
             });
         }
+        rows.push(Row {
+            text: format!(
+                "{}: {}",
+                VALUE_ROWS[2].0,
+                CEL_NAMES[settings.cel_shading.clamp(0, 2) as usize]
+            ),
+            selected: settings.cel_shading > 0,
+            ..Row::default()
+        });
         // More rows than fit: the wheel brings up the rest.
         v.lists
             .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
@@ -363,6 +378,23 @@ impl Stage {
         }
     }
 
+    /// The cel shading level the renderer is to draw with.
+    pub fn cel_shading(&self) -> u8 {
+        self.menus.settings.cel_shading.clamp(0, 2) as u8
+    }
+
+    /// The cel shading key: off, or back to what it was (subtle when it was never on).
+    pub fn toggle_cel_shading(&mut self) {
+        let s = &mut self.menus.settings;
+        if s.cel_shading > 0 {
+            s.cel_last = s.cel_shading;
+            s.cel_shading = 0;
+        } else {
+            s.cel_shading = s.cel_last.clamp(1, 2);
+        }
+        self.settings_changed();
+    }
+
     /// The nameplates key: all of them off, or on.
     pub fn toggle_nameplates(&mut self) {
         self.menus.settings.nameplates = !self.menus.settings.nameplates;
@@ -381,6 +413,10 @@ impl Stage {
             }
             Some(1) => {
                 s.nameplate_size = next_of(&super::super::nameplates::SIZES, s.nameplate_size)
+            }
+            Some(2) => {
+                s.cel_shading = (s.cel_shading + 1) % 3;
+                s.cel_last = s.cel_shading.max(1);
             }
             _ => {}
         }
@@ -419,5 +455,31 @@ impl Stage {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::Settings;
+
+    /// The level is kept in the settings file and read back, and a level out of range is brought in.
+    #[test]
+    fn the_cel_shading_level_goes_through_the_settings_file() {
+        for level in 0..=2 {
+            let s = Settings {
+                cel_shading: level,
+                ..Settings::default()
+            };
+            let back = Settings::from_text(&s.to_text());
+            assert_eq!(back.cel_shading, level);
+        }
+        let wild = Settings::from_text("cel_shading=9\n");
+        assert_eq!(wild.cel_shading, 2, "brought into range");
+        let missing = Settings::from_text("music=0.5\n");
+        assert_eq!(
+            missing.cel_shading,
+            Settings::default().cel_shading,
+            "an old file keeps the default"
+        );
     }
 }

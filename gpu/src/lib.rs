@@ -33,6 +33,8 @@ struct Globals {
     // A doorway seen into another area: five planes whose inside is the view through it, and mode.x = 1 to cut that
     // view out of what is drawn, 2 to draw nothing but that view, 0 for everything.
     planes: array<vec4<f32>, 5>,
+    // x: the doorway mode above. y: cel shading, 0 off, 1 subtle, 2 strong. z: metres across one pixel a metre away,
+    // and w: the outline's width in pixels, for the outline pass.
     mode: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> g: Globals;
@@ -67,6 +69,45 @@ fn vs_main(v: VsIn) -> VsOut {
     return o;
 }
 
+// Light cut into steps with a soft riser, so that it stays subtle: `x` runs from `lo` to 1. Subtle is four steps and
+// most of the way there, strong is three and all the way.
+fn cel_steps(x: f32, lo: f32) -> f32 {
+    let strong = g.mode.y > 1.5;
+    let n = select(4.0, 3.0, strong);
+    let soft = select(0.2, 0.08, strong);
+    let amount = select(0.7, 1.0, strong);
+    let u = clamp((x - lo) / (1.0 - lo), 0.0, 1.0) * n;
+    let f = min(floor(u), n - 1.0);
+    let r = smoothstep(0.5 - soft, 0.5 + soft, u - f);
+    let q = lo + (f + r) / n * (1.0 - lo);
+    return mix(x, select(q, x, x > 1.0), amount);
+}
+
+@vertex
+fn vs_outline(v: VsIn) -> VsOut {
+    var o: VsOut;
+    let c = g.view_proj * vec4<f32>(v.pos, 1.0);
+    // As wide in pixels at any distance, a little thinner far off.
+    let px = g.mode.w * clamp(14.0 / max(c.w, 0.1), 0.5, 1.0);
+    let wide = px * g.mode.z * c.w;
+    let n = normalize(v.normal + vec3<f32>(0.0, 0.0, 1e-4));
+    o.clip = g.view_proj * vec4<f32>(v.pos + n * wide, 1.0);
+    o.normal = v.normal;
+    o.world = v.pos;
+    o.uv = vec2<f32>(v.uv.x, 1.0 - v.uv.y);
+    o.uv2 = vec2<f32>(v.uv2.x, 1.0 - v.uv2.y);
+    return o;
+}
+
+@fragment
+fn fs_outline(i: VsOut) -> @location(0) vec4<f32> {
+    let tex = textureSample(diffuse_tex, samp, i.uv);
+    if (tex.a < max(params.y, 0.02)) {
+        discard;
+    }
+    return vec4<f32>(0.02, 0.015, 0.03, 1.0);
+}
+
 @fragment
 fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
     if (g.mode.x > 0.5) {
@@ -91,6 +132,13 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
     }
     if (params.w > 0.0) {
         lit = lit * params.w;
+    }
+    if (g.mode.y > 0.5) {
+        // The step is cut from the light's brightness; the texture keeps all its detail. A body lit by the one lamp
+        // runs from 0.55 to 1, so its steps divide that, and a level's lightmap runs from 0.
+        let lum = max(dot(lit, vec3<f32>(0.299, 0.587, 0.114)), 1e-3);
+        let lo = select(0.55, 0.0, params.x > 0.5);
+        lit = lit * (cel_steps(lum, lo) / lum);
     }
     return vec4<f32>(base * lit, mix(1.0, tex.a, params.z));
 }
@@ -272,6 +320,9 @@ pub struct GpuRenderer {
     portal: Option<Portal>,
     /// Draw only what each frame passes in: a figure on a screen.
     figure_only: bool,
+    /// Cel shading: 0 off, 1 subtle, 2 strong. The moving meshes get a thin dark outline from the second pipeline.
+    cel: u8,
+    outline_pipeline: wgpu::RenderPipeline,
 }
 
 struct Draw {
@@ -370,53 +421,64 @@ impl GpuRenderer {
             push_constant_ranges: &[],
         });
         let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x2];
-        let make =
-            |depth_write: bool, compare: wgpu::CompareFunction, blend: Option<wgpu::BlendState>| {
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("kotor"),
-                    layout: Some(&layout),
-                    vertex: wgpu::VertexState {
-                        module: &module,
-                        entry_point: Some("vs_main"),
-                        compilation_options: Default::default(),
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::VertexStepMode::Vertex,
-                            attributes: &attrs,
-                        }],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &module,
-                        entry_point: Some("fs_main"),
-                        compilation_options: Default::default(),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format: wgpu::TextureFormat::Rgba8Unorm,
-                            blend,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: None,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: wgpu::TextureFormat::Depth32Float,
-                        depth_write_enabled: depth_write,
-                        depth_compare: compare,
-                        stencil: Default::default(),
-                        bias: Default::default(),
-                    }),
-                    multisample: Default::default(),
-                    multiview: None,
-                    cache: None,
-                })
-            };
-        let pipeline = make(true, wgpu::CompareFunction::Less, None);
-        let sky_pipeline = make(false, wgpu::CompareFunction::Always, None);
+        let make = |depth_write: bool,
+                    compare: wgpu::CompareFunction,
+                    blend: Option<wgpu::BlendState>,
+                    (vs, fs, cull): (&str, &str, Option<wgpu::Face>)| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("kotor"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some(vs),
+                    compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &attrs,
+                    }],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some(fs),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: cull,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: depth_write,
+                    depth_compare: compare,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                multiview: None,
+                cache: None,
+            })
+        };
+        let plain = ("vs_main", "fs_main", None);
+        let pipeline = make(true, wgpu::CompareFunction::Less, None, plain);
+        let sky_pipeline = make(false, wgpu::CompareFunction::Always, None, plain);
         let blend_pipeline = make(
             false,
             wgpu::CompareFunction::Less,
             Some(wgpu::BlendState::ALPHA_BLENDING),
+            plain,
+        );
+        // The outline is the body again, a little fatter, of which only the faces turned away show.
+        let outline_pipeline = make(
+            true,
+            wgpu::CompareFunction::Less,
+            None,
+            ("vs_outline", "fs_outline", Some(wgpu::Face::Front)),
         );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -532,6 +594,8 @@ impl GpuRenderer {
             static_draws: Vec::new(),
             portal: None,
             figure_only: false,
+            cel: 0,
+            outline_pipeline,
             device,
             queue,
             pipeline,
@@ -578,6 +642,12 @@ impl GpuRenderer {
     }
 
     /// By default alpha cuts holes or blends. Off, everything is solid, as in the software renderer.
+    /// Cel shading: 0 off, 1 subtle, 2 strong. Characters and props get a thin dark outline and every lit surface its light
+    /// cut into steps; the sky, the particles and anything drawn over the picture are left as they are.
+    pub fn set_cel_shading(&mut self, level: u8) {
+        self.cel = level.min(2);
+    }
+
     pub fn set_transparency(&mut self, on: bool) {
         self.transparency = on;
     }
@@ -789,7 +859,19 @@ impl GpuRenderer {
             view_proj: (proj * view).to_cols_array_2d(),
             light: [0.3, -0.5, 0.8, 0.0],
             planes: [[0.0; 4]; 5],
-            mode: [0.0; 4],
+            // Cel shading: the level, how wide a pixel is a metre off, and the outline's width in pixels (a thin line at
+            // 1080 lines, so as thin at every size).
+            mode: [
+                0.0,
+                self.cel as f32,
+                2.0 * (cam.fov.to_radians() / 2.0).tan() / self.height as f32,
+                if self.cel == 0 {
+                    0.0
+                } else {
+                    (if self.cel == 1 { 1.4 } else { 2.2 })
+                        * (self.height as f32 / 1080.0).max(0.75)
+                },
+            ],
         };
         let globals_buf = self
             .device
@@ -815,7 +897,7 @@ impl GpuRenderer {
                     let make = |mode: f32| {
                         let g = Globals {
                             planes,
-                            mode: [mode, 0.0, 0.0, 0.0],
+                            mode: [mode, globals.mode[1], globals.mode[2], globals.mode[3]],
                             ..globals
                         };
                         let buf =
@@ -905,6 +987,28 @@ impl GpuRenderer {
                 Some((bind, d))
             })
             .collect();
+        // A sky drawn with the rest is not cut into steps.
+        let plain_bind = (self.cel > 0).then(|| {
+            let g = Globals {
+                mode: [0.0; 4],
+                ..globals
+            };
+            let buf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("plain globals"),
+                    contents: bytemuck::bytes_of(&g),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
+            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("plain globals"),
+                layout: &self.globals_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buf.as_entire_binding(),
+                }],
+            })
+        });
         let color_view = self.color.create_view(&Default::default());
         let mut enc = self.device.create_command_encoder(&Default::default());
         {
@@ -948,8 +1052,15 @@ impl GpuRenderer {
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             let mut parts: Vec<(&Draw, usize)> = Vec::new();
-            parts.extend(self.statics().iter().map(|d| (d, g_static)));
-            parts.extend(draws.iter().map(|d| (d, g_moving)));
+            let sky_plain = |d: &Draw, k: usize| {
+                if d.sky.is_some() && plain_bind.is_some() {
+                    3
+                } else {
+                    k
+                }
+            };
+            parts.extend(self.statics().iter().map(|d| (d, sky_plain(d, g_static))));
+            parts.extend(draws.iter().map(|d| (d, sky_plain(d, g_moving))));
             if let (Some(p), Some(_)) = (&self.portal, &portal_binds) {
                 parts.extend(
                     p.draws
@@ -962,6 +1073,7 @@ impl GpuRenderer {
             parts.retain(|(d, _)| !self.sky_at_infinity || d.sky.is_none());
             let bind_of = |k: usize| -> &wgpu::BindGroup {
                 match (k, &portal_binds) {
+                    (3, _) => plain_bind.as_ref().unwrap_or(&globals_bind),
                     (1, Some(b)) => &b[0],
                     (2, Some(b)) => &b[1],
                     _ => &globals_bind,
@@ -974,6 +1086,17 @@ impl GpuRenderer {
                 pass.set_vertex_buffer(0, d.vertices.slice(..));
                 pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
+            }
+            if self.cel > 0 {
+                // Bodies and props only: the level's rooms and the sky have no outline.
+                pass.set_pipeline(&self.outline_pipeline);
+                for d in draws.iter().filter(|d| !d.blended && d.sky.is_none()) {
+                    pass.set_bind_group(0, bind_of(g_moving), &[]);
+                    pass.set_bind_group(1, &d.bind, &[]);
+                    pass.set_vertex_buffer(0, d.vertices.slice(..));
+                    pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..d.count, 0, 0..1);
+                }
             }
             let mut see_through: Vec<(&Draw, usize)> =
                 parts.iter().filter(|(d, _)| d.blended).copied().collect();
@@ -1002,6 +1125,20 @@ impl GpuRenderer {
             }
         }
         self.queue.submit([enc.finish()]);
+    }
+
+    /// Draw a frame without reading it back, and wait for the GPU to finish it: milliseconds, for measuring what a setting
+    /// costs.
+    pub fn draw_ms(
+        &mut self,
+        scene: &Scene,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+        cam: &Camera,
+    ) -> f32 {
+        let began = std::time::Instant::now();
+        self.draw(scene, textures, cam);
+        self.device.poll(wgpu::Maintain::Wait);
+        began.elapsed().as_secs_f32() * 1000.0
     }
 
     fn read_back(&mut self) -> Result<Image, String> {
