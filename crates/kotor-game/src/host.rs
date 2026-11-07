@@ -58,7 +58,6 @@ const PRESENTATION: &[&str] = &[
     "SetEncounterActive",
     "SurrenderToEnemies",
     "SaveNPCState",
-    "AwardStealthXP",
 ];
 
 /// The side a party member fights on. `repute.2da` has the player's row hostile to `Hostile_1` and friendly to this one.
@@ -793,6 +792,72 @@ impl Host for Adapter<'_> {
                 let resisted = sr > 0 && self.world.roll(20) + level < sr;
                 Some(Value::Int(resisted as i32))
             }
+            // The stealth XP pool the scripts keep (`stealth.rs`).
+            "GetStealthXPEnabled" => b(self.world.stealth_xp.enabled),
+            "GetCurrentStealthXP" => Some(Value::Int(self.world.stealth_xp.current)),
+            "GetMaxStealthXP" => Some(Value::Int(self.world.stealth_xp.max)),
+            "GetStealthXPDecrement" => Some(Value::Int(self.world.stealth_xp.decrement)),
+            "SetStealthXPEnabled" => {
+                self.world.stealth_xp.enabled = int(args, 0)? != 0;
+                None
+            }
+            "SetCurrentStealthXP" => {
+                self.world.stealth_xp.current = int(args, 0)?;
+                None
+            }
+            "SetMaxStealthXP" => {
+                self.world.stealth_xp.max = int(args, 0)?;
+                None
+            }
+            "SetStealthXPDecrement" => {
+                self.world.stealth_xp.decrement = int(args, 0)?;
+                None
+            }
+            "AwardStealthXP" => {
+                self.world.award_stealth_xp();
+                None
+            }
+            // Floor traps (`traps.rs`): the trigger that is the trap is what the routines are asked about.
+            "GetTrapBaseType" | "GetIsTrapped" | "GetTrapDisarmable" | "GetTrapDetectable"
+            | "GetTrapDetectDC" | "GetTrapDisarmDC" | "GetTrapOneShot" | "GetTrapFlagged" => {
+                let trap = self.obj(caller, args, 0);
+                let t = self.world.traps.get(&trap);
+                Some(Value::Int(match (name, t) {
+                    (_, None) => 0,
+                    ("GetTrapBaseType", Some(t)) => t.kind,
+                    ("GetIsTrapped", Some(t)) => !t.disabled as i32,
+                    ("GetTrapDisarmable", Some(t)) => t.disarmable as i32,
+                    ("GetTrapDetectable", Some(t)) => t.detectable as i32,
+                    ("GetTrapDetectDC", Some(t)) => t.detect_dc,
+                    ("GetTrapDisarmDC", Some(t)) => t.disarm_dc,
+                    ("GetTrapOneShot", Some(t)) => t.one_shot as i32,
+                    _ => 1,
+                }))
+            }
+            "GetTrapDetectedBy" => {
+                let (trap, who) = (self.obj(caller, args, 0), self.obj(caller, args, 1));
+                let seen = self
+                    .world
+                    .traps
+                    .get(&trap)
+                    .is_some_and(|t| t.detected && t.looked.contains(&who));
+                Some(Value::Int(seen as i32))
+            }
+            "SetTrapDetectedBy" => {
+                let (trap, who) = (self.obj(caller, args, 0), self.obj(caller, args, 1));
+                if let Some(t) = self.world.traps.get_mut(&trap) {
+                    t.detected = true;
+                    t.looked.insert(who);
+                }
+                Some(Value::Int(1))
+            }
+            "SetTrapDisabled" => {
+                let trap = self.obj(caller, args, 0);
+                if let Some(t) = self.world.traps.get_mut(&trap) {
+                    t.disabled = true;
+                }
+                None
+            }
             "GetIsLinkImmune" => {
                 let target = self.obj(caller, args, 0);
                 let eff = match args.get(1) {
@@ -878,6 +943,19 @@ impl Host for Adapter<'_> {
                 .world
                 .reputation(self.world.spell.target, self.world.spell.caster)
                 <= 10),
+            // Half the damage when the target's Reflex save passes (`k_trp_generic`'s mines).
+            "GetReflexAdjustedDamage" => {
+                let (damage, who, dc) = (int(args, 0)?, self.obj(caller, args, 1), int(args, 2)?);
+                let saved = self
+                    .world
+                    .saving_throw(who, crate::rules::Save::Reflex, dc)
+                    .passed;
+                Some(Value::Int(if saved { damage / 2 } else { damage }))
+            }
+            // A round is `ROUND_SECONDS` long (3 s).
+            "RoundsToSeconds" => Some(Value::Float(
+                int(args, 0)? as f32 * crate::combat::ROUND_SECONDS,
+            )),
             "FortitudeSave" | "ReflexSave" | "WillSave" => {
                 let (who, dc) = (self.obj(caller, args, 0), int(args, 1)?);
                 let save = match name {

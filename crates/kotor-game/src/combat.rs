@@ -816,6 +816,8 @@ impl World {
                 let enemy = self.reputation(a, b) <= 10;
                 let near =
                     dist2d(apos, bpos) <= range && (known || enemy) && self.clear_line(apos, bpos);
+                // A sneaking player is noticed only by a watcher who passes its Awareness check.
+                let near = near && (known || b != self.pc || self.stealth_lets_notice(a));
                 if near && !known && enemy {
                     self.combat.perceived.insert((a, b));
                     self.combat.last_perceived = b;

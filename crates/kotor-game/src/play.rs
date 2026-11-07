@@ -589,6 +589,7 @@ impl World {
                     if let Some(s) = script {
                         let _ = self.run_script(&s, t);
                     }
+                    self.trap_stepped_on(t, w);
                     // A neighbour joined here is walked into, see `update_seamless`.
                     if !link.0.is_empty()
                         && w == self.pc
@@ -748,6 +749,7 @@ impl World {
         }
         self.update_followers(dt);
         self.update_combat(dt);
+        self.update_stealth();
         self.update_shoves();
         self.expire_effects();
         self.update_knockouts();
@@ -757,6 +759,7 @@ impl World {
             }
         }
         self.update_triggers();
+        self.update_traps();
         self.update_seamless();
         self.update_encounters();
         self.update_early_force(dt);

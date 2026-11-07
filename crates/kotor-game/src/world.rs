@@ -390,6 +390,14 @@ pub struct World {
     pub game_over: bool,
     /// Seconds since the party fell: the death sequence's clock, see `World::death_phase`.
     pub death_clock: f32,
+    /// The floor traps of the area, by the trigger that is each one.
+    pub traps: BTreeMap<ObjId, crate::traps::Trap>,
+    /// The player is sneaking: see `stealth.rs`.
+    pub stealth_mode: bool,
+    /// Until when each watcher's last look at a sneaking player counts, and what it saw.
+    pub(crate) stealth_looks: BTreeMap<ObjId, (f32, bool)>,
+    /// The pool of stealth XP the scripts keep.
+    pub stealth_xp: crate::stealth::StealthXp,
     /// An `ActionPauseConversation` ran and its resume has not yet.
     pub(crate) conv_paused: bool,
     /// When the pause in force began.
@@ -646,6 +654,10 @@ impl World {
             party_ai_style: 0,
             game_over: false,
             death_clock: 0.0,
+            traps: BTreeMap::new(),
+            stealth_mode: false,
+            stealth_looks: BTreeMap::new(),
+            stealth_xp: Default::default(),
             conv_paused: false,
             conv_paused_at: None,
             hero: 1,
@@ -891,6 +903,9 @@ impl World {
                 o.useable = on;
             }
         }
+        if let Some(g) = utx.as_ref().filter(|_| ty == ResType(2032)) {
+            self.load_trap(id, g);
+        }
         if let Some(g) = utx.as_ref().filter(|_| ty == ResType(2042)) {
             if let Some(half) = self.door_half_width(g.root.int("GenericType").unwrap_or(0)) {
                 if let Some(o) = self.objects.get_mut(&id) {
@@ -1107,6 +1122,7 @@ impl World {
             }
         }
         self.module = module.to_string();
+        self.traps.retain(|id, _| self.objects.contains_key(id));
         self.load_encounters(&git);
         self.build_nav(&area_name)?;
         let pos = self.objects.get(&pc).map_or([0.0; 3], |p| p.position);
@@ -1418,6 +1434,10 @@ impl World {
         // Everyone is their own friend.
         if source == target && self.objects.contains_key(&source) {
             return 100;
+        }
+        // Nobody is neutral to a trap: its script spares only those it calls neutral.
+        if self.traps.contains_key(&source) {
+            return 0;
         }
         let (Some(s), Some(t), Some(table)) = (
             self.objects.get(&source),

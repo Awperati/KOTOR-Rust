@@ -34,8 +34,10 @@ mod save;
 pub mod seamless;
 mod seamless_world;
 mod sheet;
+mod stealth;
 mod store;
 mod swoop;
+mod traps;
 mod tutorial;
 mod weapon_focus;
 mod workbench;
@@ -84,10 +86,12 @@ pub use seamless_world::{
     Attached, Crossing, Figure, Scenery, State as SeamlessState, LET_GO, THRESHOLD,
 };
 pub use sheet::{CannotUse, Sheet};
+pub use stealth::StealthXp;
 pub use store::{CannotTrade, StoreLine, StoreOpen};
 pub use swoop::{
     FollowerFile, GunBankFile, HitBox, MiniGameFile, Obstacle, ObstacleFile, PlayerExtras, Race,
     Rider,
 };
+pub use traps::{Disarm, Trap};
 pub use workbench::BenchKind;
 pub use world::{Action, Delayed, DoorState, EffectRec, Kind, ObjId, Object, World};

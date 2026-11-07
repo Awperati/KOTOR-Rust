@@ -87,6 +87,10 @@ Driven in the real stage, offscreen, with `gpu/examples/sweep_shots.rs` (frames 
 
 The 8 s body rule (`World::body_gone`): it hides a dead creature from `GetIsObjectValid` and tag lookups, not from this code, which reads bodies directly. The duel's later nodes (`k_pend_cut2_*`) name no dead duellist.
 
+## Two weapons, traps, stealth (GAPS rows 11, 14, 15)
+
+See `docs/GAPS.md` for what each does and assumes. Live: `gpu/examples/dual_shots.rs` ran two pistols (rolls -3 and -7 with no feat: -6 and -10 off a base of +3) and two short lightsabers (-2 and -6) for three rounds each at 720p. In the lightsaber frame only one blade shows lit; the off-hand model is drawn but this was not looked at closer. Enemy fleeing: the scripts do ask for it (`k_sup_fear`, `k_ai_master` call `ActionMoveAwayFromObject`) and it now moves the creature, see the commit; no new decision to flee was added.
+
 ## Weapon Focus
 
 `attack_bonus_of` added nothing for the Weapon Focus feats. It now adds 1 with the feat that covers the weapon in the slot (`crates/kotor-game/src/weapon_focus.rs`): Blaster 32 (one-handed blasters), Blaster Rifle 33, Heavy Weapons 35 (repeating blasters), Lightsaber 36, Melee Weapons 37, picked by the item's `weaponwield` and `weaponmattype` in `baseitems.2da`. **Assumed:** that mapping and the +1. Weapon Specialization (feats 46 to 51, the Focus feat plus 14) adds 2 to the damage of a hit and to the range the sheet shows, through `World::flat_damage`, which `resolve_with` and `damage_range_of` share. **Assumed:** +2, as in the tabletop rules. Test: `tests/weapon_focus.rs`.
