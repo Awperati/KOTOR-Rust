@@ -250,3 +250,46 @@ fn a_head_with_no_clip_of_its_own_takes_the_bodys_face_tracks() {
         .any(|(i, (x, y))| is_head(&one, i, &head_tex) && x.positions != y.positions);
     assert!(differs, "the face moves between the two moments");
 }
+
+/// The owner's frames of the female hero: black eye sockets and a stretched face, because the body's clip keys were taken as
+/// the head's own. A face from a borrowed clip moves each vertex of a hero's head by two or three centimetres at most, on every head
+/// (women's and men's, all three families) and in every clip a talk or a stand uses.
+#[test]
+fn a_borrowed_face_moves_a_heros_head_by_centimetres_only() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    for row in [91, 92, 93, 97, 104, 107, 112, 122, 127, 135, 137, 152, 167] {
+        let rig = rig_for_outfit(&mut inst, row, 1, None).unwrap();
+        let head_tex = rig.head_texture().unwrap().to_string();
+        let rest = rig.posed_with_face(None, None).unwrap();
+        for clip in ["pause1", "listen", "tlknorm", "tlksad", "tlkforce", "talk"] {
+            let Some(len) = rig.animation_length(clip).filter(|l| *l > 0.0) else {
+                continue;
+            };
+            for k in 0..6 {
+                let Some(face) = rig.sample_face(clip, len * k as f32 / 6.0) else {
+                    continue;
+                };
+                let moved = rig.posed_with_face(None, Some(&face)).unwrap();
+                let mut worst = 0.0f32;
+                for (i, (a, b)) in rest.meshes.iter().zip(&moved.meshes).enumerate() {
+                    if !is_head(&rest, i, &head_tex) {
+                        continue;
+                    }
+                    for (p, q) in a.positions.iter().zip(&b.positions) {
+                        worst = worst.max(apart(*p, *q));
+                    }
+                }
+                // The talk loop moves the mouth most; a stand or a listen only the lids and brows.
+                let limit = if clip == "talk" { 0.04 } else { 0.02 };
+                assert!(
+                    worst < limit,
+                    "row {row} {clip}: a vertex of the head moves {worst:.3} m"
+                );
+            }
+        }
+    }
+}

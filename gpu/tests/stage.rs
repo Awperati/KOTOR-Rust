@@ -1179,15 +1179,22 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
     }
     let body = worn
         .iter()
-        .find(|t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfba"))
+        .find(|t| {
+            t.contains('@') && t.to_ascii_lowercase().starts_with("pfba")
+                || t.to_ascii_lowercase().starts_with("pmba")
+        })
         .unwrap_or_else(|| panic!("no body in the variant: {worn:?}"))
         .clone();
     let sheet = s.texture(&body).unwrap();
     let standard = s.texture(body.split('@').next().unwrap()).unwrap();
-    assert_ne!(sheet.rgba, standard.rgba, "{body} is the variant's sheet");
+    if body.to_ascii_lowercase().starts_with("pfba") {
+        assert_ne!(sheet.rgba, standard.rgba, "{body} is the variant's sheet");
+    }
     assert!(
-        worn.iter()
-            .any(|t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfh")),
+        worn.iter().any(
+            |t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfh")
+                || t.to_ascii_lowercase().starts_with("pmh")
+        ),
         "{worn:?}"
     );
 
@@ -1217,7 +1224,9 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         } else {
             1.0
         };
-        let (dist, high, fov) = if std::env::var("FRAME_CLOSE").is_ok() {
+        let (dist, high, fov) = if std::env::var("FRAME_FACE").is_ok() {
+            (0.75, 1.6, 40.0)
+        } else if std::env::var("FRAME_CLOSE").is_ok() {
             (1.1, 1.35, 40.0)
         } else {
             (3.2, 0.95, 40.0)

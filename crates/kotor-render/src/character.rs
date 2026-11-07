@@ -332,15 +332,43 @@ impl Rig {
     /// every head, as they share their names and rest layout.
     fn body_face(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
         let head = self.head.as_ref()?;
-        let pose = self.sample(name, t)?;
+        let clip = self.clip_name(name)?;
+        let (m, a) = self
+            .models()
+            .find_map(|m| m.animation(clip).map(|a| (m, a)))?;
+        let keyed = a.sample(m, t);
+        // The clip's keys are placed against the rest of the model that holds the clip, and the head has a rest of its own
+        // (a woman's head does not rest as the supermodel's face does). So each node takes only what the clip moves it by
+        // from the clip model's rest, added to the head's own rest: the face at rest is the head at rest.
+        let clip_rest = m.bind_pose();
+        let head_rest = head.bind_pose();
         let mut face = std::collections::HashSet::new();
         for n in &head.root.find("head_g")?.children {
             n.walk(&mut |c| {
                 face.insert(c.name.to_ascii_lowercase());
             });
         }
-        let pose: kotor_model::Pose = pose.into_iter().filter(|(k, _)| face.contains(k)).collect();
-        (!pose.is_empty()).then_some(pose)
+        let mut out = kotor_model::Pose::new();
+        for (node, key) in keyed {
+            if !face.contains(&node) {
+                continue;
+            }
+            let (Some(from), Some(own)) = (clip_rest.get(&node), head_rest.get(&node)) else {
+                continue;
+            };
+            let position = [0, 1, 2].map(|k| own.position[k] + key.position[k] - from.position[k]);
+            // own * (from^-1 * key): the turn the clip makes from its rest, carried on from the head's.
+            let turn = quat_mul(quat_inverse(from.orientation), key.orientation);
+            out.insert(
+                node,
+                kotor_model::NodePose {
+                    position,
+                    orientation: quat_mul(own.orientation, turn),
+                    alpha: key.alpha,
+                },
+            );
+        }
+        (!out.is_empty()).then_some(out)
     }
 
     /// The character in a pose sampled elsewhere, such as a cutscene's stunt model.
@@ -558,6 +586,21 @@ pub fn load_creature(
     animation: Option<(&str, f32)>,
 ) -> Result<Scene> {
     rig_for_appearance(inst, appearance_row, texture_var)?.pose(animation)
+}
+
+/// `[w, x, y, z]` product: `a` then `b` turned in `a`'s frame, as the model files compose them.
+fn quat_mul(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    [
+        a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+        a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+        a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+        a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0],
+    ]
+}
+
+fn quat_inverse(q: [f32; 4]) -> [f32; 4] {
+    let n = q.iter().map(|v| v * v).sum::<f32>().max(1e-12);
+    [q[0] / n, -q[1] / n, -q[2] / n, -q[3] / n]
 }
 
 #[cfg(test)]
