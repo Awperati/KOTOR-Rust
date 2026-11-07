@@ -3,7 +3,7 @@
 # viewer's own handle only and never takes focus. Run from the repo root after building the viewer example.
 # -Shots is a folder (made if missing) for the pictures; -Size is the window's, like 1280x720 or 3840x2160.
 # -Scenario fight: wait for a foe on the screen; conversation: wait for a conversation to open (the opening one).
-param([string]$Shots, [string]$Size = "1280x720", [int]$Count = 12, [int]$Interval = 250, [string]$Scenario = "fight", [int]$Appearance = -1, [string]$Underwear = "")
+param([string]$Shots, [string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }), [int]$Count = 12, [int]$Interval = 250, [string]$Scenario = "fight", [int]$Appearance = -1, [string]$Underwear = "")
 . "$PSScriptRoot\drive_common.ps1"
 if ($Shots) { [void](New-Item -ItemType Directory -Force -Path $Shots) }
 $script:stateFile = "$scratch\kotor_strip_$PID.out"

@@ -1,5 +1,12 @@
 # What the scripts that drive the viewer share: posted messages to its own handle, its state log, and a count of failures.
 # Each script sets $h, $v and $script:stateFile once its window is up.
+# Any size: set KOTOR_DRIVE_SIZE, as in 3840x2160. The viewer reads it too, and so do the drivers' -Size. Hover and Click multiply by
+# ClickScale. With no -Size that is how much bigger than 1280x720 the window is. A driver with -Size works in the window's own pixels,
+# unless it sets ClickScale itself to give its positions at 1280x720. Press always scales.
+$script:windowSize = if ($Size) { $Size } elseif ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }
+$script:realX = [double]($script:windowSize -split 'x')[0] / 1280
+$script:realY = [double]($script:windowSize -split 'x')[1] / 720
+$script:ClickScale = if ($Size) { 1.0 } else { $script:realY }
 $scratch = $env:TEMP
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
@@ -74,21 +81,20 @@ function Key([int]$vk, [int]$scan, [int]$ms = 10) {
   $up = [long]0xC0000001 -bor ([long]$scan -shl 16)
   [void][Drv]::PostMessage($h, 0x101, [IntPtr]$vk, [IntPtr][long]$up)
 }
-# A driver with a -Size says how much bigger than 1280x720 the window is: positions below are given at 1280x720.
-if (-not $script:ClickScale) { $script:ClickScale = 1.0 }
-function Scaled([int]$v) { [int]($v * $script:ClickScale) }
-function Hover([int]$x, [int]$y) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]0, [IntPtr](((Scaled $y) -shl 16) -bor (Scaled $x))) }
-function Click([int]$x, [int]$y) {
+function PostHover([int]$x, [int]$y) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]0, [IntPtr](($y -shl 16) -bor $x)) }
+function PostClick([int]$x, [int]$y) {
   WatchFocus
-  Hover $x $y
-  $l = [IntPtr](((Scaled $y) -shl 16) -bor (Scaled $x))
+  PostHover $x $y
+  $l = [IntPtr](($y -shl 16) -bor $x)
   [void][Drv]::PostMessage($h, 0x201, [IntPtr]1, $l)
   [void][Drv]::PostMessage($h, 0x202, [IntPtr]0, $l)
 }
+function Hover([int]$x, [int]$y) { PostHover ([int]($x * $script:ClickScale)) ([int]($y * $script:ClickScale)) }
+function Click([int]$x, [int]$y) { PostClick ([int]($x * $script:ClickScale)) ([int]($y * $script:ClickScale)) }
 $script:failed = 0
 function Press([int]$x, [int]$y, [int]$w, [int]$h2) {
-  # A 640x480 screen fills the 1280x720 window, so a control at layout (x, y) is at (2x, 1.5y).
-  Click ([int](($x + $w / 2) * 2)) ([int](($y + $h2 / 2) * 1.5))
+  # A 640x480 screen fills the window, so in a 1280x720 one a control at layout (x, y) is at (2x, 1.5y).
+  PostClick ([int](($x + $w / 2) * 2 * $script:realX)) ([int](($y + $h2 / 2) * 1.5 * $script:realY))
 }
 function Shot($name) { if ($Shots) { [void](State); [Drv]::Save($h, "$Shots\$name.png") } }
 function Report($name, $ok, $detail) {

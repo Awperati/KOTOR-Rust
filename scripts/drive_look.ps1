@@ -1,7 +1,7 @@
 # The mouse and the camera in the running window: dragging down looks down, and the Invert Camera box flips it, in both movements.
 # Like the other drivers it posts messages to the viewer's own handle only. The window opens on DISPLAY2 and is never active.
 # It holds only at 1x: see docs/FASTTEST.md. It keeps its settings in a temporary file, and writes no saves.
-param([string]$Size = "1280x720")
+param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }))
 # Run from the repo root after building the viewer example.
 . "$PSScriptRoot\drive_common.ps1"
 $ENTER = @(0x0D, 0x1C); $ONE = @(0x31, 0x02)

@@ -1,6 +1,6 @@
 # The opening conversation in the running window, for frames of a character up close, as the owner's frames of the bare skin are.
 # Like drive_window.ps1 it posts messages to the viewer's own handle only. Run from the repo root after building the viewer example.
-param([string]$Shots, [int]$Appearance = -1, [string]$Size = "1280x720", [int]$Lines = 6, [switch]$Original, [string]$Underwear = "")
+param([string]$Shots, [int]$Appearance = -1, [string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }), [int]$Lines = 6, [switch]$Original, [string]$Underwear = "")
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_cinematic_$PID.out"
 $look = if ($Appearance -ge 0) { @("--appearance", "$Appearance") } else { @() }

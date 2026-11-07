@@ -2,7 +2,7 @@
 //! click the window to give it the keyboard.
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example viewer -- [options]
-//!     --size WxH      window and picture size (default 1280x720; anything up to 3840x2160 and past it)
+//!     --size WxH      window and picture size (default 1280x720, or KOTOR_DRIVE_SIZE; anything up to 3840x2160 and past it)
 //!     --fullscreen    a borderless window over the whole monitor, which does not take the focus
 //!     --no-hd         do not use upscaled interface pictures
 //!     --module M      where New Game starts (default end_m01aa)
@@ -804,6 +804,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(0.8);
     let size = opt("--size")
+        .or_else(|| std::env::var("KOTOR_DRIVE_SIZE").ok())
         .and_then(|s| {
             let (w, h) = s.split_once('x')?;
             Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))

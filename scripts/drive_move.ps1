@@ -1,7 +1,7 @@
 # Modern movement in the running window: walks, sprints, stops, rolls and falls off a ledge, and writes down speeds and heights.
 # Like the other drivers it posts messages to the viewer's own handle only. The window opens on DISPLAY2, is never active, and
 # nothing here looks at the primary display. It holds only at 1x: see docs/FASTTEST.md. It writes no saves.
-param([string]$Shots, [string]$Size = "1280x720", [string]$Log)
+param([string]$Shots, [string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }), [string]$Log)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures, -Log a file for the samples.
 . "$PSScriptRoot\drive_common.ps1"
 $W = @(0x57, 0x11); $SHIFT = @(0x10, 0x2A); $CTRL = @(0x11, 0x1D); $ENTER = @(0x0D, 0x1C); $ONE = @(0x31, 0x02)

@@ -1,7 +1,7 @@
 # The Ebon Hawk's turret in the running window: the mouse and keys turn the view, the guns fire, fighters come apart, and the
 # story goes on.
 # Like drive_window.ps1 it posts messages to the viewer's own handle only, and holds only at 1x: see docs/FASTTEST.md.
-param([string]$Size = "1280x720", [string]$Shots)
+param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }), [string]$Shots)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window. It writes no saves.
 # --auto-aim points the guns for it: a driver cannot chase a fighter by posted mouse moves.
 . "$PSScriptRoot\drive_common.ps1"

@@ -232,5 +232,9 @@ The main menu draws the owner's `title-card.png` from the assets folder (see `do
 
 Beside the hourglass, in the place `mipc28x6` keeps for stealth, which has no button here, with `i_attack` and a yellow line when on. B too. A save keeps it, the wanted level, whether a crime was seen and who is hostile. Tests: `the_attack_mode_button_beside_the_hourglass_turns_it_on_and_off`, `a_save_keeps_attack_mode_and_what_the_law_knows`.
 
+## The drivers at any size
+
+`$env:KOTOR_DRIVE_SIZE = "3840x2160"` runs any `drive_*.ps1` at that size: the viewer reads it, and `drive_common.ps1` scales what a driver clicks. A driver's own `-Size` still wins.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

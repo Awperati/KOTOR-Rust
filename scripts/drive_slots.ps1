@@ -1,7 +1,7 @@
 # The slots over an enemy in the running window: their size near and far, and that they stay on the way to them.
 # Like the other drivers it posts messages to the viewer's own handle only. The window opens on DISPLAY2 and is never active.
 # It holds only at 1x: see docs/FASTTEST.md. It writes no saves.
-param([string]$Shots, [string]$Size = "1280x720")
+param([string]$Shots, [string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }))
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 . "$PSScriptRoot\drive_common.ps1"
 $wide = [int]($Size -split 'x')[0]; $tall = [int]($Size -split 'x')[1]

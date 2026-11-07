@@ -1,6 +1,6 @@
 # Drive the viewer through its OWN window handle with posted messages. No global mouse or keyboard, and no focus.
 # It sleeps on the wall clock between real key presses, so its checks hold only at 1x: see docs/FASTTEST.md.
-param([string]$Size = "1280x720", [string]$Shots, [int]$Speed = 1)
+param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }), [string]$Shots, [int]$Speed = 1)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 # It writes one save to %LOCALAPPDATA%\kotor-rs\saves, deletes it through the screen, and leaves other saves alone.
 . "$PSScriptRoot\drive_common.ps1"
