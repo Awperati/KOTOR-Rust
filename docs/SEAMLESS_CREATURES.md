@@ -13,7 +13,9 @@ Counted in 35 modules of the 59 links (creatures other than the party, after 30 
 - Most of the others move by scripts (`ActionRandomWalk`, conversations, `ActionMoveToObject` after a trigger) that only a
   running script machine can say.
 
-## Version 1: walks and faces, no scripts, no fights (recommended)
+## Version 1: walks and faces, no scripts, no fights (BUILT)
+
+Built as planned, in `crates/kotor-game/src/seamless_walk.rs` (the walk is a pure function of the clock, so there is no state to hand over but the way each one faces, which `World.seamless.facing` keeps), `Figure::{tag, route}`, `Stage::walkers_tick` and `neighbour_figures`, and the hand-over in `World::seamless_cross`. Walk speed 1.4 m/s, 2 to 5 s at each waypoint, looks at the player within 6 m while standing. The route is `[its file spot, WP_<tag>_01, ...]` looped. Seen on screen: not yet (no joined neighbour in the 59 links has a walker in view from its door that I looked at); tested by `seamless_walk` unit tests and `a_walker_of_the_neighbour_stands_where_the_picture_showed_it_after_the_crossing`.
 
 What the player sees from a doorway: people who have a route walk it, and people turn to look at the player when near.
 

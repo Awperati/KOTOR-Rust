@@ -850,3 +850,109 @@ fn a_script_cannot_shut_the_door_the_party_came_through() {
     assert!(w.objects[&back].open, "still open");
     assert_eq!(w.objects[&back].door, DoorState::Open);
 }
+
+#[test]
+fn a_walker_of_the_neighbour_stands_where_the_picture_showed_it_after_the_crossing() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "Apartments")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (mut att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("fits");
+    // Give a creature of the Apartments a route of its own, 6 m east of where its file has it.
+    let tags: Vec<String> = att
+        .scenery
+        .figures
+        .iter()
+        .map(|f| f.tag.to_ascii_lowercase())
+        .collect();
+    let i = (0..tags.len())
+        .find(|i| tags.iter().filter(|t| **t == tags[*i]).count() == 1 && !tags[*i].is_empty())
+        .expect("a creature with a tag of its own");
+    let f = &mut att.scenery.figures[i];
+    f.route = vec![[f.at[0] + 6.0, f.at[1], f.at[2]]];
+    let fig = f.clone();
+    let t = (0..4000)
+        .map(|n| n as f32 * 0.05)
+        .find(|t| {
+            let p = kotor_game::seamless_walk::pose(&fig, *t);
+            p.moving && dist(p.at, fig.at) > 2.0
+        })
+        .expect("it walks");
+    let want = kotor_game::seamless_walk::pose(&fig, t);
+    let rigid = att.rigid;
+    let out = att.out;
+    let door = w.link_door_at(site.at).unwrap();
+    w.seamless_attach(door, att);
+    w.seamless.clock = t;
+    w.use_door(door);
+    for _ in 0..90 {
+        w.step(1.0 / 60.0);
+    }
+    let start = [
+        site.at[0] - out.cos() * 1.0,
+        site.at[1] - out.sin() * 1.0,
+        site.at[2],
+    ];
+    walk_through(&mut w, start, out, rigid, 40);
+    assert_eq!(w.module, "tar_m02aa", "crossed into the Apartments");
+    let who = w
+        .objects
+        .values()
+        .find(|o| o.kind == Kind::Creature && o.tag.eq_ignore_ascii_case(&fig.tag))
+        .expect("the creature is in the module");
+    assert!(
+        dist(who.position, want.at) < 1.0,
+        "stands where it was drawn: {:?} against {:?} (its file has it at {:?})",
+        who.position,
+        want.at,
+        fig.at
+    );
+}
+
+#[test]
+fn a_script_sending_the_party_to_the_neighbour_at_its_door_is_a_crossing() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "Apartments")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("fits");
+    let (out, rigid) = (att.out, att.rigid);
+    let door = w.link_door_at(site.at).unwrap();
+    w.seamless_attach(door, att);
+    let at = [
+        site.at[0] - out.cos() * 1.0,
+        site.at[1] - out.sin() * 1.0,
+        site.at[2],
+    ];
+    let pc = w.pc;
+    w.pc_mover.pos = at;
+    w.objects.get_mut(&pc).unwrap().position = at;
+    // `StartNewModule`, as the door's script calls it.
+    w.transition_request = Some(("tar_m02aa".into(), "somewhere".into()));
+    w.step(1.0 / 60.0);
+    assert_eq!(w.module, "tar_m02aa");
+    assert!(
+        w.seamless.attached.values().any(|a| a.behind),
+        "the module left stays joined behind: it was a crossing, not a load"
+    );
+    let now = rigid.apply(w.pc_mover.pos);
+    let moved = (now[0] - at[0]).hypot(now[1] - at[1]);
+    assert!(
+        moved < 0.5,
+        "the player stays put, not sent to the waypoint: {moved} m"
+    );
+}

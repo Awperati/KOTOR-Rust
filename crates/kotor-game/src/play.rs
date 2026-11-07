@@ -839,7 +839,11 @@ impl World {
         }
         self.update_regeneration(dt);
         if let Some((module, wp)) = self.transition_request.take() {
-            if let Err(e) = self.transition(&module, &wp) {
+            // A script that sends the party to the neighbour joined at the door it stands at (the apartments' own door
+            // asks for the party screen, then `StartNewModule`) is the crossing, with no loading screen.
+            if let Some(door) = self.seamless_exit_to(&module) {
+                self.seamless_cross(door);
+            } else if let Err(e) = self.transition(&module, &wp) {
                 self.errors.push(format!("transition to {module}: {e}"));
             }
         }

@@ -508,19 +508,30 @@ impl Stage {
     /// own point of the idle clip, for the frame. Those of a portal are drawn apart: see `portal_figures`.
     pub(super) fn neighbour_figures(&mut self, scene: &mut Scene, portal: bool) {
         let here = self.pc_position();
-        let attached: Vec<(Vec<Figure>, Rigid)> = self
+        let clock = self.idle_clock;
+        let attached: Vec<(String, Vec<Figure>, Rigid)> = self
             .game
             .world
             .seamless
             .attached
             .values()
             .filter(|a| a.seen_through_doorway() == portal)
-            .map(|a| (a.scenery.figures.clone(), a.rigid))
+            .map(|a| (a.module.clone(), a.scenery.figures.clone(), a.rigid))
             .collect();
         let mut nth = 0;
-        for (figures, rigid) in attached {
-            for f in figures {
-                let at = rigid.apply(f.at);
+        for (module, figures, rigid) in attached {
+            for (i, f) in figures.into_iter().enumerate() {
+                // Where a walker is and which way it faces: a function of the clock, and of the player when it stands.
+                let p = kotor_game::seamless_walk::pose(&f, clock);
+                let h = self
+                    .game
+                    .world
+                    .seamless
+                    .facing
+                    .get(&(module.clone(), i))
+                    .copied()
+                    .unwrap_or(p.heading);
+                let at = rigid.apply(p.at);
                 if (at[0] - here[0]).hypot(at[1] - here[1]) > super::DRAW_RANGE {
                     continue;
                 }
@@ -528,17 +539,45 @@ impl Stage {
                     continue;
                 };
                 nth += 1;
-                let clip = self.idling(nth);
-                self.add_creature(
-                    scene,
-                    &rig,
-                    &[],
-                    &clip,
-                    at,
-                    f.heading + rigid.yaw,
-                    &f.underwear,
-                );
+                let clip = if p.moving {
+                    Some(super::Clip {
+                        name: "walk",
+                        time: clock,
+                        fade: None,
+                    })
+                } else {
+                    self.idling(nth)
+                };
+                self.add_creature(scene, &rig, &[], &clip, at, h + rigid.yaw, &f.underwear);
             }
+        }
+    }
+
+    /// Give the world the clock the neighbours' walkers go by, and turn those that stand still towards the player when
+    /// they are near. Called each frame.
+    pub(super) fn walkers_tick(&mut self, dt: f32) {
+        let clock = self.idle_clock;
+        let here = self.pc_position();
+        let seam = &mut self.game.world.seamless;
+        seam.clock = clock;
+        let mut turned = Vec::new();
+        for a in seam.attached.values() {
+            if a.scenery.figures.iter().all(|f| f.route.is_empty()) {
+                continue;
+            }
+            let you = a.rigid.inverse().apply(here);
+            for (i, f) in a.scenery.figures.iter().enumerate() {
+                if f.route.is_empty() {
+                    continue;
+                }
+                let p = kotor_game::seamless_walk::pose(f, clock);
+                turned.push(((a.module.clone(), i), p, you));
+            }
+        }
+        for (key, p, you) in turned {
+            let now = seam.facing.get(&key).copied().unwrap_or(p.heading);
+            seam.facing
+                .insert(key, kotor_game::seamless_walk::facing(&p, now, you, dt));
         }
     }
 

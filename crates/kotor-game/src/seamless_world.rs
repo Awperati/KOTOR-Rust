@@ -18,6 +18,9 @@ pub struct Figure {
     pub heading: f32,
     /// The name of the underwear it wears under its armour, as the object has it.
     pub underwear: String,
+    /// Its tag, and the waypoints named after it (`WP_<tag>_01`, `_02`...) in order: the route it walks.
+    pub tag: String,
+    pub route: Vec<[f32; 3]>,
 }
 
 /// What stands in a module besides its floor, in its own space, for drawing it before the party gets there: its
@@ -82,6 +85,10 @@ pub struct State {
     /// By the link door in this module that leads there.
     pub attached: BTreeMap<ObjId, Attached>,
     pub crossed: Option<Crossing>,
+    /// The clock the neighbours' walkers go by, put in by whoever draws, and the way each one faces now (by module and
+    /// place in its `Scenery::figures`), so that the crossing can leave them as they stood.
+    pub clock: f32,
+    pub facing: BTreeMap<(String, usize), f32>,
     base: Vec<Bwm>,
     base_module: String,
 }
@@ -91,10 +98,14 @@ impl State {
     pub fn forget_neighbours(&mut self) {
         self.attached.clear();
         self.crossed = None;
+        self.facing.clear();
         self.base.clear();
         self.base_module.clear();
     }
 }
+
+/// How near a door a script must find the player to send them through it as a crossing, in metres.
+const EXIT_RANGE: f32 = 4.0;
 
 /// How far into the module it has just entered the party must be before the one behind is let go, in metres.
 pub const LET_GO: f32 = 30.0;
@@ -189,6 +200,24 @@ impl World {
             area,
             ..Scenery::default()
         };
+        let waypoints: Vec<(String, [f32; 3])> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Waypoint)
+            .map(|o| (o.tag.to_ascii_lowercase(), o.position))
+            .collect();
+        let route_of = |tag: &str| -> Vec<[f32; 3]> {
+            let prefix = format!("wp_{}_", tag.to_ascii_lowercase());
+            let mut r: Vec<(u32, [f32; 3])> = waypoints
+                .iter()
+                .filter_map(|(t, p)| {
+                    let n = t.strip_prefix(&prefix)?.parse::<u32>().ok()?;
+                    Some((n, *p))
+                })
+                .collect();
+            r.sort_by_key(|(n, _)| *n);
+            r.into_iter().map(|(_, p)| p).collect()
+        };
         for o in self.objects.values() {
             match o.kind {
                 Kind::Creature if !o.dead && o.id != self.pc && !self.party.contains(&o.id) => {
@@ -204,6 +233,8 @@ impl World {
                         at: o.position,
                         heading: o.facing.to_radians(),
                         underwear: o.underwear.clone(),
+                        tag: o.tag.clone(),
+                        route: route_of(&o.tag),
                     });
                 }
                 Kind::Door => s.doors.push((o.template.clone(), o.position)),
@@ -358,7 +389,22 @@ impl World {
     /// Cross into the neighbour joined through `door`: the world becomes the neighbour's, and everything that stands in
     /// ours is carried over by the same move, so that nobody is anywhere new. The module left behind stays joined until
     /// the party is well clear of it.
-    fn seamless_cross(&mut self, door: ObjId) {
+    /// The door of the module joined to `module` that the player stands at, if a script is sending them there: close
+    /// enough to it to be coming through it.
+    pub(crate) fn seamless_exit_to(&self, module: &str) -> Option<ObjId> {
+        let p = self.pc_mover.pos;
+        self.seamless
+            .attached
+            .iter()
+            .find(|(_, a)| {
+                !a.behind
+                    && a.module.eq_ignore_ascii_case(module)
+                    && (a.at[0] - p[0]).hypot(a.at[1] - p[1]) < EXIT_RANGE
+            })
+            .map(|(d, _)| *d)
+    }
+
+    pub(crate) fn seamless_cross(&mut self, door: ObjId) {
         let Some(a) = self.seamless.attached.remove(&door) else {
             return;
         };
@@ -377,7 +423,26 @@ impl World {
             self.room_bwms()
         };
         let old_module = self.module.clone();
-        let old_scenery = self.scenery();
+        let mut old_scenery = self.scenery();
+        // The creatures of the module left are real and stand where they stand: they walk no route in the picture of it.
+        for f in &mut old_scenery.figures {
+            f.route.clear();
+        }
+        // Who was walking in the module entered, and where, for putting them there once it is loaded.
+        let walkers: Vec<(Figure, crate::seamless_walk::Pose)> = a
+            .scenery
+            .figures
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| !f.route.is_empty())
+            .map(|(i, f)| {
+                let mut p = crate::seamless_walk::pose(f, self.seamless.clock);
+                if let Some(h) = self.seamless.facing.get(&(a.module.clone(), i)) {
+                    p.heading = *h;
+                }
+                (f.clone(), p)
+            })
+            .collect();
         self.seamless.attached.clear();
         if let Err(e) = self.transition(&a.module, "") {
             self.errors
@@ -385,6 +450,19 @@ impl World {
             return;
         }
         self.followers.clear();
+        // Each walker stands where the picture showed it, not where its file has it.
+        for (f, p) in walkers {
+            let near = |o: &crate::world::Object| {
+                o.kind == Kind::Creature
+                    && o.tag.eq_ignore_ascii_case(&f.tag)
+                    && (o.position[0] - f.at[0]).hypot(o.position[1] - f.at[1]) < 0.75
+            };
+            let id = self.objects.values().find(|o| near(o)).map(|o| o.id);
+            if let Some(o) = id.and_then(|id| self.objects.get_mut(&id)) {
+                o.position = p.at;
+                o.facing = p.heading.to_degrees();
+            }
+        }
         for (id, p, facing) in before {
             if let Some(o) = self.objects.get_mut(&id) {
                 o.position = inv.apply(p);

@@ -860,6 +860,7 @@ impl Stage {
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.idle_clock += dt;
+        self.walkers_tick(dt);
         self.pictures_left = PICTURES_A_FRAME;
         self.take_upscaled();
         self.main_scene_tick(dt);

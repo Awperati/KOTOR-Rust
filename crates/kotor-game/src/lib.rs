@@ -37,6 +37,7 @@ mod play;
 mod rules;
 mod save;
 pub mod seamless;
+pub mod seamless_walk;
 mod seamless_world;
 mod sheet;
 mod stealth;

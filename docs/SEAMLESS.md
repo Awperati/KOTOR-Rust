@@ -59,6 +59,8 @@ Run `cargo run --release -p kotor-game --example seamless_survey -- tar_m02aa ta
 | tar_m02af | tar02_aptdoor | (90.7, 134.3) | tar_m02aa | **placed** shift (0, 0), turn 0, miss 0.72 m |
 
 `tar_m02af` `tar02_aptdoor` out of the apartment is a scripted exit, not a plain link: the door opens `tar02_doordlg`, which runs `ShowPartySelectionGUI("k_ptar_exitapt")`, and that ends in `StartNewModule("tar_m02aa", "tar02_sw02af")` (a waypoint 2 m from the door). The party screen is the game's own and has to be answered, and the module change is by script, so the driver notes the party screen, confirms it, and then sees a 3.04 m step and a load. Coming in from `tar_m02aa` is a plain link and passes.
+
+Now a crossing too: when a script calls `StartNewModule` for the module joined at the door the player stands within 4 m of, `World::update` takes it as the crossing (`seamless_exit_to`, `seamless_cross`) and nobody is moved to the waypoint. The party screen is still the game's own and still comes up. Test `a_script_sending_the_party_to_the_neighbour_at_its_door_is_a_crossing`; the driver passes all checks on this link.
 | tar_m02ab (Upper City North) | tar02_sithdoor | (112.5, 227.6) | tar_m09aa (Sith base) | **placed** shift (111.8, 249.9), turn 0, miss 0.21 m |
 | tar_m09aa | ptar_secdoor | (0.7, -22.3) | tar_m02ab | **placed** shift (-111.8, -249.9), turn 0, miss 0.21 m |
 | tar_m02ab | tar02_door02ad | (221.2, 142.9) | tar_m02ad | **placed** shift (108.7, 61.1), turn 0, miss 0.20 m |
