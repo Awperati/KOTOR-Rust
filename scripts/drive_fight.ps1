@@ -130,8 +130,10 @@ do {
     $s = State
     if ($s.target -like "Sith*") { ClickSlot $s "slot0" }
   }
-} while (([int]$s.attacks -eq 0 -or -not $floated) -and (Get-Date) -lt $until)
-Report "The player attacks" ([int]$s.attacks -gt 0) "attacks=$($s.attacks) hp=$($s.hp) clip=$($s.clip) engaged=$($s.engaged) paused=$($s.paused) queue=$($s.queue) target=$($s.target) foe=$($s.foe) pilot=$($s.pilot) note=$($s.note)"
+  # The adhesive grenade holds the soldier still, and a companion may finish it before the player's blow: then there is no blow to wait for.
+  $gone = $s.target -like "Remains*"
+} while (-not $gone -and ([int]$s.attacks -eq 0 -or -not $floated) -and (Get-Date) -lt $until)
+Report "The player attacks" ([int]$s.attacks -gt 0 -or $gone) "attacks=$($s.attacks) hp=$($s.hp) clip=$($s.clip) engaged=$($s.engaged) paused=$($s.paused) queue=$($s.queue) target=$($s.target) foe=$($s.foe) pilot=$($s.pilot) note=$($s.note)"
 Report "Words rise" $floated "floats=$($s.floats)"
 Shot "fight_engaged"
 
