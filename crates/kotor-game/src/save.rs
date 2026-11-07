@@ -361,7 +361,7 @@ impl World {
                     }),
                 ),
                 ("SoloMode", Value::Byte(self.solo_mode as u8)),
-                ("AttackMode", Value::Byte(self.attack_mode as u8)),
+                ("AttackMode", Value::Byte(self.attack_mode() as u8)),
                 (
                     "TrackedQuest",
                     Value::String(self.tracked_quest.clone().unwrap_or_default()),
@@ -1073,7 +1073,7 @@ impl World {
 
         // Globals, journal, party.
         self.solo_mode = globals.root.int("SoloMode").unwrap_or(0) != 0;
-        self.attack_mode = globals.root.int("AttackMode").unwrap_or(0) != 0;
+        self.restore_attack_mode(globals.root.int("AttackMode").unwrap_or(0) != 0);
         self.tracked_quest = globals
             .root
             .str("TrackedQuest")

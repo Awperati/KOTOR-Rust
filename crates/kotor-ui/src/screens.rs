@@ -137,11 +137,13 @@ pub struct SlotShown {
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CombatHud {
-    /// The panel with the action queue and Disengage is up, and the line at the top says so.
+    /// The panel with the fight's words is up, and the line at the top says so.
     pub engaged: bool,
     pub message: String,
     /// The pictures of what is queued, what is happening now first.
     pub queue: Vec<String>,
+    /// How many of them are queued and not yet under way.
+    pub queued: usize,
     /// The target is an enemy: its bar is red, with slots under it.
     pub attack: Option<String>,
     pub slots: [Option<SlotShown>; 3],
@@ -157,7 +159,7 @@ pub struct CombatHud {
     pub quick_hover: Option<String>,
     /// The first of the four slots is the Pickup button.
     pub pickup: bool,
-    /// Attack mode is on: its button has a line round it.
+    /// The leader is in attack mode or fighting: the button has a line round it.
     pub attack_mode: bool,
 }
 
@@ -315,6 +317,8 @@ pub struct HudMember {
     pub max_force: i32,
     /// A level is waiting to be taken.
     pub level_up: bool,
+    /// In attack mode, or fighting: the portrait has a line round it.
+    pub attack_mode: bool,
 }
 
 impl<'a> Ui<'a> {
@@ -1363,8 +1367,9 @@ impl<'a> Ui<'a> {
         for (i, n) in HUD_MEMBER_SLOTS.into_iter().enumerate() {
             match party.get(i) {
                 Some(m) => {
-                    patches.entry(format!("LBL_CHAR{n}")).or_default().fill =
-                        Some(m.portrait.clone());
+                    let portrait = patches.entry(format!("LBL_CHAR{n}")).or_default();
+                    portrait.fill = Some(m.portrait.clone());
+                    portrait.line = m.attack_mode.then_some(POWER_ON_LINE);
                     patches.entry(format!("PB_VIT{n}")).or_default().value = Some((m.hp, m.max_hp));
                     patches.entry(format!("PB_FORCE{n}")).or_default().value =
                         Some((m.force, m.max_force));
@@ -1515,12 +1520,19 @@ impl<'a> Ui<'a> {
                 "LBL_COMBATBG1",
                 "LBL_CMBTMSGBG",
                 "LBL_CMBTMODEMSG",
-                "BTN_CLEARALL",
-                "BTN_CLEARONE",
-                "BTN_CLEARONE2",
             ] {
                 show(tag.to_string());
             }
+        }
+        // The queue shows with something in it, in a fight or not. The circle takes back the last thing queued (BTN_CLEARONE) and
+        // the strip clears the queue (BTN_CLEARONE2). The Disengage button (BTN_CLEARALL) is never shown: the Attack mode button,
+        // lit in a fight, ends it.
+        if combat.queued > 0 {
+            for tag in ["LBL_COMBATBG1", "BTN_CLEARONE", "BTN_CLEARONE2"] {
+                show(tag.to_string());
+            }
+        }
+        if combat.engaged || combat.queued > 0 {
             for n in 0..combat.queue.len().min(4) {
                 show(format!("LBL_QUEUE{n}"));
             }
@@ -1545,6 +1557,8 @@ impl<'a> Ui<'a> {
             let line = patches.entry("LBL_CMBTMODEMSG".to_string()).or_default();
             line.text = Some(combat.message.clone());
             line.color = Some(COMBAT_RED);
+        }
+        if combat.engaged || combat.queued > 0 {
             for (n, icon) in combat.queue.iter().take(4).enumerate() {
                 patches.entry(format!("LBL_QUEUE{n}")).or_default().fill = Some(icon.clone());
             }
@@ -1749,7 +1763,8 @@ impl<'a> Ui<'a> {
     pub fn hud_hit(&mut self, x: f32, y: f32) -> Option<String> {
         let gui = self.hud_layout(self.target_at)?;
         let shown = |tag: &str| match tag {
-            "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
+            "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.queued > 0,
+            "BTN_CLEARALL" => false,
             "BTN_TARGET0" => {
                 (self.combat.attack.is_some() || self.combat.locked) && self.target_at.is_some()
             }
@@ -1861,6 +1876,7 @@ impl<'a> Ui<'a> {
                 format!("LBL_CHAR{n}"),
                 patch(&|m| Patch {
                     fill: Some(m.portrait.clone()),
+                    line: m.attack_mode.then_some(POWER_ON_LINE),
                     ..Patch::default()
                 }),
             );

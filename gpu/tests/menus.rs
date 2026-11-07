@@ -2937,18 +2937,19 @@ fn a_fight_brings_up_its_panel_and_the_target_slot_attacks() {
     let hostile = frame(&mut s);
     assert!(hostile != friendly, "the bar turns red and the slots come");
 
-    // The slot under the bar attacks, and the panel comes up with Disengage.
+    // The slot under the bar attacks, and the panel comes up. The Attack mode button is lit.
     let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
     s.click(slot, SIZE);
     assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
     let engaged = frame(&mut s);
     assert!(engaged != hostile);
-    let middle = s.hud_pixel("BTN_CLEARALL", SIZE).unwrap();
-    assert!(middle.1 > SIZE.1 as f32 * 0.8, "{middle:?}");
+    assert!(s.game.world.in_attack_mode(pc), "the button is lit");
 
-    // Disengage stops it.
-    s.click(middle, SIZE);
+    // A click on the lit Attack mode button stops it: there is no Disengage button.
+    let mode = s.hud_pixel(kotor_ui::ATTACK_MODE_BUTTON, SIZE).unwrap();
+    s.click(mode, SIZE);
     assert_eq!(s.game.world.combat.target.get(&pc), None);
+    assert!(!s.game.world.in_attack_mode(pc));
 }
 
 #[test]
@@ -6117,6 +6118,248 @@ fn combat_is_classic_until_the_box_is_ticked_and_modern_needs_modern_movement() 
     press(&mut s, "BTN_DEFAULT");
     assert!(s.modern_combat());
     std::fs::remove_file(&file).ok();
+
+/// How many pixels of the Attack mode button's line show.
+fn mode_line(s: &mut Stage) -> usize {
+    s.update(DT);
+    let o = s.overlay().unwrap();
+    o.rgba
+        .chunks(4)
+        .filter(|p| p[0] > 240 && p[1] > 240 && (60..100).contains(&p[2]))
+        .count()
+}
+
+/// A hostile soldier beside the leader, hard to kill.
+fn hostile_beside(s: &mut Stage) -> kotor_game::ObjId {
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 0.1, p[1], p[2]]);
+    let o = s.game.world.object_mut(foe).unwrap();
+    o.faction = 1;
+    (o.hp, o.max_hp) = (900, 900);
+    foe
+}
+
+#[test]
+fn the_attack_mode_button_is_lit_in_a_fight_and_a_click_on_it_ends_the_fight() {
+    let Some((mut s, _)) = in_game("mode_truth") else {
+        return;
+    };
+    s.game.world.combat.target.clear();
+    let without = mode_line(&mut s);
+    let pc = s.game.world.pc;
+    let foe = hostile_beside(&mut s);
+    s.game.world.attack(pc, foe);
+    for _ in 0..10 {
+        s.update(DT);
+    }
+    // With the switch on (it is by default) the mode went on by itself, and the button shows it.
+    assert!(s.settings().auto_attack_mode);
+    assert!(s.game.world.attack_mode(), "on by itself");
+    assert!(mode_line(&mut s) > without + 100, "the line round it");
+    // A click ends the fight and the button goes dark. The enemy goes on hitting, and it stays dark.
+    let button = s.hud_pixel(kotor_ui::ATTACK_MODE_BUTTON, SIZE).unwrap();
+    s.click(button, SIZE);
+    assert!(!s.game.world.combat.target.contains_key(&pc));
+    for _ in 0..60 {
+        s.update(DT);
+    }
+    assert!(!s.game.world.attack_mode());
+    assert!(mode_line(&mut s) < without + 20, "dark again");
+    // The Cancel Combat key does the same.
+    s.attack_mode_key();
+    assert!(s.game.world.attack_mode());
+    s.hud_disengage();
+    assert!(!s.game.world.attack_mode());
+}
+
+#[test]
+fn auto_attack_mode_has_a_switch_and_an_automatic_mode_goes_off_after_the_fight() {
+    let Some((mut s, dir)) = in_game("mode_auto") else {
+        return;
+    };
+    s.use_settings_file(dir.join("settings.txt"));
+    s.game.world.combat.target.clear();
+    let pc = s.game.world.pc;
+    let foe = hostile_beside(&mut s);
+    s.game.world.attack(pc, foe);
+    for _ in 0..10 {
+        s.update(DT);
+    }
+    assert!(s.game.world.attack_mode());
+    // The fight ends: a few seconds later the automatic mode is off.
+    s.game.world.object_mut(foe).unwrap().dead = true;
+    s.game.world.combat.target.clear();
+    for _ in 0..60 {
+        s.update(DT);
+    }
+    assert!(s.game.world.attack_mode(), "not yet");
+    for _ in 0..240 {
+        s.update(DT);
+    }
+    assert!(!s.game.world.attack_mode(), "off by itself");
+    // A mode set by hand stays.
+    s.attack_mode_key();
+    for _ in 0..600 {
+        s.update(DT);
+    }
+    assert!(s.game.world.attack_mode(), "by hand: it stays");
+    s.attack_mode_key();
+    // The switch is in Options > Feedback. Off: a fight leaves the mode as it was, but the button still shows the fight.
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    for _ in 0..40 {
+        if s.menu_pixel("LB_OPTIONS", Some(27), SIZE)
+            .is_some_and(|p| p.1 < 300.0)
+        {
+            break;
+        }
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_OPTIONS", 27);
+    assert!(!s.settings().auto_attack_mode);
+    assert!(std::fs::read_to_string(dir.join("settings.txt"))
+        .unwrap()
+        .contains("auto_attack_mode=false"));
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    let foe = hostile_beside(&mut s);
+    s.game.world.attack(pc, foe);
+    for _ in 0..30 {
+        s.update(DT);
+    }
+    assert!(!s.game.world.attack_mode(), "not on by itself");
+    assert!(
+        s.game.world.in_attack_mode(pc),
+        "but the button shows the fight"
+    );
+}
+
+#[test]
+fn each_companion_has_their_own_attack_mode_on_their_portrait() {
+    let Some((mut s, _)) = in_game("mode_party") else {
+        return;
+    };
+    s.game.world.combat.target.clear();
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let mate = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] - 0.5, p[1], p[2]]);
+    let faction = s.game.world.object(pc).unwrap().faction;
+    let o = s.game.world.object_mut(mate).unwrap();
+    o.faction = faction;
+    o.party_member = true;
+    (o.hp, o.max_hp) = (900, 900);
+    s.game.world.party.push(mate);
+    s.update(DT);
+    let dark = frame(&mut s);
+    // Ctrl and a click on the portrait turns that member's mode, without changing who leads.
+    s.set_ctrl(true);
+    let portrait = s.hud_pixel("BTN_CHAR3", SIZE).unwrap();
+    s.click(portrait, SIZE);
+    s.set_ctrl(false);
+    assert!(s.game.world.in_attack_mode(mate));
+    assert_eq!(s.game.world.pc, pc, "the leader is the same");
+    assert!(!s.game.world.attack_mode());
+    assert!(frame(&mut s) != dark, "the portrait has its line");
+    s.set_ctrl(true);
+    s.click(portrait, SIZE);
+    s.set_ctrl(false);
+    assert!(!s.game.world.in_attack_mode(mate));
+    // With the switch on, a fight turns on the leader's mode and the companion's own.
+    let foe = hostile_beside(&mut s);
+    s.game.world.attack(pc, foe);
+    for _ in 0..90 {
+        s.update(DT);
+    }
+    assert!(s.game.world.attack_mode());
+    assert!(s.game.world.in_attack_mode(mate));
+}
+
+#[test]
+fn several_actions_queue_while_paused_in_order_and_clear_and_undo_work() {
+    let Some((mut s, _)) = in_game("queue_paused") else {
+        return;
+    };
+    s.game.world.combat.target.clear();
+    let pc = s.game.world.pc;
+    let foe = hostile_beside(&mut s);
+    let grenade = s.game.world.spawn_item("g_w_adhsvgren001");
+    s.game.world.carry(pc, grenade);
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.feats.clear();
+    o.feats.insert(28);
+    o.spells.insert(23);
+    (o.force, o.max_force) = (50, 50);
+    s.update(DT);
+    s.toggle_pause();
+    assert!(s.paused());
+    // Shift and a click on each slot queues without starting anything.
+    s.set_shift(true);
+    for tag in ["BTN_TARGET0", "BTN_TARGET1", "BTN_TARGET2"] {
+        let slot = s.hud_pixel(tag, SIZE).unwrap();
+        s.click(slot, SIZE);
+    }
+    use kotor_game::CombatAction as A;
+    let queued = s.game.world.queue_of(pc);
+    assert_eq!(queued, vec![A::Attack, A::Power(23), A::Item(grenade)]);
+    assert!(
+        !s.game.world.combat.target.contains_key(&pc),
+        "nothing started"
+    );
+    // The HUD shows them in that order, one picture each.
+    let pictures = s.queue_pictures();
+    assert_eq!(pictures.len(), 3, "{pictures:?}");
+    assert!(pictures.iter().all(|p| !p.is_empty()), "{pictures:?}");
+    // A fourth is refused: the strip has the action under way and three more.
+    let down = s.hud_pixel("BTN_TARGETDOWN0", SIZE).unwrap();
+    s.click(down, SIZE);
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    s.click(slot, SIZE);
+    s.set_shift(false);
+    assert_eq!(s.game.world.queue_of(pc).len(), 3);
+    // The circle takes the last back, and the strip clears the rest.
+    frame(&mut s);
+    let one = s.hud_pixel("BTN_CLEARONE", SIZE).unwrap();
+    s.click(one, SIZE);
+    assert_eq!(s.game.world.queue_of(pc), vec![A::Attack, A::Power(23)]);
+    assert_eq!(s.queue_pictures().len(), 2);
+    // A feat goes in after them, with the arrows and Shift.
+    s.set_shift(true);
+    let down = s.hud_pixel("BTN_TARGETDOWN0", SIZE).unwrap();
+    s.click(down, SIZE);
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    s.click(slot, SIZE);
+    s.set_shift(false);
+    assert!(matches!(s.game.world.queue_of(pc).last(), Some(A::Feat(_))));
+    frame(&mut s);
+    let all = s.hud_pixel("BTN_CLEARONE2", SIZE).unwrap();
+    s.click(all, SIZE);
+    assert!(s.game.world.queue_of(pc).is_empty());
+    assert!(s.queue_pictures().is_empty());
+    // Queued again, resuming plays them in order, one a round.
+    s.game.world.queue_action(pc, A::Power(23));
+    s.game.world.queue_action(pc, A::Attack);
+    s.toggle_pause();
+    s.game.world.attack(pc, foe);
+    let force = s.game.world.object(pc).unwrap().force;
+    for _ in 0..400 {
+        s.update(DT);
+        if s.game.world.queue_of(pc).len() < 2 {
+            break;
+        }
+    }
+    assert_eq!(
+        s.game.world.queue_of(pc),
+        vec![A::Attack],
+        "the power went first"
+    );
+    assert!(s.game.world.object(pc).unwrap().force < force);
 }
 
 #[test]

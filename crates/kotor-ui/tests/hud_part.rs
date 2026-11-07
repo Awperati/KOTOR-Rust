@@ -11,6 +11,7 @@ fn party(hp: i32) -> Vec<HudMember> {
         force: 0,
         max_force: 0,
         level_up: false,
+        attack_mode: false,
     }]
 }
 

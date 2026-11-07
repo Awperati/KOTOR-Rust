@@ -17,7 +17,6 @@ const STR_ACTION_MENU: u32 = 48415;
 const STR_TARGET_CHANGED: u32 = 42481;
 /// How long after a conversation the keys still do not pause or jump. **Assumed:** long enough for one more press.
 const AFTER_TALK_SECONDS: f32 = 0.5;
-const MOST_QUEUED: usize = 4;
 const STR_ATTACK: u32 = 375;
 const FLOAT_SECONDS: f32 = 1.5;
 const FLOAT_RISE: f32 = 40.0;
@@ -381,18 +380,12 @@ impl Stage {
     }
 
     /// What the slots show and the one under the cursor; what is queued goes after what is under way.
-    pub(super) fn slots_view(&mut self, hostile: bool, queue: &mut Vec<String>) -> SlotsView {
-        let queued: Vec<_> = self.game.world.combat_queue.iter().copied().collect();
+    pub(super) fn slots_view(&mut self, hostile: bool) -> SlotsView {
         let mut slots = [None, None, None];
         let mut hover = None;
         let over = self.menus.fight.hover.clone();
         for (slot, shows) in slots.iter_mut().enumerate() {
             let choices = self.slot_choices(slot);
-            for q in &queued {
-                if let Some(c) = choices.iter().find(|c| c.does == SlotDoes::Queue(*q)) {
-                    queue.push(c.icon.clone());
-                }
-            }
             if !hostile || choices.is_empty() {
                 continue;
             }
@@ -411,6 +404,31 @@ impl Stage {
         (slots, hover)
     }
 
+    /// The pictures of the leader's queue as the HUD draws it: what is under way first, then what is queued, in order.
+    pub fn queue_pictures(&mut self) -> Vec<String> {
+        self.combat_view(None).queue
+    }
+
+    /// The picture of a queued action, for the queue on the HUD.
+    pub(super) fn queue_icon(&mut self, action: CombatAction) -> String {
+        match action {
+            CombatAction::Attack => super::ATTACK_PICTURE.to_string(),
+            CombatAction::Item(item) => {
+                let icons = self.game.world.item_view(item).map(|v| v.icons);
+                icons.map_or(String::new(), |i| self.first_picture(&i))
+            }
+            CombatAction::Feat(_) | CombatAction::Power(_) => {
+                let found = (0..2).find_map(|slot| {
+                    self.slot_choices(slot)
+                        .into_iter()
+                        .find(|c| c.does == SlotDoes::Queue(action))
+                        .map(|c| c.icon)
+                });
+                found.unwrap_or_default()
+            }
+        }
+    }
+
     /// A click on a slot: what it shows is done. Returns whether the player should now go for the target.
     pub(in crate::stage) fn use_slot(&mut self, slot: usize) -> bool {
         let choices = self.slot_choices(slot);
@@ -421,21 +439,27 @@ impl Stage {
         if !choices[pick].usable {
             return false;
         }
+        // With Shift down a click only queues: the plain attack, a feat, a power or what can be thrown goes to the end of the
+        // leader's queue and nothing starts. Without it, the click starts the attack and queues what the slot offers.
+        let shift = self.menus.shift;
+        let w = &mut self.game.world;
+        let pc = w.pc;
         match choices[pick].does {
+            SlotDoes::Attack if shift => {
+                w.queue_action(pc, CombatAction::Attack);
+                false
+            }
             SlotDoes::Attack => true,
             // Only the quick slots have these.
             SlotDoes::OnSelf(_) => false,
             SlotDoes::Security(spike) => {
-                self.game.world.lock_tool = spike;
+                w.lock_tool = spike;
                 true
             }
-            SlotDoes::Queue(action) => {
-                let w = &mut self.game.world;
-                let room = w.combat_queue.len() < MOST_QUEUED;
-                if room {
-                    w.combat_queue.push_back(action);
-                }
-                room
+            SlotDoes::Queue(action) => w.queue_action(pc, action) && !shift,
+            SlotDoes::Throw(item) if shift => {
+                w.queue_action(pc, CombatAction::Item(item));
+                false
             }
             SlotDoes::Throw(item) => {
                 if let Some(foe) = self.target() {

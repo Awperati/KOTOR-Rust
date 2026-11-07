@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 24] = [
+const STYLE_ROWS: [(&str, &str, &str); 25] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -134,6 +134,11 @@ const STYLE_ROWS: [(&str, &str, &str); 24] = [
         "Quest arrow: On",
         "Quest arrow: Off",
         "An arrow on the screen to the next step of the quest being tracked, when it is not in front of you.",
+    ),
+    (
+        "Auto attack mode: On",
+        "Auto attack mode: Off",
+        "Attack mode goes on by itself when a fight starts, for you and for each companion, and goes off a few seconds after it ends. A mode you set by hand stays until you turn it off. The Attack mode button always shows whether it is on; a click on it when lit ends the fight.",
     ),
 ];
 /// What the Pickup radius goes round, in metres.
@@ -282,6 +287,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         26 => &mut s.respawn,
         27 => &mut s.compass,
         28 => &mut s.quest_arrow,
+        29 => &mut s.auto_attack_mode,
         _ => return None,
     })
 }

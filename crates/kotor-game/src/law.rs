@@ -114,20 +114,6 @@ impl KillKind {
 }
 
 impl World {
-    /// Attack mode: the player may attack anyone. (The button of the pause panel reads and flips this.)
-    pub fn attack_mode(&self) -> bool {
-        self.attack_mode
-    }
-
-    pub fn set_attack_mode(&mut self, on: bool) {
-        self.attack_mode = on;
-    }
-
-    pub fn toggle_attack_mode(&mut self) -> bool {
-        self.attack_mode = !self.attack_mode;
-        self.attack_mode
-    }
-
     /// The wanted level, 0 to 3.
     pub fn wanted_level(&self) -> u8 {
         self.law.wanted

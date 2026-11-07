@@ -378,10 +378,10 @@ impl Stage {
         true
     }
 
-    /// The key for Cancel Combat: the same as the Disengage button.
+    /// The key for Cancel Combat: attack mode off, as a click on the lit Attack mode button does. The Disengage button is gone.
     pub fn hud_disengage(&mut self) {
         if !self.menu_open() {
-            self.hud_button("BTN_CLEARALL");
+            self.disengage();
         }
     }
 

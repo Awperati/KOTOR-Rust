@@ -28,6 +28,7 @@ pub mod quest_route;
 mod respawn;
 mod slots;
 mod soundset;
+mod stance;
 mod story_branches;
 pub use story_branches::{
     StoryState, ABANDONED_CLIP, BANDON_BLOWS, BANDON_FULL_HEALTH, BANDON_HEALTH, STORY_POINTS,

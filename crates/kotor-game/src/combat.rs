@@ -412,13 +412,28 @@ impl World {
     /// Resolve one attack and everything that follows from it: damage, scripts, death.
     fn resolve(&mut self, attacker: ObjId, target: ObjId) {
         self.ready_ranged(attacker);
-        // What the player queued goes first: a power instead of the attack, or a feat that changes it.
-        let queued = (attacker == self.pc)
-            .then(|| self.combat_queue.pop_front())
-            .flatten();
-        if let Some(crate::combat_actions::CombatAction::Power(spell)) = queued {
-            if self.cast_spell(attacker, spell, target, false).is_ok() {
-                return;
+        // What was queued goes first: a power or an item instead of the attack, or a feat that changes it. One that cannot be
+        // done (no Force left, out of reach, the item gone) is dropped and the next is tried.
+        use crate::combat_actions::CombatAction;
+        let mut queued = None;
+        while let Some(action) = self.pop_queued(attacker) {
+            match action {
+                CombatAction::Power(spell) => {
+                    if self.cast_spell(attacker, spell, target, false).is_ok() {
+                        return;
+                    }
+                }
+                CombatAction::Item(item) => {
+                    if self.carried(attacker).contains(&item)
+                        && self.use_item_on(attacker, item, target).is_ok()
+                    {
+                        return;
+                    }
+                }
+                CombatAction::Feat(_) | CombatAction::Attack => {
+                    queued = Some(action);
+                    break;
+                }
             }
         }
         let boost = match queued {
@@ -1086,7 +1101,7 @@ impl World {
             return;
         }
         for id in self.party.clone() {
-            if !self.combat.target.contains_key(&id) {
+            if !self.combat.target.contains_key(&id) && !self.holds_fire(id) {
                 self.attack(id, foe);
             }
         }

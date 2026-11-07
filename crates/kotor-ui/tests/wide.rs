@@ -133,6 +133,7 @@ fn the_interface_reaches_the_edges_of_a_wide_screen() {
         force: 5,
         max_force: 5,
         level_up: false,
+        attack_mode: false,
     }];
     let h = ui.hud_overlay(&party, None, "", "").unwrap();
     assert_eq!((h.width, h.height), (WIDTH, 480));

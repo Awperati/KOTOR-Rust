@@ -15,6 +15,10 @@ const BASE_THROWN: std::ops::RangeInclusive<i32> = 25..=34;
 pub enum CombatAction {
     Feat(i32),
     Power(i32),
+    /// A plain attack for that round, so that what comes after it waits its turn.
+    Attack,
+    /// An item used on the target: a grenade, a medpac, a stim.
+    Item(ObjId),
 }
 
 /// One thing a target slot offers.

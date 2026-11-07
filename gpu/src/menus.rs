@@ -139,7 +139,8 @@ const SOUND_SLOT_SCROLL: &str = "gui_actscroll";
 const SOUND_SLOT_QUEUE: &str = "gui_button";
 const SOUND_ITEM_TAKE: &str = "gui_invadd";
 const SOUND_ITEM_SELECT: &str = "gui_invselect";
-const STR_COMBAT_MODE: u32 = 48208;
+/// The line at the top in a fight: the game's own words name the Disengage button, which is gone.
+const COMBAT_MODE_WORDS: &str = "COMBAT MODE engaged. Press the Attack mode button to cancel.";
 const ATTACK_PICTURE: &str = "i_attack";
 const STR_CONTAINER: u32 = 393;
 const STR_SELECT_ITEM: u32 = 38154;
@@ -328,6 +329,8 @@ pub struct Settings {
     pub ground_finishers: bool,
     /// Enemies killed in a fight come back after a while, when the player is far and out of sight. Off: they stay dead.
     pub respawn: bool,
+    /// Attack mode goes on with a fight for the leader and each companion, and off a few seconds after it.
+    pub auto_attack_mode: bool,
     /// A name and health bar over each enemy in sight, and the rest of what the F6 key turns off.
     pub nameplates: bool,
     /// The same all the time for neutral creatures and for friends, and not only when the cursor is on them.
@@ -406,6 +409,7 @@ impl Default for Settings {
             extended_story: true,
             ground_finishers: true,
             respawn: true,
+            auto_attack_mode: true,
             nameplates: true,
             nameplates_neutral: false,
             nameplates_friendly: false,
@@ -483,6 +487,7 @@ impl Settings {
             self.extended_story,
             self.ground_finishers,
             self.respawn,
+            self.auto_attack_mode,
             self.cel_shading,
             self.anti_aliasing,
             self.motion_blur,
@@ -544,6 +549,7 @@ impl Settings {
                 "extended_story" => s.extended_story = v == "true",
                 "ground_finishers" => s.ground_finishers = v == "true",
                 "respawn" => s.respawn = v == "true",
+                "auto_attack_mode" => s.auto_attack_mode = v == "true",
                 "australian_english" => s.australian_english = v == "true",
                 "nameplates" => s.nameplates = v == "true",
                 "nameplates_neutral" => s.nameplates_neutral = v == "true",
@@ -1819,10 +1825,20 @@ impl Stage {
         }
     }
 
-    /// The Attack mode button and its key.
+    /// The Attack mode button and its key: on if it was dark, and if it was lit, off, which ends the fight (the old Disengage).
     pub fn attack_mode_key(&mut self) {
         if !self.menu_open() {
             self.game.world.toggle_attack_mode();
+        }
+    }
+
+    /// The portrait of party member `n` (0 is the first after the leader): a click with the mode key held turns their attack mode.
+    pub fn member_attack_mode_key(&mut self, n: usize) {
+        if self.menu_open() {
+            return;
+        }
+        if let Some(id) = self.game.world.party.get(n).copied() {
+            self.game.world.toggle_mode_of(id);
         }
     }
 
@@ -1985,6 +2001,9 @@ impl Stage {
             "BTN_JOU" => self.open_journal(),
             "BTN_MAP" | "BTN_MINIMAP" => self.open_map(),
             "BTN_CHAR1" => self.open_if_level_waits(),
+            "BTN_CHAR3" | "BTN_CHAR2" if self.menus.ctrl => {
+                self.member_attack_mode_key(usize::from(tag == "BTN_CHAR2"));
+            }
             "BTN_CHAR3" => {
                 self.change_member(0);
                 self.open_if_level_waits();
@@ -1998,7 +2017,15 @@ impl Stage {
             | "BTN_ACTIONDOWN0" | "BTN_ACTIONDOWN1" | "BTN_ACTIONDOWN2" | "BTN_ACTIONDOWN3" => {
                 self.turn_quick_slot(tag)
             }
-            "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
+            // The circle takes back the last thing queued, and the strip clears all of them.
+            "BTN_CLEARONE" => {
+                let pc = self.game.world.pc;
+                self.game.world.undo_queued(pc);
+            }
+            "BTN_CLEARONE2" => {
+                let pc = self.game.world.pc;
+                self.game.world.clear_queue(pc);
+            }
             "TB_PAUSE" => self.toggle_pause(),
             kotor_ui::ATTACK_MODE_BUTTON => self.attack_mode_key(),
             kotor_ui::TOUCH_BUTTON => self.toggle_touch(),
@@ -2018,14 +2045,9 @@ impl Stage {
         }
     }
 
-    /// The Disengage button: the leader stops attacking.
-    fn disengage(&mut self) {
-        let w = &mut self.game.world;
-        let pc = w.pc;
-        w.stop_attacking(pc);
-        if let Some(o) = w.object_mut(pc) {
-            o.actions.clear();
-        }
+    /// Attack mode off for the leader: they stop attacking, and what they were to do next is dropped.
+    pub(super) fn disengage(&mut self) {
+        self.game.world.set_attack_mode(false);
     }
 
     /// What the HUD shows of a fight: `action` is what the target offers.
@@ -2035,18 +2057,21 @@ impl Stage {
         }
         let w = &self.game.world;
         let attacking = w.combat.target.contains_key(&w.pc);
+        let queued_actions = w.queue_of(w.pc);
         let mut queue = if attacking {
             vec![ATTACK_PICTURE.to_string()]
         } else {
             Vec::new()
         };
+        let queued = queued_actions.len();
+        queue.extend(queued_actions.into_iter().map(|a| self.queue_icon(a)));
         let hostile = action == Some("Attack");
         let locked = !hostile && self.target_has_a_way_in();
-        let (slots, hover) = self.slots_view(hostile || locked, &mut queue);
+        let (slots, hover) = self.slots_view(hostile || locked);
         let (quick, first, quick_hover) = self.quick_view(action.is_none());
         let pickup = slot_is_pickup(action) && first.is_none();
         let on_pickup = pickup && self.over_first_action_slot();
-        let attack_mode = self.game.world.attack_mode();
+        let attack_mode = self.game.world.in_attack_mode(self.game.world.pc);
         let on_attack_mode = self.over_attack_mode();
         let quick_hover = on_attack_mode
             .then(|| ATTACK_MODE_WORDS[attack_mode as usize].to_string())
@@ -2064,8 +2089,9 @@ impl Stage {
             pickup,
             attack_mode,
             engaged: self.party_blocked(),
-            message: self.ui.strref(STR_COMBAT_MODE),
+            message: COMBAT_MODE_WORDS.to_string(),
             queue,
+            queued,
             attack: hostile.then(|| ATTACK_PICTURE.to_string()),
             slots,
             hover,

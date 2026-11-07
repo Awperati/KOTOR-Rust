@@ -539,7 +539,7 @@ pub struct World {
     /// Grenades thrown and not yet burst.
     pub(crate) flights: Vec<crate::flight::Flight>,
     /// Attack mode: the player may attack anyone. `docs/law.tsv` says what that costs.
-    pub attack_mode: bool,
+    pub stance: crate::stance::StanceState,
     /// For a test driver: this creature stays at this place, and the player at this other, while this item still has at least this
     /// many in its stack.
     pub hold_in_place: Option<HoldInPlace>,
@@ -720,7 +720,7 @@ impl World {
             hp_regen: 0.0,
             casts: Vec::new(),
             flights: Vec::new(),
-            attack_mode: false,
+            stance: Default::default(),
             hold_in_place: None,
             law: Default::default(),
             lost_quests: Vec::new(),

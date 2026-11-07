@@ -42,7 +42,7 @@ Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`,
 
 `scripts/drive_playthrough.ps1` plays one game the same way: new game, level up, equip, journal, map, save, load. `--xp` gives the level, since an earned one lies past the first fights.
 
-`scripts/drive_fight.ps1` lets the pilot play to the first fight, takes over with `--pilot-until fight`, and fights it in the window: Enemy Sighted, the slots, words rising, the Messages tab, Disengage.
+`scripts/drive_fight.ps1` lets the pilot play to the first fight, takes over with `--pilot-until fight`, and fights it in the window: Enemy Sighted, the slots, words rising, the Messages tab, ending the fight with the Attack mode button.
 
 `scripts/drive_level.ps1` lets the pilot earn experience until one kill short of a level, with `--pilot-until level`, and makes that kill and takes the level in the window. It has no `--xp`.
 
@@ -84,7 +84,7 @@ Advanced Options has V-Sync, which the window obeys at once and the settings fil
 
 
 ## Keys and mouse
-From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A click on a row waits for a key; Esc gives up, a key in use swaps with the other action, OK keeps it in the settings file, and Cancel or Esc puts back what the page found. Default gives back the keys at the top of this file; then the same button, called Original, gives the game's own from `keymap.2da` (P character, L quests, Z and C to strafe, A and D to turn, R to use). Esc, Enter, the digits and Shift stay as they are. Controls (the file calls it Mouse Settings) has the on-screen controls' box, the camera's speed, where a half is the speed it always had, and swaps the buttons, on the screens too. New: O opens the options, F disengages in a fight and otherwise is the Pickup button, and X turns Attack mode on and off, as does its button beside the hourglass. F6 is nameplates, F7 cel shading, F8 reloads custom content, F9 and F10 go through custom clips and garments, and all of these are on the page too. What the rows of a page say of a key follows that key if it is moved. The Feedback page ends with Custom content, whose rows open the folders of your own textures, animations and meshes, and make them if they are not there.
+From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A click on a row waits for a key; Esc gives up, a key in use swaps with the other action, OK keeps it in the settings file, and Cancel or Esc puts back what the page found. Default gives back the keys at the top of this file; then the same button, called Original, gives the game's own from `keymap.2da` (P character, L quests, Z and C to strafe, A and D to turn, R to use). Esc, Enter, the digits and Shift stay as they are. Controls (the file calls it Mouse Settings) has the on-screen controls' box, the camera's speed, where a half is the speed it always had, and swaps the buttons, on the screens too. New: O opens the options, F ends a fight (attack mode off) and otherwise is the Pickup button, and X turns Attack mode on and off, as does its button beside the hourglass. F6 is nameplates, F7 cel shading, F8 reloads custom content, F9 and F10 go through custom clips and garments, and all of these are on the page too. What the rows of a page say of a key follows that key if it is moved. The Feedback page ends with Custom content, whose rows open the folders of your own textures, animations and meshes, and make them if they are not there.
 
 A settings file from before X and B changed places goes over to them when it is read, if its two keys were never moved. A key the player moved stays.
 
@@ -160,7 +160,7 @@ B or the HUD's hourglass pauses and goes on, outside conversations and with no c
 
 
 ## Fights
-An enemy under the cursor has a red bar and three slots: the attack, a feat and a Force power. The arrows go through what each has, and a click attacks with it next. Feats are Power Attack, Power Blast, Critical Strike, Sniper Shot, Flurry and Rapid Shot, at the strongest level known and for the weapon held. The numbers are the talk table's words for each. Blows show over the target, with Floating Numbers on. Disengage stops attacking.
+An enemy under the cursor has a red bar and three slots: the attack, a feat and a Force power. The arrows go through what each has, and a click attacks with it next. Feats are Power Attack, Power Blast, Critical Strike, Sniper Shot, Flurry and Rapid Shot, at the strongest level known and for the weapon held. The numbers are the talk table's words for each. Blows show over the target, with Floating Numbers on. The Attack mode button stops attacking when it is lit; see `ATTACK_MODE.md`.
 
 ## Modern combat
 The Combat box on the Gameplay page turns it on, with Modern movement. Classic is the default, and enemies and party members fight the same either way.

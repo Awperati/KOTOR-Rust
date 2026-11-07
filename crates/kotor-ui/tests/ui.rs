@@ -138,6 +138,7 @@ fn the_hud_shows_portraits_and_bars_proportionally() {
         force: 0,
         max_force: 100,
         level_up: false,
+        attack_mode: false,
     };
     let red = |img: &kotor_image::Image| {
         let mut n = 0;

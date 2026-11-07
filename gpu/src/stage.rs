@@ -986,6 +986,8 @@ impl Stage {
         self.game.world.no_misses = self.pilot.is_none();
         self.game.world.ground_finishers = self.settings().ground_finishers && self.pilot.is_none();
         self.game.world.respawn.enabled = self.settings().respawn && self.pilot.is_none();
+        self.game.world.stance.auto_enabled =
+            self.settings().auto_attack_mode && self.pilot.is_none();
         // A finisher swings the owner's clip, once he has made one. Till then the game's stock swing has played.
         for (attacker, _) in std::mem::take(&mut self.game.world.finishers) {
             if let Some(c) = kotor_render::custom_clip::get("finisher") {
@@ -3567,7 +3569,8 @@ impl Stage {
                         m.max_hp,
                         m.force,
                         m.max_force,
-                        m.level_up
+                        m.level_up,
+                        m.attack_mode
                     ))
                     .collect::<Vec<_>>(),
             ),
@@ -4040,6 +4043,7 @@ impl Stage {
                 force: o.force,
                 max_force: o.max_force,
                 level_up: w.level_ready(o.id),
+                attack_mode: w.in_attack_mode(o.id),
             })
             .collect()
     }

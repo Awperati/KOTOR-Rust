@@ -320,7 +320,7 @@ impl World {
         if let Some(o) = self.objects.get_mut(&id) {
             o.inventory.extend(bag);
         }
-        self.combat_queue.clear();
+        self.swap_stances(old, id);
         self.party.retain(|p| *p != id);
         self.party.push(old);
         if let Some(o) = self.objects.get_mut(&old) {
@@ -371,7 +371,7 @@ impl World {
                 self.mark_open(target, Vec::new());
             }
             Kind::Creature => {
-                if self.attack_mode && !self.on_player_team(target) {
+                if self.attack_mode() && !self.on_player_team(target) {
                     self.attack(self.pc, target);
                 } else if self.law_refuses(target) && !self.on_player_team(target) {
                     self.events
@@ -900,6 +900,7 @@ impl World {
         self.timed("followers", |w| w.update_followers(dt));
         self.timed("combat", |w| w.update_combat(dt));
         self.update_law();
+        self.update_stance(dt);
         self.update_respawn();
         if let Some(h) = self.hold_in_place {
             if self
