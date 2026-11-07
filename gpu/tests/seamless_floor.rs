@@ -53,10 +53,11 @@ fn a_door_with_a_pocket_shows_its_neighbour_through_the_doorway_only() {
     assert_eq!(a.module, "tar_m02aa", "{:?}", s.seam_notes());
     assert!(!a.portal, "it stands side by side for walking");
     assert!(a.seen_through_doorway());
-    // The picture comes a piece a frame after the floor has joined.
+    // The picture comes a piece a frame after the floor has joined, once its textures have been handed over.
     let began = std::time::Instant::now();
     while s.portal().is_none() && began.elapsed().as_secs() < 90 {
         s.update(DT);
+        s.take_warm(100);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     assert_eq!(triangles(s.static_scene()), before, "nothing stitched on");

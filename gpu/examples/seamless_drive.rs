@@ -227,13 +227,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.yaw = out_angle;
     // Wait for the neighbour to load on its thread.
     let began = Instant::now();
-    while s.game.world.seamless.attached.is_empty() && began.elapsed().as_secs() < 90 {
+    // Another door near it may join first, and this one is the one to walk through.
+    while !s.game.world.seamless.attached.contains_key(&door_id) && began.elapsed().as_secs() < 90 {
         step(&mut s);
         sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     let loaded_in = began.elapsed().as_secs_f32();
-    let joined = !s.game.world.seamless.attached.is_empty();
+    let joined = s.game.world.seamless.attached.contains_key(&door_id);
     r.check(
         "the area behind the door loads in the background",
         joined,
