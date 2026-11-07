@@ -3337,7 +3337,8 @@ impl Stage {
         let slots_percent = self.slots_percent();
         self.ui.set_slots_percent(slots_percent);
         self.plates.slots_up = combat.attack.is_some();
-        let target_at = self.target_on_screen(combat.attack.is_some() || combat.locked);
+        // The button for a lock goes under the name, so only an enemy's slots need room over it.
+        let target_at = self.target_on_screen(combat.attack.is_some());
         self.ui.set_target_at(target_at);
         self.ui.set_slots_above_bar(self.settings().nameplates);
         // Only over the plain HUD: not in a conversation or a cutscene.
@@ -3537,6 +3538,19 @@ impl Stage {
             x * size.0 as f32 / self.ui_width as f32,
             y * size.1 as f32 / 480.0,
         ))
+    }
+
+    /// Where a control of the HUD is, in layout units: left, top, width, height.
+    pub fn hud_place(&mut self, tag: &str) -> Option<[i32; 4]> {
+        self.ui.hud_place(tag)
+    }
+
+    /// What of the HUD a pixel of a window of `size` is on, for a test.
+    pub fn hud_tag_at(&mut self, pixel: (f32, f32), size: (u32, u32)) -> Option<String> {
+        self.ui.hud_hit(
+            pixel.0 * self.ui_width as f32 / size.0.max(1) as f32,
+            pixel.1 * 480.0 / size.1.max(1) as f32,
+        )
     }
 
     /// One line for a test driver watching the live window.

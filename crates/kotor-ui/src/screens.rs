@@ -41,6 +41,16 @@ pub const ATTACK_MODE_BUTTON: &str = "TB_STEALTH";
 const ATTACK_MODE_PICTURE: &str = "i_attack";
 /// The Pickup button's picture: see [`pickup_picture`].
 const PICKUP_PICTURE: &str = "kotorrs_pickup";
+/// The lock on the button of a locked door or container: the Security skill's picture without its frame, see [`lock_glyph`].
+pub const LOCK_PICTURE: &str = "kotorrs_lock";
+const LOCK_FROM: &str = "isk_security";
+/// How much of that picture is frame on each side, in 32nds of it: clear, black, white, black.
+const LOCK_FRAME: u32 = 6;
+const LOCK_FRAME_OF: u32 = 32;
+/// The button is this share of the slots' size. The owner: "about 25% smaller".
+const LOCK_BUTTON_PERCENT: i32 = 75;
+/// How far under the name it goes.
+const LOCK_BUTTON_GAP: i32 = 2;
 /// How many words that do not fit are kept for whoever asks.
 const MOST_TOO_BIG: usize = 64;
 /// The words of a conversation, as the reference video has them at 2:30: the file's are white.
@@ -240,6 +250,8 @@ const MINIMAP_ARROW: &str = "mm_barrow";
 /// Per-control changes a screen applies on top of the file: replacement fill, text, bar value, or hiding.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Patch {
+    /// Its picture upside down.
+    pub flipped: bool,
     pub fill: Option<String>,
     pub text: Option<String>,
     pub value: Option<(i32, i32)>,
@@ -578,6 +590,10 @@ impl<'a> Ui<'a> {
             let card = self.title_card();
             self.textures.insert(key.clone(), card.map(Rc::new));
         }
+        if key == LOCK_PICTURE && !self.textures.contains_key(&key) {
+            let glyph = self.texture_shared(LOCK_FROM).map(|i| lock_glyph(&i));
+            self.textures.insert(key.clone(), glyph.map(Rc::new));
+        }
         if !self.textures.contains_key(&key) {
             let mut img = self
                 .hd_picture(&key)
@@ -901,6 +917,16 @@ impl<'a> Ui<'a> {
         }
         if self.glow_on && HUD_TEXT_BOXES.contains(&c.tag.as_str()) {
             crate::glow::boxed(cv, r);
+        } else if patch.flipped {
+            if let Some(img) = self.texture_shared(patch.fill.as_deref().unwrap_or(&c.border.fill))
+            {
+                let full = [0, 0, img.width as i32, img.height as i32];
+                let over = Orient {
+                    flip_y: true,
+                    ..Orient::default()
+                };
+                cv.draw_image(&img, full, r, c.border.color, 1.0, over);
+            }
         } else if c.kind != 11 {
             self.draw_border(cv, &c.border, r, patch.fill.as_deref());
         }
@@ -1254,7 +1280,7 @@ impl<'a> Ui<'a> {
 
     pub(crate) fn hud_layout(&mut self, target_at: Option<(i32, i32)>) -> Option<Gui> {
         let mut gui = self.gui(HUD_GUI)?;
-        let slots = (self.slots_above_bar, self.slots_percent);
+        let slots = (self.slots_above_bar, self.slots_percent, self.combat.locked);
         place_hud(&mut gui.panel, self.width, target_at, slots);
         self.place_for_touch(&mut gui.panel);
         Some(gui)
@@ -1296,6 +1322,12 @@ impl<'a> Ui<'a> {
                         ..Patch::default()
                     },
                 );
+            }
+        }
+        // The file has the same picture for the arrow over a slot and the one under it, and so both pointed up.
+        for tag in all_tags(&gui.panel) {
+            if tag.starts_with("BTN_TARGETDOWN") || tag.starts_with("BTN_ACTIONDOWN") {
+                patches.entry(tag).or_default().flipped = true;
             }
         }
         let hide = |patches: &mut HashMap<String, Patch>, tag: String| {
@@ -1396,7 +1428,8 @@ impl<'a> Ui<'a> {
                 .map(|c| c.extent.clone());
             if let (Some(e), Some(words)) = (at, SLOT_WORDS.get(n)) {
                 let words = format!("{} : {}", self.strref(*words), n + 1);
-                let r = [e.left + 22, e.top + 21, 200, 14];
+                let beside = if self.combat.locked { e.width + 1 } else { 22 };
+                let r = [e.left + beside, e.top + e.height / 2 - 2, 200, 14];
                 self.draw_text(cv, SLOT_WORDS_FONT, &words, r, 17, [0.9; 3]);
             }
         }
@@ -1466,13 +1499,12 @@ impl<'a> Ui<'a> {
         let hostile = combat.attack.is_some() && self.target_at.is_some();
         let bar = hostile || (combat.locked && self.target_at.is_some());
         if bar {
-            for tag in [
-                "BTN_TARGET0",
-                "BTN_TARGETUP0",
-                "BTN_TARGETDOWN0",
-                "LBL_TARGET0",
-            ] {
-                show(tag.to_string());
+            show("BTN_TARGET0".to_string());
+            show("LBL_TARGET0".to_string());
+            // An enemy's first slot always has them. A lock's has them for a choice of ways.
+            if !combat.locked || combat.slots[0].as_ref().is_some_and(|s| s.more) {
+                show("BTN_TARGETUP0".to_string());
+                show("BTN_TARGETDOWN0".to_string());
             }
         }
         if hostile {
@@ -1673,8 +1705,15 @@ impl<'a> Ui<'a> {
         let gui = self.hud_layout(self.target_at)?;
         let shown = |tag: &str| match tag {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
-            "BTN_TARGET0" | "BTN_TARGETUP0" | "BTN_TARGETDOWN0" => {
+            "BTN_TARGET0" => {
                 (self.combat.attack.is_some() || self.combat.locked) && self.target_at.is_some()
+            }
+            "BTN_TARGETUP0" | "BTN_TARGETDOWN0" => {
+                let arrows =
+                    !self.combat.locked || self.combat.slots[0].as_ref().is_some_and(|s| s.more);
+                arrows
+                    && (self.combat.attack.is_some() || self.combat.locked)
+                    && self.target_at.is_some()
             }
             "BTN_TARGET1" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1" => {
                 self.combat.slots[1].is_some() && self.target_at.is_some()
@@ -1713,6 +1752,13 @@ impl<'a> Ui<'a> {
                     && y < (e.top + e.height) as f32
             })
             .map(|c| c.tag.clone())
+    }
+
+    /// Where a HUD control is, in layout units: left, top, width, height.
+    pub fn hud_place(&mut self, tag: &str) -> Option<[i32; 4]> {
+        let gui = self.hud_layout(self.target_at)?;
+        let e = &gui.find(tag)?.extent;
+        Some([e.left, e.top, e.width, e.height])
     }
 
     /// The layout point in the middle of a HUD control.
@@ -1971,7 +2017,7 @@ fn place_hud(
     panel: &mut Control,
     width: u32,
     target_at: Option<(i32, i32)>,
-    (slots_above, slots_percent): (bool, i32),
+    (slots_above, slots_percent, locked): (bool, i32, bool),
 ) {
     let k = SCREEN.1 as f32 / HUD_FILE_SIZE.1 as f32;
     let scale = |v: i32| (v as f32 * k).round() as i32;
@@ -1991,6 +2037,9 @@ fn place_hud(
         e.height = scale(e.height);
     }
     let Some((x, y)) = target_at else { return };
+    if locked {
+        place_lock_button(panel, (x, y), slots_above, slots_percent);
+    }
     // As thin as the video has it at 7:50, and not the file's 26 high: this sits over the fight.
     for c in &mut panel.children {
         let (down, high) = match c.tag.as_str() {
@@ -2007,6 +2056,9 @@ fn place_hud(
     let bar = bar.map_or(0, |c| c.extent.width);
     let first = panel.children.iter().find(|c| c.tag == "BTN_TARGET0");
     let up = first.map_or(0, |c| c.extent.top) - BAR_NAME_HIGH - BAR_HEALTH_HIGH - BAR_GAP;
+    if locked {
+        return;
+    }
     for c in &mut panel.children {
         if is_target_slot(&c.tag) {
             c.extent.left += x - bar / 2;
@@ -2014,6 +2066,39 @@ fn place_hud(
         }
     }
     scale_target_slots(panel, slots_above, slots_percent);
+}
+
+/// The button that tries a lock: under the name, in the middle of it, smaller than an enemy's slots. The owner: "Have the security
+/// button and the security button with the arrows be centred underneath the name of the door or container". All of it stays
+/// in the middle, though the file has the lower arrow a unit off.
+fn place_lock_button(panel: &mut Control, (x, y): (i32, i32), plate: bool, percent: i32) {
+    const PARTS: [&str; 4] = [
+        "BTN_TARGET0",
+        "BTN_TARGETUP0",
+        "BTN_TARGETDOWN0",
+        "LBL_TARGET0",
+    ];
+    let name_high = if plate {
+        crate::plates::PLATE_TEXT_HIGH
+    } else {
+        TARGET_BAR_HIGH
+    };
+    let top = y + name_high + LOCK_BUTTON_GAP;
+    let k = (percent * LOCK_BUTTON_PERCENT) as f32 / 10000.0;
+    let scaled = |v: i32| (v as f32 * k).round() as i32;
+    let Some(from) = panel.children.iter().find(|c| c.tag == PARTS[0]) else {
+        return;
+    };
+    let from = from.extent.top;
+    for c in &mut panel.children {
+        if PARTS.contains(&c.tag.as_str()) {
+            let e = &mut c.extent;
+            e.top = top + scaled(e.top - from);
+            e.width = scaled(e.width);
+            e.height = scaled(e.height);
+            e.left = x - e.width / 2;
+        }
+    }
 }
 
 fn is_target_slot(tag: &str) -> bool {
@@ -2186,6 +2271,22 @@ fn pickup_picture() -> Image {
     }
 }
 
+/// The Security skill's picture without the frame round it: what is left is the lock, with nothing round it to see.
+fn lock_glyph(from: &Image) -> Image {
+    let edge = from.width * LOCK_FRAME / LOCK_FRAME_OF;
+    let (width, height) = (from.width - 2 * edge, from.height - 2 * edge);
+    let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+    for y in edge..edge + height {
+        let start = ((y * from.width + edge) * 4) as usize;
+        rgba.extend_from_slice(&from.rgba[start..start + (width * 4) as usize]);
+    }
+    Image {
+        width,
+        height,
+        rgba,
+    }
+}
+
 /// Make an added picture drawable as a plain one: how bright a pixel is becomes how much of it shows.
 fn brightness_to_alpha(img: &mut Image) {
     for p in img.rgba.chunks_mut(4) {
@@ -2210,4 +2311,35 @@ fn load_texture(inst: &mut Install, name: &str) -> Option<Image> {
             .map(|t| crate::font::flip_rows(t.image));
     }
     kotor_image::parse_tga(&inst.read(name, kotor_core::ResType::TGA).ok()?).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_lock_comes_out_of_its_frame() {
+        // A frame of white, and a mark of grey in the middle.
+        let (mut rgba, side) = (Vec::new(), 32u32);
+        for y in 0..side {
+            for x in 0..side {
+                let far = x.min(y).min(side - 1 - x).min(side - 1 - y);
+                rgba.extend_from_slice(&if far < LOCK_FRAME {
+                    [255, 255, 255, 255]
+                } else {
+                    [90, 90, 90, 255]
+                });
+            }
+        }
+        let glyph = lock_glyph(&Image {
+            width: side,
+            height: side,
+            rgba,
+        });
+        assert_eq!((glyph.width, glyph.height), (20, 20));
+        assert!(
+            glyph.rgba.chunks(4).all(|p| p[0] == 90),
+            "none of the frame"
+        );
+    }
 }

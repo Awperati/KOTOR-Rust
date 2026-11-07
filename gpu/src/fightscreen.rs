@@ -42,7 +42,7 @@ enum SlotDoes {
 
 /// The Security skill's name in the talk table.
 const STR_SECURITY: u32 = 329;
-const SECURITY_PICTURE: &str = "isk_security";
+const SECURITY_PICTURE: &str = kotor_ui::LOCK_PICTURE;
 
 /// One thing a slot offers.
 struct SlotChoice {
@@ -783,6 +783,12 @@ impl Stage {
     /// A picture of the interface by name, for a test.
     pub fn ui_texture_for_test(&mut self, name: &str) -> Option<kotor_image::Image> {
         self.ui.texture(name).cloned()
+    }
+
+    /// What the first slot under the target shows, for a test.
+    pub fn combat_words_of_slot0(&mut self) -> Option<SlotShown> {
+        let action = self.target_view_action();
+        self.combat_view(action).slots[0].clone()
     }
 
     /// What the name bar says of the slot under the cursor, for a test.

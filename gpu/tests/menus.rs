@@ -1755,6 +1755,157 @@ fn a_locked_door_is_tried_with_the_skill_and_a_spike_only_by_one_who_has_points(
     assert!(!s.game.world.object(door).unwrap().locked);
 }
 
+/// How much of each row of a control of the HUD is black, from the top: an arrow on its slot.
+fn black_rows(s: &Stage, place: [i32; 4], size: (u32, u32)) -> Vec<i32> {
+    let o = s.overlay().unwrap();
+    let (across, down) = (
+        size.0 as f32 / s.ui_layout_width() as f32,
+        size.1 as f32 / 480.0,
+    );
+    let left = (place[0] as f32 * across) as u32;
+    let right = ((place[0] + place[2]) as f32 * across) as u32;
+    let top = (place[1] as f32 * down) as u32;
+    let bottom = ((place[1] + place[3]) as f32 * down) as u32;
+    (top..bottom)
+        .map(|y| {
+            (left..right)
+                .filter(|x| {
+                    let p = &o.rgba[((y * o.width + x) * 4) as usize..][..4];
+                    p[3] > 200 && p[0] < 30 && p[1] < 30 && p[2] < 30
+                })
+                .count() as i32
+        })
+        .collect()
+}
+
+#[test]
+fn the_button_for_a_lock_is_small_and_in_the_middle_under_the_name_and_its_arrows_point_apart() {
+    let Some((mut s, _)) = in_game("lock_button") else {
+        return;
+    };
+    let Some(door) = beside_a_locked_door(&mut s) else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let size = (3840, 2160);
+    s.set_view(size);
+    s.game.world.object_mut(pc).unwrap().skills = vec![0; 8];
+    s.game.world.object_mut(pc).unwrap().skills[6] = 20;
+    let settle = |s: &mut Stage| {
+        for _ in 0..10 {
+            s.yaw = std::f32::consts::PI;
+            if s.game.world.in_dialogue() {
+                s.number_key(1);
+                s.continue_line();
+            }
+            s.update(DT);
+        }
+    };
+    let check = |s: &mut Stage| {
+        let plate = s
+            .plates_drawn()
+            .iter()
+            .find(|p| p.framed)
+            .expect("the door's name")
+            .clone();
+        let button = s.hud_place("BTN_TARGET0").unwrap();
+        assert_eq!(
+            button[0] + button[2] / 2,
+            plate.x,
+            "in the middle of the name"
+        );
+        assert!(
+            button[1] >= plate.y + plate.high(),
+            "under the name: {button:?}"
+        );
+        assert!(button[1] <= plate.y + plate.high() + 6, "and next to it");
+        let lock = s.hud_place("LBL_TARGET0").unwrap();
+        assert_eq!(lock[0] + lock[2] / 2, plate.x);
+        assert!(
+            lock[0] >= button[0] - 1 && lock[0] + lock[2] <= button[0] + button[2] + 1,
+            "the lock is within the button: {lock:?} {button:?}"
+        );
+        // The file's slot is 28 by 47, and it still grows and shrinks with the distance as an enemy's does.
+        let line = s.state_line();
+        let percent: f32 = line
+            .split_whitespace()
+            .find_map(|w| w.strip_prefix("slotsize="))
+            .unwrap()
+            .parse()
+            .unwrap();
+        let k = percent / 100.0 * 0.75;
+        assert_eq!(button[2], (28.0 * k).round() as i32, "{percent}");
+        assert_eq!(button[3], (47.0 * k).round() as i32, "{percent}");
+    };
+
+    // The plain one.
+    settle(&mut s);
+    assert_eq!(
+        s.combat_words_of_slot0().map(|p| p.picture).as_deref(),
+        Some(kotor_ui::LOCK_PICTURE)
+    );
+    assert!(!s.combat_words_of_slot0().unwrap().more, "no arrows yet");
+    check(&mut s);
+    // With nothing else to offer it has no arrows, and they are not there to click.
+    let up = s.hud_pixel("BTN_TARGETUP0", size).unwrap();
+    assert_eq!(s.hud_tag_at(up, size).as_deref(), Some("BTN_TARGET0"));
+    // A click on it tries the lock.
+    let lock = s.ui_texture_for_test(kotor_ui::LOCK_PICTURE).unwrap();
+    let corner = &lock.rgba[..4];
+    assert_eq!(corner[3], 0, "no frame at its corner");
+    assert_eq!((lock.width, lock.height), (20, 20));
+
+    // With a spike, the arrows.
+    carrying(&mut s, "g_i_secspike02");
+    settle(&mut s);
+    assert!(s.combat_words_of_slot0().unwrap().more);
+    check(&mut s);
+    let up = s.hud_pixel("BTN_TARGETUP0", size).unwrap();
+    assert_eq!(s.hud_tag_at(up, size).as_deref(), Some("BTN_TARGETUP0"));
+    let (up, down) = (
+        s.hud_place("BTN_TARGETUP0").unwrap(),
+        s.hud_place("BTN_TARGETDOWN0").unwrap(),
+    );
+    assert_eq!(
+        up[0] + up[2] / 2,
+        down[0] + down[2] / 2,
+        "one over the other"
+    );
+    // One is the other turned over, and the picture is no mirror of itself.
+    let upper = black_rows(&s, up, size);
+    let mut lower = black_rows(&s, down, size);
+    assert!(upper.iter().sum::<i32>() > 100, "{upper:?}");
+    let apart = |a: &[i32], b: &[i32]| a.iter().zip(b).map(|(a, b)| (a - b).abs()).sum::<i32>();
+    let same_way = apart(&upper, &lower);
+    lower.reverse();
+    let turned_over = apart(&upper, &lower);
+    assert!(
+        turned_over * 3 < same_way,
+        "turned over {turned_over}, the same way {same_way}: {upper:?} {lower:?}"
+    );
+
+    // Without nameplates it goes under the bar the same way.
+    s.toggle_nameplates();
+    settle(&mut s);
+    let button = s.hud_place("BTN_TARGET0").unwrap();
+    let bar = s.hud_place("LBL_NAMEBG").unwrap();
+    assert_eq!(button[0] + button[2] / 2, bar[0] + bar[2] / 2);
+    assert!(button[1] >= bar[1] + kotor_ui::TARGET_BAR_HIGH);
+
+    // A click on it, in its new place, tries the lock.
+    let at = s.hud_pixel("LBL_TARGET0", size).unwrap();
+    s.hover(at, size);
+    s.click(at, size);
+    settle(&mut s);
+    for _ in 0..30 {
+        settle(&mut s);
+        if !s.game.world.object(door).unwrap().locked {
+            break;
+        }
+    }
+    assert!(!s.game.world.object(door).unwrap().locked);
+}
+
 #[test]
 fn a_medpac_is_used_from_the_quick_slot() {
     let Some((mut s, _)) = in_game("quick_slot") else {

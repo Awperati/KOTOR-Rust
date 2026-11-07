@@ -267,5 +267,9 @@ The Abilities screen's Feats tab has no numbers, so its list takes their room an
 
 The owner: "Can you add a top right blue button with a gamepad icon for on-screen controls playable on mobile". `gpu/src/touchscreen.rs` says what each finger has hold of, and `crates/kotor-ui/src/touch.rs` places and draws the layer. See `docs/PLAY.md`. The HUD in a window narrower than 4:3 used to run off the right side, and now is squeezed in, as a click already took it to be. Tests: `gpu/tests/touch.rs`. Driver: `scripts/drive_touch.ps1`, with fingers through `--touch-script` because a driver cannot post real touch messages. Frames: `gpu/examples/touch_shots.rs`. **Not checked:** a real touch screen, so `WindowEvent::Touch` itself has not run. No mobile build exists.
 
+## The button for a lock
+
+The owner's, on a door's picture: under the name and in the middle of it, a quarter smaller, with arrows or not, on doors and containers. An enemy's slots stay as they were. The lock is the Security skill's picture without its frame, cut out at run time (`LOCK_PICTURE`). The lower arrow of every slot pointed up, as the file has the one picture for both: it is turned over now, under an enemy too and on the quick slots. Frames: `gpu/examples/lock_shots.rs`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.
