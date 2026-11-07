@@ -47,12 +47,12 @@ fn fight(
             g.world.dialogue_choose(0);
         }
     }
-    // Where a player and Trask stand when the door opens on him.
+    // Where the pilot's walk-in has them when Trask asks.
     let trask = g.world.by_tag("end_trask")[0];
     let bandon = g.world.by_tag("end_bandon")[0];
-    g.world.teleport(trask, [42.1, 107.2, 0.0]);
-    g.world.teleport(bandon, [42.2, 103.8, 0.0]);
-    g.world.teleport(pc, [42.6, 109.0, 0.0]);
+    g.world.teleport(trask, [42.6, 111.9, 0.0]);
+    g.world.teleport(bandon, [42.2, 100.6, 0.0]);
+    g.world.teleport(pc, [43.6, 121.0, 0.0]);
     let scene = g.world.by_tag("end01_sceneobj03")[0];
     g.world.queue(
         scene,

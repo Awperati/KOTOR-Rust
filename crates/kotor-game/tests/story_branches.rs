@@ -200,3 +200,51 @@ fn together_gives_light_points_a_wounded_bandon_who_flees_and_trask_stays() {
         "the door closes as in the game"
     );
 }
+
+/// The first module's scripts hold the player at 1 hit point till this scene is over. Only the fight beside Trask lifts it early:
+/// the others leave it to the game's scripts, and so does the end of every answer.
+#[test]
+fn the_hold_on_the_player_is_as_the_game_has_it_outside_the_fight() {
+    let hold = |g: &Game| g.world.object(g.world.pc).unwrap().min_one_hp;
+    // The game's own scene, from the file.
+    let Some(mut off) = at_scene(false) else {
+        return;
+    };
+    until_line(&mut off, "another Dark Jedi");
+    let held_in_scene = hold(&off);
+    until_over(&mut off);
+    let after_scene = hold(&off);
+
+    for n in [0, 2] {
+        let mut g = at_scene(true).unwrap();
+        until_line(&mut g, QUESTION);
+        assert_eq!(hold(&g), held_in_scene, "at the question");
+        g.world.dialogue_choose(n);
+        until_over(&mut g);
+        assert_eq!(
+            hold(&g),
+            after_scene,
+            "answer {n} ends as the game's scene does"
+        );
+    }
+
+    // The fight lifts it, and it stays lifted when the scene is over.
+    let mut g = at_scene(true).unwrap();
+    until_line(&mut g, QUESTION);
+    g.world.dialogue_choose(1);
+    until_over(&mut g);
+    g.step_once();
+    assert!(!hold(&g), "in the fight the player can die");
+    let bandon = by_tag(&g, "end_bandon").unwrap();
+    g.world.object_mut(bandon).unwrap().hp = 1;
+    for _ in 0..(5 * 60) {
+        g.step_once();
+    }
+    until_line(&mut g, "hold this corridor");
+    until_over(&mut g);
+    assert_eq!(
+        hold(&g),
+        after_scene,
+        "and afterwards it is as the game has it"
+    );
+}

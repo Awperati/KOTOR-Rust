@@ -173,3 +173,47 @@ fn the_trask_choice_shows_its_words_and_goes_on_with_a_click() {
         "and it is written down"
     );
 }
+
+/// From the start of the game, on foot, by the pilot: Trask asks, by the scene's own camera, and Bandon is in view.
+#[test]
+fn walking_in_trask_asks_with_bandon_in_view() {
+    let Some(mut s) = at_start("walk_in") else {
+        return;
+    };
+    s.speed = 16.0;
+    s.pilot = Some(Autopilot::new());
+    s.pilot_takes_branches = true;
+    let question = |s: &Stage| {
+        s.game
+            .world
+            .dialogue_view()
+            .is_some_and(|v| v.1 == "What should we do?")
+    };
+    let began = std::time::Instant::now();
+    while !question(&s) && began.elapsed().as_secs() < 180 {
+        // Slowly once the scene has begun: the pilot would be through the question within a step.
+        if s.game
+            .world
+            .dialogue_conversation()
+            .is_some_and(|c| c.name == "end_cut01")
+        {
+            s.speed = 1.0;
+        }
+        s.update(DT);
+    }
+    assert!(question(&s), "the pilot never came to the question");
+    s.pilot = None;
+    let (scene, camera, _) = s.frame_scene();
+    assert!(!scene.meshes.is_empty());
+    let bandon = s.game.world.by_tag("end_bandon")[0];
+    let at = s.game.world.object(bandon).unwrap().position;
+    let [x, y] = s.figure_on_window(&camera, [at[0], at[1], at[2] + 1.0]);
+    assert!(
+        x.abs() < 1.0 && y.abs() < 1.0,
+        "Bandon is on the window: {x} {y}"
+    );
+    let e = camera.eye;
+    let t = camera.target;
+    let ahead = (t[0] - e[0]) * (at[0] - e[0]) + (t[1] - e[1]) * (at[1] - e[1]);
+    assert!(ahead > 0.0, "and in front of the camera");
+}

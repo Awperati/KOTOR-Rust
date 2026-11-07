@@ -22,10 +22,10 @@ pub const STORY_POINTS: i32 = 5;
 /// The fight beside Trask. The owner asked for half health, then for "intermediate difficulty. Definitely harder than the sith
 /// troopers". His file's 40 hit points are gone in 4 s, so he has more here, and starts at half of them. A blow of his takes a
 /// share of the player's whole health: by his own damage a soldier always won and a scoundrel never did. Trask adds to his blows.
-/// Won of 100 by `bandon_odds`, level 1, the player only attacking: soldier 71, scout 41, scoundrel 33, in 16 to 18 s. One Sith
-/// trooper: 100, 95 and 92, in 12 to 13 s.
+/// Won of 100 by `bandon_odds`, level 1, the player only attacking, from where a walk-in stands: soldier 78, scout 44, scoundrel
+/// 35, in 16 to 18 s. One Sith trooper: 100, 95 and 92, in 12 to 13 s.
 pub const BANDON_HEALTH: f32 = 0.5;
-pub const BANDON_FULL_HEALTH: i32 = 145;
+pub const BANDON_FULL_HEALTH: i32 = 135;
 pub const BANDON_BLOWS: f32 = 0.22;
 pub const TRASK_DAMAGE: i32 = 6;
 /// The owner's clip, by this name in his animation folder; until it exists a stock attack stands in.
@@ -50,6 +50,8 @@ const FIGHT: &str = "story:fight";
 #[derive(Clone, Debug, Default)]
 pub struct StoryState {
     fight_started: bool,
+    /// The first module's scripts held the player at 1 hit point when the fight began.
+    player_was_held: bool,
     /// Seconds until Bandon, running, is gone.
     flee_left: Option<f32>,
     /// The next `end_cut01` is Trask's word after the fight.
@@ -135,12 +137,17 @@ fn add_the_question(d: &mut Dialog) {
         reply("We can beat him together!", Some(FIGHT), republic),
     );
     let unsure = add(&mut d.replies, reply("I'm not sure...", None, TRASK_LINE));
+    // With the game's line's camera: the one the scene has for the moment he sees Bandon.
+    let camera = d.entries[TRASK_LINE].extra.clone();
     let question = add(
         &mut d.entries,
-        trask_says(
-            "What should we do?",
-            vec![link(escape), link(together), link(unsure)],
-        ),
+        Node {
+            extra: camera,
+            ..trask_says(
+                "What should we do?",
+                vec![link(escape), link(together), link(unsure)],
+            )
+        },
     );
     d.replies[REPLY_BEFORE_LINE].links = vec![link(question)];
 }
@@ -281,7 +288,8 @@ impl World {
             }
             // The first module's scripts keep the player alive till this scene is over: this fight is a real one.
             if let Some(o) = self.object_mut(pc) {
-                o.min_one_hp = false;
+                let held = std::mem::replace(&mut o.min_one_hp, false);
+                self.story.player_was_held = held;
             }
             self.events
                 .push("story: Bandon, wounded, fights".to_string());
@@ -304,6 +312,11 @@ impl World {
         self.global_booleans.remove(FIGHT_FLAG);
         self.events.push("story: Bandon flees".to_string());
         let pc = self.pc;
+        // The fight is over: as the game's own scripts had it, for them to lift when they do.
+        let held = self.story.player_was_held;
+        if let Some(o) = self.object_mut(pc) {
+            o.min_one_hp = held;
+        }
         let trask = self.first_by_tag(TRASK);
         for id in [Some(bandon), Some(pc), trask].into_iter().flatten() {
             self.stop_attacking(id);

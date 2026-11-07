@@ -388,6 +388,8 @@ pub struct Stage {
     pub speed: f32,
     /// A scripted player at the controls. It alone moves conversations on.
     pub pilot: Option<kotor_game::Autopilot>,
+    /// A test's pilot walks into the added story branches too. Others keep the game's own scenes.
+    pub pilot_takes_branches: bool,
     inst: Install,
     ui: Ui<'static>,
     dir: PathBuf,
@@ -606,6 +608,7 @@ impl Stage {
             game: Game::new(world),
             speed: 1.0,
             pilot: None,
+            pilot_takes_branches: false,
             inst,
             ui: Ui::new(ui_inst),
             dir,
@@ -916,7 +919,8 @@ impl Stage {
         };
         let speed = self.speed;
         // A scripted player keeps to the game's own scenes, so that its route and digests do not move.
-        self.game.world.extended_story = self.settings().extended_story && self.pilot.is_none();
+        self.game.world.extended_story =
+            self.settings().extended_story && (self.pilot.is_none() || self.pilot_takes_branches);
         if let Some((who, clip)) = self.game.world.story.cue.take() {
             // The owner's own clip, once he has made it. Till then the game's stock attack has played.
             if kotor_render::custom_clip::get(clip).is_some() {
