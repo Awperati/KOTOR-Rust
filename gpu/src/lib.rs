@@ -16,6 +16,7 @@ pub fn build_line() -> String {
 
 pub mod effects;
 pub mod stage;
+pub mod texture_override;
 mod watch;
 pub use watch::{watch, Watch};
 

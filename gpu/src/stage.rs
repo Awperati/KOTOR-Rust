@@ -454,6 +454,9 @@ pub struct Stage {
     held: HashMap<ObjId, Option<Rc<Model>>>,
     doors: HashMap<ObjId, Option<Rc<DoorBody>>>,
     textures: HashMap<String, Option<Image>>,
+    /// The owner's folder of textures that stand in for the game's, and what was wrong with the pictures in it.
+    texture_folder: Option<std::path::PathBuf>,
+    texture_problems: Vec<String>,
     /// Camera direction in radians (0 = looking along +x) and distance behind the player.
     pub yaw: f32,
     pub distance: f32,
@@ -633,6 +636,8 @@ impl Stage {
             held: HashMap::new(),
             doors: HashMap::new(),
             textures: HashMap::new(),
+            texture_folder: crate::texture_override::folder().filter(|d| d.is_dir()),
+            texture_problems: Vec::new(),
             yaw: 0.0,
             distance: CAMERA_BEHIND,
             turn: 0.0,
@@ -1853,13 +1858,33 @@ impl Stage {
         let conventional = self.conventional_underwear;
         let plans = &mut self.underwear_plans;
         let necks = &mut self.neck_plans;
-        self.textures
+        let folder = self.texture_folder.clone();
+        let problems = &mut self.texture_problems;
+        let mut problem_found = false;
+        let got = self
+            .textures
             .entry(name.to_string())
             .or_insert_with(|| {
                 let name = plain.as_str();
-                let mut img = hd
+                let stock = hd
                     .and_then(|d| upscaled(&d, name))
-                    .or_else(|| kotor_render::load_texture(inst, name))?;
+                    .or_else(|| kotor_render::load_texture(inst, name));
+                // The owner's own picture of the texture stands in for all of this: it is what he painted.
+                if let Some(folder) = &folder {
+                    match crate::texture_override::load(
+                        folder,
+                        name,
+                        stock.as_ref().map(|s| (s.width, s.height)),
+                    ) {
+                        Ok(Some(own)) => return Some(own),
+                        Ok(None) => {}
+                        Err(why) => {
+                            problems.push(why);
+                            problem_found = true;
+                        }
+                    }
+                }
+                let mut img = stock?;
                 let body = kotor_render::underwear::body_of_texture(name).filter(|_| conventional);
                 if let Some(body) = body {
                     let plan = plans
@@ -1883,7 +1908,44 @@ impl Stage {
                 }
                 Some(img)
             })
-            .clone()
+            .clone();
+        if problem_found {
+            self.write_texture_problems();
+        }
+        got
+    }
+
+    /// `texture_problems.txt` in the owner's folder: which of his pictures the game is not using, and why.
+    fn write_texture_problems(&self) {
+        let Some(folder) = &self.texture_folder else {
+            return;
+        };
+        let mut text =
+            String::from("The game is using its own texture for each picture named here:\n");
+        for p in &self.texture_problems {
+            text.push_str(p);
+            text.push('\n');
+        }
+        // Only a help to the reader: the game goes on without it.
+        let _ = std::fs::write(folder.join("texture_problems.txt"), text);
+    }
+
+    /// F8: look at the owner's textures again. Pictures already drawn are asked for afresh.
+    pub fn reload_textures(&mut self) {
+        self.texture_folder = crate::texture_override::folder().filter(|d| d.is_dir());
+        self.textures.clear();
+        self.texture_problems.clear();
+        if let Some(folder) = &self.texture_folder {
+            let _ = std::fs::write(
+                folder.join("texture_problems.txt"),
+                "No problems found so far: the game is using your pictures.\n",
+            );
+        }
+    }
+
+    /// What was wrong with the owner's textures when last read.
+    pub fn texture_problems(&self) -> &[String] {
+        &self.texture_problems
     }
 
     /// A picture for the frame, without making it wait. An upscaled one is read on a thread and the stock one stands in; a few

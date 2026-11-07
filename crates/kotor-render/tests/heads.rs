@@ -331,3 +331,58 @@ fn a_stance_keeps_the_shoulders_apart() {
         }
     }
 }
+
+/// "At certain angles the neck detaches" (owner, a male hero in a jacket seen from above and behind). The head rides its body
+/// rigidly, so no pose should pull the neck away from the collar: in every clip, for every body and outfit letter, the neck's
+/// lowest ring is as far from the body as at rest, to within 5 mm. (A gap that is there at rest is the collar's own, and is
+/// not covered here.)
+#[test]
+fn no_pose_pulls_the_neck_away_from_the_collar() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let gap = |s: &Scene, neck: &Vertices, head_tex: &str| {
+        let mut worst = 0.0f32;
+        for (a, b) in neck {
+            let p = s.meshes[*a].positions[*b];
+            let near = s
+                .meshes
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !is_head(s, *i, head_tex))
+                .flat_map(|(_, m)| m.positions.iter())
+                .map(|q| apart(*q, p))
+                .fold(f32::MAX, f32::min);
+            worst = worst.max(near);
+        }
+        worst
+    };
+    for row in [92, 137, 152, 167] {
+        for letter in [None, Some('b'), Some('c'), Some('f'), Some('g')] {
+            let Ok(rig) = rig_for_outfit(&mut inst, row, 1, letter) else {
+                continue;
+            };
+            let head_tex = rig.head_texture().unwrap().to_string();
+            let rest = rig.pose(None).unwrap();
+            let (neck, _) = join_vertices(&rest, &head_tex);
+            let at_rest = gap(&rest, &neck, &head_tex);
+            for anim in [
+                "pause1", "g7r1", "g8r1", "walk", "run", "hturnl", "hturnr", "listen", "b7a1",
+            ] {
+                let Some(len) = rig.animation_length(anim) else {
+                    continue;
+                };
+                for k in 0..4 {
+                    let s = rig.pose(Some((anim, len * k as f32 / 4.0))).unwrap();
+                    let g = gap(&s, &neck, &head_tex);
+                    assert!(
+                        (g - at_rest).abs() < 0.005,
+                        "row {row} {letter:?} {anim}: {g:.3} m from the body, {at_rest:.3} at rest"
+                    );
+                }
+            }
+        }
+    }
+}
