@@ -35,8 +35,7 @@ foreach ($case in @(@($true, $false), @($true, $true), @($false, $false), @($fal
     Remove-Item $script:stateFile -ErrorAction SilentlyContinue
     $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","danm14aa","--place","165.17,136.66,1.85,1.767","--skip-menu","--state-log","--settings",$file,"--size",$Size,"--frames","100000")
     $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList $argv -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_look.err" -PassThru -NoNewWindow
-    for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-    $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+    $h = WaitWindow $v; [Drv]::NeverActive($h)
     WaitLog
     $until = (Get-Date).AddSeconds(30)
     do { Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]; $s = State } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)

@@ -6,8 +6,7 @@ param([string]$Shots)
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_grenades.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--state-log","--autopilot","--pilot-until","fight","--grenadier","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_grenades.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 
 WaitLog

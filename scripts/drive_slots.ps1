@@ -17,8 +17,7 @@ function Open([double]$metres) {
   $script:stateFile = "$scratch\kotor_slots_$metres.out"
   Remove-Item $script:stateFile -ErrorAction SilentlyContinue
   $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","danm14aa","--skip-menu","--state-log","--place","165.17,136.66,1.85,1.767","--foe","$metres","--size",$Size,"--frames","2000000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_slots.err" -PassThru -NoNewWindow
-  for ($i = 0; $i -lt 900 -and $script:v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $script:v.Refresh() }
-  $script:h = $script:v.MainWindowHandle
+  $script:h = WaitWindow $script:v
   [Drv]::NeverActive($script:h)
   WaitLog
   $until = (Get-Date).AddSeconds(30)

@@ -6,8 +6,7 @@ param([string]$Shots)
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_keys.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--no-early-force","--skip-menu","--state-log","--frames","100000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_keys.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 # Virtual key and scan code: the number row, and the keypad's as it reports them with Num Lock on.
 $ROW = @(@(0x31,0x02),@(0x32,0x03),@(0x33,0x04),@(0x34,0x05),@(0x35,0x06),@(0x36,0x07),@(0x37,0x08),@(0x38,0x09),@(0x39,0x0A))

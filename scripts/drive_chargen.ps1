@@ -7,8 +7,7 @@ $BACK = @(0x08, 0x0E); $ESC = @(0x1B, 0x01)
 function Start-Viewer {
   $script:stateFile = "$scratch\kotor_chargen.out"
   $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_chargen.err" -PassThru -NoNewWindow
-  for ($i = 0; $i -lt 600 -and $script:v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $script:v.Refresh() }
-  $script:h = $script:v.MainWindowHandle; [Drv]::NeverActive($script:h)
+  $script:h = WaitWindow $script:v; [Drv]::NeverActive($script:h)
   "window $($script:h)"
   WaitLog
 }

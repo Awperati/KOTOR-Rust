@@ -8,8 +8,7 @@ param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } els
 $script:ClickScale = [double]($Size -split "x")[1] / 720.0
 $script:stateFile = "$scratch\kotor_turret_hands.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","M12ab","--skip-menu","--state-log","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_turret_hands.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 WaitLog
 Hover 640 360
 $s = State
@@ -28,8 +27,7 @@ Stop-Process -Id $v.Id -Force
 
 $script:stateFile = "$scratch\kotor_turret.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","M12ab","--skip-menu","--state-log","--auto-aim","--global","K_KOTOR_MASTER=10,K_TURRET_SKYBOX=5","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_turret.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 $SPACE = @(0x20, 0x39)
 

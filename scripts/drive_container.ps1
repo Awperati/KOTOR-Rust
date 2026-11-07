@@ -5,8 +5,7 @@ param([string]$Shots)
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_container.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--no-early-force","--state-log","--skip-menu","--near","end_locker01","--loot","g_i_credits001*50,g_w_lngswrd01,g_i_medeqpmnt01*3","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_container.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 
 $E = 0x45, 0x12

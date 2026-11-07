@@ -7,8 +7,7 @@ param([string]$Shots)
 . "$PSScriptRoot\drive_common.ps1"
 $script:stateFile = "$scratch\kotor_level.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--autopilot","--pilot-until","level","--frames","2000000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_level.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 $KEY_C = @(0x43, 0x2E)
 function ToPixel($s, [string]$place) {

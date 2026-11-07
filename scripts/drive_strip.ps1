@@ -11,8 +11,7 @@ $look = if ($Appearance -ge 0) { @("--appearance", "$Appearance") } else { @() }
 if ($Underwear) { $look += @("--underwear", "`"$Underwear`"") }
 $mode = if ($Scenario -eq "fight") { @("--autopilot", "--no-auto-pause", "--no-early-force", "--grenadier") } else { @("--no-chargen", "--skip-menu") }
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList (@("--mute", "--no-tutorials", "--state-log", "--size", $Size, "--frames", "400000") + $mode + $look) -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_strip_$PID.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 WaitLog
 $until = (Get-Date).AddSeconds(300)

@@ -9,8 +9,7 @@ $tag = $wide
 $script:stateFile = "$scratch\kotor_plates.out"
 Remove-Item $script:stateFile -ErrorAction SilentlyContinue
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--autopilot","--pilot-until","fight","--size",$Size,"--frames","2000000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_plates.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 900 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 function ToPixel($s, [string]$place) {
   $p = $place -split ','
   @([int]([double]$p[0] * $wide / [double]$s.width), [int]([double]$p[1] * $tall / 480.0))

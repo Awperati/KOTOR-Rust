@@ -22,8 +22,7 @@ function Sheet($name) {
 function Answer($start, $key, $name) {
   Remove-Item $script:stateFile -ErrorAction SilentlyContinue
   $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","tar_m02ab","--skip-menu","--state-log","--alignment","$start","--near","Drunk021","--frames","100000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_alignment.err" -PassThru -NoNewWindow
-  for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-  $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+  $h = WaitWindow $v; [Drv]::NeverActive($h)
   Set-Variable -Name h -Value $h -Scope Script
   "window $h"
   WaitLog

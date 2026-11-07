@@ -7,8 +7,7 @@ $look = if ($Appearance -ge 0) { @("--appearance", "$Appearance") } else { @() }
 $style = if ($Original) { @("--original-underwear") } else { @() }
 if ($Underwear) { $look += @("--underwear", "`"$Underwear`"") }
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList (@("--mute", "--no-tutorials", "--state-log", "--no-chargen", "--skip-menu", "--size", $Size, "--frames", "40000") + $look + $style) -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_cinematic_$PID.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 $SPACE = @(0x20, 0x39)
 WaitLog

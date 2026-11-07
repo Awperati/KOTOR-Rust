@@ -6,8 +6,7 @@ param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } els
 $script:ClickScale = [double]($Size -split "x")[1] / 720.0
 $script:stateFile = "$scratch\kotor_race.out"
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--state-log","--skip-menu","--module","tar_m03mg","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_race.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 $SPACE = @(0x20, 0x39); $D = @(0x44, 0x20); $A = @(0x41, 0x1E)
 # speed,gear,x,y,time

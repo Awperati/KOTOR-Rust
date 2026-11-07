@@ -13,6 +13,19 @@ Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
 using System; using System.Drawing; using System.Runtime.InteropServices;
 public static class Drv {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+  // A hidden window has no main window to its process, so it is looked for by its process and its title.
+  public static IntPtr ByProcess(int pid) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows((h, l) => {
+      uint p; GetWindowThreadProcessId(h, out p);
+      if ((int)p == pid) { var s = new System.Text.StringBuilder(256); GetWindowText(h, s, 256); if (s.ToString().StartsWith("kotor-rs")) found = h; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
   [DllImport("user32.dll")] static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
@@ -38,6 +51,16 @@ public static class Drv {
   }
 }
 "@
+# The viewer's window once it is up, hidden or not. With KOTOR_HIDDEN set the viewer opens none that can be seen, and a driver
+# runs just the same: messages are posted to the handle. So nothing shows while the owner is at the machine.
+function WaitWindow($process) {
+  for ($i = 0; $i -lt 900; $i++) {
+    $found = [Drv]::ByProcess($process.Id)
+    if ($found -ne [IntPtr]::Zero) { return $found }
+    Start-Sleep -Milliseconds 50
+  }
+  [IntPtr]::Zero
+}
 # The foreground window, watched at every action and every look at the state: who had it, and whether it was ever ours.
 $script:focusChanges = New-Object System.Collections.ArrayList
 $script:lastForeground = [IntPtr]::Zero

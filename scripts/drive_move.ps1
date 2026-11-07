@@ -17,8 +17,7 @@ function Open($name, $module, $extra) {
   Remove-Item $script:stateFile -ErrorAction SilentlyContinue
   $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module",$module,"--skip-menu","--state-log","--size",$Size,"--frames","100000") + $extra
   $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList $argv -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_move_$name.err" -PassThru -NoNewWindow
-  for ($i = 0; $i -lt 600 -and $script:v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $script:v.Refresh() }
-  $script:h = $script:v.MainWindowHandle; [Drv]::NeverActive($script:h)
+  $script:h = WaitWindow $script:v; [Drv]::NeverActive($script:h)
   WaitLog
   # Whatever is said on arrival.
   $until = (Get-Date).AddSeconds(20)

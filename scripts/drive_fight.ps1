@@ -8,8 +8,7 @@ param([string]$Shots, [switch]$EarlyForce)
 $script:stateFile = "$scratch\kotor_fight.out"
 $power = if ($EarlyForce) { @("--early-force") } else { @("--power","23") }
 $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList (@("--mute","--no-tutorials","--state-log","--autopilot","--pilot-until","fight") + $power + @("--give","g_w_adhsvgren001","--frames","400000")) -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_fight.err" -PassThru -NoNewWindow
-for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
-$h = $v.MainWindowHandle; [Drv]::NeverActive($h)
+$h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
 $ENTER = @(0x0D, 0x1C); $SPACE = @(0x20, 0x39); $ONE = @(0x31, 0x02)
 # A slot's place in the state line is in layout units, across a width the window's shape gives.
