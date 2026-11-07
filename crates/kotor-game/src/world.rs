@@ -482,6 +482,8 @@ pub struct World {
     pub movement: crate::movement::MovementMode,
     /// The player's body in Modern movement, and where it last put the player.
     pub pc_body: crate::movement::Body,
+    /// Modern combat's aim: which way the player's body faces while aiming.
+    pub pc_aim: Option<f32>,
     pub(crate) body_mark: [f32; 3],
     pub tuning: crate::movement::Tuning,
     /// The roll key was pressed.
@@ -780,6 +782,7 @@ impl World {
             steer: None,
             movement: crate::movement::MovementMode::Classic,
             pc_body: crate::movement::Body::new([0.0; 3], 0.0),
+            pc_aim: None,
             body_mark: [0.0; 3],
             tuning: crate::movement::Tuning::default(),
             roll_request: false,

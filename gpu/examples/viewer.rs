@@ -410,7 +410,8 @@ impl App {
         self.stage.turn = self.turning;
         self.stage
             .set_looking(self.looking || self.stage.touch_looking());
-        if self.turret_cursor != self.stage.turret_on() {
+        self.stage.set_aim_held(self.looking);
+        if self.turret_cursor != (self.stage.turret_on() || self.stage.aiming()) {
             self.turret_cursor = !self.turret_cursor;
             self.turret_cursor_known = false;
             st.window.set_cursor_visible(!self.turret_cursor);
@@ -768,6 +769,15 @@ impl ApplicationHandler for App {
                 } else if self.looking {
                     self.stage
                         .look(now.0 - self.cursor.0, now.1 - self.cursor.1);
+                    // The cursor is hidden while aiming, and held in the window as at the turret.
+                    if self.stage.aiming() {
+                        if let Some(middle) =
+                            self.state.as_ref().and_then(|st| back_to_middle(st, now))
+                        {
+                            self.cursor = middle;
+                            return;
+                        }
+                    }
                 } else if let Some(st) = &self.state {
                     let z = st.window.inner_size();
                     self.stage.hover(now, (z.width, z.height));

@@ -400,6 +400,12 @@ impl Game {
         self.play_once(id, "finisher", seconds);
     }
 
+    /// Keep a creature in its fighting stance a little longer, as a fight does. Modern combat's aim calls it.
+    pub fn hold_stance(&mut self, id: ObjId) {
+        self.ready_until
+            .insert(id, self.steps + (STANCE_HOLD_SECONDS / self.dt) as u64);
+    }
+
     /// Play a clip at once, over what is playing.
     fn play_once(&mut self, id: ObjId, name: &'static str, seconds: f32) {
         // The same clip again starts over.

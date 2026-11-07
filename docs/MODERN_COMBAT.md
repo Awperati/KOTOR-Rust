@@ -6,7 +6,8 @@ The owner: "Start Modern". The owner's seven decisions below are the recommendat
 
 | Stage | State |
 | --- | --- |
-| 0 | Built. The Combat box on the Gameplay page, `combat_modern` in the settings file, off by default. `Stage::modern_combat` is what the rest asks. It does nothing else yet |
+| 0 | Built. The Combat box on the Gameplay page, `combat_modern` in the settings file, off by default. `Stage::modern_combat` is what the rest asks |
+| 1 | Built. The look button aims in a fight, with an enemy seen, or with Attack mode on: the camera over the right shoulder, a crosshair, the body facing the aim at 3.4 m/s at most, the cursor hidden and held. A click while aiming does nothing yet. [aimscreen.rs](../gpu/src/aimscreen.rs), `gpu/tests/aim.rs`. The game has no drawn weapon, so a fight or a seen enemy stands for one. Clips do not strafe: the run clip plays going sideways |
 
 The job, as Top Dog relayed the owner's addition to the PRD: two combat modes, Classic and Modern. Modern has a crosshair, right-click over-the-shoulder aim, Force Unleashed-style sabre combat, and every Force power keybindable.
 
@@ -21,7 +22,7 @@ The job, as Top Dog relayed the owner's addition to the PRD: two combat modes, C
 | Stepping aside | The camera can already step 0.35 or 0.7 m to one side, to see past a wall. | `camera_side`, `ARM_SIDES` |
 | Left click | Uses or attacks what is under the cursor, or walks to the floor. | `Stage::click` |
 | Finding a target | A ray from the cursor against one sphere per object: 0.7 m radius, 0.9 m up on a creature. It ignores walls. It only sees objects marked useable. | [play.rs](../crates/kotor-game/src/play.rs) `pick`, `pick_sphere` |
-| B, Attack mode | A switch for clicks and the law. Off, a click on someone talks. On, it attacks. It is not a combat mode. | [law.rs](../crates/kotor-game/src/law.rs), [LAW.md](LAW.md) |
+| Attack mode (the owner moved it from B to X, and Pause to B) | A switch for clicks and the law. Off, a click on someone talks. On, it attacks. It is not a combat mode. | [law.rs](../crates/kotor-game/src/law.rs), [LAW.md](LAW.md) |
 | The fight | One attack per creature in each 3 s round: d20 against Defense, then dice. The round length is measured from the reference video. | [combat.rs](../crates/kotor-game/src/combat.rs), [COMBAT.md](COMBAT.md) |
 | Clips | Follow the fight's log. A sabre attack always plays the first clip of its stance. | [game.rs](../crates/kotor-game/src/game.rs) `style_clip` |
 | Quick slots | Three slots with arrows. A click uses a thrown item or a power on the player. | [fightscreen.rs](../gpu/src/fightscreen.rs) `use_quick_slot` |
@@ -69,7 +70,7 @@ The names suggest `d` and `p` are the other side of the five attacks. I did not 
 - Each click fires one shot, no faster than the weapon's clip. `volley.rs` has measured gaps of about 0.5 s.
 - A shot enters `resolve_hand`, so feats, gear and criticals keep working. The log still drives the clips and sounds.
 - The range is no longer capped at 12 m. A limit of 30 m is my guess.
-- With B off, a shot passes neutrals harmlessly. With B on, it hits them and the law reacts. Party members are never hit.
+- With Attack mode off, a shot passes neutrals harmlessly. With it on, it hits them and the law reacts. Party members are never hit.
 
 ### Aim sway
 
@@ -114,7 +115,7 @@ Each stage is behind the setting, passes the gate on its own, and adds frames fo
 | --- | --- | --- | --- | --- |
 | 0 | The Classic or Modern setting on Gameplay, saved in settings | Menus | 80 | Classic is identical in the existing tests |
 | 1 | Aim camera, crosshair, held cursor | Movement | 350 | Frames from both sides. It holds at walls and doors |
-| 2 | Shots by ray, walls and doors stop them, B and the law | Combat | 450 | A shot at a wall hits nothing. A clean shot logs an attack |
+| 2 | Shots by ray, walls and doors stop them, Attack mode and the law | Combat | 450 | A shot at a wall hits nothing. A clean shot logs an attack |
 | 3 | Sway | Combat | 120 | Drift grows with speed, and the same clock gives the same path |
 | 4 | Force page, empty rows, Alt keys, power goes to its target, failure notice | Menus and Combat | 450 | All 42 bind, cast and save. Old settings files still load |
 | 5 | Lock-on | Movement | 250 | Lock, switch and lose by rules above, in a real fight |
@@ -135,9 +136,9 @@ Each has my recommendation, and the build follows it until told otherwise.
 2. **Does an aimed shot still roll?** Yes, but a crosshair on the body never misses outright: the roll gives a graze at half damage, a hit, or a critical. Defense then still counts.
 3. **Crosshair only while right is held?** Yes. The HUD needs the cursor the rest of the time.
 4. **Does right with a sabre also aim?** Yes, for powers and sabre throw. Left is the blow.
-5. **Does aiming turn on outside a fight?** Only with a weapon drawn or B on. Otherwise right stays the plain camera turn.
+5. **Does aiming turn on outside a fight?** Only with a weapon drawn or Attack mode on. Otherwise right stays the plain camera turn.
 6. **Force keys in Classic too?** No, Modern only.
-7. **Pause in Modern?** X still pauses, with no queue of actions.
+7. **Pause in Modern?** The Pause key still pauses, with no queue of actions.
 
 ## Reference video
 

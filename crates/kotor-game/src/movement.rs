@@ -60,6 +60,8 @@ pub enum MovementMode {
 pub struct Tuning {
     /// `walkrate` of `creaturespeed.2da`.
     pub walk: f32,
+    /// The most a body moves while aiming, in m/s. Assumed.
+    pub aim_speed: f32,
     pub run: f32,
     pub sprint: f32,
     /// Metres per second squared while pushing. Assumed: full sprint in about a quarter of a second.
@@ -107,6 +109,7 @@ impl Default for Tuning {
     fn default() -> Tuning {
         Tuning {
             walk: 1.7,
+            aim_speed: 3.4,
             run: RUN,
             sprint: SPRINT,
             accel: 28.0,
@@ -167,6 +170,8 @@ pub trait Ground {
 /// What the player asks for this step.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Input {
+    /// Modern combat's aim: the body faces this way, wherever it goes, and goes no faster than `aim_speed`.
+    pub aim: Option<f32>,
     /// A unit vector on the floor, or none.
     pub dir: Option<[f32; 2]>,
     /// Walk (slowly), as Shift does today. Without it, the body sprints.
@@ -433,6 +438,11 @@ impl Body {
 
     fn accelerate(&mut self, input: Input, t: &Tuning, dt: f32) {
         let top = if input.walk { t.walk } else { t.sprint };
+        let top = if input.aim.is_some() {
+            top.min(t.aim_speed)
+        } else {
+            top
+        };
         let top = if self.land_left > 0.0 && !self.land_light {
             top * t.land_slow
         } else {
@@ -459,6 +469,7 @@ impl Body {
     /// Face the way pushed, smoothly; with nothing pushed, the way still moving.
     fn face(&mut self, input: Input, t: &Tuning, dt: f32) {
         let aim = match input.dir {
+            _ if input.aim.is_some() => input.aim,
             Some(d) => Some(d[1].atan2(d[0])),
             None if self.speed() > 1.0 => Some(self.vel[1].atan2(self.vel[0])),
             None => None,

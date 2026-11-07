@@ -883,7 +883,12 @@ impl World {
         let Some(nav) = self.nav.as_ref() else {
             return;
         };
-        let input = Input { dir, walk, roll };
+        let input = Input {
+            aim: self.pc_aim,
+            dir,
+            walk,
+            roll,
+        };
         let ground = NavGround(nav, self.barriers.as_deref());
         let ev = self.pc_body.step(input, &ground, &self.tuning, dt);
         self.body_cues.merge(ev);

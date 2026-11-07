@@ -27,6 +27,24 @@ pub struct Plate {
     pub opacity: f32,
 }
 
+/// Modern combat's sight, in layout units. It moves with the plates, on the HUD as drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Crosshair {
+    pub x: i32,
+    pub y: i32,
+    /// It lies on an enemy.
+    pub hot: bool,
+}
+
+const CROSS_GAP: i32 = 3;
+const CROSS_LONG: i32 = 6;
+const CROSS_THICK: i32 = 1;
+const CROSS_COLD: [u8; 4] = [235, 235, 235, 230];
+const CROSS_HOT: [u8; 4] = [255, 70, 50, 255];
+const CROSS_SHADE: [u8; 4] = [0, 0, 0, 150];
+/// What it can touch round its place, in layout units.
+const CROSS_BOX_HALF: i32 = 12;
+
 /// The name's line and the bar under it.
 pub const PLATE_TEXT_HIGH: i32 = 12;
 pub const PLATE_BAR_HIGH: i32 = 3;
@@ -76,9 +94,9 @@ impl Ui<'_> {
     /// The picture of a window this size in pixels that holds all the plates now given.
     pub fn plates_box(&self) -> Option<[u32; 4]> {
         let (across, down) = (self.hud_across(), self.scale);
+        let x = |v: i32| (v as f32 * across).max(0.0) as u32;
+        let y = |v: i32| (v as f32 * down).max(0.0) as u32;
         let boxes = self.plates.iter().map(|p| {
-            let x = |v: i32| (v as f32 * across).max(0.0) as u32;
-            let y = |v: i32| (v as f32 * down).max(0.0) as u32;
             let (right, bottom) = (
                 x(p.x + PLATE_BOX_HALF).min(self.pixels.0),
                 y(p.y + PLATE_BOX_BELOW).min(self.pixels.1),
@@ -86,6 +104,15 @@ impl Ui<'_> {
             let (left, top) = (x(p.x - PLATE_BOX_HALF), y(p.y - PLATE_BOX_ABOVE));
             [left, top, right, bottom]
         });
+        let sight = self.crosshair.map(|c| {
+            [
+                x(c.x - CROSS_BOX_HALF),
+                y(c.y - CROSS_BOX_HALF),
+                x(c.x + CROSS_BOX_HALF).min(self.pixels.0),
+                y(c.y + CROSS_BOX_HALF).min(self.pixels.1),
+            ]
+        });
+        let boxes = boxes.chain(sight);
         let all = boxes.reduce(|a, b| {
             [
                 a[0].min(b[0]),
@@ -118,7 +145,38 @@ impl Ui<'_> {
         cv.into_image()
     }
 
+    /// The sight from now on, drawn with the plates.
+    pub fn set_crosshair(&mut self, c: Option<Crosshair>) {
+        self.crosshair = c;
+    }
+
+    fn draw_crosshair(&self, cv: &mut Canvas) {
+        let Some(c) = self.crosshair else { return };
+        let colour = if c.hot { CROSS_HOT } else { CROSS_COLD };
+        let arms = |x: i32, y: i32, thick: i32, long: i32, gap: i32| {
+            [
+                (x - gap - long, y, long, thick),
+                (x + gap + thick, y, long, thick),
+                (x, y - gap - long, thick, long),
+                (x, y + gap + thick, thick, long),
+            ]
+        };
+        for (l, t, w, h) in arms(
+            c.x - 1,
+            c.y - 1,
+            CROSS_THICK + 2,
+            CROSS_LONG + 2,
+            CROSS_GAP - 1,
+        ) {
+            cv.fill_rect(l, t, w, h, CROSS_SHADE);
+        }
+        for (l, t, w, h) in arms(c.x, c.y, CROSS_THICK, CROSS_LONG, CROSS_GAP) {
+            cv.fill_rect(l, t, w, h, colour);
+        }
+    }
+
     fn draw_plates(&mut self, cv: &mut Canvas) {
+        self.draw_crosshair(cv);
         for p in self.plates.clone() {
             if p.opacity < 1.0 {
                 let kept = cv.keep_box(

@@ -329,7 +329,8 @@ impl Stage {
     pub(super) fn keys_yaw(&mut self, dt: f32) -> f32 {
         let (ahead, right, _) = self.steer;
         let held = ahead != 0.0 || right != 0.0;
-        if !held || !self.settings().movement_modern || self.pilot.is_some() {
+        // Aiming, the keys go by the aim at once, or a strafe bends with every turn of the mouse.
+        if !held || !self.settings().movement_modern || self.pilot.is_some() || self.aim_on {
             self.steer_yaw = self.yaw;
         } else {
             let tau = std::f32::consts::TAU;
@@ -434,8 +435,9 @@ impl Stage {
         let p = aside(self.camera_side);
         let (up, flat) = (self.pitch + self.camera_rise).sin_cos();
         let back = [-dx * flat, -dy * flat, up];
-        let room = self.camera_room(p, back);
-        let target = [p[0], p[1], p[2] + super::CAMERA_LOOKS_AT];
+        let room = self.camera_room(p, back).min(self.arm_reach());
+        let looks_at = self.looks_at();
+        let target = [p[0], p[1], p[2] + looks_at];
         let solid = self
             .shell
             .first_hit(target, back, self.distance)
@@ -453,6 +455,8 @@ impl Stage {
         let holding = self.since_fall < ARM_HOLD_AFTER_FALL && solid >= arm;
         let rate = if solid < arm {
             ARM_IN_SOLID
+        } else if self.aim_share > 0.0 {
+            super::aimscreen::AIM_RATE
         } else if room < arm {
             ARM_IN
         } else {
@@ -469,11 +473,7 @@ impl Stage {
             let back = [-dx * flat, -dy * flat, up];
             let room = self.camera_room(at, back);
             self.shell
-                .first_hit(
-                    [at[0], at[1], at[2] + super::CAMERA_LOOKS_AT],
-                    back,
-                    self.distance,
-                )
+                .first_hit([at[0], at[1], at[2] + looks_at], back, self.distance)
                 .map_or(room, |hit| room.min(hit - super::CAMERA_OFF_SURFACE))
         };
         let free = |pitch: f32| free_from(own, pitch);
@@ -509,7 +509,7 @@ impl Stage {
         let mut side = 0.0;
         let mut most = free(look);
         if most < ARM_RISE_UNDER {
-            let middle = [own[0], own[1], own[2] + super::CAMERA_LOOKS_AT];
+            let middle = [own[0], own[1], own[2] + looks_at];
             most += ARM_RISE_GAIN;
             for by in ARM_SIDES {
                 let way = [dy * by.signum(), -dx * by.signum(), 0.0];
@@ -525,8 +525,25 @@ impl Stage {
                 }
             }
         }
-        self.camera_side += (side - self.camera_side) * (1.0 - (-ARM_RISE_RATE * dt).exp());
-        self.camera_rise += (want - self.camera_rise) * (1.0 - (-ARM_RISE_RATE * dt).exp());
+        // The aim stands over the right shoulder, as far as there is room, and the rise is the mouse's alone.
+        if self.aim_on {
+            let middle = [own[0], own[1], own[2] + looks_at];
+            let way = [dy, -dx, 0.0];
+            let shoulder = super::aimscreen::AIM_SHOULDER;
+            let reach = shoulder + super::CAMERA_OFF_SURFACE;
+            let hit = self.shell.first_hit(middle, way, reach);
+            let door = self.door_limit(middle, way).filter(|d| *d < reach);
+            let free = hit.into_iter().chain(door).fold(reach, f32::min);
+            side = (free - super::CAMERA_OFF_SURFACE).clamp(0.0, shoulder);
+            want = 0.0;
+        }
+        let rate = if self.aim_share > 0.0 {
+            super::aimscreen::AIM_RATE
+        } else {
+            ARM_RISE_RATE
+        };
+        self.camera_side += (side - self.camera_side) * (1.0 - (-rate * dt).exp());
+        self.camera_rise += (want - self.camera_rise) * (1.0 - (-rate * dt).exp());
     }
 
     /// The game's own dust at the feet, and a footfall from the table the steps use.

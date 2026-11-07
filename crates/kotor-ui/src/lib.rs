@@ -16,7 +16,7 @@ pub use canvas::{Canvas, Orient};
 pub use font::{flip_rows, parse_font_txi, Font, Glyph};
 pub use gui::{Border, Control, Extent, Gui, GuiText};
 pub use menus::{Cell, Hit, Mark, MenuView, Notice, Row};
-pub use plates::{Plate, PLATE_BAR_HIGH, PLATE_TEXT_HIGH};
+pub use plates::{Crosshair, Plate, PLATE_BAR_HIGH, PLATE_TEXT_HIGH};
 pub use screens::{
     CombatHud, DialogueView, Float, HudMember, MiniMap, Patch, SlotShown, Ui, SCREEN,
 };

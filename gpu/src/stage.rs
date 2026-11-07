@@ -16,6 +16,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
+#[path = "aimscreen.rs"]
+mod aimscreen;
 #[path = "bodypose.rs"]
 mod bodypose;
 #[path = "deathscreen.rs"]
@@ -515,6 +517,10 @@ pub struct Stage {
     camera_rise: f32,
     /// How far to the player's right the camera has stepped, metres, to get out from behind something.
     camera_side: f32,
+    /// The aim button is held, the player is aiming, and how far the camera has come in for it.
+    aim_held: bool,
+    aim_on: bool,
+    aim_share: f32,
     /// Seconds since the player was last in the air, or in a landing.
     since_fall: f32,
     /// The roll's and the landing's poses.
@@ -700,6 +706,9 @@ impl Stage {
             arm_at: [0.0; 3],
             camera_rise: 0.0,
             camera_side: 0.0,
+            aim_held: false,
+            aim_on: false,
+            aim_share: 0.0,
             since_fall: 0.0,
             body_poses: moving::BodyPoses::default(),
             camera_z: None,
@@ -907,6 +916,7 @@ impl Stage {
         self.forget_container_choices();
         self.slots_tick();
         self.notices_tick();
+        self.aim_tick(dt);
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
@@ -1637,7 +1647,8 @@ impl Stage {
             p[1] - dx * self.camera_side,
             p[2],
         ];
-        let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
+        let looks_at = self.looks_at();
+        let target = [p[0], p[1], p[2] + looks_at];
         let (flat, up) = (self.pitch + self.camera_rise).sin_cos();
         let (flat, up) = (up, flat);
         let back = [-dx * flat, -dy * flat, up];
@@ -1654,10 +1665,10 @@ impl Stage {
             eye: [
                 p[0] - dx * flat * d,
                 p[1] - dy * flat * d,
-                p[2] + CAMERA_LOOKS_AT + up * d,
+                p[2] + looks_at + up * d,
             ],
             target,
-            fov: CAMERA_FOV + self.fov_extra,
+            fov: CAMERA_FOV + self.fov_extra - self.aim_narrows(),
         }
     }
 
@@ -1677,9 +1688,19 @@ impl Stage {
     pub fn look(&mut self, dx: f32, dy: f32) {
         // A half on the Mouse Settings slider is the speed this always had.
         let speed = self.settings().mouse_sensitivity * 2.0;
+        let (speed, lowest, highest) = if self.aim_on {
+            (
+                speed * aimscreen::AIM_MOUSE,
+                aimscreen::AIM_PITCH.0,
+                aimscreen::AIM_PITCH.1,
+            )
+        } else {
+            // Coming back from an aim lower than this, it may go on up by itself.
+            (speed, self.pitch.min(-0.2), 1.2)
+        };
         self.yaw -= dx * 0.005 * speed;
         let flip = if self.settings().invert_y { -1.0 } else { 1.0 };
-        self.pitch = (self.pitch + dy * flip * 0.004 * speed).clamp(-0.2, 1.2);
+        self.pitch = (self.pitch + dy * flip * 0.004 * speed).clamp(lowest, highest);
     }
 
     /// What the replies on screen are, in the conversation.
@@ -1823,6 +1844,9 @@ impl Stage {
                 Some(i) => self.number_key(i + 1),
                 None => self.continue_line(),
             }
+            return;
+        }
+        if self.aiming() {
             return;
         }
         // The first action slot (`LBH_BORDER1` in `maininterface.gui`) uses the target it shows.
@@ -3464,7 +3488,14 @@ impl Stage {
         };
         // What is under the plates depends on whether one is the target's, which takes the place of its bar.
         let key = format!("{key}{}", plates.iter().any(|p| p.framed));
-        let plate_key = format!("{plates:?}");
+        let crosshair = if view.is_none() {
+            self.crosshair_view()
+        } else {
+            None
+        };
+        // Coming or going, the plates' picture has to be there to draw on, with nameplates off too.
+        let key = format!("{key}{}", crosshair.is_some());
+        let plate_key = format!("{plates:?}{crosshair:?}");
         let map_seen_more = std::mem::take(&mut self.map_seen_more) && view.is_none();
         let redraw = key != self.overlay_key || map_seen_more;
         // Something has asked for all of it, by forgetting what was drawn.
@@ -3477,6 +3508,7 @@ impl Stage {
         self.overlay_key = key;
         self.plate_key = plate_key;
         self.ui.set_plates(plates);
+        self.ui.set_crosshair(crosshair);
         if !redraw {
             self.hud_drawn = 1;
             self.plates_on_hud(true, None);
@@ -3537,7 +3569,8 @@ impl Stage {
     /// has changed on the HUD inside the box `hud_box`.
     fn plates_on_hud(&mut self, same_hud: bool, hud_box: Option<[u32; 4]>) {
         // A conversation's box has no plates to move and is not drawn on again, so it need not be kept apart.
-        if !self.settings().nameplates || !self.hud_is_up {
+        let sight = self.crosshair_view().is_some();
+        if (!self.settings().nameplates && !sight) || !self.hud_is_up {
             self.overlay = self.hud_under_plates.take();
             self.plate_box = None;
             self.apply_brightness();

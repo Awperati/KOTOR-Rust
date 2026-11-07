@@ -95,6 +95,7 @@ pub struct Ui<'a> {
     minimap_off: bool,
     floats: Vec<Float>,
     pub(crate) plates: Vec<crate::plates::Plate>,
+    pub(crate) crosshair: Option<crate::plates::Crosshair>,
     slots_above_bar: bool,
     /// How big the target's slots are, in hundredths of their size in the file.
     slots_percent: i32,
@@ -331,6 +332,7 @@ impl<'a> Ui<'a> {
             minimap_off: false,
             floats: Vec::new(),
             plates: Vec::new(),
+            crosshair: None,
             slots_above_bar: false,
             touch: TouchView::default(),
             slots_percent: 100,
