@@ -1329,16 +1329,46 @@ impl World {
             .collect()
     }
 
-    /// How many a row of the open container stands for: all the credits for the row of credits, or the stack.
-    pub fn container_count(&self, item: ObjId) -> i32 {
-        let stack = |i: &ObjId| self.objects.get(i).map_or(0, |o| o.stack.max(1));
+    /// Whether a kind of item goes in stacks, as `baseitems.2da` has it.
+    fn stacks(&self, item: ObjId) -> bool {
+        let Some(Some(table)) = self.tables.get("baseitems") else {
+            return false;
+        };
+        self.objects
+            .get(&item)
+            .is_some_and(|o| table.int(o.base_item.max(0) as usize, "stacking").unwrap_or(1) > 1)
+    }
+
+    /// What one row of what is open stands for: all the credits, or all of one kind of item that stacks. A container's file
+    /// lists each of two medpacs on its own, and the Pickup button gathers from several containers: the owner has them stack.
+    /// **Assumed:** two of a template with one name are the same, as nothing puts upgrades on what lies in a container.
+    fn open_row(&self, item: ObjId) -> Vec<ObjId> {
         if self.is_credits(item) {
             let credits = self.open_credits();
             if credits.contains(&item) {
-                return credits.iter().map(stack).sum();
+                return credits;
             }
         }
-        stack(&item)
+        let Some(one) = self.objects.get(&item).filter(|_| self.stacks(item)) else {
+            return vec![item];
+        };
+        let same = self.open_items().into_iter().filter(|i| {
+            self.objects.get(i).is_some_and(|o| {
+                o.template.eq_ignore_ascii_case(&one.template) && o.name == one.name
+            })
+        });
+        let row: Vec<ObjId> = same.collect();
+        if row.contains(&item) {
+            row
+        } else {
+            vec![item]
+        }
+    }
+
+    /// How many a row of the open container stands for.
+    pub fn container_count(&self, item: ObjId) -> i32 {
+        let stack = |i: &ObjId| self.objects.get(i).map_or(0, |o| o.stack.max(1));
+        self.open_row(item).iter().map(stack).sum()
     }
 
     /// A body that has something left on it. Those can be clicked and opened.
@@ -1398,12 +1428,12 @@ impl World {
         }
     }
 
-    /// The items in the open container: id and name, with the count of a stack. All its credits are one row.
+    /// The items in the open container: id and name, with the count of a stack. All its credits are one row, and so is each
+    /// kind of item that stacks, under the first of them.
     pub fn container_items(&self) -> Vec<(ObjId, String)> {
-        let credits = self.open_credits();
         self.open_items()
             .into_iter()
-            .filter(|i| credits.first() == Some(i) || !credits.contains(i))
+            .filter(|i| self.open_row(*i).first() == Some(i))
             .filter_map(|i| self.objects.get(&i))
             .map(|o| {
                 let name = if o.name.is_empty() {
@@ -1432,10 +1462,9 @@ impl World {
     }
 
     /// Move an item from the open container that holds it to the player: its `OnInvDisturbed` script runs, which may destroy
-    /// the container. The row of credits is all of them.
+    /// the container. A row is all it stands for.
     pub fn take_item(&mut self, item: ObjId) {
-        let all = self.is_credits(item).then(|| self.open_credits());
-        for one in all.filter(|c| c.contains(&item)).unwrap_or(vec![item]) {
+        for one in self.open_row(item) {
             self.take_one(one);
         }
     }
@@ -1451,19 +1480,13 @@ impl World {
     }
 
     /// Move `count` of a row of the open container to the player, and the rest stays. All of it is [`World::take_item`].
-    /// Credits come from each pile in turn, so what is left stays where it was.
+    /// It comes from each pile in turn, so what is left stays where it was.
     pub fn take_some(&mut self, item: ObjId, count: i32) {
         if count >= self.container_count(item) {
             return self.take_item(item);
         }
-        let credits = self.open_credits();
-        let piles = if credits.contains(&item) {
-            credits
-        } else {
-            vec![item]
-        };
         let mut left = count;
-        for pile in piles {
+        for pile in self.open_row(item) {
             if left <= 0 {
                 break;
             }

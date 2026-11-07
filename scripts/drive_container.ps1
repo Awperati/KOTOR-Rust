@@ -70,7 +70,7 @@ $s = State
 $until = (Get-Date).AddSeconds(3)
 while ([int]$s.gold -eq $gold -and (Get-Date) -lt $until) { $s = State }
 Report "20 credits come" ([int]$s.gold -eq $gold + 20) "gold $gold -> $($s.gold)"
-Report "30 stay, and the rest" ($s.loot -like "g_i_credits001*30,g_i_medeqpmnt01*3,*" -and [int]$s.items -eq $items - 1) "loot=$($s.loot)"
+Report "30 stay, and the rest" ($s.loot -like "g_i_credits001*30,g_i_medeqpmnt01*5,*" -and [int]$s.items -eq $items - 1) "loot=$($s.loot)"
 Report "The panel stays up" ($s.opened -eq "true" -and [int]$s.chosen -eq 0) "opened=$($s.opened) chosen=$($s.chosen)"
 Shot "container_after"
 

@@ -1176,6 +1176,72 @@ fn remains_at(s: &mut Stage, at: [f32; 3], template: &str, count: i32) -> (u32, 
 }
 
 #[test]
+fn a_container_lists_each_kind_of_item_once_with_the_sum() {
+    let Some((mut s, _)) = in_game("locker_stacks") else {
+        return;
+    };
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    s.game.world.click(locker);
+    // The file lists each of its two medpacs on its own.
+    let held = s.game.world.object(locker).unwrap().inventory.clone();
+    let is_medpac = |s: &Stage, i: &u32| {
+        s.game.world.object(*i).unwrap().template.eq_ignore_ascii_case("g_i_medeqpmnt01")
+    };
+    let medpacs: Vec<u32> = held.iter().copied().filter(|i| is_medpac(&s, i)).collect();
+    assert_eq!(medpacs.len(), 2, "the footlocker's file has changed");
+    let rows = s.game.world.container_items();
+    assert_eq!(rows.len(), held.len() - 1, "{rows:?}");
+    let row = rows.iter().position(|(i, _)| medpacs.contains(i)).unwrap();
+    let shown = s.menu_rows("LB_ITEMS");
+    assert_eq!(shown[row].count, 2, "{}", shown[row].text);
+    assert_eq!(shown[row].stepper, Some(1));
+
+    // Taking one leaves the other, on one row still.
+    click_row(&mut s, "LB_ITEMS", row);
+    press(&mut s, "BTN_GIVEITEMS");
+    assert_eq!(s.game.world.container_items().len(), held.len() - 1);
+    assert_eq!(s.menu_rows("LB_ITEMS")[row].count, 1);
+
+    // Take All: one row in the inventory, with both.
+    press(&mut s, "BTN_OK");
+    let w = &s.game.world;
+    let pc = w.pc;
+    let mine: Vec<&_> = w
+        .carried(pc)
+        .into_iter()
+        .filter_map(|i| w.object(i))
+        .filter(|o| o.template.eq_ignore_ascii_case("g_i_medeqpmnt01"))
+        .collect();
+    assert_eq!(mine.len(), 1);
+}
+
+#[test]
+fn different_kinds_of_item_stay_apart_in_a_container() {
+    let Some((mut s, _)) = in_game("locker_apart") else {
+        return;
+    };
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    s.game.world.click(locker);
+    let before = s.game.world.container_items().len();
+    let w = &mut s.game.world;
+    let grenade = w.spawn_item("g_w_fraggren01");
+    let spike = w.spawn_item("g_i_secspike01");
+    let o = w.object_mut(locker).unwrap();
+    o.inventory.extend([grenade, spike]);
+    assert_eq!(s.game.world.container_items().len(), before + 2);
+    let w = &mut s.game.world;
+    let another = w.spawn_item("g_w_fraggren01");
+    w.object_mut(locker).unwrap().inventory.push(another);
+    assert_eq!(s.game.world.container_items().len(), before + 2);
+    assert_eq!(s.game.world.container_count(grenade), 2);
+    assert_eq!(s.game.world.container_count(spike), 1);
+}
+
+#[test]
 fn every_pile_of_credits_in_a_container_is_one_row_with_their_sum() {
     let Some((mut s, _)) = in_game("credit_piles") else {
         return;
@@ -1275,7 +1341,13 @@ fn pickup_opens_what_is_near_as_one_container_and_what_is_taken_leaves_its_own()
     assert!(!listed.contains(&sword), "out of reach");
     let locker_had = w.object(locker).unwrap().inventory.clone();
     assert!(!locker_had.is_empty(), "this footlocker has its own things");
-    assert!(locker_had.iter().all(|i| listed.contains(i)));
+    // Its own Medpacs are on the row of those on the remains.
+    let on_a_row = |i: &u32| {
+        listed.contains(i)
+            || w.object(*i)
+                .is_some_and(|o| o.template == "g_i_medeqpmnt01")
+    };
+    assert!(locker_had.iter().all(on_a_row));
 
     // What is taken leaves where it was.
     let row = listed.iter().position(|i| *i == medpac).unwrap();

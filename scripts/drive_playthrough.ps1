@@ -41,7 +41,7 @@ $items = [int]$s.items
 Press 174 311 285 22   # Take All
 $s = WaitFor "opened" "false"
 # Its two Medpacs make one stack in the bag.
-Report "Takes all of it" ([int]$s.items -eq 0 -and [int]$s.inv -eq [int]$start.inv + $items - 1) "items=$($s.items) inv $($start.inv) -> $($s.inv)"
+Report "Takes all of it" ([int]$s.items -eq 0 -and [int]$s.inv -eq [int]$start.inv + $items) "items=$($s.items) inv $($start.inv) -> $($s.inv)"
 Report "Take All closes it" ($s.opened -eq "false") "opened=$($s.opened)"
 
 # Level up: the sheet's button, then the panel's steps. Level 2 asks for skills and feats.
