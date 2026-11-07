@@ -46,6 +46,10 @@ const ARM_RISE_STEPS: usize = 3;
 /// How far it tries looking from lower down, in radians, and the lowest it goes. Assumed.
 const ARM_LOWER: [f32; 2] = [-0.3, -0.6];
 const ARM_LOWEST: f32 = -0.15;
+/// How far it tries stepping to the side, metres, nearest first, and how far off the middle the player may end up: the step
+/// over the distance. Assumed: a third of the distance is about 18 degrees, in a view 55 wide.
+const ARM_SIDES: [f32; 4] = [0.35, -0.35, 0.7, -0.7];
+const ARM_SIDE_VIEW: f32 = 0.33;
 /// A higher look has to win this much more room, in metres, and it goes no steeper than this, in radians. Assumed.
 const ARM_RISE_GAIN: f32 = 0.4;
 const ARM_RISE_TILT: f32 = 1.35;
@@ -310,6 +314,11 @@ impl Stage {
         )
     }
 
+    /// How far to the player's right the camera has stepped, for a test.
+    pub fn camera_side(&self) -> f32 {
+        self.camera_side
+    }
+
     /// The look button is held or let go.
     pub fn set_looking(&mut self, looking: bool) {
         self.looking = looking;
@@ -389,6 +398,7 @@ impl Stage {
             self.fov_extra = 0.0;
             self.camera_arm = None;
             self.camera_rise = 0.0;
+            self.camera_side = 0.0;
             return;
         }
         let tuning = w.tuning;
@@ -418,8 +428,10 @@ impl Stage {
         let falling = !w.pc_body.grounded || w.pc_body.landing();
         self.since_fall = if falling { 0.0 } else { self.since_fall + dt };
         let p = self.game.drawn_position(w.pc).unwrap_or([0.0; 3]);
-        let p = self.lagged(p);
+        let own = self.lagged(p);
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
+        let aside = |by: f32| [own[0] + dy * by, own[1] - dx * by, own[2]];
+        let p = aside(self.camera_side);
         let (up, flat) = (self.pitch + self.camera_rise).sin_cos();
         let back = [-dx * flat, -dy * flat, up];
         let room = self.camera_room(p, back);
@@ -452,14 +464,19 @@ impl Stage {
             arm + (limit - arm) * (1.0 - (-rate * dt).exp())
         });
         // Rock close behind: over it, as long as it lasts. A ceiling keeps the camera where it is.
-        let free = |pitch: f32| {
+        let free_from = |at: [f32; 3], pitch: f32| {
             let (up, flat) = pitch.sin_cos();
             let back = [-dx * flat, -dy * flat, up];
-            let room = self.camera_room(p, back);
+            let room = self.camera_room(at, back);
             self.shell
-                .first_hit(target, back, self.distance)
+                .first_hit(
+                    [at[0], at[1], at[2] + super::CAMERA_LOOKS_AT],
+                    back,
+                    self.distance,
+                )
                 .map_or(room, |hit| room.min(hit - super::CAMERA_OFF_SURFACE))
         };
+        let free = |pitch: f32| free_from(own, pitch);
         // The least rise that gets clear, or else the one with the most room, if that is a real gain.
         let here = free(self.pitch);
         let mut want = 0.0;
@@ -486,6 +503,29 @@ impl Stage {
                 }
             }
         }
+        // And still short: a step to the side, past a pillar or a door frame, with the player still well in view. Not through
+        // anything on the way there. Against a flat wall this gains nothing, and the body fades instead.
+        let look = self.pitch + want;
+        let mut side = 0.0;
+        let mut most = free(look);
+        if most < ARM_RISE_UNDER {
+            let middle = [own[0], own[1], own[2] + super::CAMERA_LOOKS_AT];
+            most += ARM_RISE_GAIN;
+            for by in ARM_SIDES {
+                let way = [dy * by.signum(), -dx * by.signum(), 0.0];
+                let to = by.abs() + super::CAMERA_OFF_SURFACE;
+                if self.shell.first_hit(middle, way, to).is_some()
+                    || self.door_limit(middle, way).is_some_and(|d| d < to)
+                {
+                    continue;
+                }
+                let room = free_from(aside(by), look);
+                if room > most && room * ARM_SIDE_VIEW >= by.abs() {
+                    (side, most) = (by, room);
+                }
+            }
+        }
+        self.camera_side += (side - self.camera_side) * (1.0 - (-ARM_RISE_RATE * dt).exp());
         self.camera_rise += (want - self.camera_rise) * (1.0 - (-ARM_RISE_RATE * dt).exp());
     }
 

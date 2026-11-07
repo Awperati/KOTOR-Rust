@@ -487,6 +487,8 @@ pub struct Stage {
     arm_at: [f32; 3],
     /// How far the camera has risen over something close behind the player, radians.
     camera_rise: f32,
+    /// How far to the player's right the camera has stepped, metres, to get out from behind something.
+    camera_side: f32,
     /// Seconds since the player was last in the air, or in a landing.
     since_fall: f32,
     /// The roll's and the landing's poses.
@@ -664,6 +666,7 @@ impl Stage {
             camera_arm: None,
             arm_at: [0.0; 3],
             camera_rise: 0.0,
+            camera_side: 0.0,
             since_fall: 0.0,
             body_poses: moving::BodyPoses::default(),
             camera_z: None,
@@ -1553,8 +1556,13 @@ impl Stage {
             .drawn_position(self.game.world.pc)
             .unwrap_or([0.0; 3]);
         let p = self.lagged(p);
-        let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
+        let p = [
+            p[0] + dy * self.camera_side,
+            p[1] - dx * self.camera_side,
+            p[2],
+        ];
+        let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
         let (flat, up) = (self.pitch + self.camera_rise).sin_cos();
         let (flat, up) = (up, flat);
         let back = [-dx * flat, -dy * flat, up];

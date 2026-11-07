@@ -1085,3 +1085,28 @@ fn the_body_fades_out_as_the_camera_comes_into_it() {
     println!("the camera came to {away:.2} m, and the body faded {most:.2}");
     std::fs::remove_file(&file).ok();
 }
+
+/// Something narrow close behind the player: the camera steps to the side, and stands further out than the player's body.
+#[test]
+fn the_camera_steps_aside_where_that_gives_it_room() {
+    let Some((mut s, file)) = stage_in("kas_m23aa", "aside", "") else {
+        return;
+    };
+    s.place_player([66.33, 95.6, 44.04], 0.3);
+    s.yaw = 0.3;
+    run(&mut s, 90);
+    let side = s.camera_side();
+    assert!(side.abs() > 0.3, "{side}");
+    let away = camera_away(&s);
+    assert!(away > 1.0, "{away}");
+    assert_eq!(s.player_fade(), 0.0);
+    // Turned so that nothing stands behind it, it comes back to the middle.
+    s.yaw = 0.3 + std::f32::consts::PI;
+    let mut least = side.abs();
+    for _ in 0..240 {
+        s.update(DT);
+        least = least.min(s.camera_side().abs());
+    }
+    println!("aside {side}, {away} m out; turned round, {least}");
+    std::fs::remove_file(&file).ok();
+}
