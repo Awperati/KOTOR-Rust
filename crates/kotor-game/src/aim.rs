@@ -70,7 +70,7 @@ impl World {
             && !o.dead
             && !o.down
             && !self.on_player_team(o.id)
-            && (self.attack_mode || self.reputation(self.pc, o.id) <= 10)
+            && (self.attack_mode() || self.reputation(self.pc, o.id) <= 10)
     }
 
     /// Whether the player can lock on to this creature from here: a shot may hit it, nothing stands between, and it is within `reach`.
