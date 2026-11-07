@@ -159,8 +159,59 @@ struct Job {
     rx: Receiver<Result<Loaded, Fallback>>,
 }
 
+/// The module behind an exit that cannot be joined (a lift, a shop door that overlaps the street, a script's jump), loaded
+/// ahead on a thread while the player is near it: its picture and chests. Its textures are decoded into the stage's cache.
+pub(super) struct Preloaded {
+    module: String,
+    scene: Scene,
+    chests: Vec<String>,
+}
+
+/// What a preload thread sends back: the module and its decoded textures.
+type Ahead = (Preloaded, Vec<(String, Image)>);
+
+/// A preload in flight.
+struct PreJob {
+    module: String,
+    rx: Receiver<Option<Ahead>>,
+}
+
+/// Free memory under which nothing is loaded ahead, in MB. `KOTOR_PRELOAD_MIN_MB` changes it.
+const PRELOAD_MIN_FREE_MB: u64 = 4096;
+
+/// Free physical memory, in MB, where this machine can say.
+fn free_ram_mb() -> Option<u64> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory",
+            ])
+            .creation_flags(0x0800_0000)
+            .output()
+            .ok()?;
+        let kb: u64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
+        Some(kb / 1024)
+    }
+    #[cfg(not(windows))]
+    {
+        let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let line = text.lines().find(|l| l.starts_with("MemAvailable:"))?;
+        let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+        Some(kb / 1024)
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Seam {
+    /// The module a nearby exit leads to, loaded ahead, and the one being loaded. One of each.
+    pub(super) pre: Option<Preloaded>,
+    pre_job: Option<PreJob>,
+    /// Modules that could not be loaded ahead (or not for want of memory): not tried again in this module.
+    pre_failed: HashSet<String>,
     /// The loaded module's sites, made once the player is near a door.
     sketch: Option<Sketch>,
     jobs: Vec<Job>,
@@ -197,6 +248,7 @@ impl Seam {
         self.sketch = None;
         self.jobs.clear();
         self.failed.clear();
+        self.pre_failed.clear();
         self.parts.clear();
         self.portal_key = None;
         self.figures.clear();
@@ -215,13 +267,129 @@ impl Stage {
         self.seam.portal_version
     }
 
+    /// The module loaded ahead for a nearby exit, once it is ready.
+    pub fn preloaded(&self) -> Option<&str> {
+        self.seam.pre.as_ref().map(|p| p.module.as_str())
+    }
+
     /// Why links fell back to the loading screen, so far.
     pub fn seam_notes(&self) -> &[String] {
         &self.seam.notes
     }
 
+    /// Load the module behind the nearest exit that leads elsewhere, on a thread, while the player is near it, so that going
+    /// through shows no long freeze. One job at a time, one module kept, nothing when memory is short or the exit is far.
+    fn preload_tick(&mut self) {
+        if let Some(job) = &self.seam.pre_job {
+            match job.rx.try_recv() {
+                Ok(Some((p, images))) => {
+                    for (n, img) in images {
+                        self.textures.entry(n).or_insert(Some(img));
+                    }
+                    self.seam.pre = Some(p);
+                    self.seam.pre_job = None;
+                }
+                Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    let m = job.module.clone();
+                    self.seam.pre_failed.insert(m);
+                    self.seam.pre_job = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        let w = &self.game.world;
+        if w.minigame.is_some()
+            || w.module.is_empty()
+            || std::env::var_os("KOTOR_NO_PRELOAD").is_some()
+        {
+            return;
+        }
+        let here = w.pc_mover.pos;
+        let joined: HashSet<&str> = w
+            .seamless
+            .attached
+            .values()
+            .map(|a| a.module.as_str())
+            .collect();
+        let mut exits: Vec<(f32, String)> = w
+            .objects
+            .values()
+            .filter(|o| matches!(o.kind, Kind::Door | Kind::Trigger) && !o.link_module.is_empty())
+            .map(|o| {
+                (
+                    (o.position[0] - here[0]).hypot(o.position[1] - here[1]),
+                    o.link_module.to_ascii_lowercase(),
+                )
+            })
+            .filter(|(_, m)| *m != w.module && !joined.contains(m.as_str()))
+            .collect();
+        exits.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // What is kept goes when its exit is out of reach.
+        if let Some(p) = &self.seam.pre {
+            if !exits
+                .iter()
+                .any(|(d, m)| *m == p.module && *d < PRELOAD_RANGE + 8.0)
+            {
+                self.seam.pre = None;
+            }
+        }
+        if self.seam.pre_job.is_some() {
+            return;
+        }
+        let Some((_, module)) = exits.into_iter().find(|(d, m)| {
+            *d < PRELOAD_RANGE
+                && !self.seam.pre_failed.contains(m)
+                && self.seam.pre.as_ref().is_none_or(|p| p.module != *m)
+        }) else {
+            return;
+        };
+        let (dir, hd) = (self.dir.clone(), self.hd3d.clone());
+        let (tx, rx) = channel();
+        let name = module.clone();
+        std::thread::spawn(move || {
+            let min = std::env::var("KOTOR_PRELOAD_MIN_MB")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(PRELOAD_MIN_FREE_MB);
+            let load = || -> Option<Ahead> {
+                if free_ram_mb().is_some_and(|f| f < min) {
+                    return None;
+                }
+                let mut inst = Install::open(&dir).ok()?;
+                inst.load_module(&name).ok()?;
+                let ifo = Gff::parse(&inst.read("module", ResType::IFO).ok()?).ok()?;
+                let area = ifo.root.str("Mod_Entry_Area")?.to_string();
+                let chests = chest_templates(&mut inst, &area);
+                let mut scene = kotor_render::load_area(&mut inst, &area).ok()?;
+                kotor_render::add_area_objects_except(&mut scene, &mut inst, &area, false, &chests)
+                    .ok()?;
+                let images = texture_names(&scene)
+                    .into_iter()
+                    .filter_map(|n| {
+                        let img = hd
+                            .as_deref()
+                            .and_then(|d| super::upscaled(d, &n))
+                            .or_else(|| kotor_render::load_texture(&mut inst, &n))?;
+                        Some((n, img))
+                    })
+                    .collect();
+                Some((
+                    Preloaded {
+                        module: name.clone(),
+                        scene,
+                        chests,
+                    },
+                    images,
+                ))
+            };
+            let _ = tx.send(load());
+        });
+        self.seam.pre_job = Some(PreJob { module, rx });
+    }
+
     /// Called once a frame after the world has stepped.
     pub(super) fn seamless_tick(&mut self) {
+        self.preload_tick();
         let on = self.settings().seamless_areas && self.game.world.minigame.is_none();
         self.game.world.seamless.enabled = on;
         if !on {
@@ -764,7 +932,14 @@ impl Stage {
             );
             self.seam.figure_version += 1;
         }
-        let c = crossed?;
+        // A module loaded ahead for this exit: used once, and only for this module.
+        let ahead = self.seam.pre.take();
+        let Some(c) = crossed else {
+            let module = &self.game.world.module;
+            return ahead
+                .filter(|p| p.module.eq_ignore_ascii_case(module))
+                .map(|p| (p.scene, p.chests));
+        };
         self.seam.cache.remove(&c.module)
     }
 }

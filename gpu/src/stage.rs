@@ -812,6 +812,8 @@ impl Stage {
         let e = |e: kotor_core::Error| e.to_string();
         // A seamless crossing has the new module's picture ready.
         let ready = self.seamless_arrive();
+        // A turret's sky is not a picture of the area.
+        let ready = ready.filter(|_| self.game.world.minigame.is_none());
         self.module = self.game.world.module.clone();
         self.inst.load_module(&self.module).map_err(e)?;
         let area = self.area_name();
