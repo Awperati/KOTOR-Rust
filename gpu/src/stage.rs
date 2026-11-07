@@ -2228,10 +2228,18 @@ impl Stage {
                     .collect()
             })
             .unwrap_or_default();
-        items
+        let mut held: Vec<(&'static str, Rc<Model>)> = items
             .into_iter()
             .filter_map(|(node, item)| Some((node, self.item_model(item)?)))
-            .collect()
+            .collect();
+        // The grenade being thrown is in the right hand until it is let go.
+        if let Some(template) = self.game.world.grenade_in_hand(id).map(str::to_string) {
+            if let Some(m) = self.flying_model(&template) {
+                held.retain(|(node, _)| *node != "rhand");
+                held.push(("rhand", m));
+            }
+        }
+        held
     }
 
     /// The body of a placeable that holds things; `None` for any other placeable, which is in the fixed scene.

@@ -142,6 +142,14 @@ impl World {
             .collect()
     }
 
+    /// The template of the grenade a creature holds in its hand, from the throw's start to the moment it lets go.
+    pub fn grenade_in_hand(&self, who: ObjId) -> Option<&str> {
+        self.flights
+            .iter()
+            .find(|f| f.caster == who && !f.released)
+            .map(|f| f.template.as_str())
+    }
+
     /// How many are still in the hand or in the air.
     pub fn flights_pending(&self) -> usize {
         self.flights.len()
