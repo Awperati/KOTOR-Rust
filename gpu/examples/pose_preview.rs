@@ -23,7 +23,7 @@ const LOOK_AT: f32 = 0.85;
 const FOV: f32 = 45.0;
 const ROLL_MOMENTS: [f32; 6] = [0.08, 0.2, 0.35, 0.5, 0.65, 0.85];
 const LANDING_MOMENTS: [f32; 6] = [0.0, 0.15, 0.3, 0.5, 0.7, 0.9];
-const JUMP_MOMENTS: [f32; 6] = [0.05, 0.2, 0.35, 0.5, 0.7, 0.95];
+const JUMP_MOMENTS: [f32; 6] = [0.22, 0.36, 0.5, 0.65, 0.8, 0.93];
 
 #[derive(Clone, Copy)]
 enum Move {

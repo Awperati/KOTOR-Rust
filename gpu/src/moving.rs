@@ -610,6 +610,15 @@ impl Stage {
             Bend::Jump(p) => (&self.body_poses.jump, p, false, JUMP_CLIP),
         };
         let keys = file.sample(p);
+        // A jump's landing starts from the legs that came down, and not all at once in the crouch.
+        let keys = match bend {
+            Bend::Land(_) if self.game.world.pc_body.landing_from_jump() => self
+                .body_poses
+                .jump
+                .sample(1.0)
+                .toward(&keys, smooth(p / LANDING_FROM_JUMP)),
+            _ => keys,
+        };
         // The owner's own clip of the move takes the place of the file's joints. It is stretched to the move, whatever its
         // length, and comes in from what the body was doing. A roll still turns over by the file's `turns`.
         if let Some(c) = kotor_render::custom_clip::get(own_clip) {
@@ -739,6 +748,8 @@ impl Stage {
 const ROLL_CLIP: &str = "roll";
 const LANDING_CLIP: &str = "landing";
 const JUMP_CLIP: &str = "jump";
+/// How much of a landing, 0 to 1, it takes to go from the jump's last pose to the crouch. Assumed: about 0.1 s.
+const LANDING_FROM_JUMP: f32 = 0.35;
 /// How much of a move, 0 to 1, the owner's clip takes to come in and go out. Assumed.
 const OWN_CLIP_BLEND: f32 = 0.12;
 

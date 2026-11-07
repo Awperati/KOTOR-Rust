@@ -233,6 +233,8 @@ pub struct Body {
     land_total: f32,
     /// A jump's own landing: the crouch, with no loss of speed.
     land_light: bool,
+    /// The landing is of a jump, whatever its height.
+    land_jumped: bool,
     /// In the air by its own jump.
     jumping: bool,
     fall_from: f32,
@@ -259,6 +261,7 @@ impl Body {
             land_left: 0.0,
             land_total: 0.0,
             land_light: false,
+            land_jumped: false,
             jumping: false,
             fall_from: pos[2],
             last_stood: pos,
@@ -343,6 +346,11 @@ impl Body {
 
     pub fn landing(&self) -> bool {
         self.land_left > 0.0
+    }
+
+    /// In the landing of a jump. The legs come down out of the jump's last pose.
+    pub fn landing_from_jump(&self) -> bool {
+        self.landing() && self.land_jumped
     }
 
     pub fn gait(&self, t: &Tuning) -> Gait {
@@ -731,11 +739,15 @@ impl Body {
                 self.last_stood = self.pos;
                 ev.landed = Some(impact);
                 let light = self.jumping && impact <= Self::jump_speed(t) + LIGHT_LANDING;
+                // A jump always ends in a landing, even up on a step, so that its pose has something to go into.
+                let jumped = self.jumping;
                 self.jumping = false;
                 self.land_light = light;
-                if impact > t.land_threshold {
-                    self.land_total =
-                        ((impact - t.land_threshold) * t.land_per_speed + 0.12).min(t.land_max);
+                self.land_jumped = jumped;
+                if impact > t.land_threshold || jumped {
+                    self.land_total = ((impact - t.land_threshold).max(0.0) * t.land_per_speed
+                        + 0.12)
+                        .min(t.land_max);
                     self.land_left = self.land_total;
                     if !light {
                         self.vel[0] *= t.land_slow;
@@ -1628,6 +1640,44 @@ mod tests {
         fn door_distance(&self, at: [f32; 3]) -> Option<f32> {
             Some((at[0] - 5.0).hypot((at[1].abs() - 2.0).max(0.0)))
         }
+    }
+
+    #[test]
+    fn a_jump_up_onto_a_step_still_ends_in_a_short_landing() {
+        struct Step;
+        impl Ground for Step {
+            fn floor(&self, x: f32, _y: f32, _reach: f32) -> Option<f32> {
+                Some(if x > 1.0 { 0.8 } else { 0.0 })
+            }
+            fn blocked(&self, _a: [f32; 3], _b: [f32; 3]) -> bool {
+                false
+            }
+            fn way_back(&self, _from: [f32; 3], _to: [f32; 3]) -> bool {
+                true
+            }
+        }
+        let t = Tuning::default();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        assert!(b.jump(&t));
+        let mut soft = None;
+        for _ in 0..90 {
+            let ev = b.step(
+                Input {
+                    dir: Some([1.0, 0.0]),
+                    ..Input::default()
+                },
+                &Step,
+                &t,
+                1.0 / 60.0,
+            );
+            if let Some(impact) = ev.landed {
+                soft = Some(impact);
+                break;
+            }
+        }
+        let soft = soft.expect("it came down");
+        assert!(soft < t.land_threshold, "a soft landing: {soft}");
+        assert!(b.landing_from_jump());
     }
 
     #[test]

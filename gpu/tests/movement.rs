@@ -1111,3 +1111,93 @@ fn the_camera_steps_aside_where_that_gives_it_room() {
     println!("aside {side}, {away} m out; turned round, {least}");
     std::fs::remove_file(&file).ok();
 }
+
+/// The owner's words: "put one leg in front of the other and same with the respective upper limb", and "a little paddling
+/// motion with the legs and arms after being in the air for a certain amount of time".
+#[test]
+fn a_jump_strides_with_the_opposite_arm_and_then_paddles() {
+    let Some((mut s, file)) = stage("stride", "") else {
+        return;
+    };
+    let mut at = |p: f32| {
+        s.preview_jump(p);
+        s.bent_joints().unwrap()
+    };
+    // How far the left is ahead of the right: the knees, and the hands.
+    let ahead =
+        |j: &std::collections::HashMap<String, [f32; 3]>, l: &str, r: &str| j[l][1] - j[r][1];
+    let stride = at(0.36);
+    let (knees, hands) = (
+        ahead(&stride, "lshin_g", "rshin_g"),
+        ahead(&stride, "lhand_g", "rhand_g"),
+    );
+    assert!(knees > 0.25, "one leg in front of the other: {knees}");
+    assert!(hands < -0.15, "the opposite arm forward: {hands}");
+    // Over the top the legs and arms change over, and back.
+    let moments = [0.5, 0.65, 0.8].map(|p| {
+        let j = at(p);
+        (
+            ahead(&j, "lshin_g", "rshin_g"),
+            ahead(&j, "lhand_g", "rhand_g"),
+        )
+    });
+    for pair in moments.windows(2) {
+        assert!(
+            pair[0].0 * pair[1].0 < 0.0,
+            "the legs change over: {moments:?}"
+        );
+        assert!(
+            pair[0].1 * pair[1].1 < 0.0,
+            "the arms change over: {moments:?}"
+        );
+    }
+    // In each, the arm goes against the leg.
+    for (legs, arms) in moments {
+        assert!(legs * arms < 0.0, "{moments:?}");
+    }
+    // Coming down, the feet are nearly under the body again.
+    let down = at(1.0);
+    assert!(ahead(&down, "lshin_g", "rshin_g").abs() < 0.05);
+    std::fs::remove_file(&file).ok();
+}
+
+/// From a run or from standing, through a jump and its landing, no hand or foot jumps from one frame to the next.
+#[test]
+fn a_jump_goes_smoothly_from_the_run_to_the_landing_and_back() {
+    let Some((mut s, file)) = stage("smooth", "") else {
+        return;
+    };
+    s.yaw = clear_way(&mut s);
+    for forward in [1.0, 0.0] {
+        s.steer = (forward, 0.0, false);
+        run(&mut s, 45);
+        s.jump_key();
+        let mut last: Option<std::collections::HashMap<String, [f32; 3]>> = None;
+        let (mut worst, mut seen, mut landed) = (0.0f32, 0, false);
+        for _ in 0..90 {
+            s.update(DT);
+            landed |= s.game.world.pc_body.landing_from_jump();
+            let Some(j) = s.bent_joints() else {
+                last = None;
+                continue;
+            };
+            seen += 1;
+            if let Some(old) = &last {
+                for n in [
+                    "lfoot_g", "rfoot_g", "lhand_g", "rhand_g", "lshin_g", "rshin_g",
+                ] {
+                    let d = (0..3)
+                        .map(|k| (j[n][k] - old[n][k]).powi(2))
+                        .sum::<f32>()
+                        .sqrt();
+                    worst = worst.max(d);
+                }
+            }
+            last = Some(j);
+        }
+        assert!(seen > 30 && landed, "{seen} bent frames, landed {landed}");
+        println!("forward {forward}: at most {worst:.3} m in a frame");
+        assert!(worst < 0.16, "a joint moved {worst} m in one frame");
+    }
+    std::fs::remove_file(&file).ok();
+}

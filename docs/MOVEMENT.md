@@ -43,9 +43,12 @@ There is no separate run: a held key goes to a sprint. Going diagonally is no fa
 | In the air | About 0.7 s |
 | Steering in the air | 0.3 of what it is on the floor |
 | Landing | A short crouch, and the speed is kept |
+| Stride | One leg forward, with the other arm forward |
+| Paddling | From about 0.35 s in the air: legs and arms change over, and back |
 
 - Only from the floor, on its feet. Not in the air, in a roll, in a conversation, in a minigame or while down.
 - Space does nothing during a pause, and nothing for half a second after a conversation.
+- The legs come out of the run, stride, paddle, and go down into the landing, with no jump between poses.
 - The head stops at a low ceiling, and the jump falls from there. A beam or a branch counts as a ceiling.
 - A jump does not clear a railing, even one lower than it could reach. It does not land on a higher floor with no walk back.
 

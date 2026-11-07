@@ -67,7 +67,7 @@ pub(super) const SHIPPED_ROLLS: [&str; 2] = [
     include_str!("poses_old/roll_pose_v2.txt"),
 ];
 pub(super) const SHIPPED_LANDINGS: [&str; 1] = [include_str!("poses_old/landing_pose_v1.txt")];
-pub(super) const SHIPPED_JUMPS: [&str; 0] = [];
+pub(super) const SHIPPED_JUMPS: [&str; 1] = [include_str!("poses_old/jump_pose_v1.txt")];
 pub(super) const ROLL_FILE: &str = "roll_pose.txt";
 pub(super) const LANDING_FILE: &str = "landing_pose.txt";
 pub(super) const JUMP_FILE: &str = "jump_pose.txt";
@@ -116,6 +116,24 @@ pub(super) struct Sampled {
     pub lower: f32,
     /// Bend, out and twist in degrees, in the order of `JOINTS`.
     pub angles: [[f32; 3]; COUNT],
+}
+
+impl Sampled {
+    /// This moment on its way to another, `share` of the way there.
+    pub fn toward(&self, other: &Sampled, share: f32) -> Sampled {
+        let mix = |a: f32, b: f32| a + (b - a) * share;
+        let mut angles = self.angles;
+        for (a, b) in angles.iter_mut().zip(&other.angles) {
+            for k in 0..3 {
+                a[k] = mix(a[k], b[k]);
+            }
+        }
+        Sampled {
+            tuck: mix(self.tuck, other.tuck),
+            lower: mix(self.lower, other.lower),
+            angles,
+        }
+    }
 }
 
 fn number(words: &str, line: usize) -> Result<f32, String> {
@@ -302,6 +320,11 @@ mod tests {
         assert_eq!(jump.turns, 0.0);
         assert_eq!(jump.sample(0.5).tuck, 1.0);
         assert!(angle(&jump.sample(0.5), "lshin_g")[0] > 45.0);
+        assert_eq!(
+            jump.sample(0.0).tuck,
+            0.0,
+            "it comes out of what the body was doing"
+        );
     }
 
     #[test]
@@ -309,6 +332,7 @@ mod tests {
         for (now, old) in [
             (DEFAULT_ROLL, &SHIPPED_ROLLS[..]),
             (DEFAULT_LANDING, &SHIPPED_LANDINGS[..]),
+            (DEFAULT_JUMP, &SHIPPED_JUMPS[..]),
         ] {
             let version = PoseFile::parse(now).unwrap().version;
             assert!(version >= 2);
@@ -321,7 +345,8 @@ mod tests {
 
     #[test]
     fn left_and_right_of_a_default_are_alike() {
-        for text in [DEFAULT_ROLL, DEFAULT_LANDING, DEFAULT_JUMP] {
+        // Not the jump, which is a stride.
+        for text in [DEFAULT_ROLL, DEFAULT_LANDING] {
             let f = PoseFile::parse(text).unwrap();
             let s = f.sample(0.5);
             for (l, r) in JOINTS
