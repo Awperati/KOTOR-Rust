@@ -666,7 +666,13 @@ impl Ui<'_> {
         };
         let font = patch.font.as_deref().unwrap_or(&t.font);
         let words = [r[0] + patch.inset, r[1], r[2] - patch.inset * 2, r[3]];
+        let kept = patch
+            .faint
+            .map(|share| (cv.keep_box(r[0], r[1], r[2], r[3]), share));
         self.draw_text(cv, font, &text, words, t.alignment, color);
+        if let Some((kept, share)) = kept {
+            cv.fade_to(&kept, share);
+        }
     }
 
     /// Where a needle goes beside a tall scale, as `docs/MENU_REFERENCE.md` has it: small, along the scale's own picture from

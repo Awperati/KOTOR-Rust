@@ -230,6 +230,101 @@ fn esc_pauses_the_game_and_exit_game_goes_back_to_the_main_menu() {
     assert!(!s.dynamic_scene().meshes.is_empty());
 }
 
+/// How far apart the brightest and the darkest in the middle of the save's text box are.
+fn name_box_contrast(s: &mut Stage) -> i32 {
+    s.update(DT);
+    let (x, y) = s.menu_pixel("EDITBOX", None, SIZE).unwrap();
+    let o = s.overlay().unwrap();
+    let mut seen = (i32::MAX, 0);
+    for yy in (y as u32 - 12)..(y as u32 + 12) {
+        for xx in (x as u32 - 130)..(x as u32 + 130) {
+            let p = &o.rgba[((yy * o.width + xx) * 4) as usize..][..3];
+            let v = p[0] as i32 + p[1] as i32 + p[2] as i32;
+            seen = (seen.0.min(v), seen.1.max(v));
+        }
+    }
+    seen.1 - seen.0
+}
+
+#[test]
+fn the_save_name_box_offers_the_place_faintly_until_something_is_typed() {
+    let Some((mut s, dir)) = in_game("save_offer") else {
+        return;
+    };
+    let w = &s.game.world;
+    let place = w.object(w.area).unwrap().name.clone();
+    assert!(!place.is_empty());
+    s.escape();
+    press(&mut s, "BTN_SAVEGAME");
+    press(&mut s, "BTN_SAVELOAD");
+
+    // Offered, not typed, and faint: as the same words typed, a quarter as strong or so.
+    assert_eq!(s.save_name_typed(), "");
+    assert_eq!(s.save_name_offered(), place);
+    let faint = name_box_contrast(&mut s);
+    s.type_text(&place);
+    let solid = name_box_contrast(&mut s);
+    assert!(
+        faint > 0 && faint * 2 < solid,
+        "offered {faint}, typed {solid}"
+    );
+
+    // The first key takes its place, and the last one gone brings it back.
+    while !s.save_name_typed().is_empty() {
+        s.backspace();
+    }
+    assert_eq!(name_box_contrast(&mut s), faint, "it is back");
+    s.type_text("M");
+    assert_eq!(s.save_name_typed(), "M", "nothing of the place is left");
+    s.backspace();
+    assert_eq!(s.save_name_typed(), "");
+    // Spaces are nothing.
+    s.type_text("   ");
+
+    // Enter with nothing typed: the place's name.
+    s.continue_line();
+    assert_eq!(s.menu_name(), "save", "{}", s.menu_message());
+    let first = dir.join("save_0001.sav");
+    assert_eq!(kotor_game::read_save_info(&first).unwrap().name, place);
+
+    // A new one with a name typed has that name, and no part of the place's.
+    click_row(&mut s, "LB_GAMES", 0);
+    press(&mut s, "BTN_SAVELOAD");
+    s.type_text("Mine");
+    press(&mut s, "BTN_OK");
+    let second = dir.join("save_0002.sav");
+    assert_eq!(kotor_game::read_save_info(&second).unwrap().name, "Mine");
+
+    // Over an old one: it offers that one's name, and the first key replaces that too.
+    let row = (1..3)
+        .find(|r| {
+            click_row(&mut s, "LB_GAMES", *r);
+            s.selected_save_name().as_deref() == Some("Mine")
+        })
+        .expect("the row");
+    press(&mut s, "BTN_SAVELOAD");
+    assert_eq!(s.save_name_offered(), "Mine");
+    assert_eq!(s.save_name_typed(), "");
+    s.continue_line();
+    assert_eq!(kotor_game::read_save_info(&second).unwrap().name, "Mine");
+    click_row(&mut s, "LB_GAMES", row);
+    let chosen = s.selected_save_name();
+    assert_eq!(chosen.as_deref(), Some("Mine"));
+    press(&mut s, "BTN_SAVELOAD");
+    s.type_text("Other");
+    press(&mut s, "BTN_OK");
+    assert_eq!(kotor_game::read_save_info(&second).unwrap().name, "Other");
+
+    // Esc takes it back, and the next time starts empty.
+    click_row(&mut s, "LB_GAMES", 0);
+    press(&mut s, "BTN_SAVELOAD");
+    s.type_text("Gone");
+    s.escape();
+    press(&mut s, "BTN_SAVELOAD");
+    assert_eq!(s.save_name_typed(), "");
+    assert_eq!(s.save_name_offered(), place);
+}
+
 /// Click down the two rows from `shift` until the save named Bridge is chosen.
 fn choose_bridge(s: &mut Stage, shift: usize) {
     for r in shift..shift + 2 {
@@ -281,7 +376,8 @@ fn saves_are_listed_written_loaded_and_deleted_from_the_screens() {
     assert!(dir.join("save_0002.sav").is_file());
     choose_bridge(&mut s, 1);
     press(&mut s, "BTN_SAVELOAD");
-    assert_eq!(s.save_name_typed(), "Bridge", "it offers the old name");
+    assert_eq!(s.save_name_typed(), "", "nothing is typed for it");
+    assert_eq!(s.save_name_offered(), "Bridge", "it offers the old name");
     s.continue_line();
     assert_eq!(s.saves_listed(), 2);
     press(&mut s, "BTN_BACK");

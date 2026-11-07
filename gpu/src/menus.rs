@@ -67,6 +67,9 @@ pub(super) fn slot_is_pickup(action: Option<&str>) -> bool {
     action.is_none_or(|a| a == "Use")
 }
 
+/// How strong the name a save is offered is. The owner: "about 75% more transparent".
+const NAME_OFFERED_STRENGTH: f32 = 0.25;
+
 /// A container's top two buttons, as the owner named them. The file's words are "Get Items" and "Switch To".
 const TAKE_ALL: &str = "Take All";
 const TAKE_SELECTED: &str = "Take Selected";
@@ -713,6 +716,8 @@ pub(super) struct Menus {
     /// How many screens were up when last looked at.
     stack_seen: Option<usize>,
     /// The fight's slots and rising words.
+    /// What the save's text box shows, faint, with nothing typed.
+    name_offered: String,
     fight: fightscreen::Fight,
     touch: touchscreen::Fingers,
     /// A shop, while one is open.
@@ -942,7 +947,13 @@ impl Stage {
                 let mode = Mode::Save;
                 let mut under = self.saves_view(mode);
                 let mut d = MenuView::new("savename");
-                d.text("EDITBOX", format!("{}_", self.menus.name));
+                if self.menus.name.is_empty() && !self.menus.name_offered.is_empty() {
+                    d.text("EDITBOX", self.menus.name_offered.clone());
+                    d.patches.entry("EDITBOX".to_string()).or_default().faint =
+                        Some(NAME_OFFERED_STRENGTH);
+                } else {
+                    d.text("EDITBOX", format!("{}_", self.menus.name));
+                }
                 d.hover = hover.clone();
                 under.dialog = Some(Box::new(d));
                 under
@@ -2573,14 +2584,15 @@ impl Stage {
     fn save_or_load(&mut self, mode: Mode) {
         match mode {
             Mode::Save if self.menus.selected.is_some() => {
-                self.menus.name = match self.selected_file(mode) {
+                let offered = match self.selected_file(mode) {
                     Some(f) => f.info.name.clone(),
                     None => {
                         let w = &self.game.world;
                         w.object(w.area).map(|a| a.name.clone()).unwrap_or_default()
                     }
                 };
-                self.menus.name.truncate(SAVE_NAME_MAX);
+                self.menus.name_offered = offered.chars().take(SAVE_NAME_MAX).collect();
+                self.menus.name.clear();
                 self.menus.stack.push(Screen::Name);
             }
             Mode::Load => self.load_selected(),
@@ -2628,7 +2640,14 @@ impl Stage {
 
     /// The name dialog's OK: write the chosen file, or a new one, and go back to the list.
     fn write_save(&mut self) {
-        let name = self.menus.name.trim().to_string();
+        // What was typed, and with nothing typed what the box offers.
+        let typed = self.menus.name.trim();
+        let name = if typed.is_empty() {
+            self.menus.name_offered.trim()
+        } else {
+            typed
+        };
+        let name = name.to_string();
         if name.is_empty() {
             self.menus.message = "Give the save a name.".to_string();
             return;
@@ -2778,6 +2797,11 @@ impl Stage {
     /// The name in the text box.
     pub fn save_name_typed(&self) -> &str {
         &self.menus.name
+    }
+
+    /// What the save is called if nothing is typed: the area, or the name of the save it goes over.
+    pub fn save_name_offered(&self) -> &str {
+        &self.menus.name_offered
     }
 
     /// The name of the save on the chosen row.

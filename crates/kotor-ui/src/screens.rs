@@ -251,6 +251,8 @@ const MINIMAP_ARROW: &str = "mm_barrow";
 /// Per-control changes a screen applies on top of the file: replacement fill, text, bar value, or hiding.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Patch {
+    /// Its words show at this share of their strength.
+    pub faint: Option<f32>,
     /// Its picture upside down.
     pub flipped: bool,
     pub fill: Option<String>,

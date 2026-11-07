@@ -275,5 +275,9 @@ The owner's, on a door's picture: under the name and in the middle of it, a quar
 
 The owner: "add a joystick button for looking just like the moving one. Like a normal controller". The same size and look as the other stick, left of the round buttons. It turns the camera while pushed, at a speed from how far and the Look Stick Speed row on the Controls page, and Invert Camera flips it. A drag on the right half still works. **Assumed:** the speed at the slider's middle and all the way over, 2 radians a second.
 
+## The name of a save
+
+The owner: the place's name "should only be used for the save if the player presses enter without entering any text". The box shows it at a quarter of its strength, and it is not in the box: the first key takes its place, and with the last one gone it comes back. Over an old save it offers that save's name the same way. Frames: `gpu/examples/savename_shots.rs`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.
