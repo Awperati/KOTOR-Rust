@@ -49,6 +49,10 @@ pub struct Rig {
     neck_shading: bool,
 }
 
+/// How much further than the `talk` clip the mouth goes at full voice: the clip's jaw turns about three degrees, which a head
+/// seen from across a room does not show.
+const MOUTH_GAIN: f32 = 1.0;
+
 impl Rig {
     /// Load a body, optionally a head, and the body's supermodel. `body_texture` is used for body
     /// meshes that name no texture of their own (else the model's most used texture).
@@ -261,6 +265,63 @@ impl Rig {
             return self.body_face(name, t);
         };
         Some(a.sample(head, if a.length > 0.0 { t % a.length } else { 0.0 }))
+    }
+
+    /// The face of a head that is speaking: `name`'s face at `t` (its brows, eyes and eyelids, the expression of a talk that is
+    /// sad, forceful or laughing), with the mouth of the `talk` loop at `talk_t` laid over it, open by `open` from 0 (shut) to 1
+    /// (`MOUTH_GAIN` times as far as the loop has it), and the eyelids of the idle clip, which blinks, since a clip of talk blinks little.
+    /// Nodes that no clip keys stay at the head's rest.
+    ///
+    /// **Assumed:** that the `talk` clip, a half second loop of jaw, lips and tongue, is the game's mouth for speech.
+    pub fn speaking_face(
+        &self,
+        name: &str,
+        t: f32,
+        open: f32,
+        talk_t: f32,
+    ) -> Option<kotor_model::Pose> {
+        let head = self.head.as_ref()?;
+        let mut face = self.sample_face(name, t).unwrap_or_default();
+        let wrapped = |clip: &str, at: f32| {
+            let length = head
+                .animation(clip)
+                .map(|a| a.length)
+                .or_else(|| self.animation_length(clip))
+                .filter(|l| *l > 0.0)?;
+            self.sample_face(clip, at.rem_euclid(length))
+        };
+        if let Some(idle) = wrapped("pause1", t) {
+            for lid in ["eyellid", "eyerlid"] {
+                if let Some(v) = idle.get(lid) {
+                    face.insert(lid.to_string(), *v);
+                }
+            }
+        }
+        if let Some(mouth) = wrapped("talk", talk_t) {
+            let bind = head.bind_pose();
+            let mouth_node = |n: &str| {
+                [
+                    "f_jaw", "f_um", "f_lm", "f_rm", "f_ll", "f_rl", "f_ln", "f_rn", "f_tongue",
+                ]
+                .iter()
+                .any(|p| n.starts_with(p))
+            };
+            for (node, now) in &mouth {
+                if !mouth_node(node) {
+                    continue;
+                }
+                let at = match bind.get(node) {
+                    Some(rest) => kotor_model::blend_by(
+                        &[(node.clone(), *rest)].into_iter().collect(),
+                        &[(node.clone(), *now)].into_iter().collect(),
+                        open * MOUTH_GAIN,
+                    )[node],
+                    None => *now,
+                };
+                face.insert(node.clone(), at);
+            }
+        }
+        (!face.is_empty()).then_some(face)
     }
 
     /// A head with no clip of its own is moved by the body's clip of the name: the body's supermodel keys the face's nodes

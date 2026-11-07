@@ -105,6 +105,43 @@ fn placement_flat(p: [f32; 3], angle: f32) -> Mat {
     ]
 }
 
+/// Steps of `Stage::voice_energy` in a second.
+const VOICE_RATE: f32 = 50.0;
+
+/// How loud a voice file is, 50 times a second, from 0 (a pause between words) to 1: the mean size of the samples over 20 ms
+/// against the 90th percentile of them. Empty when the file cannot be read.
+fn voice_energy(path: &std::path::Path) -> Vec<f32> {
+    let Ok(bytes) = std::fs::read(path) else {
+        return Vec::new();
+    };
+    let Ok(audio) = kotor_audio::decode(&bytes) else {
+        return Vec::new();
+    };
+    let channels = usize::from(audio.channels.max(1));
+    let step = (audio.sample_rate as f32 / VOICE_RATE).max(1.0) as usize * channels;
+    let mut steps: Vec<f32> = audio
+        .samples
+        .chunks(step)
+        .map(|c| c.iter().map(|s| f32::from(*s).abs()).sum::<f32>() / c.len() as f32)
+        .collect();
+    let mut sorted = steps.clone();
+    sorted.sort_by(f32::total_cmp);
+    let top = sorted
+        .get(sorted.len() * 9 / 10)
+        .copied()
+        .unwrap_or(0.0)
+        .max(1.0);
+    for v in &mut steps {
+        let level = (*v / top).min(1.0);
+        *v = if level < 0.1 {
+            0.0
+        } else {
+            0.35 + 0.65 * level
+        };
+    }
+    steps
+}
+
 /// Ids from here are rows of `dialoganimations.2da`, in a conversation node's `AnimList`.
 const DIALOGUE_ANIMATION_BASE: u32 = 10000;
 
@@ -405,6 +442,9 @@ pub struct Stage {
     /// The cutscene beat on now, its age in seconds, and the stunt and camera model names it reads.
     beat: Option<Beat>,
     beat_time: f32,
+    /// How loud the voice of the line on now is, in 50ths of a second from 0 to 1: what opens the speaker's mouth. Empty for a
+    /// line with no voice, which is then spoken by its length alone.
+    voice_energy: Vec<f32>,
     camera_model: String,
     stunts: Vec<(String, String)>,
     /// Seconds of real time: what bodies shown on screens with no game running (the character picker, the party screen)
@@ -541,6 +581,7 @@ impl Stage {
             line_key: None,
             beat: None,
             beat_time: 0.0,
+            voice_energy: Vec::new(),
             camera_model: String::new(),
             stunts: Vec::new(),
             idle_clock: 0.0,
@@ -998,6 +1039,10 @@ impl Stage {
             });
             self.beat = self.game.world.dialogue_beat();
             self.beat_time = 0.0;
+            self.voice_energy = self
+                .sound_file(&vo)
+                .map(|p| voice_energy(&p))
+                .unwrap_or_default();
             if let Some(c) = self.game.world.dialogue_conversation() {
                 self.camera_model = c.camera_model;
                 self.stunts = c.stunts;
@@ -1087,6 +1132,43 @@ impl Stage {
             .dialogue_view()
             .is_some_and(|(_, _, _, replies)| !replies.is_empty())
             && self.beat_time >= said
+    }
+
+    /// How far the mouth of creature `id` is open while it says the line on now, from 0 to 1, with the clock of its talking
+    /// loop: `None` when it is not the speaker, or the line is said. It follows the voice's loudness, and a line with no voice
+    /// is spoken at an even pace for its length.
+    pub fn mouth_of(&self, id: ObjId) -> Option<(f32, f32)> {
+        let w = &self.game.world;
+        let (speaker, _, _, _) = w.dialogue_view()?;
+        let o = w.object(id)?;
+        // A node's speaker is a tag, or empty, or a name that no object has (the opening's `Trask`): then the owner speaks.
+        let says = if speaker.is_empty() || w.by_tag(&speaker).is_empty() {
+            Some(id) == w.dialogue_owner() && id != w.pc
+        } else {
+            o.tag.eq_ignore_ascii_case(&speaker)
+        };
+        let said = self.beat.as_ref().map_or(0.0, |b| b.length);
+        if !says || self.beat_time >= said {
+            return None;
+        }
+        let open = if self.voice_energy.is_empty() {
+            0.85
+        } else {
+            let at = (self.beat_time * VOICE_RATE) as usize;
+            // A little ahead and behind, so that the mouth does not flutter at 50 Hz.
+            let around = |k: usize| {
+                (at.saturating_sub(k)..=at + k)
+                    .map(|i| self.voice_energy.get(i).copied().unwrap_or(0.0))
+                    .sum::<f32>()
+                    / (2 * k + 1) as f32
+            };
+            around(2)
+        };
+        // The mouth shuts at the line's very start and end.
+        let edge = (self.beat_time / 0.12)
+            .min((said - self.beat_time) / 0.12)
+            .clamp(0.0, 1.0);
+        Some((open * edge, self.beat_time))
     }
 
     /// Whether a fixed camera stands closer to whoever owns the conversation than `TOO_CLOSE_METRES`. Carth's on the
@@ -1186,6 +1268,18 @@ impl Stage {
     fn dialogue_label(&self, row: usize) -> Option<&'static str> {
         let label = self.dialogue_labels.get(row)?;
         dialogue_clip_name(label)
+    }
+
+    /// The face of a creature in a cutscene's stunt: its mouth speaks the line on now, and its lids blink as it stands.
+    fn stunt_face(&self, id: ObjId, rig: &Rig) -> Option<kotor_model::Pose> {
+        let mouth = self.mouth_of(id);
+        let name = if mouth.is_some() { "tlknorm" } else { "pause1" };
+        let len = rig.animation_length(name).filter(|l| *l > 0.0)?;
+        let t = self.beat_time % len;
+        match mouth {
+            Some((open, clock)) => rig.speaking_face(name, t, open, clock),
+            None => rig.sample_face(name, t),
+        }
     }
 
     /// The pose a creature's cutscene stunt puts it in this beat.
@@ -2106,7 +2200,8 @@ impl Stage {
                         .unwrap_or_default();
                     if let Some(p) = self.stunt_pose(pose.id) {
                         // A stunt is in world space, like the camera beside it.
-                        if let Ok(mut body) = rig.posed(Some(&p)) {
+                        let face = self.stunt_face(pose.id, &rig);
+                        if let Ok(mut body) = rig.posed_with_face(Some(&p), face.as_ref()) {
                             for (node, item) in &hands {
                                 rig.attach(&mut body, Some(&p), node, item);
                             }
@@ -2129,7 +2224,7 @@ impl Stage {
                         wear_underwear(&mut scene, start, &underwear);
                         continue;
                     }
-                    self.add_creature(
+                    self.add_speaking_creature(
                         &mut scene,
                         &rig,
                         &hands,
@@ -2137,6 +2232,7 @@ impl Stage {
                         pose.position,
                         pose.heading,
                         &underwear,
+                        self.mouth_of(pose.id),
                     );
                 }
                 Kind::Placeable => {
@@ -2190,6 +2286,22 @@ impl Stage {
         heading: f32,
         underwear: &str,
     ) {
+        self.add_speaking_creature(scene, rig, hands, clip, at, heading, underwear, None);
+    }
+
+    /// Like `add_creature`, with a mouth that speaks: how far open, and the talking loop's clock (`Stage::mouth_of`).
+    #[allow(clippy::too_many_arguments)]
+    fn add_speaking_creature(
+        &self,
+        scene: &mut Scene,
+        rig: &Rig,
+        hands: &[(&'static str, Rc<Model>)],
+        clip: &Option<Clip>,
+        at: [f32; 3],
+        heading: f32,
+        underwear: &str,
+        mouth: Option<(f32, f32)>,
+    ) {
         // Models face +y at rest; turn so +y points along the heading.
         let angle = heading - std::f32::consts::FRAC_PI_2;
         let name = clip.as_ref().map_or("pause1", |c| c.name);
@@ -2215,7 +2327,10 @@ impl Stage {
             }
         }
         // The face moves with the clip when the head has a clip of that name: breathing, talking, listening.
-        let face = len.and_then(|_| rig.sample_face(name, t));
+        let face = len.and_then(|_| match mouth {
+            Some((open, clock)) => rig.speaking_face(name, t, open, clock),
+            None => rig.sample_face(name, t),
+        });
         let Ok(mut body) = rig.posed_with_face(pose.as_ref(), face.as_ref()) else {
             return;
         };

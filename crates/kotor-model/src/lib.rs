@@ -10,7 +10,7 @@ mod pose;
 
 pub use obj::to_obj;
 pub use parse::parse_model;
-pub use pose::{blend, unpack_quat, JointFrame, NodePose, Pose};
+pub use pose::{blend, blend_by, unpack_quat, JointFrame, NodePose, Pose};
 
 pub const NODE_HEADER: u16 = 0x0001;
 pub const NODE_LIGHT: u16 = 0x0002;

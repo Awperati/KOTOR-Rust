@@ -270,7 +270,8 @@ fn the_neck_is_lit_like_the_body_where_they_meet() {
     };
     let mut inst = Install::open(dir).unwrap();
     inst.load_texture_packs().unwrap();
-    for row in [91, 92, 93] {
+    // Every size, and heads whose hair leaves the back of the neck bare (rows 97 and 112); a ponytail that hangs below the neck is no neck.
+    for row in [91, 92, 93, 97, 112, 118, 121, 127, 133] {
         let mut rig = kotor_render::rig_for_appearance(&mut inst, row, 1).unwrap();
         let plain = rig.pose(None).unwrap();
         rig.soften_underwear_shading();
@@ -295,14 +296,15 @@ fn the_neck_is_lit_like_the_body_where_they_meet() {
                 .collect();
             for m in which.meshes.iter().filter(|m| is(m)) {
                 for (p, n) in m.positions.iter().zip(&m.normals) {
-                    if p[2] > low + 0.05 {
+                    // As far up as the neck shows above the collar from behind.
+                    if p[2] > low + 0.09 {
                         continue;
                     }
                     let near = body
                         .iter()
                         .min_by(|a, b| dist2(a.0, p).total_cmp(&dist2(b.0, p)))
                         .unwrap();
-                    if dist2(near.0, p) > 0.05 * 0.05 {
+                    if dist2(near.0, p) > 0.16 * 0.16 {
                         continue;
                     }
                     let dot: f32 = (0..3).map(|k| n[k] * near.1[k]).sum();

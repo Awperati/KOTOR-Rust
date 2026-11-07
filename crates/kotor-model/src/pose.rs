@@ -155,7 +155,13 @@ pub type Pose = HashMap<String, NodePose>;
 /// `from` turned into `to` by `weight_to` (0 to 1): positions in a line, orientations along the shorter arc.
 /// A node only one of them has stays as it is.
 pub fn blend(from: &Pose, to: &Pose, weight_to: f32) -> Pose {
-    let w = weight_to.clamp(0.0, 1.0);
+    blend_by(from, to, weight_to.clamp(0.0, 1.0))
+}
+
+/// Like [`blend`], with a weight that may pass 1 to carry on past `to` along the same way (a mouth opened wider than its clip
+/// has it) or go below 0.
+pub fn blend_by(from: &Pose, to: &Pose, weight_to: f32) -> Pose {
+    let w = weight_to;
     let mut out = to.clone();
     for (name, a) in from {
         if let Some(b) = to.get(name) {

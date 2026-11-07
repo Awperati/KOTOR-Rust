@@ -1145,7 +1145,12 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         return;
     };
     let pc = s.game.world.pc;
-    s.game.world.object_mut(pc).unwrap().appearance = 92;
+    // FRAME_APPEARANCE picks the body for the frame (the sheet's number in appearance.2da).
+    let look = std::env::var("FRAME_APPEARANCE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(92);
+    s.game.world.object_mut(pc).unwrap().appearance = look;
     s.game.world.set_player_underwear("");
     s.update(DT);
     let plain: Vec<String> = s
@@ -1169,9 +1174,12 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         .iter()
         .filter_map(|m| m.texture.clone())
         .collect();
+    if std::env::var("FRAME_OUT").is_ok() {
+        eprintln!("textures worn: {worn:?}");
+    }
     let body = worn
         .iter()
-        .find(|t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfbam"))
+        .find(|t| t.contains('@') && t.to_ascii_lowercase().starts_with("pfba"))
         .unwrap_or_else(|| panic!("no body in the variant: {worn:?}"))
         .clone();
     let sheet = s.texture(&body).unwrap();
@@ -1203,14 +1211,25 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
         let heading = s.game.world.pc_mover.heading;
+        // FRAME_BACK stands the camera behind the hero; FRAME_CLOSE fills the frame with the shoulders and back.
+        let side = if std::env::var("FRAME_BACK").is_ok() {
+            -1.0
+        } else {
+            1.0
+        };
+        let (dist, high, fov) = if std::env::var("FRAME_CLOSE").is_ok() {
+            (1.1, 1.35, 40.0)
+        } else {
+            (3.2, 0.95, 40.0)
+        };
         let cam = kotor_render::Camera {
             eye: [
-                at[0] + heading.cos() * 3.2,
-                at[1] + heading.sin() * 3.2,
-                at[2] + 1.0,
+                at[0] + heading.cos() * dist * side,
+                at[1] + heading.sin() * dist * side,
+                at[2] + high + 0.05,
             ],
-            target: [at[0], at[1], at[2] + 0.95],
-            fov: 40.0,
+            target: [at[0], at[1], at[2] + high],
+            fov,
         };
         let mut gpu = GpuRenderer::new(w, h).unwrap();
         let still = s.static_scene().clone();
@@ -1219,4 +1238,99 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
         std::fs::write(path, kotor_image::to_png(&img)).unwrap();
     }
+}
+
+/// The positions of everything drawn at head height within arm's reach of `at`: the head's meshes, which a face that moves
+/// changes from one frame to the next.
+fn head_shape(scene: &Scene, at: [f32; 3]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for m in &scene.meshes {
+        for p in &m.positions {
+            let near = (p[0] - at[0]).hypot(p[1] - at[1]) < 0.6;
+            if near && p[2] > at[2] + 1.2 && p[2] < at[2] + 2.1 {
+                p.map(f32::to_bits).hash(&mut h);
+            }
+        }
+    }
+    h.finish()
+}
+
+/// "Still no facial animations": while a line plays its speaker's face moves, frame after frame, and when the line is said the
+/// mouth is shut and stops. With `FRAME_STRIP` set to a folder, six frames of the speaker over two seconds of the line are
+/// written there as PNGs (`FRAME_SIZE`, like 3840x2160, sizes them).
+#[test]
+fn a_head_speaks_while_its_line_plays() {
+    let Some(mut s) = stage() else { return };
+    let mut speaker = None;
+    // Walk the opening conversation on until a line is spoken by someone else than the player.
+    for f in 0..3000 {
+        s.update(DT);
+        let w = &s.game.world;
+        if f > 30 && w.in_dialogue() {
+            let o = w.dialogue_owner().filter(|o| *o != w.pc);
+            if let Some(o) = o.filter(|o| s.mouth_of(*o).is_some()) {
+                speaker = Some(o);
+                break;
+            }
+            if f % 15 == 0 {
+                s.game.world.dialogue_choose(0);
+            }
+        }
+    }
+    let speaker = speaker.expect("a line is spoken by someone other than the player");
+    let at = s.game.world.object(speaker).unwrap().position;
+    let strip = std::env::var("FRAME_STRIP").ok();
+    let size = std::env::var("FRAME_SIZE").unwrap_or("1280x720".into());
+    let (w, h) = size.split_once('x').unwrap();
+    let (w, h): (u32, u32) = (w.parse().unwrap(), h.parse().unwrap());
+    let mut gpu = strip.as_ref().map(|_| {
+        s.set_view((w, h));
+        GpuRenderer::new(w, h).unwrap()
+    });
+    let mut shapes = std::collections::HashSet::new();
+    let mut opened = false;
+    // Two seconds, six frames of them.
+    let mut taken = 0;
+    for step in 0..60 {
+        s.update(DT);
+        if s.mouth_of(speaker).is_none() {
+            break;
+        }
+        opened |= s.mouth_of(speaker).is_some_and(|(open, _)| open > 0.2);
+        if step % 10 == 0 {
+            let scene = s.dynamic_scene();
+            shapes.insert(head_shape(&scene, at));
+            if let (Some(dir), Some(gpu)) = (&strip, gpu.as_mut()) {
+                std::fs::create_dir_all(dir).unwrap();
+                let still = s.static_scene().clone();
+                gpu.set_static_scene(&still, &mut |n| s.texture(n));
+                let cam = s.speaker_camera().unwrap_or_else(|| s.camera());
+                let img = gpu.render(&scene, &mut |n| s.texture(n), &cam).unwrap();
+                std::fs::write(
+                    format!("{dir}/speak_{taken}.png"),
+                    kotor_image::to_png(&img),
+                )
+                .unwrap();
+                taken += 1;
+            }
+        }
+    }
+    assert!(opened, "the speaker's mouth opens while the line plays");
+    assert!(
+        shapes.len() >= 4,
+        "the head's shape at six moments of the line: {} different",
+        shapes.len()
+    );
+    // Said: the mouth is shut, so the speaker is not talking any more.
+    for _ in 0..3000 {
+        if s.mouth_of(speaker).is_none() || !s.game.world.in_dialogue() {
+            break;
+        }
+        s.update(DT);
+    }
+    assert!(
+        s.mouth_of(speaker).is_none(),
+        "the mouth shuts when the line is said"
+    );
 }

@@ -74,6 +74,12 @@ const TONE_LOW: f32 = 1.0;
 const TONE_HIGH: f32 = 1.2;
 /// How far up a head's neck the change reaches, and how much of its lowest part counts as what meets the body, in metres.
 const NECK_FADE_METRES: f32 = 0.07;
+/// The back of the neck, seen from behind in a conversation, holds the body's tone this far up before it fades, where the front's chin
+/// keeps its own skin; it takes over starting behind `NECK_FRONT_METRES` towards the face and full `NECK_BACK_OUT_METRES` further back (the head model faces +y).
+const NECK_BACK_HOLD_METRES: f32 = 0.08;
+const NECK_BACK_FADE_METRES: f32 = 0.05;
+const NECK_FRONT_METRES: f32 = 0.07;
+const NECK_BACK_OUT_METRES: f32 = 0.03;
 const NECK_RING_METRES: f32 = 0.012;
 /// How far down the neck reaches, and how much of it stretches to do that.
 const NECK_REACH_METRES: f32 = 0.04;
@@ -344,6 +350,10 @@ pub struct Plan {
     fill_alpha: Vec<f32>,
     cloth_soft: Vec<f32>,
     paint_soft: Vec<f32>,
+    /// How much of the paint is a strap at the back, which takes the band's colour, not the cups'.
+    back_soft: Vec<f32>,
+    /// The texels of the band that are cloth: the colour the back straps take.
+    band_from: Vec<u32>,
     /// The ring of the neck, which starts from the skin's tone, and the texels this body's tone is read from. A head goes
     /// with all three bodies and matches the middle one, so each skin of this body has its tone here and the middle body's.
     neck: Vec<bool>,
@@ -828,6 +838,8 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
     let mut marks = vec![NOTHING; WORK * WORK];
     let mut islands = vec![NO_ISLAND; WORK * WORK];
     let mut straps = vec![false; WORK * WORK];
+    // 1 where a strap at the back is, 2 where the old cloth of the band is kept.
+    let mut tags = vec![0u8; WORK * WORK];
     let torso_islands = face_islands(mesh, 0);
     texel_pass(mesh, at, |n, p, face| {
         islands[n] = torso_islands[face];
@@ -852,9 +864,17 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
         }
         let part = bra_part(p[0], p[1], h, half);
         straps[n] = part == Part::Strap;
+        let behind = p[1] <= 0.0;
+        if part == Part::Strap && behind {
+            tags[n] = 1;
+        } else if part == Part::Band && cloth {
+            tags[n] = 2;
+        }
         marks[n] = match (cloth, part) {
             (true, Part::None) => CLEAR,
             (false, Part::Band | Part::Strap) => PAINT,
+            // A strap at the back is all paint, so that it is one colour with the band whatever the old top was.
+            (true, Part::Strap) if behind => PAINT,
             (false, _) => SKIN,
             (true, Part::Cup) => CUP,
             _ => KEEP,
@@ -971,7 +991,7 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
     }
     tone_from.sort_unstable();
     tone_from.dedup();
-    let mut plan = Plan::new(marks, islands, links, relief, neck);
+    let mut plan = Plan::new(marks, islands, links, relief, neck, &tags);
     for family in ["", "a", "b"] {
         let (Some(picture), Some(middle)) = (
             load_texture(inst, &format!("{body}{family}01")),
@@ -1001,6 +1021,7 @@ impl Plan {
         links: Vec<(u32, u32)>,
         mut relief: Vec<f32>,
         neck: Vec<bool>,
+        tags: &[u8],
     ) -> Plan {
         let takes = |m: usize| marks[m] == CLEAR || marks[m] == SKIN;
         let mut across: Vec<Vec<u32>> = vec![Vec::new(); WORK * WORK];
@@ -1081,6 +1102,14 @@ impl Plan {
         let cloth_soft = soften(&cloth, &islands, CLOTH_SOFTEN, |_| true);
         let paint: Vec<f32> = marks.iter().map(|m| f32::from(*m == PAINT)).collect();
         let paint_soft = soften(&paint, &islands, CLOTH_SOFTEN, |_| true);
+        let back: Vec<f32> = (0..WORK * WORK)
+            .map(|n| f32::from(marks[n] == PAINT && tags[n] == 1))
+            .collect();
+        let back_soft = soften(&back, &islands, CLOTH_SOFTEN, |_| true);
+        let band_from: Vec<u32> = (0..WORK * WORK)
+            .filter(|n| tags[*n] == 2)
+            .map(|n| n as u32)
+            .collect();
         let neck_ring: Vec<bool> = (0..WORK * WORK)
             .map(|n| neck[n] && marks[n] == CLEAR)
             .collect();
@@ -1104,6 +1133,8 @@ impl Plan {
             fill_alpha,
             cloth_soft,
             paint_soft,
+            back_soft,
+            band_from,
             neck: neck_ring,
             tone_from: Vec::new(),
             tones: Vec::new(),
@@ -1405,6 +1436,18 @@ impl Plan {
             }
             s.map(|v| v / c.max(1.0))
         };
+        // The band's own colour, which the straps at the back take so that they and the band are one garment.
+        let band = if self.band_from.is_empty() {
+            cloth
+        } else {
+            let mut s = [0.0f32; 3];
+            for n in &self.band_from {
+                for k in 0..3 {
+                    s[k] += small[*n as usize][k];
+                }
+            }
+            s.map(|v| v / self.band_from.len() as f32)
+        };
         let mut out = img.rgba.clone();
         for y in 0..h {
             for x in 0..w {
@@ -1429,8 +1472,14 @@ impl Plan {
                         c[k] += a * (low[k] * shade + grain[k] - c[k]);
                     }
                 }
+                let behind = if b > 0.0 {
+                    (sharpened(bilinear1(&self.back_soft, u, v)) / b).min(1.0)
+                } else {
+                    0.0
+                };
                 for k in 0..3 {
-                    c[k] += b * (cloth[k] - c[k]);
+                    let paint = cloth[k] + (band[k] - cloth[k]) * behind;
+                    c[k] += b * (paint - c[k]);
                     out[p + k] = (c[k] + 0.5).clamp(0.0, 255.0) as u8;
                 }
             }
@@ -1765,10 +1814,16 @@ pub fn neck_plan_for(inst: &mut Install, head: &str) -> Option<NeckPlan> {
     let mut change = vec![0.0f32; WORK * WORK];
     let mut ring = Vec::new();
     texel_pass(mesh, at, |n, p, _| {
-        let up = (p[2] - low) / NECK_FADE_METRES;
-        // Smooth at both ends, so that no line shows where the change stops.
-        let t = up.clamp(0.0, 1.0);
-        change[n] = change[n].max(1.0 - t * t * (3.0 - 2.0 * t));
+        let behind = ((NECK_FRONT_METRES - p[1]) / NECK_BACK_OUT_METRES).clamp(0.0, 1.0);
+        let height = p[2] - low;
+        let smooth = |t: f32| {
+            let t = t.clamp(0.0, 1.0);
+            1.0 - t * t * (3.0 - 2.0 * t)
+        };
+        // Smooth at both ends, so that no line shows where the change stops. At the back it holds longer before it falls.
+        let front = smooth(height / NECK_FADE_METRES);
+        let back = smooth((height - NECK_BACK_HOLD_METRES) / NECK_BACK_FADE_METRES);
+        change[n] = change[n].max(front + (back - front) * behind);
         if p[2] - low < NECK_RING_METRES {
             ring.push(n as u32);
         }
@@ -1912,8 +1967,9 @@ fn bilinear1(field: &[f32], u: f32, v: f32) -> f32 {
 }
 
 /// How far up the head's neck takes the body's shading where they meet, in metres, and how near a body vertex counts.
-const NECK_SHADE_METRES: f32 = 0.07;
-const NECK_SHADE_NEAR_METRES: f32 = 0.05;
+const NECK_SHADE_METRES: f32 = 0.15;
+const NECK_SHADE_WHOLE_METRES: f32 = 0.09;
+const NECK_SHADE_NEAR_METRES: f32 = 0.16;
 
 /// Where a head's neck meets the body, the two are lit by different normals, and the neck's lowest ring showed about a
 /// fifth brighter than the chest under it. The neck's normals turn to those of the nearest body vertex, wholly at the
@@ -1962,7 +2018,11 @@ pub fn blend_neck_normals(scene: &mut crate::scene::Scene, head: &str, up: [f32;
             if d2.sqrt() > NECK_SHADE_NEAR_METRES {
                 continue;
             }
-            let w = 1.0 - above / NECK_SHADE_METRES;
+            // Whole where the neck comes out of the collar, and gone `NECK_SHADE_METRES` up.
+            let w = 1.0
+                - ((above - NECK_SHADE_WHOLE_METRES)
+                    / (NECK_SHADE_METRES - NECK_SHADE_WHOLE_METRES))
+                    .clamp(0.0, 1.0);
             let mixed = [0, 1, 2].map(|k| n[k] * (1.0 - w) + bn[k] * w);
             let l = dot3(mixed, mixed).sqrt();
             if l > 1e-6 {
