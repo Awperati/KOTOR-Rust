@@ -501,6 +501,9 @@ pub struct World {
     pub(crate) flights: Vec<crate::flight::Flight>,
     /// Attack mode: the player may attack anyone. `docs/law.tsv` says what that costs.
     pub attack_mode: bool,
+    /// For a test driver: this creature stays at this place, and the player at this other, while this item still has at least this
+    /// many in its stack.
+    pub hold_in_place: Option<(ObjId, [f32; 3], ObjId, i32, [f32; 3])>,
     pub law: crate::law::LawState,
     /// Who the player killed that had a conversation, not hostile: (tag, name). Each is a line in the journal, kept across areas.
     pub lost_quests: Vec<(String, String)>,
@@ -662,6 +665,7 @@ impl World {
             casts: Vec::new(),
             flights: Vec::new(),
             attack_mode: false,
+            hold_in_place: None,
             law: Default::default(),
             lost_quests: Vec::new(),
             sound_cues: Vec::new(),

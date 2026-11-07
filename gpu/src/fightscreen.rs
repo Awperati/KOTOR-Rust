@@ -547,16 +547,20 @@ impl Stage {
                 o.min_one_hp = true;
             }
             self.armed = Some(item);
-            // Stand it on open floor 8 m off, in sight of the player, so it throws the same way every run.
+            // Stand it on open floor 8 m off, in sight of the player, so it throws the same way every run: farther first, in sight
+            // first, and only past 4 m (the AI keeps its grenades for a foe closer than that).
             let spot = w.nav.as_ref().and_then(|nav| {
-                [8.0f32, 7.0, 6.0].iter().find_map(|r| {
-                    (0..12).find_map(|k| {
-                        let a = k as f32 * std::f32::consts::TAU / 12.0;
-                        let (x, y) = (at[0] + r * a.cos(), at[1] + r * a.sin());
-                        let z = nav.height_at(x, y, at[2] + 1.0)?;
-                        let p = [x, y, z];
-                        let (eye, far) = ([at[0], at[1], at[2] + 1.5], [x, y, z + 1.5]);
-                        (nav.same_island(at, p) && !nav.sight_blocked(eye, far)).then_some(p)
+                [true, false].iter().find_map(|need_sight| {
+                    [8.0f32, 7.0, 6.0, 5.5, 5.0, 4.6].iter().find_map(|r| {
+                        (0..24).find_map(|k| {
+                            let a = k as f32 * std::f32::consts::TAU / 24.0;
+                            let (x, y) = (at[0] + r * a.cos(), at[1] + r * a.sin());
+                            let z = nav.height_at(x, y, at[2] + 1.0)?;
+                            let p = [x, y, z];
+                            let (eye, far) = ([at[0], at[1], at[2] + 1.5], [x, y, z + 1.5]);
+                            let seen = !nav.sight_blocked(eye, far);
+                            (nav.same_island(at, p) && (seen || !need_sight)).then_some(p)
+                        })
                     })
                 })
             });
@@ -564,6 +568,9 @@ impl Stage {
                 w.teleport(near, p);
             }
             let home = w.object(near).map_or([0.0; 3], |o| o.position);
+            // Held at home in the world's own steps, not once a frame: a slow frame runs several steps, and a soldier that has run up
+            // keeps its grenades.
+            w.hold_in_place = Some((near, home, item, GRENADIER_COUNT, at));
             self.armed_home = Some((near, home));
         }
     }
