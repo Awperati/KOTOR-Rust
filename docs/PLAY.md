@@ -17,7 +17,8 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | W A S D | run in that direction, relative to the camera; Shift walks. While the look button is held, the keys keep the direction they had |
 | Left Ctrl | roll, in Modern movement (Key Mapping has it, under Roll) |
 | Space | jump, in Modern movement and not at a walk (Key Mapping has it, under Jump); end a line, or close a container |
-| X | pause and go on (Key Mapping has it, under Pause) |
+| B | pause and go on (Key Mapping has it, under Pause) |
+| X | Attack mode on and off (Key Mapping has it, under Attack Mode) |
 | F8 | read the roll, landing and jump pose files again: see [MOVEMENT_POSE.md](MOVEMENT_POSE.md) |
 | Right button drag, or the arrow keys | turn the camera round the player |
 | Left click on the floor | run there, unless Click to walk is off in Feedback |
@@ -83,7 +84,9 @@ Advanced Options has V-Sync, which the window obeys at once and the settings fil
 
 
 ## Keys and mouse
-From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A click on a row waits for a key; Esc gives up, a key in use swaps with the other action, OK keeps it in the settings file, and Cancel or Esc puts back what the page found. Default gives back the keys at the top of this file; then the same button, called Original, gives the game's own from `keymap.2da` (P character, L quests, Z and C to strafe, A and D to turn, R to use). Esc, Enter, the digits and Shift stay as they are. Controls (the file calls it Mouse Settings) has the on-screen controls' box, the camera's speed, where a half is the speed it always had, and swaps the buttons, on the screens too. New: O opens the options, F disengages in a fight and otherwise is the Pickup button, and B turns Attack mode on and off, as does its button beside the hourglass. F6 is nameplates, F7 cel shading, F8 reloads custom content, F9 and F10 go through custom clips and garments, and all of these are on the page too. What the rows of a page say of a key follows that key if it is moved. The Feedback page ends with Custom content, whose rows open the folders of your own textures, animations and meshes, and make them if they are not there.
+From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A click on a row waits for a key; Esc gives up, a key in use swaps with the other action, OK keeps it in the settings file, and Cancel or Esc puts back what the page found. Default gives back the keys at the top of this file; then the same button, called Original, gives the game's own from `keymap.2da` (P character, L quests, Z and C to strafe, A and D to turn, R to use). Esc, Enter, the digits and Shift stay as they are. Controls (the file calls it Mouse Settings) has the on-screen controls' box, the camera's speed, where a half is the speed it always had, and swaps the buttons, on the screens too. New: O opens the options, F disengages in a fight and otherwise is the Pickup button, and X turns Attack mode on and off, as does its button beside the hourglass. F6 is nameplates, F7 cel shading, F8 reloads custom content, F9 and F10 go through custom clips and garments, and all of these are on the page too. What the rows of a page say of a key follows that key if it is moved. The Feedback page ends with Custom content, whose rows open the folders of your own textures, animations and meshes, and make them if they are not there.
+
+A settings file from before X and B changed places goes over to them when it is read, if its two keys were never moved. A key the player moved stays.
 
 ## On-screen controls
 The blue button with a gamepad on it, in the top right corner under the menu keys, turns them on and off, as does the box on Options, Gameplay, Controls. They are off at first, and the settings file keeps the choice. They work with a finger or the mouse, and with several fingers at once.
@@ -99,6 +102,8 @@ The blue button with a gamepad on it, in the top right corner under the menu key
 | Jump, Roll | | As their keys, so Jump does nothing under a light push of the stick. Greyed in Classic movement. |
 | Pickup, Pause, Attack mode | | As their keys. |
 | Four slots, menu keys | the HUD's own | Bigger while the controls are on. |
+
+The Jump button is greyed during a light push of the stick, as there is no jump at a walk.
 
 A finger works without them too. On a screen or in a conversation it clicks, and a drag moves a list. At the turret it aims and fires. In a race the left and right thirds steer and the middle shifts.
 
@@ -144,7 +149,7 @@ Feats and powers are chains of up to three pictures, each with an arrow to what 
 J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `World::journal` with their names and the words of their state from `global.jrl`, with the planet first as the file has one. One button swaps active and completed quests, and one goes through the four orders. Scripts and conversations both set a state, and a save keeps the order. Quest items are not built, so their button is greyed. Experience for a quest's state, the file's `XP_Percentage`, is not paid here. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/journal.rs`.
 
 ## Pause
-X or the HUD's hourglass pauses and goes on, outside conversations and with no container open. Space jumps instead, as the owner asked, and shifts in a race and fires a turret as before. Neither does anything for half a second after a conversation, so one press too many does not pause or jump. A settings file from before the jump gives up Space for its pause. The camera still turns. Things pause the game by themselves as the Auto-Pause page says: a new enemy seen, a party member down, a change of target, the end of a round, the action menu. A box at the top right says why. A conversation lifts a pause. `--no-auto-pause` turns those off for a run, and `--autopilot` has none.
+B or the HUD's hourglass pauses and goes on, outside conversations and with no container open. Space jumps instead, as the owner asked, and shifts in a race and fires a turret as before. Neither does anything for half a second after a conversation, so one press too many does not pause or jump. A settings file from before the jump gives up Space for its pause. The camera still turns. Things pause the game by themselves as the Auto-Pause page says: a new enemy seen, a party member down, a change of target, the end of a round, the action menu. A box at the top right says why. A conversation lifts a pause. `--no-auto-pause` turns those off for a run, and `--autopilot` has none.
 
 
 ## Fights

@@ -45,7 +45,7 @@
 //!
 //! W A S D: run, relative to the camera (Shift walks). Left Ctrl: roll, in Modern movement. Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
-//! Tab: the next party member takes over. Space: jump, end a line, or close a container. X: pause. Wheel: zoom. Esc: back out of a screen,
+//! Tab: the next party member takes over. Space: jump, end a line, or close a container. B: pause. X: Attack mode. Wheel: zoom. Esc: back out of a screen,
 //! or pause. I: inventory. U: equipment. C: character.
 use kotor_audio::Audio;
 use kotor_audio_out::{decode_any, AudioOut};

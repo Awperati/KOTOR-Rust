@@ -838,7 +838,7 @@ fn the_attack_mode_button_beside_the_hourglass_turns_it_on_and_off() {
     let Some((mut s, _)) = in_game("attack_mode") else {
         return;
     };
-    assert_eq!(s.action_for_key("KeyB"), Some("AttackMode"));
+    assert_eq!(s.action_for_key("KeyX"), Some("AttackMode"));
     s.update(DT);
     assert!(!s.game.world.attack_mode());
     let button = s.hud_pixel(kotor_ui::ATTACK_MODE_BUTTON, SIZE).unwrap();
@@ -874,8 +874,8 @@ fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
     s.use_settings_file(dir.join("settings.txt"));
     for (key, action) in [
         ("Space", "Jump"),
-        ("KeyX", "Pause"),
-        ("KeyB", "AttackMode"),
+        ("KeyB", "Pause"),
+        ("KeyX", "AttackMode"),
         ("KeyF", "Pickup"),
         ("F6", "Nameplates"),
         ("F7", "CelShading"),
@@ -904,7 +904,7 @@ fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
     assert_eq!(rows.len(), bindings.len());
     for word in [
         "Jump: Space",
-        "Attack Mode: B",
+        "Attack Mode: X",
         "Pickup: F",
         "Nameplates: F6",
         "Cel Shading: F7",
@@ -3176,7 +3176,7 @@ fn the_keys_can_be_changed_kept_and_put_back() {
         ("KeyI", "Inventory"),
         ("KeyM", "Map"),
         ("Tab", "ChangeLeader"),
-        ("KeyX", "Pause"),
+        ("KeyB", "Pause"),
         ("Space", "Jump"),
     ] {
         assert_eq!(s.action_for_key(key), Some(action), "{key}");
@@ -4054,12 +4054,12 @@ fn the_jump_and_the_pause_are_rebound_on_the_key_page() {
     let rows = s.menu_rows("LST_EventList");
     let pause = rows
         .iter()
-        .position(|r| r.text.ends_with(": X"))
+        .position(|r| r.text.ends_with(": B"))
         .expect("the pause's row");
     choose(&mut s, pause, rows.len());
     assert!(s.capture_key("KeyZ"));
     assert_eq!(s.action_for_key("KeyZ"), Some("Pause"));
-    assert_eq!(s.action_for_key("KeyX"), Some("Jump"), "it swaps");
+    assert_eq!(s.action_for_key("KeyB"), Some("Jump"), "it swaps");
 }
 
 #[test]

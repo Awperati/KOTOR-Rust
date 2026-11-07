@@ -595,7 +595,7 @@ impl Stage {
         }
     }
 
-    /// X: pauses or goes on. It never pauses with a container open, nor just after a conversation: a player going through its
+    /// B: pauses or goes on. It never pauses with a container open, nor just after a conversation: a player going through its
     /// lines presses once more than there are.
     pub fn pause_key(&mut self) {
         let w = &self.game.world;

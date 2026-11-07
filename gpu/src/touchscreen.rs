@@ -90,11 +90,15 @@ impl Stage {
         if w.attack_mode() {
             lit.push(TouchKey::AttackMode);
         }
-        let dim = if self.menus.settings.movement_modern {
+        let mut dim = if self.menus.settings.movement_modern {
             Vec::new()
         } else {
             vec![TouchKey::Jump, TouchKey::Roll]
         };
+        // A light push walks, and there is no jump at a walk.
+        if matches!(self.touch_steer(), Some((_, _, true))) && !dim.contains(&TouchKey::Jump) {
+            dim.push(TouchKey::Jump);
+        }
         TouchView {
             on: self.menus.settings.touch_controls,
             stick: fingers.stick,
@@ -415,6 +419,11 @@ impl Stage {
             _ => false,
         };
         self.menus.touch.down.iter().any(looking)
+    }
+
+    /// Whether a round button is greyed now, for a test.
+    pub fn touch_key_greyed(&self, key: TouchKey) -> bool {
+        self.touch_view().dim.contains(&key)
     }
 
     /// How many fingers are down, for a test.

@@ -279,5 +279,9 @@ The owner: "add a joystick button for looking just like the moving one. Like a n
 
 The owner: the place's name "should only be used for the save if the player presses enter without entering any text". The box shows it at a quarter of its strength, and it is not in the box: the first key takes its place, and with the last one gone it comes back. Over an old save it offers that save's name the same way. Frames: `gpu/examples/savename_shots.rs`.
 
+## X and B
+
+The owner: "Make X attack mode and B the Pause button rather". The two default keys changed places. A settings file with no `key_defaults=2` line goes over when it is read, for a key the player never moved, and only if the new key is free. One with that line stays as it is, so a player who puts them back keeps them.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

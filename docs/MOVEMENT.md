@@ -10,7 +10,7 @@ How the player moves, in plain numbers. All the keys can be changed: Options, Ga
 | Shift, held | Walk |
 | Space | Jump. In a conversation or a container it goes on instead. In the race it shifts, and on a turret it fires |
 | Left Ctrl | Roll |
-| X | Pause and go on |
+| B | Pause and go on |
 | Right button, dragged | Turn the camera |
 | Arrow keys | Turn the camera |
 | Wheel | Bring the camera in or out |

@@ -800,12 +800,12 @@ fn space_does_not_jump_at_a_walk_and_does_at_a_run_or_from_a_stand() {
 }
 
 #[test]
-fn space_jumps_and_x_pauses() {
+fn space_jumps_and_b_pauses() {
     let Some((mut s, file)) = stage("spacejump", "") else {
         return;
     };
     assert_eq!(s.action_for_key("Space"), Some("Jump"));
-    assert_eq!(s.action_for_key("KeyX"), Some("Pause"));
+    assert_eq!(s.action_for_key("KeyB"), Some("Pause"));
     run(&mut s, 60);
     let floor = pc_at(&s)[2];
     s.jump_key();

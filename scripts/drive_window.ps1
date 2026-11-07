@@ -59,19 +59,19 @@ $b = HoldUntilMoved $D $a 0.3 60
 $moved = Moved $a $b
 Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
 
-# X pauses out of a conversation: W does nothing until X again.
-$X = @(0x58, 0x2D)
-Key $X[0] $X[1]
+# B pauses out of a conversation: W does nothing until B again.
+$B = @(0x42, 0x30)
+Key $B[0] $B[1]
 [void](State)
 $a = State
 Key $W[0] $W[1] 300
 $b = State
-Report "X pauses" ((Moved $a $b) -lt 0.05) "$($a.pc) -> $($b.pc)"
-Key $X[0] $X[1]
+Report "B pauses" ((Moved $a $b) -lt 0.05) "$($a.pc) -> $($b.pc)"
+Key $B[0] $B[1]
 [void](State)
 $a = State
 $b = HoldUntilMoved $W $a 0.3 60
-Report "X goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
+Report "B goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
 
 # A click on the floor walks there: look for one that lands.
 $ok = $false; $detail = ""

@@ -33,10 +33,10 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 28] = [
     ("Quests", 48050, 1, "KeyJ"),
     ("Map", 48048, 1, "KeyM"),
     ("Options", 48052, 1, "KeyO"),
-    ("Pause", 48019, 1, "KeyX"),
+    ("Pause", 48019, 1, "KeyB"),
     ("CancelCombat", 48315, 1, "KeyF"),
     ("Pickup", NOT_IN_TALK_TABLE, 1, "KeyF"),
-    ("AttackMode", NOT_IN_TALK_TABLE, 1, "KeyB"),
+    ("AttackMode", NOT_IN_TALK_TABLE, 1, "KeyX"),
     ("SoloMode", 48035, 1, "KeyV"),
     ("Nameplates", NOT_IN_TALK_TABLE, 1, "F6"),
     ("CelShading", NOT_IN_TALK_TABLE, 1, "F7"),
@@ -84,6 +84,11 @@ const LOOK_ABOUT: &str =
     "How fast the on-screen look stick turns the camera. The Invert Camera box goes for it too.";
 const TOUCH_BOX_ABOUT: &str = "A stick, round buttons and bigger menu keys on the HUD, for a touch screen or the mouse. The blue button at the top right turns them on and off too.";
 const LIST: &str = "LST_EventList";
+/// A settings file written since the owner's "Make X attack mode and B the Pause button rather" says so.
+const KEY_DEFAULTS_LINE: &str = "key_defaults=2";
+/// Each of the two: what the key was, and what it is.
+const MOVED_DEFAULTS: [(&str, &str, &str); 2] =
+    [("Pause", "KeyX", "KeyB"), ("AttackMode", "KeyB", "KeyX")];
 /// Keys that always mean the same, whatever the page says.
 const FIXED_KEYS: [&str; 15] = [
     "Escape",
@@ -121,10 +126,32 @@ impl Default for KeyMap {
 impl KeyMap {
     /// As lines of the settings file.
     pub(super) fn to_text(&self) -> String {
-        self.0
+        let keys: String = self
+            .0
             .iter()
             .map(|(action, key)| format!("key.{action}={key}\n"))
-            .collect()
+            .collect();
+        format!("{KEY_DEFAULTS_LINE}\n{keys}")
+    }
+
+    /// A file from before the two keys changed places: what still has its old key goes to its new one, if nothing else has
+    /// that. What the player moved stays where they put it.
+    fn to_new_defaults(&mut self) {
+        let unmoved = |k: &KeyMap, (action, old, _): (&str, &str, &str)| {
+            k.0.get(action).is_some_and(|key| key == old)
+        };
+        if MOVED_DEFAULTS.iter().all(|m| unmoved(self, *m)) {
+            for (action, _, new) in MOVED_DEFAULTS {
+                self.0.insert(action, new.to_string());
+            }
+            return;
+        }
+        for moved in MOVED_DEFAULTS {
+            let (action, _, new) = moved;
+            if unmoved(self, moved) && !self.0.values().any(|key| key == new) {
+                self.0.insert(action, new.to_string());
+            }
+        }
     }
 
     /// Lines of the settings file. Anything it does not know, or a key used twice, stays as it was.
@@ -143,6 +170,9 @@ impl KeyMap {
             if let Some((action, ..)) = known {
                 self.0.insert(action, key.to_string());
             }
+        }
+        if !text.lines().any(|l| l == KEY_DEFAULTS_LINE) {
+            self.to_new_defaults();
         }
     }
 
@@ -389,13 +419,13 @@ impl Stage {
 
 #[cfg(test)]
 mod tests {
-    use super::KeyMap;
+    use super::{KeyMap, KEY_DEFAULTS_LINE};
 
     #[test]
     fn a_settings_file_from_before_the_jump_gives_up_space() {
         let mut k = KeyMap::default();
         k.read("key.Pause=Space\nkey.Inventory=KeyY\n");
-        assert_eq!(k.0["Pause"], "KeyX");
+        assert_eq!(k.0["Pause"], "KeyB");
         assert_eq!(k.0["Jump"], "Space");
         assert_eq!(k.0["Inventory"], "KeyY");
     }
@@ -408,8 +438,52 @@ mod tests {
         k.bind("Pause", "KeyZ");
         assert_eq!(
             (k.0["Pause"].as_str(), k.0["Jump"].as_str()),
-            ("KeyZ", "KeyX")
+            ("KeyZ", "KeyB")
         );
+    }
+
+    #[test]
+    fn a_settings_file_from_before_the_swap_goes_to_the_new_keys_if_it_never_moved_them() {
+        let mut k = KeyMap::default();
+        k.read("key.Pause=KeyX\nkey.AttackMode=KeyB\nkey.Jump=Space\n");
+        assert_eq!(k.0["Pause"], "KeyB");
+        assert_eq!(k.0["AttackMode"], "KeyX");
+    }
+
+    #[test]
+    fn what_the_player_moved_before_the_swap_stays_and_the_other_goes_if_it_can() {
+        // The pause moved, and attack mode did not.
+        let mut k = KeyMap::default();
+        k.read("key.Pause=KeyG\nkey.AttackMode=KeyB\n");
+        assert_eq!(k.0["Pause"], "KeyG");
+        assert_eq!(k.0["AttackMode"], "KeyX");
+        // Attack mode moved, and the pause did not.
+        let mut k = KeyMap::default();
+        k.read("key.Pause=KeyX\nkey.AttackMode=KeyG\n");
+        assert_eq!(k.0["Pause"], "KeyB");
+        assert_eq!(k.0["AttackMode"], "KeyG");
+        // Something else has the new key: no two on one, so it stays.
+        let mut k = KeyMap::default();
+        k.read("key.Pause=KeyX\nkey.AttackMode=KeyG\nkey.Inventory=KeyB\n");
+        assert_eq!(k.0["Pause"], "KeyX");
+        assert_eq!(k.0["Inventory"], "KeyB");
+    }
+
+    #[test]
+    fn a_settings_file_from_after_the_swap_is_kept_as_it_is_even_at_the_old_keys() {
+        // The player has put them back: it is not done over at each start.
+        let mut k = KeyMap::default();
+        k.bind("Pause", "KeyX");
+        assert_eq!(
+            (k.0["Pause"].as_str(), k.0["AttackMode"].as_str()),
+            ("KeyX", "KeyB")
+        );
+        let text = k.to_text();
+        assert!(text.contains(KEY_DEFAULTS_LINE));
+        let mut again = KeyMap::default();
+        again.read(&text);
+        assert_eq!(again.0["Pause"], "KeyX");
+        assert_eq!(again.0["AttackMode"], "KeyB");
     }
 
     #[test]

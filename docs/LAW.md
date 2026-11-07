@@ -6,7 +6,7 @@ Everything in it today is final (7 Nov 2026, "use the recommended values"). Chan
 
 ## What happens
 
-1. **Attack mode** is the button beside the hourglass (key B). Off, a click on someone talks to them. On, a click attacks them.
+1. **Attack mode** is the button beside the hourglass (key X). Off, a click on someone talks to them. On, a click attacks them.
 2. **A crime** is a blow on someone who is not your enemy. The first blow puts the **wanted level** at 1. A kill adds one more, up to 3.
 3. **Who sees it.** An authority (see the list below) who can see you, or who hears a kill within 15 m, turns on you, and so do its
    authority mates within 10 m. Anyone else who sees it runs away and tells the nearest authority within 40 m, who turns on you.

@@ -450,6 +450,28 @@ fn both_sticks_and_a_button_go_together_and_the_mouse_can_hold_either() {
 }
 
 #[test]
+fn the_jump_button_is_greyed_while_a_light_push_walks() {
+    let Some(mut s) = on_floor("walk_grey") else {
+        return;
+    };
+    turn_on(&mut s, SIZE);
+    assert!(!s.touch_key_greyed(TouchKey::Jump));
+    let thumb = stick(&mut s);
+    s.finger_down(1, thumb, SIZE);
+    // Held still in the middle: a stand, and a stand jumps.
+    assert!(!s.touch_key_greyed(TouchKey::Jump));
+    s.finger_moved(1, (thumb.0 + 30.0, thumb.1), SIZE);
+    assert!(s.touch_key_greyed(TouchKey::Jump), "a walk");
+    assert!(!s.touch_key_greyed(TouchKey::Roll));
+    s.finger_moved(1, (thumb.0 + 120.0, thumb.1), SIZE);
+    assert!(!s.touch_key_greyed(TouchKey::Jump), "a run");
+    s.finger_moved(1, (thumb.0 + 30.0, thumb.1), SIZE);
+    assert!(s.touch_key_greyed(TouchKey::Jump));
+    s.finger_up(1, thumb, SIZE);
+    assert!(!s.touch_key_greyed(TouchKey::Jump), "let go");
+}
+
+#[test]
 fn the_stick_steers_classic_movement_too_where_the_jump_and_roll_are_greyed() {
     let Some(mut s) = on_floor("classic") else {
         return;
