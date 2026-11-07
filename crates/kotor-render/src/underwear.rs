@@ -386,20 +386,38 @@ fn bra_part(x: f32, y: f32, h: f32, half_width: f32) -> Part {
             return Part::Cup;
         }
     }
-    // Two straps, front and back, from the top of the cups over the shoulders.
-    if (CUP_TOP - 0.005..STRAP_TOP).contains(&h) && (side - STRAP_AT).abs() < STRAP_HALF {
+    // Two straps, front and back, from the top of the cups over the collarbones and the shoulders.
+    if front
+        && (CUP_TOP - 0.005..STRAP_TOP + STRAP_OVER).contains(&h)
+        && (side - strap_at(h, true)).abs() < STRAP_HALF
+    {
         return Part::Strap;
     }
-    if !front && (BAND_HIGH..STRAP_TOP).contains(&h) && (side - STRAP_AT).abs() < STRAP_HALF {
+    if !front
+        && (BAND_HIGH..STRAP_TOP + STRAP_OVER).contains(&h)
+        && (side - strap_at(h, false)).abs() < STRAP_HALF
+    {
         return Part::Strap;
     }
     Part::None
+}
+
+/// Where a strap runs, as a share of the half width: up from the cup (or the band, at the back) it leans out, and by the top
+/// of the torso it is over the shoulder, the same place from the front and the back, so that the two meet.
+fn strap_at(h: f32, front: bool) -> f32 {
+    let from = if front { CUP_TOP } else { BAND_HIGH };
+    let t = ((h - from) / (STRAP_TOP - from)).clamp(0.0, 1.0);
+    STRAP_AT + STRAP_OUT * t * t * (3.0 - 2.0 * t)
 }
 
 const BAND_LOW: f32 = 0.833;
 const BAND_HIGH: f32 = 0.849;
 const CUP_TOP: f32 = 0.897;
 const STRAP_TOP: f32 = 1.0;
+/// How far out the straps lean by the top, as a share of the half width, and how far past the neck's own height they go: the
+/// shoulder's top is lower than the neck's, but the arm's cap reaches round it.
+const STRAP_OUT: f32 = 0.34;
+const STRAP_OVER: f32 = 0.04;
 const CUP_INNER: f32 = 0.03;
 const CUP_OUTER: f32 = 0.57;
 const STRAP_AT: f32 = 0.29;
@@ -1007,9 +1025,19 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
         texel_pass(
             arm,
             |p| placed(&world, name, p),
-            |n, _, face| {
+            |n, p, face| {
                 islands[n] = arm_islands[face];
-                marks[n] = if is_cloth(pixels[n], skin) {
+                let cloth = is_cloth(pixels[n], skin);
+                // The strap carries on over the shoulder, on the cap of the arm.
+                let h = p[2] / top;
+                let part = bra_part(p[0], p[1], h, half);
+                marks[n] = if part == Part::Strap && h > CUP_TOP {
+                    if p[1] <= 0.0 {
+                        tags[n] = 1;
+                    }
+                    straps[n] = true;
+                    PAINT
+                } else if cloth {
                     CLEAR
                 } else {
                     SKIN
@@ -2314,5 +2342,28 @@ impl Plan {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod strap_tests {
+    use super::*;
+
+    /// The straps lean out to the shoulders and meet there from the front and the back: "Bra straps still do not go over the
+    /// collarbones correctly and end at the torso."
+    #[test]
+    fn the_straps_go_over_the_shoulders_and_meet_at_the_top() {
+        let half = 0.228;
+        let (front, back) = (strap_at(STRAP_TOP, true), strap_at(STRAP_TOP, false));
+        assert!((front - back).abs() < 1e-4, "{front} and {back}");
+        assert!(front > STRAP_AT + 0.3, "{front}");
+        // On the torso, up the front and the back, at the strap's own place, it is a strap; beside it, it is not.
+        for (y, h) in [(0.1, 0.95), (-0.1, 0.95), (0.1, 1.02), (-0.1, 1.02)] {
+            let x = strap_at(h, y > 0.0) * half;
+            assert!(bra_part(x, y, h, half) == Part::Strap, "y {y} h {h}");
+            assert!(bra_part(x + 0.05, y, h, half) != Part::Strap, "y {y} h {h}");
+        }
+        // Low on the back it starts where the band is, at the old place.
+        assert!((strap_at(BAND_HIGH, false) - STRAP_AT).abs() < 1e-4);
     }
 }
