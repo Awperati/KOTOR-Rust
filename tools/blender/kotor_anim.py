@@ -105,6 +105,45 @@ def validate_clip(tracks, rig_bones, frame_count, fps):
     return errors, warnings
 
 
+MAX_TRIANGLES = 8000
+MAX_INFLUENCES = 4
+
+
+def validate_garment(name, triangles, has_uv, material_names, group_names, influences, rig_bones):
+    """Check a mesh for the game. Returns (errors, warnings).
+
+    `influences` is the number of bone groups with weight on each vertex (a list); `group_names` the names of its vertex groups.
+    """
+    errors, warnings = [], []
+    known = set(rig_bones)
+    extra = sorted(g for g in group_names if g not in known)
+    if extra:
+        errors.append("%s: vertex groups that are not the game's bones: %s" % (name, ", ".join(extra[:8])))
+    if triangles > MAX_TRIANGLES:
+        errors.append("%s: %d triangles, the game takes %d at most" % (name, triangles, MAX_TRIANGLES))
+    if not has_uv:
+        errors.append("%s: no UV map" % name)
+    if not material_names:
+        errors.append("%s: no material; its name is the name of the picture" % name)
+    bad = sum(1 for n in influences if n == 0)
+    if bad:
+        errors.append("%s: %d vertices have no weight on any bone" % (name, bad))
+    many = sum(1 for n in influences if n > MAX_INFLUENCES)
+    if many:
+        warnings.append(
+            "%s: %d vertices have more than %d bones; the game keeps the 4 heaviest (Weights > Limit Total 4)"
+            % (name, many, MAX_INFLUENCES)
+        )
+    return errors, warnings
+
+
+def items_text(existing, name, covers):
+    """The text of items.txt with the line for `name` set to cover `covers` (a list of 'body', 'arms')."""
+    kept = [l for l in existing.splitlines() if l.split("#")[0].split()[:1] != [name]]
+    line = name + (" covers=" + ",".join(covers) if covers else "")
+    return "\n".join(kept + [line]) + "\n"
+
+
 # --- small quaternion / matrix helpers on plain tuples, for the world places of the rest pose --------------------------
 
 
@@ -152,6 +191,11 @@ except ImportError:  # outside Blender: the section above is all there is
 
 RIG_NAME = "KotOR Rig"
 BONES_KEY = "kotor_bones"  # the bones.txt text, kept on the rig so that a saved .blend carries it
+
+
+def default_mesh_folder():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "kotor-rs", "meshes")
 
 
 def default_anim_folder():
@@ -377,11 +421,109 @@ if bpy is not None:
             col.prop(scene, "kotor_folder", text="Folder")
             col.operator("kotor.validate", icon="CHECKMARK")
             col.operator("kotor.export_clip", icon="EXPORT")
+            col.separator()
+            col.label(text="Clothing")
+            col.prop(scene, "kotor_garment_name", text="Garment name")
+            col.prop(scene, "kotor_covers_body", text="Covers the stock body (trunk, pelvis, legs)")
+            col.prop(scene, "kotor_covers_arms", text="Covers the stock arms and hands")
+            col.prop(scene, "kotor_mesh_folder", text="Mesh folder")
+            col.operator("kotor.validate_mesh", icon="CHECKMARK")
+            col.operator("kotor.export_garment", icon="EXPORT")
             report = scene.get("kotor_report", "")
             for line in report.splitlines():
                 col.label(text=line[:90], icon="ERROR" if line.startswith("ERROR") else "INFO")
 
-    CLASSES = (KOTOR_OT_load_export, KOTOR_OT_set_rate, KOTOR_OT_validate, KOTOR_OT_export_clip, KOTOR_PT_panel)
+    def mesh_report(context, rig):
+        """Check each selected mesh; returns (errors, warnings, meshes)."""
+        names = [b[0] for b in rig_bones(rig)]
+        errors, warnings, meshes = [], [], []
+        depsgraph = context.evaluated_depsgraph_get()
+        for o in context.selected_objects:
+            if o.type != "MESH":
+                continue
+            meshes.append(o)
+            ev = o.evaluated_get(depsgraph)
+            me = ev.to_mesh()
+            me.calc_loop_triangles()
+            influences = []
+            for v in me.vertices:
+                influences.append(sum(1 for g in v.groups if g.weight > 1e-4))
+            e, w = validate_garment(
+                o.name,
+                len(me.loop_triangles),
+                len(me.uv_layers) > 0,
+                [m.name for m in o.data.materials if m],
+                [g.name for g in o.vertex_groups],
+                influences,
+                names,
+            )
+            ev.to_mesh_clear()
+            errors += e
+            warnings += w
+            if not any(m.type == "ARMATURE" and m.object == rig for m in o.modifiers):
+                errors.append("%s: no Armature modifier pointing at the KotOR Rig" % o.name)
+        if not meshes:
+            errors.append("select the mesh (or meshes) of the garment first")
+        return errors, warnings, meshes
+
+    class KOTOR_OT_validate_mesh(bpy.types.Operator):
+        """Check the selected garment meshes for the game: bones, weights, triangles, UVs, material"""
+
+        bl_idname = "kotor.validate_mesh"
+        bl_label = "Validate mesh for KotOR-RS"
+
+        def execute(self, context):
+            rig = find_rig(context)
+            if rig is None:
+                self.report({"ERROR"}, "Load an export first")
+                return {"CANCELLED"}
+            errors, warnings, _ = mesh_report(context, rig)
+            context.scene["kotor_report"] = "\n".join(["ERROR " + e for e in errors] + ["note " + w for w in warnings])
+            if errors:
+                self.report({"ERROR"}, "%d problem(s); see the KotOR panel" % len(errors))
+                return {"CANCELLED"}
+            self.report({"INFO"}, "The mesh is good for the game")
+            return {"FINISHED"}
+
+    class KOTOR_OT_export_garment(bpy.types.Operator):
+        """Write the selected meshes as <name>.glb in the game's mesh folder, and what they cover in items.txt"""
+
+        bl_idname = "kotor.export_garment"
+        bl_label = "Export garment"
+
+        def execute(self, context):
+            if bpy.ops.kotor.validate_mesh() != {"FINISHED"}:
+                return {"CANCELLED"}
+            scene = context.scene
+            name = clean_name(scene.kotor_garment_name)
+            folder = bpy.path.abspath(scene.kotor_mesh_folder) or default_mesh_folder()
+            os.makedirs(folder, exist_ok=True)
+            bpy.ops.export_scene.gltf(
+                filepath=os.path.join(folder, name + ".glb"),
+                export_format="GLB",
+                use_selection=True,
+                export_skins=True,
+                export_animations=False,
+                export_apply=True,
+                export_yup=True,
+            )
+            covers = [c for c, on in (("body", scene.kotor_covers_body), ("arms", scene.kotor_covers_arms)) if on]
+            items = os.path.join(folder, "items.txt")
+            old = open(items, encoding="utf-8").read() if os.path.isfile(items) else ""
+            with open(items, "w", encoding="utf-8", newline="\n") as f:
+                f.write(items_text(old, name, covers))
+            self.report({"INFO"}, "Wrote %s.glb. In the game press F8, then F10 to wear it." % name)
+            return {"FINISHED"}
+
+    CLASSES = (
+        KOTOR_OT_load_export,
+        KOTOR_OT_set_rate,
+        KOTOR_OT_validate,
+        KOTOR_OT_export_clip,
+        KOTOR_OT_validate_mesh,
+        KOTOR_OT_export_garment,
+        KOTOR_PT_panel,
+    )
 
     def register():
         for c in CLASSES:
@@ -391,6 +533,12 @@ if bpy is not None:
         bpy.types.Scene.kotor_folder = StringProperty(
             name="Folder", subtype="DIR_PATH", default=default_anim_folder()
         )
+        bpy.types.Scene.kotor_garment_name = StringProperty(name="Garment name", default="vest")
+        bpy.types.Scene.kotor_covers_body = BoolProperty(name="Covers body", default=False)
+        bpy.types.Scene.kotor_covers_arms = BoolProperty(name="Covers arms", default=False)
+        bpy.types.Scene.kotor_mesh_folder = StringProperty(
+            name="Mesh folder", subtype="DIR_PATH", default=default_mesh_folder()
+        )
 
     def unregister():
         for c in reversed(CLASSES):
@@ -398,6 +546,10 @@ if bpy is not None:
         del bpy.types.Scene.kotor_clip_name
         del bpy.types.Scene.kotor_loop
         del bpy.types.Scene.kotor_folder
+        del bpy.types.Scene.kotor_garment_name
+        del bpy.types.Scene.kotor_covers_body
+        del bpy.types.Scene.kotor_covers_arms
+        del bpy.types.Scene.kotor_mesh_folder
 
     if __name__ == "__main__":
         register()

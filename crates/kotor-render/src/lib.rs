@@ -4,6 +4,8 @@
 
 mod character;
 pub mod custom_clip;
+pub mod custom_mesh;
+mod json;
 mod objects;
 mod scene;
 mod soft;

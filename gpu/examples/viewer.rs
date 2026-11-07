@@ -642,7 +642,9 @@ impl App {
                 self.stage.reload_poses();
                 self.stage.reload_textures();
                 self.stage.reload_custom_clips();
+                self.stage.reload_custom_meshes();
             }
+            KeyCode::F10 if pressed => self.stage.cycle_garment(),
             KeyCode::F9 if pressed => self.stage.cycle_custom_clip(),
             _ if pressed && digit > 0 => self.stage.number_pressed(digit),
             _ => {}
@@ -830,6 +832,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stage.use_pose_folder(folder.into());
     }
     stage.reload_custom_clips();
+    stage.reload_custom_meshes();
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
     if flag("--no-hd") {
         stage.no_hd();

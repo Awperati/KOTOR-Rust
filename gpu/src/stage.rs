@@ -459,6 +459,11 @@ pub struct Stage {
     texture_problems: Vec<String>,
     /// What was wrong with the owner's animation files when last read (`anim_problems.txt` has it too).
     anim_problems: Vec<String>,
+    /// The owner's garments (`kotor-rs\meshes`), what was wrong with the files, which one the player wears, and the bodies drawn in them.
+    garments: Vec<kotor_render::custom_mesh::Garment>,
+    mesh_problems: Vec<String>,
+    worn_garment: Option<usize>,
+    dressed: HashMap<(i32, usize), Rc<Rig>>,
     /// Which of the owner's clips the debug key has the player in, if any.
     shown_clip: Option<usize>,
     forced_at: f32,
@@ -644,6 +649,10 @@ impl Stage {
             texture_folder: crate::texture_override::folder().filter(|d| d.is_dir()),
             texture_problems: Vec::new(),
             anim_problems: Vec::new(),
+            garments: Vec::new(),
+            mesh_problems: Vec::new(),
+            worn_garment: None,
+            dressed: HashMap::new(),
             shown_clip: None,
             forced_at: 0.0,
             yaw: 0.0,
@@ -1893,6 +1902,11 @@ impl Stage {
                         }
                     }
                 }
+                if let Some(inside) = kotor_render::custom_mesh::embedded_texture(name) {
+                    if stock.is_none() {
+                        return Some(inside);
+                    }
+                }
                 let mut img = stock?;
                 let body = kotor_render::underwear::body_of_texture(name).filter(|_| conventional);
                 if let Some(body) = body {
@@ -2003,6 +2017,140 @@ impl Stage {
         let _ = std::fs::write(folder.join("anim_problems.txt"), text);
         self.anim_problems = problems;
         kotor_render::custom_clip::set_all(clips);
+    }
+
+    /// The owner's mesh folder: `KOTOR_RS_MESHES`, else `%LOCALAPPDATA%\kotor-rs\meshes`.
+    fn mesh_folder() -> Option<std::path::PathBuf> {
+        if let Some(d) = std::env::var_os("KOTOR_RS_MESHES") {
+            return Some(std::path::PathBuf::from(d));
+        }
+        let base = std::env::var_os("LOCALAPPDATA")?;
+        Some(
+            std::path::PathBuf::from(base)
+                .join("kotor-rs")
+                .join("meshes"),
+        )
+    }
+
+    /// F8: read the owner's garments again: every `.glb` (or `.gltf` with its `.bin`) in the folder, with what each covers of
+    /// the stock body from `items.txt` (`<file name without the extension> covers=body,arms`). What is wrong goes to
+    /// `mesh_problems.txt` in the folder, and a file with a mistake is left out.
+    pub fn reload_custom_meshes(&mut self) {
+        self.mesh_problems.clear();
+        self.garments.clear();
+        self.dressed.clear();
+        self.textures.clear();
+        kotor_render::custom_mesh::clear_embedded();
+        let Some(folder) = Self::mesh_folder().filter(|d| d.is_dir()) else {
+            self.worn_garment = None;
+            return;
+        };
+        let pc = self.game.world.pc;
+        let bones: Vec<String> = self
+            .rig_of(pc)
+            .map(|r| {
+                let mut v = Vec::new();
+                r.body_model()
+                    .root
+                    .walk(&mut |n| v.push(n.name.to_ascii_lowercase()));
+                v
+            })
+            .unwrap_or_default();
+        let items = std::fs::read_to_string(folder.join("items.txt")).unwrap_or_default();
+        let covers_of = |name: &str| -> Vec<String> {
+            for line in items.lines() {
+                let line = line.split('#').next().unwrap_or("").trim();
+                let mut words = line.split_whitespace();
+                if words.next().is_some_and(|w| w.eq_ignore_ascii_case(name)) {
+                    return words
+                        .filter_map(|w| w.strip_prefix("covers="))
+                        .flat_map(|c| c.split(','))
+                        .map(|c| c.to_ascii_lowercase())
+                        .collect();
+                }
+            }
+            Vec::new()
+        };
+        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&folder)
+            .map(|d| d.filter_map(|e| e.ok()).map(|e| e.path()).collect())
+            .unwrap_or_default();
+        files.sort();
+        for path in files {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_default();
+            if ext != "glb" && ext != "gltf" {
+                continue;
+            }
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("garment")
+                .to_string();
+            let shown = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("?")
+                .to_string();
+            let Ok(bytes) = std::fs::read(&path) else {
+                self.mesh_problems.push(format!("{shown}: cannot be read"));
+                continue;
+            };
+            let bin = std::fs::read(path.with_extension("bin")).ok();
+            match kotor_render::custom_mesh::parse(&stem, &bytes, bin.as_deref(), &bones) {
+                Ok(mut g) => {
+                    g.covers = covers_of(&stem);
+                    self.garments.push(g);
+                }
+                Err(errs) => {
+                    for e in errs {
+                        self.mesh_problems
+                            .push(format!("{shown}: {e}; the game is not using this file"));
+                    }
+                }
+            }
+        }
+        let mut text = if self.mesh_problems.is_empty() {
+            format!(
+                "No problems: the game is using {} garment file(s).\n",
+                self.garments.len()
+            )
+        } else {
+            String::from("Problems with your mesh files (a file named here is not used):\n")
+        };
+        for p in &self.mesh_problems {
+            text.push_str(p);
+            text.push('\n');
+        }
+        // Only a help to the reader: the game goes on without it.
+        let _ = std::fs::write(folder.join("mesh_problems.txt"), text);
+        if self.worn_garment.is_some_and(|g| g >= self.garments.len()) {
+            self.worn_garment = None;
+        }
+    }
+
+    /// What was wrong with the owner's mesh files when last read.
+    pub fn mesh_problems(&self) -> &[String] {
+        &self.mesh_problems
+    }
+
+    /// F10: the player puts on the next of the owner's garments, and after the last, takes them off.
+    pub fn cycle_garment(&mut self) {
+        let next = self.worn_garment.map_or(0, |g| g + 1);
+        if next < self.garments.len() {
+            self.worn_garment = Some(next);
+            let name = self.garments[next].name.clone();
+            self.say_over_player(format!("Wearing: {name}"));
+        } else {
+            self.worn_garment = None;
+            self.say_over_player(if self.garments.is_empty() {
+                "No garment files of yours were found".to_string()
+            } else {
+                "Back to the game's own clothes".to_string()
+            });
+        }
     }
 
     /// What was wrong with the owner's animation files when last read.
@@ -2412,7 +2560,20 @@ impl Stage {
                 .map(|i| (i.base_item, i.template.clone()));
             (o.appearance, o.template.clone(), armour)
         };
-        self.rig_for(appearance, &template, armour)
+        let rig = self.rig_for(appearance, &template, armour)?;
+        // The player in a garment of the owner's: the body with it on, kept by body and garment.
+        if let (true, Some(g)) = (id == self.game.world.pc, self.worn_garment) {
+            if let Some(garment) = self.garments.get(g) {
+                let key = (appearance, g);
+                let dressed = self
+                    .dressed
+                    .entry(key)
+                    .or_insert_with(|| Rc::new(rig.dressed(garment)))
+                    .clone();
+                return Some(dressed);
+            }
+        }
+        Some(rig)
     }
 
     /// A body in the clothes a character starts with, as the character's screens show it: the second set of `appearance.2da`.

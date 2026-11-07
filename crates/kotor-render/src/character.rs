@@ -35,6 +35,7 @@ fn main_texture(model: &Model) -> Option<String> {
 
 /// A character's parsed models, ready to be posed many times (one pose per frame) without
 /// touching the install again.
+#[derive(Clone)]
 pub struct Rig {
     body: Model,
     head: Option<Model>,
@@ -230,6 +231,14 @@ impl Rig {
         let pose = animation.and_then(|(name, t)| self.sample(name, t));
         let face = animation.and_then(|(name, t)| self.sample_face(name, t));
         self.posed_with_face(pose.as_ref(), face.as_ref())
+    }
+
+    /// This character with `garment` on: its stock body parts that the garment covers are not drawn, and its pieces are, skinned to
+    /// the body's bones.
+    pub fn dressed(&self, garment: &crate::custom_mesh::Garment) -> Rig {
+        let mut rig = self.clone();
+        rig.body = garment.dress(&self.body);
+        rig
     }
 
     /// The body's model, as the game has it.
