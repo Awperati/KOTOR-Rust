@@ -497,3 +497,63 @@ fn the_mouth_opens_and_shuts_at_the_rate_of_syllables() {
         );
     }
 }
+
+/// Owner, 7 Nov: "left hand is completely broken": a female hero in a jacket with a rifle had one hand bent into a claw. A clip's
+/// turn of a node is that node's own turn, so what a body does with a clip is the supermodel's key, whatever the body's rest.
+/// On every body and outfit, every hand and finger node plays the clip's own turn.
+#[test]
+fn a_hand_plays_the_turns_the_clip_gives_it() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    for row in [91, 92, 93, 137] {
+        for letter in [None, Some('b'), Some('c')] {
+            let Ok(rig) = rig_for_outfit(&mut inst, row, 1, letter) else {
+                continue;
+            };
+            let Some(sup) = rig.body_model().supermodel.clone() else {
+                continue;
+            };
+            let Ok(bytes) = inst.read(&sup, kotor_core::ResType::MDL) else {
+                continue;
+            };
+            let mdx = inst
+                .read(&sup, kotor_core::ResType::MDX)
+                .unwrap_or_default();
+            let supermodel = kotor_model::parse_model(&bytes, &mdx).unwrap();
+            for clip in ["pause1", "g7r1", "g8r1", "walk"] {
+                let (Some(a), Some(pose)) = (supermodel.animation(clip), rig.sample(clip, 0.3))
+                else {
+                    continue;
+                };
+                let raw = a.sample(&supermodel, 0.3);
+                for (node, key) in &raw {
+                    if !(node.contains("fngr") || node.contains("thumb") || node.contains("hand")) {
+                        continue;
+                    }
+                    let Some(got) = pose.get(node) else {
+                        continue;
+                    };
+                    let dot: f32 = (0..4)
+                        .map(|i| got.orientation[i] * key.orientation[i])
+                        .sum();
+                    let angle = 2.0 * dot.abs().min(1.0).acos().to_degrees();
+                    // A node the clip leaves at the supermodel's rest takes the body's own, which may differ; those that turn do not.
+                    let rest = supermodel.bind_pose();
+                    let at_rest = rest.get(node).is_some_and(|r| {
+                        (0..4)
+                            .map(|i| r.orientation[i] * key.orientation[i])
+                            .sum::<f32>()
+                            .abs()
+                            > 0.999_999
+                    });
+                    if !at_rest {
+                        assert!(angle < 0.5, "row {row} {letter:?} {clip}: {node} is {angle:.1} degrees off the clip's turn");
+                    }
+                }
+            }
+        }
+    }
+}

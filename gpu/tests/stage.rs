@@ -1240,7 +1240,9 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         } else {
             1.0
         };
-        let (dist, high, fov) = if std::env::var("FRAME_BODY").is_ok() {
+        let (dist, high, fov) = if std::env::var("FRAME_HAND").is_ok() {
+            (0.8, 0.82, 40.0)
+        } else if std::env::var("FRAME_BODY").is_ok() {
             (2.0, 0.85, 40.0)
         } else if std::env::var("FRAME_BELLY").is_ok() {
             (1.05, 1.08, 40.0)

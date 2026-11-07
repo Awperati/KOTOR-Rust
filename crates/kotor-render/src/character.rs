@@ -300,10 +300,17 @@ impl Rig {
                     return (node, key);
                 };
                 let position = [0, 1, 2].map(|k| o.position[k] + key.position[k] - f.position[k]);
-                let turn = quat_mul(quat_inverse(f.orientation), key.orientation);
+                // A turn key is the node's own turn, not an offset: a node the clip does not turn stays as the body has it, and a
+                // node it turns is turned as the clip says. (Taking the turns as offsets bent a hand into a claw when the body's
+                // hand rests differently from the supermodel's.)
+                let same = (0..4)
+                    .map(|i| key.orientation[i] * f.orientation[i])
+                    .sum::<f32>()
+                    .abs()
+                    > 0.999_999;
                 let moved = kotor_model::NodePose {
                     position,
-                    orientation: quat_mul(o.orientation, turn),
+                    orientation: if same { o.orientation } else { key.orientation },
                     alpha: key.alpha,
                 };
                 (node, moved)
