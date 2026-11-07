@@ -162,6 +162,7 @@ fn the_slots_offer_the_strongest_of_each_kind_for_the_weapon_held() {
         let feats = choices.iter().map(|c| match c.action {
             CombatAction::Feat(f) => f,
             CombatAction::Power(p) => panic!("power {p}"),
+            other => panic!("{other:?}"),
         });
         feats.collect()
     };
@@ -215,6 +216,7 @@ fn the_powers_for_an_enemy_are_those_the_table_marks_hostile() {
         .map(|c| match c.action {
             CombatAction::Power(p) => p,
             CombatAction::Feat(f) => panic!("feat {f}"),
+            other => panic!("{other:?}"),
         })
         .collect();
     assert_eq!(offered, hostile);
