@@ -502,7 +502,10 @@ impl Body {
             let s = k as f32 * GAP_PROBE;
             let (qx, qy) = (x + u[0] * s, y + u[1] * s);
             if let Some(f) = ground.floor(qx, qy, top) {
+                // A closed door's line is no gap to jump or roll across: from here, or from where it would step.
                 let free = f >= z - t.max_drop
+                    && !ground.blocked(self.pos, [qx, qy, z])
+                    && !ground.blocked([x, y, z], [qx, qy, z])
                     && !self.barrier(ground, [qx, qy])
                     && (!self.grounded || ground.way_back(self.pos, [qx, qy, f]));
                 return free.then_some([qx, qy, f]);

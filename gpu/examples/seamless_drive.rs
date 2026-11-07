@@ -145,6 +145,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = Stage::open(&module, true)?;
     s.enable_tutorials(false);
     s.enable_auto_pause(false);
+    // DRIVE_CLASSIC=1: the game's own walk. DRIVE_JUMP=1 and DRIVE_ROLL=1: Space and Left Ctrl as the doorway is reached.
+    if std::env::var_os("DRIVE_CLASSIC").is_some() {
+        s.set_movement_modern(false);
+    }
+    let (jump_at_door, roll_at_door) = (
+        std::env::var_os("DRIVE_JUMP").is_some(),
+        std::env::var_os("DRIVE_ROLL").is_some(),
+    );
     let mut gpu = GpuRenderer::new(width, height)?;
     let mut seen = (0u64, 0u64);
     let mut uploads: Vec<(f32, &'static str)> = Vec::new();
@@ -449,6 +457,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut through = 0;
     let mut shot_mid = false;
     let mut crossed_at = None;
+    let mut asked_at_door = false;
     while through < 400 {
         // Someone of the module stands in the straight line to the doorway: go round by the game's own route.
         if through == 120 && crossed_at.is_none() {
@@ -471,6 +480,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     s.steer = (0.0, 0.0, false);
                     break;
                 }
+            }
+        }
+        // Space or Left Ctrl as the doorway comes near, once.
+        if !asked_at_door && crossed_at.is_none() && dist(s.game.world.pc_mover.pos, site.at) < 1.5
+        {
+            asked_at_door = true;
+            if jump_at_door {
+                s.jump_key();
+            }
+            if roll_at_door {
+                s.roll_key();
             }
         }
         step(&mut s);

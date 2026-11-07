@@ -11,9 +11,14 @@ use std::collections::HashSet;
 
 /// Half the width a closed door blocks when its model gives none (metres).
 pub const DOOR_BLOCK_RADIUS: f32 = 1.1;
+/// How far a closed door's line runs past each jamb, into the wall, metres.
+const DOOR_OVERSHOOT: f32 = 0.5;
 /// The line across its doorway that a closed door blocks.
+///
+/// It runs a little into the wall at each end. A joined neighbour's floor is bridged across the doorway a hand's breadth
+/// wider than the door, and a body sliding along the line walked round its end there: closed, the door was no wall.
 pub(crate) fn door_line(o: &Object) -> ([f32; 3], [f32; 3]) {
-    let ([dx, dy], h) = (o.door_axis, o.door_half_width);
+    let ([dx, dy], h) = (o.door_axis, o.door_half_width + DOOR_OVERSHOOT);
     let (x, y, z) = (o.position[0], o.position[1], o.position[2]);
     ([x - dx * h, y - dy * h, z], [x + dx * h, y + dy * h, z])
 }
@@ -29,6 +34,8 @@ const SKILL_SECURITY: usize = 6;
 /// Running speed: `runrate` of `creaturespeed.2da`, which is also `rundist` (3.96 m) over the 0.733 s run cycle.
 /// The reference video gives 5.8 m/s, give or take 0.6: see `docs/REFERENCE.md`.
 pub const RUN_SPEED: f32 = 5.4;
+/// A body is stopped this far short of a closed door's line, so that it never stands on it.
+const DOOR_MARGIN: f32 = 0.03;
 /// When steered, the player keeps this far from the edge of the walkmesh, so that it does not stand in a wall.
 const STEER_CLEARANCE: f32 = 0.3;
 /// Radians a second: the reference video's hero turns 180 degrees in 5 frames, see `docs/REFERENCE.md`.
@@ -42,7 +49,7 @@ impl Ground for NavGround<'_> {
         self.0.walkable_at(x, y, max_z)
     }
     fn blocked(&self, a: [f32; 3], b: [f32; 3]) -> bool {
-        self.0.crosses_block(a, b)
+        self.0.crosses_block_near(a, b, DOOR_MARGIN)
     }
     fn wall(&self, a: [f32; 3], b: [f32; 3]) -> bool {
         self.0.sight_blocked(a, b)
@@ -922,7 +929,7 @@ impl World {
         } * dt;
         let open = |d: [f32; 2]| -> Option<[f32; 3]> {
             let (x, y) = (p[0] + d[0] * go, p[1] + d[1] * go);
-            if nav.crosses_block(p, [x, y, p[2]]) {
+            if nav.crosses_block_near(p, [x, y, p[2]], DOOR_MARGIN) {
                 return None;
             }
             let len = d[0].hypot(d[1]).max(1e-6);

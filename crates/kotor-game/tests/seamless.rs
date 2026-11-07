@@ -709,3 +709,99 @@ fn a_closed_door_stops_the_player_across_its_whole_width() {
         }
     }
 }
+
+/// Sprinting at a closed door and rolling or jumping close to its line, or both, from every distance: nobody gets
+/// through. Roll is the Left Ctrl key and jump Space; both only in Modern movement.
+fn dash_at_closed_door(
+    module: &str,
+    tag: &str,
+    join: bool,
+    roll_at: Option<f32>,
+    jump_at: Option<f32>,
+    lat: f32,
+) -> Option<(f32, f32, String)> {
+    let mut w = world(module)?;
+    w.movement = kotor_game::MovementMode::Modern;
+    let sketch: Sketch = w.sketch();
+    let site = sketch.sites.iter().find(|s| s.tag == tag)?.clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).ok()?;
+    let out = att.out;
+    let door = w.link_door_at(site.at)?;
+    if join {
+        w.seamless_attach(door, att);
+    }
+    if let Some(o) = w.objects.get_mut(&door) {
+        o.locked = false;
+    }
+    let (s, c) = out.sin_cos();
+    let start = [
+        site.at[0] - c * 5.0 - s * lat,
+        site.at[1] - s * 5.0 + c * lat,
+        site.at[2],
+    ];
+    let pc = w.pc;
+    w.teleport(pc, start);
+    let (mut rolled, mut jumped, mut best) = (false, false, f32::MIN);
+    let mut highest = 0.0f32;
+    for _ in 0..420 {
+        w.steer = Some(([c, s], true));
+        let p = w.pc_mover.pos;
+        let along = (p[0] - site.at[0]) * c + (p[1] - site.at[1]) * s;
+        if !rolled && roll_at.is_some_and(|d| along >= -d) {
+            w.roll_request = true;
+            rolled = true;
+        }
+        if !jumped && jump_at.is_some_and(|d| along >= -d) {
+            w.jump_request = true;
+            jumped = true;
+        }
+        w.step(1.0 / 60.0);
+        let q = w.pc_mover.pos;
+        best = best.max((q[0] - site.at[0]) * c + (q[1] - site.at[1]) * s);
+        highest = highest.max(w.pc_body.pos[2] - start[2]);
+    }
+    Some((best, highest, w.module.clone()))
+}
+
+#[test]
+fn rolling_or_jumping_at_a_closed_door_never_gets_through() {
+    let mut worst: Vec<String> = Vec::new();
+    let mut tried = 0;
+    for (module, tag) in [("tar_m02aa", "tar02_aprtdoor"), ("tar_m02ac", "Apartments")] {
+        for join in [false, true] {
+            // Mid-door, and near a jamb, where a body sliding along the line comes to its end.
+            for lat in [0.0f32, 1.0] {
+                // Distance before the line at which each is asked for: far off to touching it.
+                let ds = [2.5f32, 1.0, 0.3, 0.0];
+                let mut cases: Vec<(Option<f32>, Option<f32>)> = Vec::new();
+                for d in ds {
+                    cases.push((Some(d), None));
+                    cases.push((None, Some(d)));
+                    cases.push((Some(d), Some(d)));
+                    cases.push((Some(d + 0.3), Some(d)));
+                }
+                for (roll, jump) in cases {
+                    let Some((best, high, now)) =
+                        dash_at_closed_door(module, tag, join, roll, jump, lat)
+                    else {
+                        continue;
+                    };
+                    tried += 1;
+                    if best > 0.3 || now != module {
+                        worst.push(format!(
+                            "{module} {tag} joined {join} lat {lat} roll {roll:?} jump {jump:?}: got {best:.2} m past the line (up {high:.2} m), module {now}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(tried > 0 || kotor_core::install_dir().is_none());
+    assert!(
+        worst.is_empty(),
+        "{} of {tried} got through:\n{}",
+        worst.len(),
+        worst.join("\n")
+    );
+}

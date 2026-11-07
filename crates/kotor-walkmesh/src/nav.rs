@@ -338,6 +338,19 @@ impl NavMesh {
         })
     }
 
+    /// Like `crosses_block`, for a body that moves: the step is looked at `margin` metres further on, so that it never ends
+    /// on a blocked line or a hair short of one. A step that ended exactly on a closed door's line (a roll slid up to it, and
+    /// the product of the two sides came to zero) was not a crossing, and the next step walked through the door.
+    pub fn crosses_block_near(&self, p: V3, q: V3, margin: f32) -> bool {
+        let (dx, dy) = (q[0] - p[0], q[1] - p[1]);
+        let l = dx.hypot(dy);
+        if l < 1e-6 {
+            return self.crosses_block(p, q);
+        }
+        let far = [q[0] + dx / l * margin, q[1] + dy / l * margin, q[2]];
+        self.crosses_block(p, q) || self.crosses_block(p, far)
+    }
+
     /// The faces a walker can reach from `from` without crossing a blocked line or entering a blocked face. Told apart
     /// from the rest, they show what lies behind a closed door. Empty when `from` is not on the floor.
     pub fn reachable_from(&self, from: V3) -> Vec<bool> {
