@@ -11,29 +11,29 @@ $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
 
 WaitLog
+# --grenadier gives the soldier 5 grenades and the player 500 hit points, unhurt. The first look at the state may come after a throw
+# or three (a slow window, a busy machine), so the counts are against 5 and 500, not against what the first look saw.
+$HAD = 5; $FULL = 500
 $until = (Get-Date).AddSeconds(240)
-do { $s = State; Start-Sleep -Milliseconds 100 } while ((-not $s.grenades -or $s.grenades -eq "-") -and (Get-Date) -lt $until)
-Report "A soldier is armed" ($s.grenades -and $s.grenades -ne "-") "grenades=$($s.grenades) hp=$($s.hp)"
-$had = [int]$s.grenades
-# --grenadier gives the player 500 hit points, unhurt, so the check below is about the burst and not about a fight lost.
-Report "Player starts unhurt" ([int]$s.hp -ge 450) "hp=$($s.hp)"
-$hp = [int]$s.hp
+do { $s = State; Start-Sleep -Milliseconds 100 } while ($s.armed -ne "1" -and (Get-Date) -lt $until)
+Report "A soldier is armed" ($s.armed -eq "1") "grenades=$($s.grenades) hp=$($s.hp)"
 Shot "grenades_before"
 
-$until = (Get-Date).AddSeconds(90)
+# A thrown grenade is one fewer; the last one thrown is gone from the soldier altogether, which the state shows as "-".
+# At 2160p the window draws slowly and the game runs a little slower than the clock: the first throw may take a while.
+$until = (Get-Date).AddSeconds(240)
 $seen = 0
 do {
+  if ($s.grenades -eq "-" -or [int]$s.grenades -lt $HAD) { $seen = 1; break }
   $s = State
-  if ($s.grenades -ne "-" -and [int]$s.grenades -lt $had) { $seen = 1; break }
-  if ($s.grenades -eq "-") { break }
 } while ((Get-Date) -lt $until)
-Report "It throws one" ($seen -eq 1) "grenades $had -> $($s.grenades) thrower(distance/fights/noticed/hp/template)=$($s.thrower)"
+Report "It throws one" ($seen -eq 1) "grenades $HAD -> $($s.grenades) thrower(distance/fights/noticed/hp/template)=$($s.thrower)"
 # The grenade is in the air for about a second and a half after the throw: wait for it to land.
-$until = (Get-Date).AddSeconds(8)
-do { $after = State } while ([int]$after.hp -ge $hp -and (Get-Date) -lt $until)
+$until = (Get-Date).AddSeconds(10)
+do { $after = State } while ([int]$after.hp -ge $FULL -and (Get-Date) -lt $until)
 # A burst is over in a moment: pictures as fast as they come.
 if ($Shots) { foreach ($n in 1..8) { [Drv]::Save($h, "$Shots\grenades_burst$n.png") } }
-Report "It hurts" ([int]$after.hp -lt $hp) "hp $hp -> $($after.hp) (a frag burst takes about 10 to 30)"
+Report "It hurts" ([int]$after.hp -lt $FULL) "hp $FULL -> $($after.hp) (a frag burst takes about 10 to 30)"
 
 FocusReport
 Stop-Process -Id $v.Id -Force

@@ -132,7 +132,7 @@ do {
     if ($s.target -like "Sith*") { ClickSlot $s "slot0" }
   }
 } while (([int]$s.attacks -eq 0 -or -not $floated) -and (Get-Date) -lt $until)
-Report "The player attacks" ([int]$s.attacks -gt 0) "attacks=$($s.attacks) hp=$($s.hp) clip=$($s.clip)"
+Report "The player attacks" ([int]$s.attacks -gt 0) "attacks=$($s.attacks) hp=$($s.hp) clip=$($s.clip) engaged=$($s.engaged) paused=$($s.paused) queue=$($s.queue) target=$($s.target) foe=$($s.foe) pilot=$($s.pilot) note=$($s.note)"
 Report "Words rise" $floated "floats=$($s.floats)"
 Shot "fight_engaged"
 

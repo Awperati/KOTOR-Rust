@@ -810,6 +810,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let volume = opt("--volume")
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(0.8);
+    // `KOTOR_DRIVE_SIZE=3840x2160` and `KOTOR_HIDDEN=1` stand in for `--size` and `--hidden`, so that a driver can be run at other
+    // sizes and without a visible window without editing its argument list.
     let size = opt("--size")
         .or_else(|| std::env::var("KOTOR_DRIVE_SIZE").ok())
         .and_then(|s| {
@@ -890,7 +892,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         monitor,
         size,
         fullscreen: flag("--fullscreen"),
-        hidden: flag("--hidden"),
+        hidden: flag("--hidden") || std::env::var("KOTOR_HIDDEN").is_ok(),
         max_frames: opt("--frames").and_then(|n| n.parse().ok()),
         frame_log: opt("--frame-log").and_then(|path| {
             use std::io::Write;
