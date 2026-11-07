@@ -209,3 +209,44 @@ fn a_face_moves_with_the_clip_and_stays_whole() {
         );
     }
 }
+
+/// A head with no clip of its own (almost every head: Trask's, and the hero's) takes the face tracks of the body's clip, so
+/// its mouth and lids move as the clip plays, and its size stays.
+#[test]
+fn a_head_with_no_clip_of_its_own_takes_the_bodys_face_tracks() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let rig = Rig::load(&mut inst, "N_RepSold", Some("N_TraskH"), None).unwrap();
+    let head_tex = rig.head_texture().unwrap().to_string();
+    let a = rig
+        .sample_face("tlknorm", 0.5)
+        .expect("a face for the body's clip");
+    let b = rig.sample_face("tlknorm", 3.1).unwrap();
+    assert!(
+        a.keys().all(|k| k.starts_with("f_")
+            || k.contains("teeth")
+            || k.contains("tongue")
+            || k.contains("lid")
+            || k.contains("eye")
+            || k == "talkdummy"),
+        "{:?}",
+        a.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        !a.contains_key("head_g"),
+        "only what is under the head's own node"
+    );
+    let (one, two) = (
+        rig.posed_with_face(None, Some(&a)).unwrap(),
+        rig.posed_with_face(None, Some(&b)).unwrap(),
+    );
+    let differs = one
+        .meshes
+        .iter()
+        .zip(&two.meshes)
+        .enumerate()
+        .any(|(i, (x, y))| is_head(&one, i, &head_tex) && x.positions != y.positions);
+    assert!(differs, "the face moves between the two moments");
+}

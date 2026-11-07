@@ -257,8 +257,29 @@ impl Rig {
     /// head carries these the way a body's supermodel does, and a body with no head or a head without the clip has none.
     pub fn sample_face(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
         let head = self.head.as_ref()?;
-        let a = head.animation(name)?;
+        let Some(a) = head.animation(name) else {
+            return self.body_face(name, t);
+        };
         Some(a.sample(head, if a.length > 0.0 { t % a.length } else { 0.0 }))
+    }
+
+    /// A head with no clip of its own is moved by the body's clip of the name: the body's supermodel keys the face's nodes
+    /// (`f_jaw_g`, the lips, brows, tongue and lids) as well as the body's, so a talking body talks with its mouth.
+    /// Only the nodes under the head's `head_g` are taken, since the body's own are in another space.
+    ///
+    /// **Assumption, read from the node names, not checked against the game:** that the body's keys for those nodes fit
+    /// every head, as they share their names and rest layout.
+    fn body_face(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
+        let head = self.head.as_ref()?;
+        let pose = self.sample(name, t)?;
+        let mut face = std::collections::HashSet::new();
+        for n in &head.root.find("head_g")?.children {
+            n.walk(&mut |c| {
+                face.insert(c.name.to_ascii_lowercase());
+            });
+        }
+        let pose: kotor_model::Pose = pose.into_iter().filter(|(k, _)| face.contains(k)).collect();
+        (!pose.is_empty()).then_some(pose)
     }
 
     /// The character in a pose sampled elsewhere, such as a cutscene's stunt model.
