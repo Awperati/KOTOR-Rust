@@ -63,7 +63,7 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 | What | Status | Evidence |
 |---|---|---|
 | Skills from the second game | nothing to port | Its 8 skills are the same as this game's |
-| Feats from the second game | done | `the_feats_the_second_game_rebuilt_do_what_their_words_say`. Superior Two-Weapon was left out as nothing attacked with the left hand. Two weapons have since landed (`1af08a0`), so it can follow |
+| Feats from the second game | done | `the_feats_the_second_game_rebuilt_do_what_their_words_say`. Superior Two-Weapon followed once two weapons had landed: `superior_two_weapon_fighting_eases_the_penalties_as_its_words_say` |
 | Regeneration by Constitution | done | `the_party_heals_its_constitution_modifier_every_seven_seconds` |
 
 ## The later ones

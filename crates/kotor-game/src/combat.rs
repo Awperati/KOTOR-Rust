@@ -475,11 +475,13 @@ impl World {
 
     /// The attack penalty of the main hand and the off hand when two weapons (or both blades of one) are used: -6 and
     /// -10, and with the feat Two-Weapon Fighting -6 and -6, Advanced -4 and -4, Mastery -2 and -2. The words of the
-    /// feats in the install say so. **Not built:** the "balanced" off-hand weapon that takes 2 more off the main hand.
+    /// feats in the install say so, and the second game's Superior Two-Weapon Fighting takes more off Mastery's: see
+    /// `k2feats.rs`. **Not built:** the "balanced" off-hand weapon that takes 2 more off the main hand.
     pub(crate) fn two_weapon_penalties(&self, id: ObjId) -> (i32, i32) {
         let has = |f: i32| self.objects.get(&id).is_some_and(|o| o.feats.contains(&f));
         if has(85) {
-            (-2, -2)
+            let (main, off) = self.superior_two_weapon_eases(id);
+            (-2 + main, -2 + off)
         } else if has(9) {
             (-4, -4)
         } else if has(3) {

@@ -5,12 +5,12 @@
 //! Rows go after the first game's in `feat.2da`, so nothing it has moves. A name's or a description's number is the second
 //! game's plus `kotor_core::SECOND_GAME_STRREF`, which is how the screens know whose talk table to ask.
 //!
-//! Left out on purpose: Superior Two-Weapon Fighting (nothing attacks with the left hand yet), and what the words say about
-//! deflecting bolts and about the +6 for hitting someone with a ranged weapon in melee: neither is in this game's rules.
+//! Left out on purpose: what the words say about deflecting bolts and about the +6 for hitting someone with a ranged weapon in
+//! melee, neither of which is in this game's rules, and the "balanced" off-hand weapon, which `two_weapon_penalties` has not got.
 //!
-//! **Assumed:** short range is 5 m. The second game's words do not give it. Superior Weapon Focus belongs to its prestige
-//! classes, which this game has not got, so here it is for any Jedi with Weapon Focus and Weapon Specialization: Lightsaber,
-//! at levels 12, 15 and 18. Nothing in the second game gives those levels. A class it grants a feat to only chooses it here.
+//! **Assumed:** short range is 5 m. The second game's words do not give it. Superior Weapon Focus and Superior Two-Weapon
+//! Fighting belong to its prestige classes, which this game has not got, so here they are for any Jedi who has the feats before
+//! them, at levels 12, 15 and 18. Nothing in the second game gives those levels. A class it grants a feat to only chooses it here.
 
 use crate::{ObjId, World};
 use kotor_archive::Install;
@@ -58,11 +58,12 @@ const CLOSE: usize = 5;
 const FINESSE_SABER: usize = 7;
 const FINESSE_MELEE: usize = 8;
 const SUPERIOR: usize = 9;
+const SUPERIOR_TWO_WEAPON: usize = 12;
 
 const NONE: [Needs; 2] = [Needs::Nothing, Needs::Nothing];
 
 /// In the order a chain is read: the screens follow the last feat a row needs.
-const PORTS: [Port; 12] = [
+const PORTS: [Port; 15] = [
     port("PRECISE_SHOT_I", 4, NONE),
     port("PRECISE_SHOT_II", 8, [Needs::Port(0), Needs::Nothing]),
     port("PRECISE_SHOT_III", 12, [Needs::Port(0), Needs::Port(1)]),
@@ -90,10 +91,27 @@ const PORTS: [Port; 12] = [
         18,
         [Needs::Port(9), Needs::Port(10)],
     ),
+    jedi(
+        "SUPER_WEAPON_FOCUS_2_WEAPON_I",
+        12,
+        [Needs::Label("TWO_WEAPON_MASTERY"), Needs::Nothing],
+    ),
+    jedi(
+        "SUPER_WEAPON_FOCUS_2_WEAPON_II",
+        15,
+        [Needs::Port(12), Needs::Nothing],
+    ),
+    jedi(
+        "SUPER_WEAPON_FOCUS_2_WEAPON_III",
+        18,
+        [Needs::Port(12), Needs::Port(13)],
+    ),
 ];
 
 /// More damage with a ranged weapon, by how far along Precise Shot a creature is.
 const PRECISE_DAMAGE: [i32; 6] = [0, 1, 2, 4, 6, 8];
+/// What comes off the penalties of the main hand and the off hand, by how far along Superior Two-Weapon Fighting a creature is.
+const SUPERIOR_TWO_WEAPON_EASES: [(i32, i32); 4] = [(0, 0), (1, 0), (2, 0), (2, 1)];
 /// Metres.
 const SHORT_RANGE: f32 = 5.0;
 const CLASSES: [&str; 8] = ["sol", "sct", "scd", "jgd", "jcn", "jsn", "drx", "drc"];
@@ -230,6 +248,22 @@ impl World {
             return 0;
         }
         self.ported_rank(id, SUPERIOR, 3) as i32
+    }
+
+    /// What Superior Two-Weapon Fighting takes off the penalties of the main hand and the off hand. A creature with one of
+    /// those feats has had the table read, or it could not have the feat.
+    pub(crate) fn superior_two_weapon_eases(&self, id: ObjId) -> (i32, i32) {
+        let (Some(first), Some(o)) = (self.second_game_feats, self.objects.get(&id)) else {
+            return (0, 0);
+        };
+        let rank = (0..3)
+            .rev()
+            .find(|n| {
+                o.feats
+                    .contains(&((first + SUPERIOR_TWO_WEAPON + n) as i32))
+            })
+            .map_or(0, |n| n + 1);
+        SUPERIOR_TWO_WEAPON_EASES[rank]
     }
 
     /// The rows of the feats the second game rebuilt, in `feat.2da`, if its copy was there to read. For a test.

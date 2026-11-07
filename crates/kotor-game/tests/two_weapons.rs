@@ -97,6 +97,67 @@ fn two_pistols_swing_twice_a_round_and_the_feats_ease_the_penalties() {
 }
 
 #[test]
+fn superior_two_weapon_fighting_eases_the_penalties_as_its_words_say() {
+    let Some((mut w, pc, foe)) = world() else {
+        return;
+    };
+    let Some(rows) = w.ported_feat_rows() else {
+        return;
+    };
+    let row = |n: i32| rows.start + n;
+    wield(&mut w, pc, "g_w_blstrpstl001", Some("g_w_blstrpstl001"));
+    with_feat(&mut w, pc, Some(85));
+    let plain = one_round(&mut w, pc, foe);
+    let base = plain[0].bonus + 2;
+    // The second game's words: -1/-2, 0/-2 and 0/-1.
+    for (n, (main, off)) in [(-1, -2), (0, -2), (0, -1)].into_iter().enumerate() {
+        w.object_mut(pc).unwrap().feats.insert(row(12 + n as i32));
+        let round = one_round(&mut w, pc, foe);
+        assert_eq!(round[0].bonus - base, main, "main hand, rank {n}");
+        assert_eq!(round[1].bonus - base, off, "off hand, rank {n}");
+    }
+}
+
+#[test]
+fn superior_two_weapon_fighting_is_for_a_jedi_with_mastery_at_its_levels() {
+    let Some((mut w, pc, _)) = world() else {
+        return;
+    };
+    let Some(rows) = w.ported_feat_rows() else {
+        return;
+    };
+    let row = |n: i32| rows.start + n;
+    let set = |w: &mut World, class: i32, level: i32| {
+        let o = w.object_mut(pc).unwrap();
+        o.class = class;
+        o.level = level;
+        o.feats.clear();
+    };
+    const JEDI_GUARDIAN: i32 = 3;
+    set(&mut w, JEDI_GUARDIAN, 20);
+    assert!(!w.can_take_feat(pc, row(12), 1), "not without Mastery");
+    w.object_mut(pc).unwrap().feats.extend([3, 9, 85]);
+    assert!(w.can_take_feat(pc, row(12), 1));
+    assert!(!w.can_take_feat(pc, row(13), 1), "the first comes first");
+    w.object_mut(pc).unwrap().feats.insert(row(12));
+    assert!(w.can_take_feat(pc, row(13), 1));
+    w.object_mut(pc).unwrap().feats.insert(row(13));
+    assert!(w.can_take_feat(pc, row(14), 1));
+    for (level, n) in [(11, 12), (14, 13), (17, 14)] {
+        let o = w.object_mut(pc).unwrap();
+        o.feats.retain(|f| *f < row(n));
+        o.level = level;
+        assert!(!w.can_take_feat(pc, row(n), 1), "at level {level}");
+        w.object_mut(pc).unwrap().level = level + 1;
+        assert!(w.can_take_feat(pc, row(n), 1), "at level {}", level + 1);
+        w.object_mut(pc).unwrap().feats.insert(row(n));
+    }
+    set(&mut w, 0, 20);
+    w.object_mut(pc).unwrap().feats.extend([3, 9, 85]);
+    assert!(!w.can_take_feat(pc, row(12), 1), "a soldier has not got it");
+}
+
+#[test]
 fn a_double_bladed_weapon_swings_twice_with_the_same_penalties() {
     let Some((mut w, pc, foe)) = world() else {
         return;
