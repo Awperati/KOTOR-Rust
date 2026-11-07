@@ -41,6 +41,16 @@ const BODY: f32 = 0.9;
 const DOOR_TOP: f32 = 2.6;
 const THING: f32 = 1.1;
 const FROM_BIG_TEXT: i32 = 150;
+/// The slots over a target: this big in hundredths up to `SLOTS_NEAR` metres, this small from `SLOTS_FAR`, in steps so that
+/// walking does not redraw them each frame. **Assumed:** by eye from frames, as the owner gave no numbers. At 60 they can be
+/// read and clicked at 1280 by 720.
+const SLOTS_MOST: f32 = 125.0;
+const SLOTS_LEAST: f32 = 60.0;
+const SLOTS_NEAR: f32 = 4.0;
+const SLOTS_FAR: f32 = 24.0;
+const SLOTS_STEP: f32 = 5.0;
+/// How long after the cursor leaves the target and its slots another target cannot take them from it.
+const SLOTS_GRACE: f32 = 0.5;
 pub(super) const RANGES: [i32; 4] = [20, 40, 60, 80];
 pub(super) const SIZES: [i32; 4] = [80, 100, 120, 150];
 
@@ -52,6 +62,12 @@ pub(super) struct PlateState {
     sight: HashMap<ObjId, (f32, bool)>,
     /// Bodies seen with something on them, which say so once they have nothing.
     held_loot: HashSet<ObjId>,
+    /// The target shows slots to attack it with.
+    pub(super) slots_up: bool,
+    /// The target that keeps its slots with the cursor off it.
+    pub(super) kept: Option<ObjId>,
+    /// When the cursor was last on the target or its slots.
+    touched: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -72,6 +88,92 @@ impl Stage {
         let seen = self.game.world.in_plain_sight(id);
         self.plates.sight.insert(id, (now, seen));
         seen
+    }
+
+    /// How big the slots over the target are, in hundredths: like a plate, smaller the further off.
+    pub(super) fn slots_percent(&self) -> i32 {
+        let w = &self.game.world;
+        let Some(o) = self.target().and_then(|id| w.object(id)) else {
+            return 100;
+        };
+        let here = self.pc_position();
+        let far = (o.position[0] - here[0]).hypot(o.position[1] - here[1]);
+        let along = ((far - SLOTS_NEAR) / (SLOTS_FAR - SLOTS_NEAR)).clamp(0.0, 1.0);
+        let percent = SLOTS_MOST + (SLOTS_LEAST - SLOTS_MOST) * along;
+        ((percent / SLOTS_STEP).round() * SLOTS_STEP) as i32
+    }
+
+    /// The cursor is on this, if anything. Slots stay with their target on the way to them, across whatever lies between.
+    /// Another target takes them only `SLOTS_GRACE` after the cursor left, and nothing at all does not.
+    pub(super) fn cursor_on(&mut self, under: Option<ObjId>, at: (f32, f32)) {
+        let now = self.idle_clock;
+        let shown = self.target().filter(|_| self.plates.slots_up);
+        if self.over_target_slots() {
+            self.plates.touched = now;
+            if shown.is_some() {
+                self.hover_target = shown;
+                self.plates.kept = shown;
+            }
+            return;
+        }
+        let Some(shown) = shown.filter(|id| under != Some(*id)) else {
+            self.hover_target = under;
+            self.plates.kept = None;
+            self.plates.touched = now;
+            return;
+        };
+        let in_the_gap = self.over_slots_gap(shown, at);
+        if in_the_gap {
+            self.plates.touched = now;
+        }
+        match under {
+            Some(other) if !in_the_gap && now - self.plates.touched >= SLOTS_GRACE => {
+                self.hover_target = Some(other);
+                self.plates.kept = None;
+                self.plates.touched = now;
+            }
+            _ => {
+                self.hover_target = Some(shown);
+                self.plates.kept = Some(shown);
+            }
+        }
+    }
+
+    /// A point of the layout between the target and the top of its slots.
+    fn over_slots_gap(&mut self, id: ObjId, (x, y): (f32, f32)) -> bool {
+        let Some([left, top, right, bottom]) = self.ui.target_box() else {
+            return false;
+        };
+        let Some(o) = self.game.world.object(id) else {
+            return false;
+        };
+        let head = self
+            .project(o.position, self.plate_up(o))
+            .map_or(0, |p| p.1);
+        (left as f32..right as f32).contains(&x)
+            && (top as f32..bottom.max(head) as f32).contains(&y)
+    }
+
+    /// A target that kept its slots with the cursor off it loses them when it dies or goes out of sight.
+    pub(super) fn slots_tick(&mut self) {
+        let Some(id) = self.plates.kept else { return };
+        let Some(o) = self.game.world.object(id).filter(|o| !o.dead) else {
+            self.drop_kept_target();
+            return;
+        };
+        let wide = self.ui_width as i32;
+        let in_view = self
+            .project(o.position, self.plate_up(o))
+            .is_some_and(|(x, y)| (0..wide).contains(&x) && (0..480).contains(&y));
+        if !in_view || !self.sees(id) {
+            self.drop_kept_target();
+        }
+    }
+
+    /// A click on nothing lets go of the target too.
+    pub(super) fn drop_kept_target(&mut self) {
+        self.hover_target = None;
+        self.plates.kept = None;
     }
 
     /// The bar's fill and where its chip ends. Damage leaves what it took standing for a moment.

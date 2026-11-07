@@ -69,6 +69,8 @@ pub struct Ui<'a> {
     floats: Vec<Float>,
     pub(crate) plates: Vec<crate::plates::Plate>,
     slots_above_bar: bool,
+    /// How big the target's slots are, in hundredths of their size in the file.
+    slots_percent: i32,
     /// How many portraits the HUD shows.
     hud_party: usize,
     /// The game is paused, with the box at the top right if something paused it.
@@ -127,6 +129,7 @@ struct ControlDrawn {
 /// What the HUD on screen was drawn from, for [`Ui::hud_part`] to see what has changed.
 #[derive(Clone, Debug, PartialEq)]
 struct HudDrawn {
+    slots_percent: i32,
     pixels: (u32, u32),
     controls: Vec<ControlDrawn>,
     minimap: Option<MiniMap>,
@@ -288,6 +291,7 @@ impl<'a> Ui<'a> {
             floats: Vec::new(),
             plates: Vec::new(),
             slots_above_bar: false,
+            slots_percent: 100,
             hud_party: 1,
             paused: false,
             solo: false,
@@ -1056,7 +1060,8 @@ impl<'a> Ui<'a> {
         // Under the cursor a slot says its key, past the slot. The pause is drawn over the controls.
         let hover = self.combat.hover.clone();
         if was.hover != hover
-            || (hover.is_some() && was.target_at != self.target_at)
+            || (hover.is_some()
+                && (was.target_at != self.target_at || was.slots_percent != self.slots_percent))
             || was.paused != self.paused
             || was.pause_note != self.pause_note
         {
@@ -1111,6 +1116,7 @@ impl<'a> Ui<'a> {
             minimap: self.minimap.clone(),
             floats: self.floats.clone(),
             target_at: self.target_at,
+            slots_percent: self.slots_percent,
             hover: self.combat.hover.clone(),
             paused: self.paused,
             pause_note: self.pause_note.clone(),
@@ -1139,7 +1145,8 @@ impl<'a> Ui<'a> {
 
     fn hud_layout(&mut self, target_at: Option<(i32, i32)>) -> Option<Gui> {
         let mut gui = self.gui(HUD_GUI)?;
-        place_hud(&mut gui.panel, self.width, target_at, self.slots_above_bar);
+        let slots = (self.slots_above_bar, self.slots_percent);
+        place_hud(&mut gui.panel, self.width, target_at, slots);
         Some(gui)
     }
 
@@ -1484,6 +1491,36 @@ impl<'a> Ui<'a> {
         self.minimap = map;
     }
 
+    /// How big the target's slots are, in hundredths of their size in the file.
+    pub fn set_slots_percent(&mut self, percent: i32) {
+        self.slots_percent = percent;
+    }
+
+    pub fn slots_percent(&self) -> i32 {
+        self.slots_percent
+    }
+
+    /// The box the target's name bar and slots take up, in layout units: left, top, right and bottom.
+    pub fn target_box(&mut self) -> Option<[i32; 4]> {
+        let gui = self.hud_layout(self.target_at)?;
+        let parts = gui
+            .panel
+            .children
+            .iter()
+            .filter(|c| is_target_slot(&c.tag) || c.tag == "LBL_NAMEBG");
+        parts
+            .map(|c| &c.extent)
+            .map(|e| [e.left, e.top, e.left + e.width, e.top + e.height])
+            .reduce(|a, b| {
+                [
+                    a[0].min(b[0]),
+                    a[1].min(b[1]),
+                    a[2].max(b[2]),
+                    a[3].max(b[3]),
+                ]
+            })
+    }
+
     /// Where the target's name bar goes, in layout units: above it on the screen.
     pub fn set_target_at(&mut self, at: Option<(i32, i32)>) {
         self.target_at = at;
@@ -1491,13 +1528,7 @@ impl<'a> Ui<'a> {
 
     /// What the HUD has at a point of the layout: one of its menu buttons, or `BTN_ACTION0`.
     pub fn hud_hit(&mut self, x: f32, y: f32) -> Option<String> {
-        let mut gui = self.gui(HUD_GUI)?;
-        place_hud(
-            &mut gui.panel,
-            self.width,
-            self.target_at,
-            self.slots_above_bar,
-        );
+        let gui = self.hud_layout(self.target_at)?;
         let shown = |tag: &str| match tag {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.combat.engaged,
             "BTN_TARGET0" | "BTN_TARGETUP0" | "BTN_TARGETDOWN0" => {
@@ -1544,13 +1575,7 @@ impl<'a> Ui<'a> {
 
     /// The layout point in the middle of a HUD control.
     pub fn hud_point(&mut self, tag: &str) -> Option<(f32, f32)> {
-        let mut gui = self.gui(HUD_GUI)?;
-        place_hud(
-            &mut gui.panel,
-            self.width,
-            self.target_at,
-            self.slots_above_bar,
-        );
+        let gui = self.hud_layout(self.target_at)?;
         let e = &gui.find(tag)?.extent;
         Some((
             e.left as f32 + e.width as f32 / 2.0,
@@ -1798,7 +1823,12 @@ const HUD_BUTTONS: [&str; 36] = [
 /// Lay the HUD's file over a screen `width` units wide and 480 high, keeping its proportions: the left half stays at the
 /// left and the right half at the right. **Assumed:** the game keeps these at their pixel size, which at 1080p is smaller
 /// than this. The target's name bar goes over the target.
-fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>, slots_above: bool) {
+fn place_hud(
+    panel: &mut Control,
+    width: u32,
+    target_at: Option<(i32, i32)>,
+    (slots_above, slots_percent): (bool, i32),
+) {
     let k = SCREEN.1 as f32 / HUD_FILE_SIZE.1 as f32;
     let scale = |v: i32| (v as f32 * k).round() as i32;
     for c in &mut panel.children {
@@ -1834,10 +1864,38 @@ fn place_hud(panel: &mut Control, width: u32, target_at: Option<(i32, i32)>, slo
     let first = panel.children.iter().find(|c| c.tag == "BTN_TARGET0");
     let up = first.map_or(0, |c| c.extent.top) - BAR_NAME_HIGH - BAR_HEALTH_HIGH - BAR_GAP;
     for c in &mut panel.children {
-        if c.tag.starts_with("BTN_TARGET") || c.tag.starts_with("LBL_TARGET") {
+        if is_target_slot(&c.tag) {
             c.extent.left += x - bar / 2;
             c.extent.top += y - up - if slots_above { SLOTS_UP } else { 0 };
         }
+    }
+    scale_target_slots(panel, slots_above, slots_percent);
+}
+
+fn is_target_slot(tag: &str) -> bool {
+    tag.starts_with("BTN_TARGET") || tag.starts_with("LBL_TARGET")
+}
+
+/// The slots at their size, about the middle of the edge that faces the bar, so the gap to it stays.
+fn scale_target_slots(panel: &mut Control, slots_above: bool, percent: i32) {
+    let slots = || panel.children.iter().filter(|c| is_target_slot(&c.tag));
+    let (Some(left), Some(right), Some(top), Some(bottom)) = (
+        slots().map(|c| c.extent.left).min(),
+        slots().map(|c| c.extent.left + c.extent.width).max(),
+        slots().map(|c| c.extent.top).min(),
+        slots().map(|c| c.extent.top + c.extent.height).max(),
+    ) else {
+        return;
+    };
+    let (middle, edge) = ((left + right) / 2, if slots_above { bottom } else { top });
+    let k = percent as f32 / 100.0;
+    let scaled = |v: i32| (v as f32 * k).round() as i32;
+    for c in panel.children.iter_mut().filter(|c| is_target_slot(&c.tag)) {
+        let e = &mut c.extent;
+        e.left = middle + scaled(e.left - middle);
+        e.top = edge + scaled(e.top - edge);
+        e.width = scaled(e.width);
+        e.height = scaled(e.height);
     }
 }
 

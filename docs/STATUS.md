@@ -1,7 +1,7 @@
 # Status of kotor-rs (6 Nov 2026)
 
 A clean-room, std-only Rust reimplementation of KotOR 1's engine that reads the owner's installed game at run time. 13 crates, about 22,000 lines,
-**662 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
+**666 tests, all passing** (`scripts/check.ps1`: fmt, clippy `-D warnings`, tests). Nothing is pushed; 33 local commits. Nothing writes to the install.
 Only `gpu/` (GPU renderer, window, MP3, audio output) needs crates.io. It is fetched, builds offline, and passes clippy; its picture matches the software renderer.
 
 ## What works (each checked by tests against the real install)
@@ -191,6 +191,14 @@ Routines answering a fixed value on these modules, all others being real: `GetAt
 - **Assumed, not in the owner's words:** a stack of 1 has no stepper. An arrow chooses its row. Shift steps by ten. Take Selected keeps the panel up until it is empty, and nothing stays chosen.
 - The label of remains or a container with nothing left is drawn at 33%, as soon as it is emptied: `Plate::opacity`. Tests: `the_label_of_remains_with_nothing_left_shows_at_a_third_of_its_strength`, `a_containers_label_fades_when_it_is_emptied_in_play`. Its words still say `[empty]`, unless Feedback hides it.
 - Test: `a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_say`. Live: `scripts/drive_container.ps1`, 13 checks at 720p and 2160p.
+
+## The slots over an enemy (owner's job, 7 Nov)
+
+- They scale with the distance from the player: 125% up to 4 m, 60% from 24 m, in steps of 5. **Assumed:** those numbers, by eye from frames.
+- They stay on their enemy with the cursor off it, and a click on one acts on that enemy. They go on a click on nothing, a click on something else, the enemy's death, or the enemy out of the window or behind a wall.
+- **Assumed, asked:** nothing takes them for just leaving. For 0.5 s after the cursor leaves the enemy, its slots and the gap between, another target cannot take them either. Past that, the cursor on another target does.
+- Only an enemy's slots do this. A locked door's stay as they were.
+- Tests in `gpu/tests/plates.rs`, three on staying and going, one on size. Live: `scripts/drive_slots.ps1`, 6 checks at 720p and 2160p.
 
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

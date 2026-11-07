@@ -13,6 +13,7 @@
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
+//!     --foe M         an enemy stands this many metres ahead of the player, when a game starts, for a test driver
 //!     --loot T*N,...  the object of --near holds these too, this many of each template, for a test driver
 //!     --place X,Y,Z,H start at this spot facing this many radians, with the camera behind, when a game starts, for a test driver
 //!     --no-chargen    New Game starts at once, with the preset character
@@ -167,6 +168,7 @@ struct App {
     /// What a test driver asked for once a game has started, from the menu or at once.
     near: Option<String>,
     loot: Option<String>,
+    foe: Option<f32>,
     place: Option<[f32; 4]>,
     xp: Option<i32>,
     appearance: Option<i32>,
@@ -319,6 +321,26 @@ impl App {
             }
             if let Some(max) = self.pazaak.take() {
                 self.stage.game.world.start_pazaak(1, "", max, None);
+            }
+            if let Some(metres) = self.foe.take() {
+                let w = &mut self.stage.game.world;
+                let (at, heading) = (w.pc_mover.pos, w.pc_mover.heading);
+                let spot = [
+                    at[0] + heading.cos() * metres,
+                    at[1] + heading.sin() * metres,
+                    at[2],
+                ];
+                let foe = w.spawn_creature("n_calonord", spot);
+                if let Some(o) = w.object_mut(foe) {
+                    o.name = "Test Soldier".to_string();
+                    o.faction = 1;
+                    (o.hp, o.max_hp) = (FOE_HIT_POINTS, FOE_HIT_POINTS);
+                }
+                // The driver is looking at the slots, and neither is to die while it does.
+                let pc = w.pc;
+                if let Some(o) = w.object_mut(pc) {
+                    (o.hp, o.max_hp) = (FOE_HIT_POINTS, FOE_HIT_POINTS);
+                }
             }
             if let Some(tag) = self.store.take() {
                 let w = &mut self.stage.game.world;
@@ -604,6 +626,9 @@ impl App {
     }
 }
 
+/// What the player and the enemy of `--foe` have.
+const FOE_HIT_POINTS: i32 = 5000;
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.state.is_some() {
@@ -856,6 +881,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|s| s * 60),
         near: opt("--near"),
         loot: opt("--loot"),
+        foe: opt("--foe").and_then(|m| m.parse().ok()),
         place: opt("--place").and_then(|p| {
             let n: Vec<f32> = p.split(',').filter_map(|v| v.parse().ok()).collect();
             <[f32; 4]>::try_from(n).ok()

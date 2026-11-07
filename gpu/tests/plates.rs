@@ -134,6 +134,178 @@ fn a_click_on_a_plate_is_a_click_on_the_body() {
     assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
 }
 
+/// What the HUD says is the target.
+fn target_name(s: &mut Stage) -> String {
+    s.state_line()
+        .rsplit(" target=")
+        .next()
+        .unwrap()
+        .trim()
+        .to_string()
+}
+
+/// The cursor on a foe's plate, and a moment for the slots to come.
+fn hover_on(s: &mut Stage, foe: ObjId) {
+    let p = pixel_of(s, foe);
+    s.hover(p, SIZE);
+    s.update(DT);
+    s.update(DT);
+}
+
+/// Far from any body or button: the top left of the middle of the window.
+const NOWHERE: (f32, f32) = (300.0, 60.0);
+
+fn slot_spacing(s: &mut Stage) -> f32 {
+    let a = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    let b = s.hud_pixel("BTN_TARGET1", SIZE).unwrap();
+    b.0 - a.0
+}
+
+#[test]
+fn the_slots_over_a_target_are_smaller_the_further_off_and_stop_at_each_end() {
+    let Some(mut s) = stage("slot_size", "") else {
+        return;
+    };
+    let foe = ahead(&mut s, 7.0, true);
+    s.update(DT);
+    hover_on(&mut s, foe);
+    let at = |m: f32| {
+        [
+            SPOT[0] + FACING.cos() * m,
+            SPOT[1] + FACING.sin() * m,
+            SPOT[2],
+        ]
+    };
+    let spacing = |s: &mut Stage, m: f32| {
+        s.game.world.object_mut(foe).unwrap().position = at(m);
+        s.update(DT);
+        let wide = slot_spacing(s);
+        assert!(target_name(s).starts_with("Someone"), "{m}");
+        wide
+    };
+    let (close, near, middle, far, farther) = (
+        spacing(&mut s, 2.0),
+        spacing(&mut s, 4.0),
+        spacing(&mut s, 12.0),
+        spacing(&mut s, 24.0),
+        spacing(&mut s, 40.0),
+    );
+    assert!(far < middle && middle < near, "{far} {middle} {near}");
+    assert_eq!(close, near, "it stops growing");
+    assert_eq!(far, farther, "and shrinking");
+    let ratio = far / near;
+    assert!((0.44..0.52).contains(&ratio), "60 over 125: {ratio}");
+}
+
+#[test]
+fn the_slots_stay_on_their_target_all_the_way_to_a_click() {
+    let Some(mut s) = stage("slots_stay", "") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let foe = ahead(&mut s, 7.0, true);
+    s.update(DT);
+    hover_on(&mut s, foe);
+    assert!(target_name(&mut s).starts_with("Someone"));
+    let first = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+
+    // Up through the empty space between its head and the slots.
+    let plate = pixel_of(&mut s, foe);
+    s.hover((first.0, (first.1 + plate.1) / 2.0), SIZE);
+    s.update(DT);
+    assert!(target_name(&mut s).starts_with("Someone"), "in the gap");
+
+    // Away from it all, for longer than the grace: nothing else has taken them.
+    s.hover(NOWHERE, SIZE);
+    for _ in 0..30 {
+        s.update(DT);
+    }
+    assert!(target_name(&mut s).starts_with("Someone"), "off it all");
+    assert!(!s.game.world.combat.target.contains_key(&pc));
+
+    // The click on the slot goes for that one, with the cursor nowhere near it.
+    let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
+    s.hover(slot, SIZE);
+    s.update(DT);
+    assert!(target_name(&mut s).starts_with("Someone"), "on the slot");
+    s.click(slot, SIZE);
+    assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
+}
+
+#[test]
+fn only_another_target_after_the_grace_takes_the_slots() {
+    let Some(mut s) = stage("slots_grace", "") else {
+        return;
+    };
+    let (foe, other) = (ahead(&mut s, 7.0, true), ahead(&mut s, 7.0, true));
+    {
+        let o = s.game.world.object_mut(other).unwrap();
+        o.position[0] += 4.0;
+        o.name = "Other".to_string();
+    }
+    s.update(DT);
+    hover_on(&mut s, foe);
+    let beside = pixel_of(&mut s, other);
+
+    // Across the other one on the way: too soon to count.
+    s.hover(NOWHERE, SIZE);
+    s.update(DT);
+    s.hover(beside, SIZE);
+    s.update(DT);
+    assert!(target_name(&mut s).starts_with("Someone"), "in the grace");
+
+    // Stopped on it past the grace, it takes them.
+    for _ in 0..20 {
+        s.update(DT);
+    }
+    let beside = pixel_of(&mut s, other);
+    s.hover(beside, SIZE);
+    s.update(DT);
+    assert!(target_name(&mut s).starts_with("Other"), "past the grace");
+}
+
+#[test]
+fn the_slots_go_with_a_click_away_a_death_or_the_target_out_of_view() {
+    let Some(mut s) = stage("slots_go", "") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let foe = ahead(&mut s, 7.0, true);
+    let kept = |s: &mut Stage| {
+        s.update(DT);
+        hover_on(s, foe);
+        s.hover(NOWHERE, SIZE);
+        s.update(DT);
+        assert!(target_name(s).starts_with("Someone"));
+    };
+
+    // A click away.
+    kept(&mut s);
+    s.click(NOWHERE, SIZE);
+    s.update(DT);
+    assert!(!target_name(&mut s).starts_with("Someone"), "clicked away");
+    s.game.world.stop_attacking(pc);
+
+    // Out of view, behind the camera.
+    kept(&mut s);
+    let home = s.game.world.object(foe).unwrap().position;
+    s.game.world.object_mut(foe).unwrap().position = [
+        SPOT[0] - FACING.cos() * 12.0,
+        SPOT[1] - FACING.sin() * 12.0,
+        SPOT[2],
+    ];
+    s.update(DT);
+    assert!(!target_name(&mut s).starts_with("Someone"), "out of view");
+    s.game.world.object_mut(foe).unwrap().position = home;
+
+    // Dead.
+    kept(&mut s);
+    let hp = s.game.world.object(foe).unwrap().hp;
+    s.game.world.hurt(pc, foe, hp + 1);
+    s.update(DT);
+    assert!(!target_name(&mut s).starts_with("Someone"), "dead");
+}
+
 /// How solid the most solid pixel of the overlay is, in the middle of a plate.
 fn solid_at(s: &mut Stage, at: (i32, i32)) -> u8 {
     let o = s.overlay().expect("the HUD");

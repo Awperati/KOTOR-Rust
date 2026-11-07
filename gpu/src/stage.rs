@@ -636,6 +636,7 @@ impl Stage {
         self.doors.clear();
         self.hover_reply = 0;
         self.hover_target = None;
+        self.plates.kept = None;
         self.line_key = None;
         self.line_left = None;
         self.beat = None;
@@ -757,6 +758,7 @@ impl Stage {
         self.take_galaxy_request();
         self.take_pazaak_request();
         self.forget_container_choices();
+        self.slots_tick();
         self.notices_tick();
         if self.menu_open() && !self.container_up() {
             self.refresh_overlay();
@@ -1467,10 +1469,8 @@ impl Stage {
         self.set_hud_hover(on_hud);
         let cam = self.camera();
         let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
-        // The bar's slots stay where they are while the cursor is on them, whatever lies behind.
-        if !self.over_target_slots() {
-            self.hover_target = self.plate_at(at.0, at.1).or(self.game.world.pick(o, d));
-        }
+        let under = self.plate_at(at.0, at.1).or(self.game.world.pick(o, d));
+        self.cursor_on(under, at);
     }
 
     /// Use a thing: an enemy is attacked, anything else is walked to and talked to, opened or used.
@@ -1539,9 +1539,12 @@ impl Stage {
         let cam = self.camera();
         let (o, d) = pixel_ray(cam.eye, cam.target, cam.fov, size, pixel);
         if let Some(id) = self.plate_at(x, y).or(self.game.world.pick(o, d)) {
+            self.plates.kept = None;
+            self.hover_target = Some(id);
             self.use_thing(id);
             return;
         }
+        self.drop_kept_target();
         if let Some(p) = self
             .floor_under_ray(o, d)
             .filter(|_| self.settings().click_to_walk)
@@ -2422,6 +2425,9 @@ impl Stage {
         let target = self.target_view();
         let minimap = self.minimap_view();
         let combat = self.combat_view(target.as_ref().map(|t| t.3));
+        let slots_percent = self.slots_percent();
+        self.ui.set_slots_percent(slots_percent);
+        self.plates.slots_up = combat.attack.is_some();
         let target_at = self.target_on_screen(combat.attack.is_some() || combat.locked);
         self.ui.set_target_at(target_at);
         self.ui.set_slots_above_bar(self.settings().nameplates);
@@ -2441,7 +2447,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{cut}{combat:?}{notices:?}{pause:?}{minimap:?}{floats:?}",
+                "{}h{:?}{target:?}{target_at:?}{slots_percent}{cut}{combat:?}{notices:?}{pause:?}{minimap:?}{floats:?}",
                 self.module,
                 party
                     .iter()
@@ -2704,6 +2710,7 @@ impl Stage {
             .enemy_plate()
             .map_or("-".to_string(), |p| format!("{},{}", p.0, p.1));
         let chosen = self.container_chosen();
+        let slotsize = self.ui.slots_percent();
         let w = &self.game.world;
         // What the open container holds: each row's template and how many.
         let loot = w
@@ -2721,7 +2728,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
@@ -2768,11 +2775,15 @@ impl Stage {
         if self.settings().nameplates {
             let up = self.plate_up(o);
             let (x, y) = self.on_screen(o.position, up)?;
-            let room = if slots { SLOTS_AND_GAP } else { 0 };
+            let room = if slots {
+                SLOTS_AND_GAP * self.slots_percent() / 100
+            } else {
+                0
+            };
             return Some((x, (y - kotor_ui::TARGET_BAR_HIGH).max(room)));
         }
         let high = if slots {
-            kotor_ui::TARGET_BAR_AND_SLOTS_HIGH
+            kotor_ui::TARGET_BAR_HIGH + SLOTS_AND_GAP * self.slots_percent() / 100
         } else {
             kotor_ui::TARGET_BAR_HIGH
         };
