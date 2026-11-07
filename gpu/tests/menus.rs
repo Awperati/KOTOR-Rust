@@ -653,7 +653,7 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
     );
     // Rows 0 to 3: 50 credits, a sword, 3 medpacs and a sword. What the locker had comes after them.
     let w = &mut s.game.world;
-    let mut stack = |w: &mut kotor_game::World, n: usize, template: &str, count: i32| {
+    let stack = |w: &mut kotor_game::World, n: usize, template: &str, count: i32| {
         let item = w.spawn_item(template);
         w.object_mut(item).unwrap().stack = count;
         w.object_mut(locker).unwrap().inventory.insert(n, item);
@@ -752,7 +752,7 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
     };
     let before = carried(&s);
     arrow(&mut s, 1, 1);
-    assert_eq!(s.menu_rows("LB_ITEMS")[1].selected, true);
+    assert!(s.menu_rows("LB_ITEMS")[1].selected);
     press(&mut s, "BTN_GIVEITEMS");
     assert_eq!(carried(&s), before + 2);
     assert_eq!(s.game.world.object(medpacs).unwrap().stack, 1);
