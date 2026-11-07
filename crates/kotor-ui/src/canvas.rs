@@ -162,6 +162,9 @@ fn scaled_picture(
     })
 }
 
+/// From this many pixels a picture is scaled on all the cores.
+const SCALED_ON_ONE_THREAD: i32 = 200_000;
+
 fn scale_picture(
     img: &Image,
     region: [i32; 4],
@@ -176,9 +179,8 @@ fn scale_picture(
     } else {
         1
     };
-    let mut out = Vec::with_capacity((dw * dh) as usize);
-    for oy in 0..dh {
-        for ox in 0..dw {
+    let row = |oy: i32, out: &mut [[u8; 4]]| {
+        for (ox, pixel) in (0..dw).zip(out.iter_mut()) {
             let mut acc = [0.0f32; 4];
             for sy in 0..samples {
                 for sx in 0..samples {
@@ -203,19 +205,43 @@ fn scale_picture(
                     acc[3] += a;
                 }
             }
-            out.push(if acc[3] > 0.0 {
+            if acc[3] > 0.0 {
                 let n = (samples * samples) as f32;
-                [
+                *pixel = [
                     (acc[0] / acc[3] * tint[0]).min(255.0) as u8,
                     (acc[1] / acc[3] * tint[1]).min(255.0) as u8,
                     (acc[2] / acc[3] * tint[2]).min(255.0) as u8,
                     (acc[3] / n * 255.0 * alpha).min(255.0) as u8,
-                ]
-            } else {
-                [0; 4]
-            });
+                ];
+            }
         }
+    };
+    let mut out = vec![[0u8; 4]; (dw * dh) as usize];
+    if dw <= 0 || dh <= 0 {
+        return out;
     }
+    let row = &row;
+    // A panel's background is half a second of one core at 3840 by 2160, and the owner sees it as the panel being slow to open.
+    let threads = if dw * dh < SCALED_ON_ONE_THREAD {
+        1
+    } else {
+        std::thread::available_parallelism().map_or(1, |n| n.get())
+    };
+    let rows_each = (dh as usize).div_ceil(threads);
+    std::thread::scope(|scope| {
+        for (n, rows) in out.chunks_mut(rows_each * dw as usize).enumerate() {
+            let mut work = move || {
+                for (y, line) in rows.chunks_mut(dw as usize).enumerate() {
+                    row((n * rows_each + y) as i32, line);
+                }
+            };
+            if threads == 1 {
+                work();
+            } else {
+                scope.spawn(work);
+            }
+        }
+    });
     out
 }
 
