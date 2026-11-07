@@ -1187,7 +1187,12 @@ fn a_container_lists_each_kind_of_item_once_with_the_sum() {
     // The file lists each of its two medpacs on its own.
     let held = s.game.world.object(locker).unwrap().inventory.clone();
     let is_medpac = |s: &Stage, i: &u32| {
-        s.game.world.object(*i).unwrap().template.eq_ignore_ascii_case("g_i_medeqpmnt01")
+        s.game
+            .world
+            .object(*i)
+            .unwrap()
+            .template
+            .eq_ignore_ascii_case("g_i_medeqpmnt01")
     };
     let medpacs: Vec<u32> = held.iter().copied().filter(|i| is_medpac(&s, i)).collect();
     assert_eq!(medpacs.len(), 2, "the footlocker's file has changed");

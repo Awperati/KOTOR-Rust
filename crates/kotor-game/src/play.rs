@@ -1334,9 +1334,12 @@ impl World {
         let Some(Some(table)) = self.tables.get("baseitems") else {
             return false;
         };
-        self.objects
-            .get(&item)
-            .is_some_and(|o| table.int(o.base_item.max(0) as usize, "stacking").unwrap_or(1) > 1)
+        self.objects.get(&item).is_some_and(|o| {
+            table
+                .int(o.base_item.max(0) as usize, "stacking")
+                .unwrap_or(1)
+                > 1
+        })
     }
 
     /// What one row of what is open stands for: all the credits, or all of one kind of item that stacks. A container's file
