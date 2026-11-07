@@ -237,6 +237,7 @@ pub(super) enum Screen {
     ChargenClass,
     ChargenMain,
     ChargenPortrait,
+    ChargenLook,
     ChargenAttributes,
     ChargenName,
     /// `partyselection.gui`.
@@ -645,6 +646,7 @@ impl Screen {
             Screen::ChargenClass => "chargen_class",
             Screen::ChargenMain => "chargen",
             Screen::ChargenPortrait => "chargen_portrait",
+            Screen::ChargenLook => "chargen_look",
             Screen::ChargenAttributes => "chargen_attributes",
             Screen::ChargenName => "chargen_name",
             Screen::Party => "party",
@@ -843,6 +845,7 @@ impl Stage {
             Screen::ChargenClass
             | Screen::ChargenMain
             | Screen::ChargenPortrait
+            | Screen::ChargenLook
             | Screen::ChargenAttributes
             | Screen::ChargenName => Some(self.first_module.to_ascii_lowercase()),
             _ => None,
@@ -1020,6 +1023,7 @@ impl Stage {
             Screen::ChargenClass => self.chargen_class_view(),
             Screen::ChargenMain => self.chargen_main_view(),
             Screen::ChargenPortrait => self.chargen_portrait_view(),
+            Screen::ChargenLook => self.chargen_look_view(),
             Screen::ChargenAttributes => self.chargen_attributes_view(),
             Screen::ChargenName => self.chargen_name_view(),
             Screen::Party => self.party_view_screen(),
@@ -2262,7 +2266,11 @@ impl Stage {
             }
             Some(Hit::Step(_, row, by)) => {
                 self.effect(SOUND_CLICK);
-                self.step_container_row(row, by);
+                if self.top() == Some(Screen::ChargenLook) {
+                    self.look_step(row, by);
+                } else {
+                    self.step_container_row(row, by);
+                }
             }
             None => self.menus.delete_armed = None,
         }
@@ -2464,6 +2472,7 @@ impl Stage {
                 Screen::ChargenClass
                 | Screen::ChargenMain
                 | Screen::ChargenPortrait
+                | Screen::ChargenLook
                 | Screen::ChargenAttributes
                 | Screen::ChargenName,
                 _,
@@ -2541,6 +2550,7 @@ impl Stage {
                 screen @ (Screen::ChargenClass
                 | Screen::ChargenMain
                 | Screen::ChargenPortrait
+                | Screen::ChargenLook
                 | Screen::ChargenAttributes
                 | Screen::ChargenName),
             ) => self.chargen_escape(screen),

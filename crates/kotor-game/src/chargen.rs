@@ -105,6 +105,13 @@ impl NameLetters {
     }
 }
 
+/// How the player was made to look, beyond the head and the body: each slider by name, in per cent. None of them is set: the
+/// game's own look. Kept with the character, and only on the player. See `docs/CHARGEN_PLAN.md`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CharacterLook {
+    pub sliders: std::collections::BTreeMap<String, i32>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CharacterSpec {
     pub name: String,
@@ -119,6 +126,7 @@ pub struct CharacterSpec {
     pub skills: Vec<(usize, i32)>,
     /// Feats to choose with the level-1 slots, regular list first.
     pub feats: Vec<i32>,
+    pub look: CharacterLook,
 }
 
 impl World {
@@ -317,6 +325,7 @@ impl World {
             o.head = head_row;
             o.gender = gender;
             o.portrait = portrait;
+            o.look = spec.look.clone();
             o.race = race as i32;
             o.skills.clear();
             o.feats.clear();
@@ -371,6 +380,7 @@ impl World {
             abilities: self.recommended_abilities(class)?,
             skills: Vec::new(),
             feats: Vec::new(),
+            look: CharacterLook::default(),
         })
     }
 

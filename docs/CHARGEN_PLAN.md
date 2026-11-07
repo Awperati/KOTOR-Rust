@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. No code for it exists yet. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stage 0 is built; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -50,6 +50,10 @@ I read these from the install on 2026-11-07.
 That is about 4,700 lines before the hair pieces' art. Stages 0 to 3 are the heart of it, about 2,650 lines. Each stage goes in as its own tip, with tests and frames.
 
 **Order:** 0 and 1 first, as everything is seen through them. Then 2, 3, 7, 5, 4, 8 and 6. Hair is last because it depends on art.
+
+## Built
+
+**Stage 0.** Custom's first step is now Appearance, on the Options frame, with the whole body on the right. Its rows are Head, Body and, for a female body, Underwear. Each has two arrows, and goes on the figure at once. OK keeps it, and Cancel puts back what the page found. Quick Character keeps the game's portrait page. `CharacterLook` holds the sliders by name, in `CharacterSpec` and on the player in saves. No slider exists yet, so it is empty.
 
 ## What each stage must not break
 

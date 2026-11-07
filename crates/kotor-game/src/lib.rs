@@ -61,8 +61,8 @@ pub use aim::{sway_path, AimHit, AIM_REACH};
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
 pub use autopilot::{lead_with_the_best_at, state_digest, Autopilot, FightResult, Stall};
 pub use chargen::{
-    attribute_cost, BodySize, CharacterSpec, ABILITY_NAMES, ATTRIBUTE_BASE, ATTRIBUTE_MAX,
-    POINT_POOL,
+    attribute_cost, BodySize, CharacterLook, CharacterSpec, ABILITY_NAMES, ATTRIBUTE_BASE,
+    ATTRIBUTE_MAX, POINT_POOL,
 };
 pub use combat::{
     ability_mod, damage, resolve_attack, AttackLog, CombatState, Outcome, Weapon,

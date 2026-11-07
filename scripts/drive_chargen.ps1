@@ -41,14 +41,14 @@ Press 339 143 233 24   # CUST_CHAR_BTN of qorcpnl.gui, at the panel's place
 [void](State)
 Shot "cg_custom"
 
-# Portrait.
+# Appearance.
 Custom 1
-$s = WaitFor "menu" "chargen_portrait"
-Report "Step 1 is the portrait" ($s.menu -eq "chargen_portrait") "menu=$($s.menu)"
-Press 527 214 27 47    # BTN_ARRR
+$s = WaitFor "menu" "chargen_look"
+Report "Step 1 is the appearance" ($s.menu -eq "chargen_look") "menu=$($s.menu)"
+Press 298 100 18 24    # The arrow on the Head row
 [void](State)
-Shot "cg_portrait"
-Press 113 410 142 28   # BTN_ACCEPT
+Shot "cg_look"
+Press 113 410 146 28   # BTN_ACCEPT
 $s = WaitFor "menu" "chargen"
 Report "OK keeps it" ($s.menu -eq "chargen") "menu=$($s.menu)"
 

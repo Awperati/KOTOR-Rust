@@ -65,6 +65,23 @@ fn a_save_keeps_the_charges_a_shield_has_used() {
 }
 
 #[test]
+fn a_save_keeps_how_the_player_was_made_to_look() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    let sliders = &mut w.object_mut(pc).unwrap().look.sliders;
+    sliders.insert("nose".to_string(), 20);
+    sliders.insert("jaw".to_string(), -35);
+    let bytes = w.save_bytes("Look").unwrap();
+    let mut back = fresh();
+    back.load_save(&bytes).unwrap();
+    let pc = back.pc;
+    let look = &back.object(pc).unwrap().look;
+    assert_eq!(look.sliders.get("nose"), Some(&20));
+    assert_eq!(look.sliders.get("jaw"), Some(&-35));
+    assert_eq!(look.sliders.len(), 2);
+}
+
+#[test]
 fn a_save_keeps_the_quests_lost_to_a_killing() {
     let Some(mut w) = world() else { return };
     w.lost_quests

@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut gpu, &mut s, "chargen_quick_or_custom", &out);
     click(&mut s, "CUST_CHAR_BTN", None);
     click(&mut s, "BTN_STEPNAME1", None);
-    shot(&mut gpu, &mut s, "chargen_portrait", &out);
+    shot(&mut gpu, &mut s, "chargen_look", &out);
     click(&mut s, "BTN_ACCEPT", None);
     shot(&mut gpu, &mut s, "chargen_custom", &out);
     click(&mut s, "BTN_STEPNAME2", None);

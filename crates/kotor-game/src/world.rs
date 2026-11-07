@@ -195,6 +195,8 @@ pub struct Object {
     pub stack: i32,
     /// Items: how many of the charges in its file have been used.
     pub charges_used: i32,
+    /// The player: how they were made to look.
+    pub look: crate::CharacterLook,
     pub plot: bool,
     pub alignment: i32,
 }
@@ -281,6 +283,7 @@ impl Object {
             droppable: false,
             stack: 1,
             charges_used: 0,
+            look: Default::default(),
             plot: false,
             upgrades: BTreeMap::new(),
             ai_style: 0,

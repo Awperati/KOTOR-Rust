@@ -10,10 +10,12 @@
 
 use super::{Screen, Stage};
 use crate::effects::{Effects, ParticleBatch};
-use kotor_game::{attribute_cost, BodySize, CharacterSpec, ATTRIBUTE_BASE, POINT_POOL};
+use kotor_game::{
+    attribute_cost, BodySize, CharacterLook, CharacterSpec, ATTRIBUTE_BASE, POINT_POOL,
+};
 use kotor_render::underwear::{list_underwear_variants, UnderwearVariant};
 use kotor_render::{Camera, Scene};
-use kotor_ui::{Hit, MenuView};
+use kotor_ui::{Hit, MenuView, Row};
 
 const SOLDIER: i32 = 0;
 const SCOUT: i32 = 1;
@@ -55,6 +57,20 @@ const UNDERWEAR_WORDS: &str = "LBL_UNDERWEAR";
 const UNDERWEAR_LEFT_AT: [i32; 4] = [150, 345, 27, 47];
 const UNDERWEAR_RIGHT_AT: [i32; 4] = [463, 345, 27, 47];
 const UNDERWEAR_WORDS_AT: [i32; 4] = [180, 345, 280, 47];
+/// A Custom character's page for how they look, on the Options pages' frame, with the figure on the right.
+const LOOK_TITLE: &str = "Appearance";
+const LOOK_LIST: &str = "LB_OPTIONS";
+const LOOK_FIGURE: &str = "LOOK_FIGURE";
+const LOOK_HOLE: [f32; 4] = [330.0, 80.0, 256.0, 320.0];
+const STR_OK: u32 = 1580;
+const STR_CANCEL: u32 = 1581;
+/// One row of that page.
+#[derive(Clone, Copy, PartialEq)]
+enum LookRow {
+    Head,
+    Body,
+    Underwear,
+}
 /// The tag each attribute starts with, its place in the scores, and the talk table's words about it.
 const ATTRIBUTES: [(&str, usize, u32); 6] = [
     ("STR", 0, 222),
@@ -115,6 +131,7 @@ pub(super) struct Draft {
     pick: usize,
     /// What a page found, for its Cancel.
     page_pick: usize,
+    page_body: BodySize,
     page_scores: [i32; 6],
     /// The underwear on offer, the one on show, and what its page found for its Cancel.
     underwear: Vec<UnderwearVariant>,
@@ -334,12 +351,14 @@ impl Stage {
                 abilities: [ATTRIBUTE_BASE; 6],
                 skills: Vec::new(),
                 feats: Vec::new(),
+                look: CharacterLook::default(),
             },
             custom: None,
             next: 0,
             portraits,
             pick,
             page_pick: pick,
+            page_body: BodySize::of_class(class),
             page_scores: [ATTRIBUTE_BASE; 6],
             about: 0,
             settled: false,
@@ -424,6 +443,9 @@ impl Stage {
                 let mut p = MenuView::new(if custom { "custpnl" } else { "quickpnl" });
                 if next == 0 {
                     p.inert(&["BTN_BACK"]);
+                }
+                if custom {
+                    p.text("BTN_STEPNAME1", LOOK_TITLE);
                 }
                 for n in 0..steps.len() {
                     let tag = format!("BTN_STEPNAME{}", n + 1);
@@ -517,9 +539,16 @@ impl Stage {
                 }
                 if let Some(d) = self.menus.chargen.as_mut() {
                     d.page_underwear = d.underwear_pick;
+                    d.page_body = d.spec.body;
                     d.body_on_show = false;
                 }
-                self.menus.stack.push(Screen::ChargenPortrait);
+                // Quick Character keeps the game's short page.
+                let custom = self.menus.chargen.as_ref().and_then(|d| d.custom);
+                self.menus.stack.push(if custom == Some(true) {
+                    Screen::ChargenLook
+                } else {
+                    Screen::ChargenPortrait
+                });
                 self.menus.hover = None;
             }
             Step::Attributes => {
@@ -596,6 +625,89 @@ impl Stage {
             v.text(UNDERWEAR_WORDS, words);
         }
         v
+    }
+
+    /// The rows of the Appearance page. The underwear variants are for the player's female bodies.
+    fn look_rows(&self) -> Vec<LookRow> {
+        let w = &self.game.world;
+        let gender = w.object(w.pc).map_or(MALE, |o| o.gender);
+        let choice = self
+            .menus
+            .chargen
+            .as_ref()
+            .is_some_and(|d| gender == FEMALE && d.underwear.len() > 1);
+        let mut rows = vec![LookRow::Head, LookRow::Body];
+        if choice {
+            rows.push(LookRow::Underwear);
+        }
+        rows
+    }
+
+    /// The Appearance page: `optfeedback.gui`, with a list of what can be changed, and the figure where its words go.
+    pub(super) fn chargen_look_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("optfeedback");
+        v.text("LBL_TITLE", LOOK_TITLE);
+        v.hide(&["LB_DESC", "BTN_DEFAULT"]);
+        v.copy_control("LBL_TITLE", LOOK_FIGURE, LOOK_HOLE.map(|n| n as i32));
+        v.text(LOOK_FIGURE, "");
+        v.holes.push(LOOK_FIGURE.to_string());
+        v.copy_control("BTN_BACK", "BTN_ACCEPT", [113, 410, 146, 28]);
+        v.text("BTN_ACCEPT", self.ui.strref(STR_OK));
+        v.text("BTN_BACK", self.ui.strref(STR_CANCEL));
+        let rows = self.look_rows();
+        let Some(d) = self.menus.chargen.as_ref() else {
+            return v;
+        };
+        let rows = rows
+            .into_iter()
+            .map(|row| {
+                let (name, choice) = match row {
+                    LookRow::Head => (
+                        "Head".to_string(),
+                        format!("{} of {}", d.pick + 1, d.portraits.len()),
+                    ),
+                    LookRow::Body => (
+                        "Body".to_string(),
+                        match d.spec.body {
+                            BodySize::Small => "Small",
+                            BodySize::Medium => "Medium",
+                            BodySize::Large => "Large",
+                        }
+                        .to_string(),
+                    ),
+                    LookRow::Underwear => (
+                        "Underwear".to_string(),
+                        d.underwear
+                            .get(d.underwear_pick)
+                            .map_or(String::new(), |u| u.name.clone()),
+                    ),
+                };
+                Row {
+                    text: name,
+                    choice: Some(choice),
+                    ..Row::default()
+                }
+            })
+            .collect();
+        v.lists.insert(LOOK_LIST.to_string(), (rows, 0));
+        v
+    }
+
+    /// An arrow on a row of the Appearance page: it goes on the figure at once.
+    pub(super) fn look_step(&mut self, row: usize, by: i32) {
+        match self.look_rows().get(row) {
+            Some(LookRow::Head) => self.turn_portrait(by),
+            Some(LookRow::Underwear) => self.turn_underwear(by),
+            Some(LookRow::Body) => {
+                const SIZES: [BodySize; 3] = [BodySize::Small, BodySize::Medium, BodySize::Large];
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    let now = SIZES.iter().position(|b| *b == d.spec.body).unwrap_or(1);
+                    d.spec.body = SIZES[(now as i32 + by).rem_euclid(3) as usize];
+                }
+                self.sync_character();
+            }
+            None => {}
+        }
     }
 
     /// The next or last underwear: it goes on the figure at once, and is on the character when the game starts.
@@ -744,6 +856,16 @@ impl Stage {
                 self.wear_underwear_picked();
                 self.menus.stack.pop();
             }
+            Screen::ChargenLook => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    d.spec.body = d.page_body;
+                    d.underwear_pick = d.page_underwear;
+                }
+                let pick = self.menus.chargen.as_ref().map_or(0, |d| d.page_pick);
+                self.set_portrait(pick);
+                self.wear_underwear_picked();
+                self.menus.stack.pop();
+            }
             Screen::ChargenAttributes => {
                 if let Some(d) = self.menus.chargen.as_mut() {
                     d.spec.abilities = d.page_scores;
@@ -815,13 +937,16 @@ impl Stage {
             (Screen::ChargenPortrait, UNDERWEAR_RIGHT) => self.turn_underwear(1),
             (Screen::ChargenPortrait, "BTN_ARRL") => self.turn_portrait(-1),
             (Screen::ChargenPortrait, "BTN_ARRR") => self.turn_portrait(1),
-            (Screen::ChargenPortrait, "BTN_ACCEPT") => {
+            (Screen::ChargenPortrait | Screen::ChargenLook, "BTN_ACCEPT") => {
                 self.finish_step(Step::Portrait);
                 self.menus.stack.pop();
                 self.menus.hover = None;
             }
             (
-                Screen::ChargenPortrait | Screen::ChargenAttributes | Screen::ChargenName,
+                Screen::ChargenPortrait
+                | Screen::ChargenLook
+                | Screen::ChargenAttributes
+                | Screen::ChargenName,
                 "BTN_BACK",
             ) => self.chargen_escape(screen),
             (Screen::ChargenAttributes, "BTN_RECOMMENDED") => {
@@ -960,9 +1085,9 @@ impl Stage {
         Some(mist.batches(&camera))
     }
 
-    /// The whole body on the portrait page with nothing over its underwear, where the head goes.
-    fn body_in_hole(&mut self, appearance: i32) -> (Scene, Camera) {
-        let (places, camera) = self.places_in_holes(&[BODY_HOLE]);
+    /// The whole body with nothing over its underwear, in a hole.
+    fn body_in_hole(&mut self, appearance: i32, hole: [f32; 4]) -> (Scene, Camera) {
+        let (places, camera) = self.places_in_holes(&[hole]);
         let mut scene = Scene::default();
         if let Some(rig) = self.bare_rig(appearance) {
             let clip = self.idling(0);
@@ -1029,9 +1154,14 @@ impl Stage {
                 let w = &self.game.world;
                 let look = w.object(w.pc)?.appearance;
                 if self.menus.chargen.as_ref().is_some_and(|d| d.body_on_show) {
-                    return Some(self.body_in_hole(look));
+                    return Some(self.body_in_hole(look, BODY_HOLE));
                 }
                 Some(self.head_in_hole(look))
+            }
+            Screen::ChargenLook => {
+                let w = &self.game.world;
+                let look = w.object(w.pc)?.appearance;
+                Some(self.body_in_hole(look, LOOK_HOLE))
             }
             _ => None,
         }

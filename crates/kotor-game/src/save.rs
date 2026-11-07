@@ -622,6 +622,12 @@ impl World {
             ("Gender", Value::Int(o.gender)),
             ("Portrait", s(&o.portrait)),
             ("Underwear", s(&o.underwear)),
+            (
+                "Look",
+                list_of(o.look.sliders.iter(), |(name, value)| {
+                    st(vec![("Name", s(name)), ("Value", Value::Int(*value))])
+                }),
+            ),
             ("Force", Value::Int(o.force)),
             ("MaxForce", Value::Int(o.max_force)),
             ("SkillPoints", Value::Int(o.skill_points)),
@@ -875,6 +881,12 @@ impl World {
             o.gender = e.int("Gender").unwrap_or(0) as i32;
             o.portrait = e.str("Portrait").unwrap_or("").to_string();
             o.underwear = e.str("Underwear").unwrap_or("").to_string();
+            o.look.sliders = e
+                .list("Look")
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|x| Some((x.str("Name")?.to_string(), x.int("Value")? as i32)))
+                .collect();
             o.force = e.int("Force").unwrap_or(0) as i32;
             o.max_force = e.int("MaxForce").unwrap_or(0) as i32;
             o.skill_points = e.int("SkillPoints").unwrap_or(0) as i32;

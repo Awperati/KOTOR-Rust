@@ -3894,6 +3894,83 @@ fn the_messages_tab_shows_what_was_said_and_fought() {
     assert_eq!(frame(&mut s), last);
 }
 
+/// A click on an arrow of a row of the Appearance page.
+fn look_arrow(s: &mut Stage, row: usize, by: i32) {
+    s.update(DT);
+    let at = s.menu_step_pixel("LB_OPTIONS", row, by, SIZE).unwrap();
+    s.click(at, SIZE);
+    s.update(DT);
+}
+
+#[test]
+fn custom_has_an_appearance_page_with_the_figure_on_the_right_and_quick_keeps_the_short_one() {
+    let Some(mut s) = at_menu() else {
+        return;
+    };
+    s.enable_chargen(true);
+    press(&mut s, "BTN_NEWGAME");
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(s.menu_name(), "chargen_look");
+    s.update(DT);
+
+    // A female body has the underwear row too.
+    let rows = s.menu_rows("LB_OPTIONS");
+    let names: Vec<&str> = rows.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(names[..2], ["Head", "Body"]);
+    let got = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
+
+    // The figure is on the right, in a hole, and alone.
+    let o = s.overlay().unwrap();
+    let (hx, hy) = (455 * SIZE.0 / 640, 240 * SIZE.1 / 480);
+    assert_eq!(o.rgba[((hy * o.width + hx) * 4 + 3) as usize], 0, "a hole");
+    let (scene, _, alone) = s.frame_scene();
+    assert!(alone && !scene.meshes.is_empty());
+
+    // Each arrow goes on the figure at once.
+    let pc_look = |s: &Stage| {
+        let w = &s.game.world;
+        let o = w.object(w.pc).unwrap();
+        (o.portrait.clone(), o.appearance)
+    };
+    let found = pc_look(&s);
+    let head = got(&mut s, 0);
+    look_arrow(&mut s, 0, 1);
+    assert_ne!(got(&mut s, 0), head);
+    assert_ne!(pc_look(&s).0, found.0);
+    let body = got(&mut s, 1);
+    look_arrow(&mut s, 1, 1);
+    assert_ne!(got(&mut s, 1), body);
+    assert_ne!(pc_look(&s).1, found.1, "another body");
+    look_arrow(&mut s, 1, -1);
+    assert_eq!(got(&mut s, 1), body, "and back");
+
+    // Cancel puts it all back.
+    look_arrow(&mut s, 1, 1);
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "chargen");
+    assert_eq!(pc_look(&s), found);
+
+    // OK keeps it, and the next step opens.
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(got(&mut s, 0), head);
+    look_arrow(&mut s, 0, 1);
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+    assert_ne!(pc_look(&s).0, found.0);
+    press(&mut s, "BTN_STEPNAME2");
+    assert_eq!(s.menu_name(), "chargen_attributes");
+    s.escape();
+    assert_eq!(s.menu_name(), "chargen");
+
+    // Quick Character keeps the game's page.
+    press(&mut s, "BTN_CANCEL");
+    press(&mut s, "QUICK_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(s.menu_name(), "chargen_portrait");
+}
+
 #[test]
 fn the_party_screen_shows_whoever_is_chosen_in_3d() {
     let Some((mut s, _)) = in_game("party_figure") else {
@@ -4027,12 +4104,12 @@ fn a_custom_character_goes_through_every_step_into_a_new_game() {
     press(&mut s, "BTN_STEPNAME3");
     assert_eq!(s.menu_name(), "chargen", "skills wait for the portrait");
 
-    // The portrait: the arrows change it, Cancel puts it back, and OK keeps it.
+    // The appearance: the arrows change it, Cancel puts it back, and OK keeps it.
     press(&mut s, "BTN_STEPNAME1");
-    assert_eq!(s.menu_name(), "chargen_portrait");
+    assert_eq!(s.menu_name(), "chargen_look");
     let w = &s.game.world;
     let first = w.object(w.pc).unwrap().portrait.clone();
-    press(&mut s, "BTN_ARRR");
+    look_arrow(&mut s, 0, 1);
     let w = &s.game.world;
     let next = w.object(w.pc).unwrap().portrait.clone();
     assert_ne!(first, next);
@@ -4040,7 +4117,7 @@ fn a_custom_character_goes_through_every_step_into_a_new_game() {
     let w = &s.game.world;
     assert_eq!(w.object(w.pc).unwrap().portrait, first);
     press(&mut s, "BTN_STEPNAME1");
-    press(&mut s, "BTN_ARRR");
+    look_arrow(&mut s, 0, 1);
     press(&mut s, "BTN_ACCEPT");
     assert_eq!(s.menu_name(), "chargen");
 
@@ -5417,7 +5494,7 @@ fn a_number_key_is_a_step_on_the_numbered_panels() {
     s.number_pressed(3);
     assert_eq!(s.menu_name(), "chargen", "not yet");
     s.number_pressed(1);
-    assert_eq!(s.menu_name(), "chargen_portrait");
+    assert_eq!(s.menu_name(), "chargen_look");
 }
 
 #[test]

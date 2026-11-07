@@ -58,6 +58,8 @@ pub struct Row {
     pub stepper: Option<i32>,
     /// A bar behind it: it is one of the rows chosen, in a list whose file has no highlight for that.
     pub bar: bool,
+    /// It picks from a list: its text at the left, and what is chosen between two arrows.
+    pub choice: Option<String>,
 }
 
 /// One picture of a row that has several, as a chain of feats does.
@@ -221,6 +223,21 @@ const STEP_ARROW: i32 = 18;
 const STEP_NUMBER: i32 = 36;
 const STEP_HIGH: i32 = 24;
 const STEP_WIDTH: i32 = 2 * STEP_ARROW + STEP_NUMBER + 4;
+
+/// How wide what a row picks is, with its arrows, at the right of the row.
+const CHOICE_WIDTH: i32 = 150;
+
+/// Where a row's choice goes: less, the words, and more.
+fn choice_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
+    let x = row[0] + row[2] - CHOICE_WIDTH;
+    let y = row[1] + (row[3] - STEP_HIGH) / 2;
+    let words = CHOICE_WIDTH - 2 * STEP_ARROW;
+    [
+        [x, y, STEP_ARROW, STEP_HIGH],
+        [x + STEP_ARROW, y, words, STEP_HIGH],
+        [x + STEP_ARROW + words, y, STEP_ARROW, STEP_HIGH],
+    ]
+}
 
 /// Where a stepper goes, at the right of its row: less, the number, and more.
 fn stepper_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
@@ -810,6 +827,19 @@ impl Ui<'_> {
                 continue;
             }
             let lit = matches!(&view.hover, Some(Hit::Row(l, n)) if l == &list.tag && *n == i);
+            if let Some(choice) = &row.choice {
+                let [less, words, more] = choice_rects(r);
+                let name = [r[0], r[1], r[2] - CHOICE_WIDTH, r[3]];
+                self.draw_text(cv, &t.font, &row.text, name, 17, t.color);
+                self.draw_step_arrows(
+                    cv,
+                    view,
+                    (&list.tag, i),
+                    [(less, -1, true), (more, 1, true)],
+                );
+                self.draw_text(cv, "fnt_d16x16", choice, words, 18, LIT);
+                continue;
+            }
             if proto.kind == CHECKBOX {
                 let ticked = proto.selected.as_ref().filter(|_| row.selected);
                 let side = r[3] * 3 / 4;
@@ -885,13 +915,27 @@ impl Ui<'_> {
         r: [i32; 4],
     ) {
         let [less, number, more] = stepper_rects(r);
+        let arrows = [(less, -1, chosen > 1), (more, 1, chosen < most)];
+        self.draw_step_arrows(cv, view, (tag, row), arrows);
+        self.draw_text(cv, "fnt_d16x16", &chosen.to_string(), number, 18, LIT);
+    }
+
+    /// The two arrows of a row: where each goes, which way it goes, and whether it can.
+    fn draw_step_arrows(
+        &mut self,
+        cv: &mut Canvas,
+        view: &MenuView,
+        (tag, row): (&str, usize),
+        arrows: [([i32; 4], i32, bool); 2],
+    ) {
         // A screen is stretched across a wide window, and these pictures are square.
         let across = cv.scale / cv.scale_x;
-        let arrows = [
-            (less, "lbl_leftplus", -1, chosen > 1),
-            (more, "lbl_rightminus", 1, chosen < most),
-        ];
-        for (at, picture, by, can) in arrows {
+        for (at, by, can) in arrows {
+            let picture = if by < 0 {
+                "lbl_leftplus"
+            } else {
+                "lbl_rightminus"
+            };
             let lit = matches!(&view.hover, Some(Hit::Step(l, a, b))
                 if l == tag && *a == row && *b == by);
             let tint = match (can, lit) {
@@ -906,7 +950,6 @@ impl Ui<'_> {
                 cv.draw_image(&img, full, dst, tint, 1.0, Default::default());
             }
         }
-        self.draw_text(cv, "fnt_d16x16", &chosen.to_string(), number, 18, LIT);
     }
 
     /// A row's pictures with an arrow from each to the next, as the reference video has the feats at 1:23:40.
@@ -1004,8 +1047,12 @@ impl Ui<'_> {
                 let top = r0[1] + (i - first) as i32 * step;
                 let r = [r0[0], top, r0[2], r0[3]];
                 if inside(r) {
-                    if row.stepper.is_some() {
-                        let [less, _, more] = stepper_rects(r);
+                    if row.stepper.is_some() || row.choice.is_some() {
+                        let [less, _, more] = if row.choice.is_some() {
+                            choice_rects(r)
+                        } else {
+                            stepper_rects(r)
+                        };
                         if inside(less) {
                             return Some(Hit::Step(c.tag.clone(), i, -1));
                         }
@@ -1063,7 +1110,17 @@ impl Ui<'_> {
         let first = view.lists.get(tag).map_or(0, |l| l.1);
         let (r0, step, _) = row_layout(c)?;
         let top = r0[1] + row.checked_sub(first)? as i32 * step;
-        let [less, _, more] = stepper_rects([r0[0], top, r0[2], r0[3]]);
+        let place = [r0[0], top, r0[2], r0[3]];
+        let chooses = view
+            .lists
+            .get(tag)
+            .and_then(|l| l.0.get(row))
+            .is_some_and(|r| r.choice.is_some());
+        let [less, _, more] = if chooses {
+            choice_rects(place)
+        } else {
+            stepper_rects(place)
+        };
         let at = if by < 0 { less } else { more };
         Some((
             (ox + at[0]) as f32 + at[2] as f32 / 2.0,
