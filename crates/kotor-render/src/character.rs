@@ -166,6 +166,12 @@ impl Rig {
             "run" => &["crun", "cwalk"],
             "die" => &["cdie"],
             "dead" => &["cdead"],
+            "taunt" => &["ctaunt"],
+            // A droid has the talk and a few more clips of its own, and none of the rest of a conversation's gestures: with
+            // no clip it stood in the model's rest pose, arms straight out. It stands as it stands idle instead.
+            "tlknorm" | "tlkplead" | "tlkforce" | "tlklaugh" | "tlksad" | "listen" | "greeting"
+            | "salute" | "bow" | "victory" | "flirt" | "persuade" | "horror" | "inject"
+            | "usecomp" | "usecomplp" => &["cpause1", "creadyr"],
             _ => &[],
         };
         if let Some(found) = fallback.iter().find_map(|n| has(n)) {
