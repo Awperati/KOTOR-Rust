@@ -1174,10 +1174,16 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
     let Some(mut s) = stage() else { return };
     let Some(variant) = kotor_render::underwear::list_underwear_variants()
         .into_iter()
-        .nth(1)
+        .nth(
+            std::env::var("FRAME_VARIANT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1),
+        )
     else {
         return;
     };
+    eprintln!("variant: {}", variant.id);
     let pc = s.game.world.pc;
     // FRAME_APPEARANCE picks the body for the frame (the sheet's number in appearance.2da).
     let look = std::env::var("FRAME_APPEARANCE")
@@ -1251,6 +1257,13 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         }
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
+        // FRAME_STOCK shows the install's own paint, as with conventional underwear off; FRAME_NOHD leaves out the upscaled pictures.
+        if std::env::var("FRAME_STOCK").is_ok() {
+            s.set_conventional_underwear(false);
+        }
+        if std::env::var("FRAME_NOHD").is_ok() {
+            s.no_hd();
+        }
         if let Ok(level) = std::env::var("FRAME_SHADING") {
             s.set_skin_shading(level.parse().unwrap_or(1.0));
         }
