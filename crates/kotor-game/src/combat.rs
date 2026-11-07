@@ -432,14 +432,64 @@ impl World {
         if boost.extra_attack && self.objects.get(&target).is_some_and(|t| !t.dead) {
             self.resolve_with(attacker, target, boost);
         }
+        // The other hand swings too, in the same round.
+        let standing = self
+            .objects
+            .get(&target)
+            .is_some_and(|t| !t.dead && !t.down);
+        if let (Some(slot), true) = (self.off_hand(attacker), standing) {
+            let (_, penalty) = self.two_weapon_penalties(attacker);
+            self.resolve_hand(attacker, target, Default::default(), slot, penalty);
+        }
     }
 
-    /// The `DAMAGE_TYPE_*` bits of the weapon in the right hand: its `damageflags` column, bludgeoning for a fist.
-    fn weapon_damage_type(&mut self, id: ObjId) -> i32 {
+    /// The slot of the second weapon's attack, if there is one: a weapon in the left hand beside one in the right, or
+    /// the other blade of a double-bladed weapon (which swings from the right hand's slot).
+    fn off_hand(&mut self, id: ObjId) -> Option<i32> {
+        self.hand_weapon(id, 4)?;
+        if self.hand_weapon(id, 5).is_some() {
+            return Some(5);
+        }
+        self.has_double_blades(id).then_some(4)
+    }
+
+    /// Whether the right hand holds a double-bladed weapon: `Double` in the item's `label` in `baseitems.2da`
+    /// (the double-bladed sword and lightsaber and the vibro double-blade).
+    fn has_double_blades(&mut self, id: ObjId) -> bool {
         let base = self
             .objects
             .get(&id)
             .and_then(|o| o.equipped.get(&4))
+            .and_then(|i| self.objects.get(i))
+            .map(|i| i.base_item.max(0) as usize);
+        let (Some(base), Some(t)) = (base, self.table("baseitems")) else {
+            return false;
+        };
+        t.get(base, "label").is_some_and(|l| l.contains("Double"))
+    }
+
+    /// The attack penalty of the main hand and the off hand when two weapons (or both blades of one) are used: -6 and
+    /// -10, and with the feat Two-Weapon Fighting -6 and -6, Advanced -4 and -4, Mastery -2 and -2. The words of the
+    /// feats in the install say so. **Not built:** the "balanced" off-hand weapon that takes 2 more off the main hand.
+    pub(crate) fn two_weapon_penalties(&self, id: ObjId) -> (i32, i32) {
+        let has = |f: i32| self.objects.get(&id).is_some_and(|o| o.feats.contains(&f));
+        if has(85) {
+            (-2, -2)
+        } else if has(9) {
+            (-4, -4)
+        } else if has(3) {
+            (-6, -6)
+        } else {
+            (-6, -10)
+        }
+    }
+
+    /// The `DAMAGE_TYPE_*` bits of the weapon in the right hand: its `damageflags` column, bludgeoning for a fist.
+    fn weapon_damage_type(&mut self, id: ObjId, slot: i32) -> i32 {
+        let base = self
+            .objects
+            .get(&id)
+            .and_then(|o| o.equipped.get(&slot))
             .and_then(|i| self.objects.get(i))
             .map(|i| i.base_item);
         let Some(base) = base else { return 1 };
@@ -460,19 +510,38 @@ impl World {
         })
     }
 
+    /// The main hand's attack.
     fn resolve_with(
         &mut self,
         attacker: ObjId,
         target: ObjId,
         boost: crate::combat_actions::FeatBoost,
     ) {
-        let weapon = self.weapon_of(attacker);
-        let bonus = self.attack_bonus_of(attacker, 4)
+        let penalty = if self.off_hand(attacker).is_some() {
+            self.two_weapon_penalties(attacker).0
+        } else {
+            0
+        };
+        self.resolve_hand(attacker, target, boost, 4, penalty);
+    }
+
+    /// One attack with the weapon in `slot` (4 right hand, 5 left), with `penalty` added to the roll.
+    fn resolve_hand(
+        &mut self,
+        attacker: ObjId,
+        target: ObjId,
+        boost: crate::combat_actions::FeatBoost,
+        slot: i32,
+        penalty: i32,
+    ) {
+        let weapon = self.hand_weapon(attacker, slot).unwrap_or(Weapon::UNARMED);
+        let bonus = self.attack_bonus_of(attacker, slot)
+            + penalty
             + boost.to_hit
             + self.close_combat_bonus(attacker, target);
         let defense = self.defense_of(target);
         let (roll, confirm) = (self.roll(20), self.roll(20));
-        let threat = weapon.threat * boost.threat.max(1) * self.threat_factor(attacker, 4);
+        let threat = weapon.threat * boost.threat.max(1) * self.threat_factor(attacker, slot);
         let mut outcome = resolve_attack(roll, confirm, bonus, defense, threat);
         if outcome == Outcome::Miss && self.has_assured_hit(attacker) {
             outcome = Outcome::Hit;
@@ -480,11 +549,11 @@ impl World {
         let mut dealt = 0;
         if outcome != Outcome::Miss {
             let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
-            let mod_ = self.flat_damage(attacker, 4, weapon.ranged);
-            let more = self.roll_gear_damage(attacker, 4, target, outcome == Outcome::Critical);
+            let mod_ = self.flat_damage(attacker, slot, weapon.ranged);
+            let more = self.roll_gear_damage(attacker, slot, target, outcome == Outcome::Critical);
             dealt = damage(dice, mod_, outcome, weapon.multiplier) + boost.damage + more;
             // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.
-            let kind = self.weapon_damage_type(attacker);
+            let kind = self.weapon_damage_type(attacker, slot);
             dealt = self.adjust_damage(target, dealt, kind);
             // **Assumption:** difficulty scales what the party takes, by the `multiplier` of `difficultyopt.2da`.
             if target == self.pc || self.party.contains(&target) {
