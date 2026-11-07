@@ -56,7 +56,7 @@ mod weapon_focus;
 mod workbench;
 mod world;
 
-pub use aim::{AimHit, AIM_REACH};
+pub use aim::{sway_path, AimHit, AIM_REACH};
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
 pub use autopilot::{lead_with_the_best_at, state_digest, Autopilot, FightResult, Stall};
 pub use chargen::{

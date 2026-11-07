@@ -16,6 +16,27 @@ const GUN_HIGH: f32 = 1.2;
 /// The slot of the right hand, and the left's after it.
 const RIGHT_HAND: i32 = 4;
 
+/// How wide the crosshair drifts standing still, with a pistol and no feats, in radians. All the sizes here are my guesses.
+const SWAY_STILL: f32 = 0.009;
+/// How much wider for each m/s the body goes.
+const SWAY_PER_SPEED: f32 = 0.6;
+/// How much wider just after a shot, and how long that takes to go.
+const SWAY_KICK: f32 = 2.0;
+const SWAY_KICK_SECONDS: f32 = 0.6;
+/// A rifle is steadier than a pistol, a heavy weapon less so, and a Weapon Focus or Specialization feat each takes a quarter off.
+const SWAY_RIFLE: f32 = 0.7;
+const SWAY_HEAVY: f32 = 1.4;
+const SWAY_FEAT: f32 = 0.75;
+
+/// Where the crosshair is on its drift at this time of the game, each way from -1 to 1. By the clock and not by dice: the same
+/// time gives the same place.
+pub fn sway_path(time: f32) -> (f32, f32) {
+    (
+        (time * 0.83).sin() * 0.7 + (time * 2.1 + 1.3).sin() * 0.3,
+        (time * 1.13 + 0.7).sin() * 0.7 + (time * 2.7 + 2.1).sin() * 0.3,
+    )
+}
+
 /// What a ray through the crosshair comes to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AimHit {
@@ -88,6 +109,38 @@ impl World {
                 point: at(reach),
             },
         }
+    }
+
+    /// How wide the player's crosshair drifts now, in radians, `since_shot` seconds after the last shot.
+    pub fn sway_size(&mut self, since_shot: f32) -> f32 {
+        let pc = self.pc;
+        let base = self
+            .objects
+            .get(&pc)
+            .and_then(|o| o.equipped.get(&RIGHT_HAND))
+            .and_then(|i| self.objects.get(i))
+            .map(|i| i.base_item.max(0) as usize);
+        let wield = base.and_then(|b| self.table("baseitems")?.int(b, "weaponwield"));
+        let weapon = match wield {
+            Some(4) => 1.0,
+            Some(6) => SWAY_HEAVY,
+            _ => SWAY_RIFLE,
+        };
+        let mut feats = 1.0;
+        if self.weapon_focus_bonus(pc, RIGHT_HAND) > 0 {
+            feats *= SWAY_FEAT;
+        }
+        if self.weapon_spec_bonus(pc, RIGHT_HAND) > 0 {
+            feats *= SWAY_FEAT;
+        }
+        // A save from earlier in the game can put the last shot ahead of the clock: no kick from that.
+        let kick = if since_shot < 0.0 {
+            0.0
+        } else {
+            (1.0 - since_shot / SWAY_KICK_SECONDS).max(0.0)
+        };
+        let moving = 1.0 + self.pc_body.speed() * SWAY_PER_SPEED + kick * SWAY_KICK;
+        SWAY_STILL * weapon * feats * moving
     }
 
     /// Where a shot leaves the player.

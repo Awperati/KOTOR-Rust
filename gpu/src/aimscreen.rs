@@ -29,6 +29,10 @@ const LAYOUT_HIGH: i32 = 480;
 const SHOT_SECONDS: f32 = 0.5;
 /// Where a bolt goes from over the player's middle, and how far short of where the ray ends, in metres.
 const BOLT_SHORT: f32 = 0.05;
+/// How fast the drift's size follows the body, a second.
+const SWAY_RATE: f32 = 6.0;
+/// How far along the ray the crosshair's point is taken, in metres. The ray's direction is what counts.
+const CROSSHAIR_POINT: f32 = 10.0;
 
 impl Stage {
     /// The aim button, down or up. It is the look button: holding it does nothing new until aiming may begin.
@@ -79,6 +83,10 @@ impl Stage {
         self.game.world.pc_aim = on.then_some(self.yaw);
         if on {
             let pc = self.game.world.pc;
+            let w = &mut self.game.world;
+            let since = w.time - (self.aim_next_shot - SHOT_SECONDS);
+            let want = w.sway_size(since);
+            self.aim_sway += (want - self.aim_sway) * (1.0 - (-SWAY_RATE * dt).exp());
             self.game.hold_stance(pc);
             // Rounds are not for the player while aiming: each shot is a click.
             self.game.world.stop_attacking(pc);
@@ -87,21 +95,45 @@ impl Stage {
             let who = self.game.world.aim_hit(eye, dir, reach).who;
             self.hover_target = who;
             self.aim_hot = who.is_some();
-        } else if self.pitch < PLAIN_LOWEST {
-            self.pitch += (PLAIN_LOWEST - self.pitch) * (1.0 - (-PITCH_BACK_RATE * dt).exp());
+        } else {
+            self.aim_sway = 0.0;
+            if self.pitch < PLAIN_LOWEST {
+                self.pitch += (PLAIN_LOWEST - self.pitch) * (1.0 - (-PITCH_BACK_RATE * dt).exp());
+            }
         }
     }
 
-    /// The ray through the crosshair: where it starts, and its unit direction.
+    /// The ray through the crosshair: where it starts, and its unit direction. It follows the drift the player sees.
     pub fn aim_ray(&self) -> ([f32; 3], [f32; 3]) {
         let c = self.camera();
-        let d = [
+        let unit = |v: [f32; 3]| {
+            let long = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-4);
+            [v[0] / long, v[1] / long, v[2] / long]
+        };
+        let f = unit([
             c.target[0] - c.eye[0],
             c.target[1] - c.eye[1],
             c.target[2] - c.eye[2],
+        ]);
+        let r = unit([f[1], -f[0], 0.0]);
+        let u = [
+            r[1] * f[2] - r[2] * f[1],
+            r[2] * f[0] - r[0] * f[2],
+            r[0] * f[1] - r[1] * f[0],
         ];
-        let long = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-4);
-        (c.eye, [d[0] / long, d[1] / long, d[2] / long])
+        let (a, b) = self.aim_drift();
+        (c.eye, unit([0, 1, 2].map(|k| f[k] + r[k] * a + u[k] * b)))
+    }
+
+    /// How far the crosshair lies off the middle now, across and up, in radians.
+    pub fn aim_drift(&self) -> (f32, f32) {
+        let (a, b) = kotor_game::sway_path(self.game.world.time);
+        (a * self.aim_sway, b * self.aim_sway)
+    }
+
+    /// How wide the crosshair drifts now, in radians.
+    pub fn aim_sway(&self) -> f32 {
+        self.aim_sway
     }
 
     /// Whether the crosshair lies on what a shot would hit.
@@ -161,11 +193,18 @@ impl Stage {
         self.distance + (AIM_ARM.min(self.distance) - self.distance) * self.aim_share
     }
 
-    /// What the HUD draws for the aim.
-    pub(super) fn crosshair_view(&self) -> Option<Crosshair> {
-        self.aim_on.then_some(Crosshair {
-            x: self.ui_width as i32 / 2,
-            y: LAYOUT_HIGH / 2,
+    /// What the HUD draws for the aim: where the ray goes on the screen.
+    pub fn crosshair_view(&self) -> Option<Crosshair> {
+        if !self.aim_on {
+            return None;
+        }
+        let (eye, dir) = self.aim_ray();
+        let (x, y) = self
+            .project([0, 1, 2].map(|k| eye[k] + dir[k] * CROSSHAIR_POINT), 0.0)
+            .unwrap_or((self.ui_width as i32 / 2, LAYOUT_HIGH / 2));
+        Some(Crosshair {
+            x,
+            y,
             hot: self.aim_hot,
         })
     }

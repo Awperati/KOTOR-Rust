@@ -401,6 +401,127 @@ fn a_neutral_is_hit_only_with_attack_mode_on() {
     std::fs::remove_file(&file).ok();
 }
 
+/// The size of the drift after `frames` frames.
+fn sway_after(s: &mut Stage, frames: usize) -> f32 {
+    run(s, frames);
+    s.aim_sway()
+}
+
+#[test]
+fn the_sway_is_by_the_clock_and_grows_with_speed_and_a_shot() {
+    // The same clock, the same place, and it does move.
+    assert_eq!(kotor_game::sway_path(12.5), kotor_game::sway_path(12.5));
+    assert_ne!(kotor_game::sway_path(12.5), kotor_game::sway_path(13.5));
+    let mut paths = Vec::new();
+    for name in ["clock1", "clock2"] {
+        let Some((mut s, file)) = stage(name, "") else {
+            return;
+        };
+        if !blaster_in_hand(&mut s) {
+            return;
+        }
+        aim_at(&mut s);
+        let mut path = Vec::new();
+        for _ in 0..30 {
+            run(&mut s, 5);
+            path.push(s.aim_drift());
+        }
+        paths.push(path);
+        std::fs::remove_file(&file).ok();
+    }
+    assert_eq!(paths[0], paths[1], "the same clock gives the same path");
+    let Some((mut s, file)) = stage("speed", "") else {
+        return;
+    };
+    if !blaster_in_hand(&mut s) {
+        return;
+    }
+    aim_at(&mut s);
+    let still = sway_after(&mut s, 120);
+    assert!(still > 0.0);
+    // Walking.
+    s.steer = (1.0, 0.0, false);
+    let walking = sway_after(&mut s, 120);
+    assert!(walking > still * 2.0, "{walking} against {still}");
+    s.steer = (0.0, 0.0, false);
+    let back = sway_after(&mut s, 180);
+    assert!((back - still).abs() < still * 0.1, "{back} against {still}");
+    // Just fired, and it goes again.
+    s.click((320.0, 180.0), SIZE);
+    let fired = sway_after(&mut s, 8);
+    assert!(fired > still * 1.3, "{fired} against {still}");
+    let back = sway_after(&mut s, 180);
+    assert!((back - still).abs() < still * 0.1, "{back} against {still}");
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn a_rifle_is_steadier_a_heavy_weapon_less_and_a_feat_shrinks_the_sway() {
+    let Some((mut s, file)) = stage("size", "") else {
+        return;
+    };
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let size = |w: &mut kotor_game::World, item: &str| {
+        let gun = w.spawn_item(item);
+        w.equip(pc, gun, Some(4)).unwrap();
+        w.sway_size(10.0)
+    };
+    let pistol = size(w, "g_w_blstrpstl001");
+    let rifle = size(w, "g_w_blstrrfl001");
+    let heavy = size(w, "g_w_rptnblstr01");
+    assert!(rifle < pistol, "{rifle} against {pistol}");
+    assert!(heavy > pistol, "{heavy} against {pistol}");
+    // Rifle feats: Weapon Focus, and Specialization on top of it.
+    size(w, "g_w_blstrrfl001");
+    w.object_mut(pc).unwrap().feats.insert(33);
+    let focus = w.sway_size(10.0);
+    assert!(focus < rifle, "{focus} against {rifle}");
+    w.object_mut(pc).unwrap().feats.insert(47);
+    assert!(w.sway_size(10.0) < focus);
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn the_shot_follows_the_drift_that_shows() {
+    let Some((mut s, file)) = stage("follow", "") else {
+        return;
+    };
+    if !blaster_in_hand(&mut s) {
+        return;
+    }
+    aim_at(&mut s);
+    let foe = aim_yaw_onto(&mut s, 6.0);
+    // Walk, for a wide drift, at a moment it lies well off the middle.
+    s.game.world.object_mut(foe).unwrap().faction = 5;
+    s.steer = (0.0, 1.0, false);
+    let mut seen = false;
+    let (mid_x, mid_y) = ((480.0 * SIZE.0 as f32 / SIZE.1 as f32) as i32 / 2, 240);
+    for _ in 0..600 {
+        s.update(DT);
+        let (a, b) = s.aim_drift();
+        let c = s.camera();
+        let d = [0, 1, 2].map(|k| c.target[k] - c.eye[k]);
+        let long = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let (_, ray) = s.aim_ray();
+        let along: f32 = (0..3).map(|k| ray[k] * d[k] / long).sum();
+        let hair = s.crosshair_view().unwrap();
+        // The ray is off the camera's middle by what the drift says, and the crosshair by the same way.
+        let want = (a * a + b * b).sqrt();
+        assert!(
+            (along.min(1.0).acos() - want).abs() < 0.004,
+            "{along} {want}"
+        );
+        if a.abs() > 0.01 && b.abs() > 0.01 {
+            assert_eq!(hair.x > mid_x, a > 0.0, "{} {a}", hair.x);
+            assert_eq!(hair.y < mid_y, b > 0.0, "{} {b}", hair.y);
+            seen = true;
+        }
+    }
+    assert!(seen, "the drift never went wide");
+    std::fs::remove_file(&file).ok();
+}
+
 #[test]
 fn a_click_while_aiming_does_not_walk() {
     let Some((mut s, file)) = stage("click", "") else {

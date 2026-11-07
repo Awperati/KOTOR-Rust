@@ -524,6 +524,8 @@ pub struct Stage {
     /// The crosshair lies on what a shot would hit, and when the next shot may leave.
     aim_hot: bool,
     aim_next_shot: f32,
+    /// How wide the crosshair drifts, in radians.
+    aim_sway: f32,
     /// Seconds since the player was last in the air, or in a landing.
     since_fall: f32,
     /// The roll's and the landing's poses.
@@ -714,6 +716,7 @@ impl Stage {
             aim_share: 0.0,
             aim_hot: false,
             aim_next_shot: 0.0,
+            aim_sway: 0.0,
             since_fall: 0.0,
             body_poses: moving::BodyPoses::default(),
             camera_z: None,
