@@ -114,4 +114,5 @@ pub use swoop::{
 pub use traps::{Disarm, Trap};
 pub use volley::{fire_times, is_ranged_attack};
 pub use workbench::BenchKind;
+pub use world::HoldInPlace;
 pub use world::{Action, Delayed, DoorState, EffectRec, Kind, ObjId, Object, World};

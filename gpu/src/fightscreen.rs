@@ -570,7 +570,13 @@ impl Stage {
             let home = w.object(near).map_or([0.0; 3], |o| o.position);
             // Held at home in the world's own steps, not once a frame: a slow frame runs several steps, and a soldier that has run up
             // keeps its grenades.
-            w.hold_in_place = Some((near, home, item, GRENADIER_COUNT, at));
+            w.hold_in_place = Some(kotor_game::HoldInPlace {
+                who: near,
+                home,
+                item,
+                count: GRENADIER_COUNT,
+                player: at,
+            });
             self.armed_home = Some((near, home));
         }
     }

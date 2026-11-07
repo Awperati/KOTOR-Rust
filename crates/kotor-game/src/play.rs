@@ -808,11 +808,15 @@ impl World {
         self.timed("followers", |w| w.update_followers(dt));
         self.timed("combat", |w| w.update_combat(dt));
         self.update_law();
-        if let Some((who, home, item, count, player)) = self.hold_in_place {
-            if self.objects.get(&item).is_some_and(|o| o.stack >= count) {
-                self.teleport(who, home);
+        if let Some(h) = self.hold_in_place {
+            if self
+                .objects
+                .get(&h.item)
+                .is_some_and(|o| o.stack >= h.count)
+            {
+                self.teleport(h.who, h.home);
                 let pc = self.pc;
-                self.teleport(pc, player);
+                self.teleport(pc, h.player);
             }
         }
         self.update_stealth();

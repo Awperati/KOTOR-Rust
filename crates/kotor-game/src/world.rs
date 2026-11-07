@@ -503,7 +503,7 @@ pub struct World {
     pub attack_mode: bool,
     /// For a test driver: this creature stays at this place, and the player at this other, while this item still has at least this
     /// many in its stack.
-    pub hold_in_place: Option<(ObjId, [f32; 3], ObjId, i32, [f32; 3])>,
+    pub hold_in_place: Option<HoldInPlace>,
     pub law: crate::law::LawState,
     /// Who the player killed that had a conversation, not hostile: (tag, name). Each is a line in the journal, kept across areas.
     pub lost_quests: Vec<(String, String)>,
@@ -604,6 +604,16 @@ fn creature_defaults(o: &mut Object, utc: &Struct) {
 
 /// Seconds a body lasts for scripts.
 const BODY_FADES_AFTER: f32 = 8.0;
+
+/// A test driver's hold on a fight: see `World::hold_in_place`.
+#[derive(Clone, Copy, Debug)]
+pub struct HoldInPlace {
+    pub who: ObjId,
+    pub home: [f32; 3],
+    pub item: ObjId,
+    pub count: i32,
+    pub player: [f32; 3],
+}
 
 impl World {
     /// Open the game data and prepare an empty world containing the player character.
