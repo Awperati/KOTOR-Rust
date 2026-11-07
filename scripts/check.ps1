@@ -3,8 +3,10 @@
 #   -Fast        no fmt, no clippy, no doc tests: for the inner loop, not for commits
 #   -Only NAME   only this crate's tests, for example kotor-game, or gpu for everything in gpu\ (implies -Fast)
 #   -Jobs N      test binaries at once (default: half the logical processors, at least 2)
+#   -BinaryLimit S  seconds a test binary may run (default 600). Past that it is killed, named, and counts as failed.
+# A binary that uses the GPU is marked [GPU] in what it prints, so that a hang can be placed.
 # It prints a last line "gate: P passed, F failed" and exits 0 only when F is 0 and nothing else failed.
-param([switch]$Fast, [string]$Only = '', [int]$Jobs = 0)
+param([switch]$Fast, [string]$Only = '', [int]$Jobs = 0, [int]$BinaryLimit = 600)
 $ErrorActionPreference = 'Stop'
 if ($Only) { $Fast = $true }
 if ($Jobs -le 0) { $Jobs = [Math]::Max(2, [int]([Environment]::ProcessorCount / 2)) }
@@ -35,6 +37,12 @@ function Build-Tests([string[]]$CargoArgs) {
     $script:built += $bins
 }
 
+# ' [GPU]' for a test binary whose source uses the GPU.
+function Gpu-Mark($bin) {
+  $source = Join-Path $bin.cwd "tests\$($bin.name).rs"
+  if ((Test-Path $source) -and (Select-String -Path $source -Pattern 'GpuRenderer|Presenter' -Quiet)) { ' [GPU]' } else { '' }
+}
+
 # Run every test binary, $Jobs at a time, and add up what they say.
 function Run-Tests($bins) {
     $out = Join-Path $env:TEMP "kotor_check_$PID"
@@ -61,6 +69,14 @@ function Run-Tests($bins) {
                 $t.code = $t.proc.ExitCode
                 $t.seconds = $t.watch.Elapsed.TotalSeconds
                 $results += $t
+            } elseif ($t.watch.Elapsed.TotalSeconds -gt $BinaryLimit) {
+                # A hang must not stop the gate for good, and must not pass.
+                Stop-Process -Id $t.proc.Id -Force -ErrorAction SilentlyContinue
+                $t.proc.WaitForExit()
+                $t.code = 'timeout'
+                $t.timedOut = $true
+                $t.seconds = $t.watch.Elapsed.TotalSeconds
+                $results += $t
             } else { $still += $t }
         }
         $running = $still
@@ -73,13 +89,17 @@ function Run-Tests($bins) {
             $passed += [int]$m.Groups[1].Value
             $failed += [int]$m.Groups[2].Value
         }
+        if ($t.timedOut) {
+            $failed++
+            "--- $($t.bin.name)$(Gpu-Mark $t.bin) TIMED OUT: killed after $BinaryLimit s"
+        }
         if ($t.code -ne 0 -or -not $m.Success) {
             $broken++
-            "--- $($t.bin.name) exit $($t.code)"
+            "--- $($t.bin.name)$(Gpu-Mark $t.bin) exit $($t.code)"
             $text
             Get-Content $t.err -Tail 20 -ErrorAction SilentlyContinue
         }
-        if ($t.seconds -ge 2) { "{0,7:n1} s  {1}" -f $t.seconds, $t.bin.name }
+        if ($t.seconds -ge 2) { "{0,7:n1} s  {1}{2}" -f $t.seconds, $t.bin.name, (Gpu-Mark $t.bin) }
     }
     Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
     $script:passed += $passed
