@@ -554,6 +554,10 @@ fn every_power_has_a_row_and_casts_from_its_key_at_what_the_crosshair_is_on() {
         (o.force, o.max_force, o.dead, o.down) = (1000, 1000, false, false);
         o.spells.insert(power);
         w.last_power.remove(&pc);
+        // A stronger power of its line left on from before would refuse it.
+        for p in POWERS {
+            w.end_power(pc, p);
+        }
         assert_eq!(s.power_key(&action), None, "{action}");
         let w = &s.game.world;
         assert_eq!(w.last_power.get(&pc).map(|p| p.0), Some(power), "{action}");
@@ -616,6 +620,51 @@ fn a_power_key_says_why_it_does_nothing_and_only_works_in_modern() {
     assert!(s.game.world.power_active(pc, 17));
     assert_eq!(s.power_key("Force17"), None);
     assert!(!s.game.world.power_active(pc, 17));
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn each_self_power_reads_active_alone_and_a_weaker_one_under_a_stronger_says_so_and_costs_nothing()
+{
+    let Some((mut s, file)) = sturdy_stage("lines") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    // Force Aura, Force Shield, Resist Force, Resist Energy: each alone.
+    for power in [18, 24, 41, 42] {
+        let o = s.game.world.object_mut(pc).unwrap();
+        (o.force, o.max_force) = (1000, 1000);
+        o.spells.insert(power);
+        assert_eq!(s.power_key(&format!("Force{power}")), None);
+        run(&mut s, 30);
+        assert!(s.game.world.power_active(pc, power), "{power}");
+        s.game.world.end_power(pc, power);
+    }
+    // Under Force Armour, Aura is refused, and under Force Immunity, Resist Force.
+    for (strong, weak) in [(17, 18), (17, 24), (20, 41)] {
+        let o = s.game.world.object_mut(pc).unwrap();
+        (o.force, o.max_force) = (1000, 1000);
+        o.spells.extend([strong, weak]);
+        assert_eq!(s.power_key(&format!("Force{strong}")), None);
+        run(&mut s, 30);
+        assert!(s.game.world.power_active(pc, strong), "{strong}");
+        let force = s.game.world.object(pc).unwrap().force;
+        s.game.world.last_power.remove(&pc);
+        let said = s.power_key(&format!("Force{weak}")).unwrap();
+        assert!(said.ends_with("is on"), "{said}");
+        assert_eq!(
+            s.game.world.object(pc).unwrap().force,
+            force,
+            "nothing spent"
+        );
+        assert!(!s.game.world.last_power.contains_key(&pc));
+        s.game.world.end_power(pc, strong);
+        // With the stronger one gone, it casts.
+        assert_eq!(s.power_key(&format!("Force{weak}")), None);
+        run(&mut s, 30);
+        assert!(s.game.world.power_active(pc, weak), "{weak}");
+        s.game.world.end_power(pc, weak);
+    }
     std::fs::remove_file(&file).ok();
 }
 

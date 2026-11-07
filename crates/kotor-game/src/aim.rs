@@ -164,6 +164,44 @@ impl World {
         ))
     }
 
+    /// A stronger power of the same line that is on this creature now: Force Armour over Shield and Aura, Force Immunity over
+    /// Resist Force. The game's own script for a power then does nothing, and its Force points would be lost.
+    ///
+    /// The line is the powers joined by `prerequisites` of `spells.2da`, and stronger is a bigger `forcepriority`.
+    /// **Measured:** cast after Force Armour, Aura and Shield put no effect on; cast alone, each does.
+    pub fn stronger_on(&mut self, who: ObjId, power: i32) -> Option<i32> {
+        let t = self.table("spells")?;
+        let rows = t.rows.len() as i32;
+        let needs = |row: i32| -> Vec<i32> {
+            t.get(row.max(0) as usize, "prerequisites")
+                .unwrap_or("")
+                .split('_')
+                .filter_map(|p| p.parse().ok())
+                .collect()
+        };
+        let priority = |row: i32| t.int(row.max(0) as usize, "forcepriority").unwrap_or(0);
+        let mut line = vec![power];
+        loop {
+            let more: Vec<i32> = (0..rows)
+                .filter(|r| !line.contains(r))
+                .filter(|r| {
+                    needs(*r).iter().any(|n| line.contains(n))
+                        || line.iter().any(|l| needs(*l).contains(r))
+                })
+                .collect();
+            if more.is_empty() {
+                break;
+            }
+            line.extend(more);
+        }
+        let mine = priority(power);
+        let stronger: Vec<i32> = line
+            .into_iter()
+            .filter(|r| *r != power && priority(*r) > mine)
+            .collect();
+        stronger.into_iter().find(|r| self.power_active(who, *r))
+    }
+
     /// Where a shot leaves the player.
     pub fn pc_gun(&self) -> [f32; 3] {
         let p = self.pc_mover.pos;

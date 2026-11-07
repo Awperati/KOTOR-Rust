@@ -53,6 +53,8 @@ const NOT_KNOWN: &str = "not known";
 const FORCE_NEEDED: &str = "Force points needed";
 const NO_TARGET: &str = "no target";
 const OUT_OF_REACH: &str = "out of reach";
+/// After the stronger power's name: it is on, so this one would do nothing.
+const STRONGER_ON: &str = "is on";
 
 impl Stage {
     /// The aim button, down or up. It is the look button: holding it does nothing new until aiming may begin.
@@ -322,6 +324,10 @@ impl Stage {
             return None;
         }
         let name = self.ui.strref(name);
+        let stronger = self.game.world.stronger_on(pc, power);
+        let stronger = stronger
+            .and_then(|s| self.game.world.power_row(s))
+            .map(|r| self.ui.strref(r.0));
         let on_crosshair = self.aim_on.then(|| {
             let (eye, dir) = self.aim_ray();
             let reach = self.aim_reach(eye, dir);
@@ -334,6 +340,8 @@ impl Stage {
             .or((range == 0.0 || !hostile).then_some(pc));
         let refused = if !known {
             Some(format!("{name}: {NOT_KNOWN}"))
+        } else if let Some(other) = stronger {
+            Some(format!("{name}: {other} {STRONGER_ON}"))
         } else if force < cost {
             Some(format!("{name}: {cost} {FORCE_NEEDED}"))
         } else if target.is_none() {
