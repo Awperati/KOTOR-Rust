@@ -89,6 +89,18 @@ creatures had heartbeats. Placeables have them now, and one opened before its fi
 opened, 439 with items, none with an unnamed item. The 47 left have no items and no script in their files, `footlker001` for one.
 They are empty in the game's data. I have not seen one in the original.
 
+**A4, attack mode and the law, piece 1 (owner's addendum, 7 Nov; Top Dog's defaults).** `crates/kotor-game/src/law.rs`, data in
+`docs/law.tsv` (the owner edits it): `World::attack_mode`/`toggle_attack_mode` (a click on a creature attacks it, not talks), the dark
+side cost of a kill by kind (civilian -10, armed or authority non-hostile -5, fleeing hostile -2, hostile 0; a plot creature cannot be
+hurt, so no crime), and witnesses: a blow on someone not hostile is a crime (level 1; a kill adds one, up to 3); authorities in sight
+within their perception, or in hearing (15 m, kills only), turn hostile with the mates within 10 m; civilians who see it run
+12 m and call the nearest authority within 40 m; they calm after 60 s without sight of the player, and the level drops to 0 when none
+is left. From level 2, shops shut and ordinary talk with creatures is refused. A new area clears the law. Tests `tests/law.rs`
+(table, click, witness and cost, out of sight, heat dying, plot). Frames `docs/shots/combat/law_strip_720p.png` (before, the blow,
+the Sith troopers' names go red, they fight; `gpu/examples/law_shots.rs`). The table's authority lines are first guesses by template
+name from `cargo run -p kotor-game --example law_survey` (the game's factions are only Neutral, Friendly and Hostile). **Not built:**
+the HUD button (menus builder asked), saving the state with the game (menus builder owns saves), the quest-giver journal line.
+
 **Owner's list of 7 Nov, B1, B3, A2.**
 - *B1, blaster burst.* The clips carry no events, so the shots are read from the clips' motion (`crates/kotor-model/examples/fire_frames.rs`):
   rifle and heavy (`b7a1`, `b9a1`) kick at 0.23, 0.70 and 1.23 s, pistol (`b5a1`) at 0.53 and 1.03, two pistols (`b6a1`) at 0.43 and

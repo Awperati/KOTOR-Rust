@@ -682,6 +682,7 @@ impl World {
         }
         if t.hp > 0 {
             self.say_from_soundset(target, &crate::soundset::PAIN_SLOTS);
+            self.note_blow(source, target, false);
             return false;
         }
         t.hp = 0;
@@ -705,6 +706,8 @@ impl World {
         } else {
             self.combat.last_killer = source;
             self.events.push(format!("{} dies", self.describe(target)));
+            self.note_kill(source, target);
+            self.note_blow(source, target, true);
             self.leave_loot(target);
             self.run_event(target, "ScriptDeath");
             if source == self.pc || self.party.contains(&source) {

@@ -1,0 +1,60 @@
+# The law of the game: who counts as the authority where, and what killing costs. The owner edits this file; the game reads it
+# when it is built. Columns are separated by tabs. Lines starting with # are notes. Every value here is a PLACEHOLDER until the owner
+# has said, except where a line says it was asked for (7 Nov 2026).
+#
+# setting <name> <value>
+#   hear_metres      how far a crime is heard, through walls
+#   call_metres      how far an authority that sees a crime calls its mates and a civilian calls the nearest authority
+#   calm_seconds     how long after the last crime the authorities that saw it stay hostile when the criminal is out of their sight
+#   call_far_metres  how far a civilian's call for the nearest authority reaches
+#   flee_seconds     how long a civilian who saw a crime runs
+#   shut_from        the wanted level (1 to 3) from which shops close and ordinary talk is refused
+setting	hear_metres	15
+setting	call_metres	10
+setting	calm_seconds	60
+setting	call_far_metres	40
+setting	flee_seconds	10
+setting	shut_from	2
+#
+# kill <kind> <dark side points>
+#   innocent        unarmed, not hostile (a civilian)
+#   neutral         armed or a guard, not hostile and not plot
+#   fleeing         a hostile that is running away or has surrendered
+#   hostile         whoever attacks the player anyway
+# (7 Nov: civilian -10, friendly or neutral non-plot -5, hostile 0, surrendered or fleeing hostile -2; a plot creature cannot be hit)
+kill	innocent	10
+kill	neutral	5
+kill	fleeing	2
+kill	hostile	0
+#
+# authority <module prefix> <part of a creature's template name>
+#   A creature of a module whose name starts with the prefix and whose template contains the text is an authority there.
+#   The factions of the game's creatures are only Neutral, Friendly, Hostile and the like, so the templates tell them apart.
+#   First guesses from the module survey (`cargo run -p kotor-game --example law_survey`) and the owner's list:
+#   Taris: Sith patrols, Tatooine: Czerka and the Sandral guard, Dantooine: Jedi and militia, Manaan: Selkath,
+#   Kashyyyk: Wookiee defenders, Korriban: Sith students and the port authority, Endar Spire and the Leviathan: Sith and Republic soldiers.
+authority	tar_	sithpat
+authority	tar_	sithguard
+authority	tar_	cantguard
+authority	tar_	sith0
+authority	tat_	guard
+authority	tat_	czerk
+authority	tat_	sandral
+authority	dan	jedi
+authority	dan	guard
+authority	dan	militia
+authority	man	security
+authority	man	selkath
+authority	man	guard
+authority	man	repkol
+authority	kas_	wookg
+authority	kas_	wookguard
+authority	kas_	wookcho
+authority	kas_	czguard
+authority	kor	sith
+authority	kor	portauthor
+authority	kor	czerka
+authority	end_	repsol
+authority	lev_	sithtroop
+authority	lev_	sithcom
+authority	sta_	jedi

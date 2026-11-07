@@ -22,6 +22,7 @@ mod items;
 mod journal;
 mod k2feats;
 mod labels;
+mod law;
 mod soundset;
 mod volley;
 pub use items::name_is_a_tag;
@@ -87,6 +88,7 @@ pub trait Barriers {
     /// A sheet, not a ray: a thin rail is hard to hit with a ray.
     fn across(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool;
 }
+pub use law::{KillKind, LawState, LawTable};
 pub use party::{BenchedMember, PartyRequest, PARTY_SIZE};
 pub use pazaak::{PazaakCard, PazaakGame, PazaakMove, PazaakSide, PazaakView};
 pub use play::{

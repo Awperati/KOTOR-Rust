@@ -345,7 +345,14 @@ impl World {
                 self.mark_open(target, Vec::new());
             }
             Kind::Creature => {
-                self.talk_to(target);
+                if self.attack_mode && !self.on_player_team(target) {
+                    self.attack(self.pc, target);
+                } else if self.law_refuses(target) && !self.on_player_team(target) {
+                    self.events
+                        .push(format!("{} will not talk to you", self.describe(target)));
+                } else {
+                    self.talk_to(target);
+                }
             }
             Kind::Door => self.use_door(target),
             Kind::Placeable => {
@@ -790,6 +797,7 @@ impl World {
         }
         self.timed("followers", |w| w.update_followers(dt));
         self.timed("combat", |w| w.update_combat(dt));
+        self.update_law();
         self.update_stealth();
         self.update_shoves();
         self.expire_effects();

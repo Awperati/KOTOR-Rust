@@ -48,6 +48,11 @@ pub enum CannotTrade {
 impl World {
     /// `OpenStore`: `bonus_up` and `bonus_down` are added to the store's own percentages.
     pub fn open_store(&mut self, store: ObjId, bonus_up: i32, bonus_down: i32) {
+        if self.law_refuses(store) {
+            self.events
+                .push("The shop is shut: the law is after you".to_string());
+            return;
+        }
         let Some(template) = self
             .object(store)
             .filter(|o| o.kind == Kind::Store)

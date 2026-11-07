@@ -495,6 +495,9 @@ pub struct World {
     pub(crate) casts: Vec<(ObjId, i32)>,
     /// Grenades thrown and not yet burst.
     pub(crate) flights: Vec<crate::flight::Flight>,
+    /// Attack mode: the player may attack anyone. `docs/law.tsv` says what that costs.
+    pub attack_mode: bool,
+    pub law: crate::law::LawState,
     /// Voice lines to be played where the creature is: who and the name of the wave file. A screen takes them.
     pub sound_cues: Vec<(ObjId, String)>,
     pub(crate) ssf_cache: BTreeMap<i32, Vec<u32>>,
@@ -652,6 +655,8 @@ impl World {
             hp_regen: 0.0,
             casts: Vec::new(),
             flights: Vec::new(),
+            attack_mode: false,
+            law: Default::default(),
             sound_cues: Vec::new(),
             ssf_cache: BTreeMap::new(),
             sound_turn: 0,
@@ -1156,6 +1161,8 @@ impl World {
         }
         self.module = module.to_string();
         self.traps.retain(|id, _| self.objects.contains_key(id));
+        // A new area has its own law: no one there has seen anything.
+        self.law = Default::default();
         self.load_encounters(&git);
         self.build_nav(&area_name)?;
         let pos = self.objects.get(&pc).map_or([0.0; 3], |p| p.position);
@@ -1467,6 +1474,13 @@ impl World {
         // Everyone is their own friend.
         if source == target && self.objects.contains_key(&source) {
             return 100;
+        }
+        // An authority that saw a crime is the enemy of the player's side.
+        if !self.law.hostile.is_empty()
+            && ((self.law.hostile.contains(&source) && self.on_player_team(target))
+                || (self.law.hostile.contains(&target) && self.on_player_team(source)))
+        {
+            return 0;
         }
         // Nobody is neutral to a trap: its script spares only those it calls neutral.
         if self.traps.contains_key(&source) {
