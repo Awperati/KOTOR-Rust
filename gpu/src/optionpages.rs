@@ -133,7 +133,7 @@ const STYLE_ROWS: [(&str, &str, &str); 24] = [
     (
         "Auto attack mode: On",
         "Auto attack mode: Off",
-        "Attack mode goes on by itself when a fight starts, for you and for each companion, and goes off a few seconds after it ends. A mode you set by hand stays until you turn it off. The Attack mode button always shows whether it is on; a click on it when lit ends the fight.",
+        "Attack mode goes on by itself when a fight starts, for you and for each companion, and goes off 10 seconds after it ends. A mode you set by hand stays until you turn it off. The Attack mode button always shows whether it is on; a click on it when lit ends the fight.",
     ),
 ];
 /// What the Pickup radius goes round, in metres.

@@ -18,9 +18,10 @@ yellow line when theirs is on. A member counts as in attack mode when it is on *
 ## Auto attack mode
 
 With the switch on, a member who enters a fight (they attack an enemy, or an enemy attacks them) goes into attack mode by
-themselves, the leader and each companion alike. A mode that came on by itself goes off again 4 seconds after their fight ends
-(`AUTO_OFF_SECONDS`). A mode you set by hand stays until you turn it off. Off: nothing goes on by itself, and the button still
-lights while they fight. A scripted pilot (the drivers) keeps the old rules.
+themselves, the leader and each companion alike. **Ten seconds after their fight ends** the mode goes off by itself
+(`AUTO_OFF_SECONDS` in [stance.rs](../crates/kotor-game/src/stance.rs)). That holds for a mode you set by hand, if they fought
+in it. A new fight starts the count again. A mode you set by hand and never fought in stays until you turn it off. Off: nothing
+goes on or off by itself, and the button still lights while they fight. A scripted pilot (the drivers) keeps the old rules.
 
 ## The queue
 
@@ -41,5 +42,6 @@ Each member has their own queue, kept when the lead changes. One thing happens e
 ## Assumed
 
 - "Fighting" means attacking an enemy or being attacked by one.
-- 4 seconds is "a few".
+- "Fight over" is when no hostile attacks them and they attack no hostile. Awareness alone does not count.
+- 10 seconds is a constant, not a setting row.
 - The queue's size, and the circle and strip as undo and clear, are mine: the game's own Clear buttons are the Disengage text.

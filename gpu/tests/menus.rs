@@ -6429,14 +6429,14 @@ fn auto_attack_mode_has_a_switch_and_an_automatic_mode_goes_off_after_the_fight(
         s.update(DT);
     }
     assert!(s.game.world.attack_mode());
-    // The fight ends: a few seconds later the automatic mode is off.
+    // The fight ends: ten seconds later the automatic mode is off.
     s.game.world.object_mut(foe).unwrap().dead = true;
     s.game.world.combat.target.clear();
-    for _ in 0..60 {
+    for _ in 0..270 {
         s.update(DT);
     }
-    assert!(s.game.world.attack_mode(), "not yet");
-    for _ in 0..240 {
+    assert!(s.game.world.attack_mode(), "not yet: ten seconds");
+    for _ in 0..60 {
         s.update(DT);
     }
     assert!(!s.game.world.attack_mode(), "off by itself");

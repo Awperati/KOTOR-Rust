@@ -107,7 +107,7 @@ fn with_auto_attack_mode_a_fight_turns_it_on_for_the_leader_and_the_companion() 
 }
 
 #[test]
-fn an_automatic_mode_goes_off_a_few_seconds_after_the_fight_and_a_hand_set_one_stays() {
+fn a_mode_goes_off_ten_seconds_after_the_fight_and_one_set_by_hand_and_never_fought_in_stays() {
     let Some((mut w, mate, foe)) = scene() else {
         return;
     };
@@ -120,16 +120,27 @@ fn an_automatic_mode_goes_off_a_few_seconds_after_the_fight_and_a_hand_set_one_s
     // The fight is over.
     w.object_mut(foe).unwrap().dead = true;
     w.combat.target.clear();
+    run(&mut w, 9.0);
+    assert!(w.attack_mode(), "not yet: ten seconds");
+    assert!(w.in_attack_mode(mate), "nor the companion's");
+    // A new fight starts the count again.
+    let foe2 = w.spawn_creature("n_calonord", w.object(pc).unwrap().position);
+    w.object_mut(foe2).unwrap().faction = 1;
+    w.attack(pc, foe2);
+    run(&mut w, 1.0);
+    w.object_mut(foe2).unwrap().dead = true;
+    w.combat.target.clear();
+    run(&mut w, 9.0);
+    assert!(w.attack_mode(), "the timer began again");
     run(&mut w, 2.0);
-    assert!(w.attack_mode(), "not yet: a few seconds");
-    run(&mut w, 4.0);
-    assert!(!w.attack_mode(), "the automatic mode went off");
-    assert!(w.in_attack_mode(mate), "the one set by hand stays on");
-    // And the hand-set one goes off only by hand.
-    run(&mut w, 20.0);
-    assert!(w.in_attack_mode(mate));
-    w.set_mode_of(mate, false);
-    assert!(!w.in_attack_mode(mate));
+    assert!(!w.attack_mode(), "the leader's mode went off");
+    assert!(!w.in_attack_mode(mate), "and the companion's, though it was set by hand");
+    // Set by hand and never fought in: it stays.
+    w.set_mode_of(pc, true);
+    run(&mut w, 30.0);
+    assert!(w.attack_mode());
+    w.set_mode_of(pc, false);
+    assert!(!w.attack_mode());
 }
 
 #[test]

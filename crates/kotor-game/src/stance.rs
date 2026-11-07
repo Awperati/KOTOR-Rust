@@ -2,7 +2,8 @@
 //!
 //! The Attack mode button shows the truth: lit when the member is in attack mode or is fighting, and a click on it when lit
 //! ends the fight (it is the old Disengage button). With "Auto attack mode" on (the player's switch), a member who enters a
-//! fight goes into attack mode by itself, and leaves it a few seconds after the fight is over. A mode the player set by hand
+//! fight goes into attack mode by itself. Ten seconds after a fight is over (`AUTO_OFF_SECONDS`) the mode goes off by itself,
+//! one the player set by hand as well, and the timer starts again if a fight starts. A mode set by hand and never fought in
 //! stays until the player turns it off.
 //!
 //! **Assumed:** a companion whose mode the player turned off in a fight holds fire until that fight is over: it does not join
@@ -11,8 +12,10 @@ use crate::combat_actions::CombatAction;
 use crate::world::{ObjId, World};
 use std::collections::{BTreeMap, VecDeque};
 
-/// How long after its fight a member's own attack mode stays on. "A few seconds."
-pub const AUTO_OFF_SECONDS: f32 = 4.0;
+/// How long after its fight a member's attack mode stays on before it goes off by itself (the owner: "about 10 seconds").
+pub const AUTO_OFF_SECONDS: f32 = 10.0;
+/// How long after a fight a member the player told to hold fire stays held.
+pub const HOLD_SECONDS: f32 = 4.0;
 /// The most a member can have queued: the HUD's strip has four places, and the first is the action under way.
 pub const MOST_QUEUED: usize = 3;
 
@@ -22,6 +25,8 @@ pub struct Stance {
     pub on: bool,
     /// It went on by itself, so it goes off by itself.
     pub auto: bool,
+    /// The member has fought since the mode was set, so a mode set by hand goes off after the fight as well.
+    pub fought: bool,
     /// Seconds since the member last fought, while an automatic mode is on.
     pub calm: f32,
     /// The player turned it off in a fight: the member does not join the leader's target until the fight is over.
@@ -87,6 +92,7 @@ impl World {
         let s = self.stance_mut(id);
         s.on = on;
         s.auto = false;
+        s.fought = false;
         s.calm = 0.0;
         s.hold = !on;
         if on {
@@ -135,12 +141,15 @@ impl World {
                     s.on = true;
                     s.auto = true;
                 }
+                s.fought = s.on;
             } else {
-                // Out of a fight for a few seconds: a hold ends, and an automatic mode goes off.
+                // Out of a fight: a hold ends after a few seconds, and a mode that fought goes off after ten.
                 s.calm += dt;
-                if s.calm >= AUTO_OFF_SECONDS {
+                if s.calm >= HOLD_SECONDS {
                     s.hold = false;
-                    if s.on && s.auto {
+                }
+                if s.calm >= AUTO_OFF_SECONDS {
+                    if s.on && (s.auto || (s.fought && auto)) {
                         *s = Stance::default();
                     }
                 }
