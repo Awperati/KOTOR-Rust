@@ -284,3 +284,29 @@ fn force_opens_a_wheel_of_the_first_powers_known_and_one_casts_and_shuts_it() {
     assert!(at(&mut s, TouchKey::Force).is_none());
     std::fs::remove_file(&file).ok();
 }
+
+#[test]
+fn a_power_under_a_stronger_one_of_its_line_is_greyed_on_the_wheel() {
+    let Some((mut s, file)) = stage("blocked") else {
+        return;
+    };
+    s.set_combat_modern(true);
+    let pc = s.game.world.pc;
+    let o = s.game.world.object_mut(pc).unwrap();
+    (o.force, o.max_force) = (1000, 1000);
+    o.spells.clear();
+    // Force Armour, then Force Aura.
+    o.spells.extend([17, 18]);
+    run(&mut s, 2);
+    tap(&mut s, TouchKey::Force);
+    run(&mut s, 1);
+    assert!(!s.touch_key_greyed(TouchKey::Power(1)), "nothing on yet");
+    tap(&mut s, TouchKey::Power(0));
+    run(&mut s, 30);
+    assert!(s.game.world.power_active(pc, 17));
+    tap(&mut s, TouchKey::Force);
+    run(&mut s, 1);
+    assert!(s.touch_key_greyed(TouchKey::Power(1)), "Aura under Armour");
+    assert!(!s.touch_key_greyed(TouchKey::Power(0)));
+    std::fs::remove_file(&file).ok();
+}

@@ -63,7 +63,8 @@ pub(super) struct Fingers {
     look: [f32; 2],
     /// Modern combat's wheel of powers is open.
     wheel: bool,
-    /// The wheel's powers: the Force page's action, the name, and whether the Force points are short for it.
+    /// The wheel's powers: the Force page's action, the name, and whether it is greyed: the Force points are short for it, or
+    /// a stronger power of its line is on.
     powers: Vec<(&'static str, String, bool)>,
     /// What the Attack and Aim buttons say in Modern combat, if not that.
     attack_word: &'static str,
@@ -141,12 +142,15 @@ impl Stage {
             .take(WHEEL_POWERS)
             .copied()
             .collect();
+        let open = self.menus.touch.wheel;
         let mut powers = Vec::new();
         for (action, power) in known {
             let w = &mut self.game.world;
             let name = w.power_row(power).map(|r| r.0);
             let cost = w.power_cost(pc, power).unwrap_or(0);
-            let short = w.object(pc).is_some_and(|o| o.force < cost);
+            // Under a stronger power of its line it would be refused. Only looked for with the wheel open: it reads a table.
+            let short = w.object(pc).is_some_and(|o| o.force < cost)
+                || (open && w.stronger_on(pc, power).is_some());
             let name = name.map(|n| self.ui.strref(n)).unwrap_or_default();
             powers.push((action, name, short));
         }

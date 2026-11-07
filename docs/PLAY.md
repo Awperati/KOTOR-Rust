@@ -107,7 +107,7 @@ The blue button with a gamepad on it, in the top right corner under the menu key
 | Jump, Roll | | As their keys, so Jump does nothing under a light push of the stick. Greyed in Classic movement. |
 | Pickup, Pause, Attack mode | | As their keys. |
 | Lock on, Aim | Modern combat only, the top corners of the four big buttons | As the lock-on key, and as the right button held. Aim says Guard with a blade. |
-| Force | Modern combat only, in the middle of the four big buttons | Opens a wheel of the first four powers you know in their places. A tap casts one and shuts it. A power short of Force points is greyed. |
+| Force | Modern combat only, in the middle of the four big buttons | Opens a wheel of the first four powers you know in their places. A tap casts one and shuts it. A power short of Force points, or under a stronger one of its line, is greyed. |
 | Four slots, menu keys | the HUD's own | Bigger while the controls are on. |
 
 The Jump button is greyed during a light push of the stick, as there is no jump at a walk.
