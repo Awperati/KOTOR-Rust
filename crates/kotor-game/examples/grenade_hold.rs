@@ -31,9 +31,13 @@ fn main() {
                 w.object_mut(soldier).unwrap().ai_style = 4;
                 let o = w.object_mut(pc).unwrap();
                 (o.hp, o.max_hp) = (500, 500);
-                
-                if companion { w.combat.perceived.insert((soldier, pc)); }
-                if companion { w.attack(soldier, pc); }
+
+                if companion {
+                    w.combat.perceived.insert((soldier, pc));
+                }
+                if companion {
+                    w.attack(soldier, pc);
+                }
                 let mut thrown = None;
                 for i in 0..(120.0 / 0.05) as usize {
                     w.step(0.05);

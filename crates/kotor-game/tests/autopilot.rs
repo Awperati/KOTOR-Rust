@@ -527,6 +527,9 @@ fn trask_fights_the_foes_and_never_the_player_or_the_party() {
         }
         seen = log.len();
     }
-    assert!(on_friends.is_empty(), "Trask hit his own side: {on_friends:?}");
+    assert!(
+        on_friends.is_empty(),
+        "Trask hit his own side: {on_friends:?}"
+    );
     assert!(on_foes >= 1, "Trask never fought a foe");
 }

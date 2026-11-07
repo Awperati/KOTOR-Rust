@@ -209,7 +209,12 @@ fn an_enemys_grenade_throw_plays_its_whole_clip_once_per_throw() {
     }
     let thrown = 5 - g.world.object(item).map_or(0, |o| o.stack);
     let _ = at;
-    assert!(thrown >= 2, "it threw {thrown} {} {:?}", g.world.object(soldier).unwrap().template, g.world.errors);
+    assert!(
+        thrown >= 2,
+        "it threw {thrown} {} {:?}",
+        g.world.object(soldier).unwrap().template,
+        g.world.errors
+    );
     assert!(
         runs.len() as i32 >= thrown.min(2),
         "one clip per throw: {runs:?} for {thrown}"

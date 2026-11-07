@@ -96,8 +96,7 @@ impl World {
         self.thrown_item = self.objects.get(&item).map(|o| o.template.clone());
         let cast = self.cast_spell(who, spell, at, true);
         self.thrown_item = None;
-        cast
-            .map_err(|_| CannotUse::Failed)?;
+        cast.map_err(|_| CannotUse::Failed)?;
         self.spend_one(who, item);
         Ok(())
     }

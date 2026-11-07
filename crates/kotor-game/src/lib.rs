@@ -44,7 +44,6 @@ mod weapon_focus;
 mod workbench;
 mod world;
 
-pub use flight::{Flight, InFlight, RELEASE_SECONDS, THROW_SPEED};
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
 pub use autopilot::{lead_with_the_best_at, state_digest, Autopilot, FightResult, Stall};
 pub use chargen::{
@@ -59,6 +58,7 @@ pub use combat_actions::{CombatAction, CombatChoice};
 pub use cutscene::{Beat, CameraShot, Conversation, LengthFrom, Lookup, Player, Step, Timeline};
 pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use earlyforce::FORCE_PUSH;
+pub use flight::{Flight, InFlight, RELEASE_SECONDS, THROW_SPEED};
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use galaxy::{GalaxyOpen, PlanetLine};

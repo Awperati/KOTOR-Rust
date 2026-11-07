@@ -9,7 +9,11 @@ fn main() {
     let mdl = inst.read("S_Male02", ResType::MDL).unwrap();
     let mdx = inst.read("S_Male02", ResType::MDX).unwrap_or_default();
     let model = kotor_model::parse_model(&mdl, &mdx).unwrap();
-    let a = model.animations.iter().find(|a| a.name == "throwgren").unwrap();
+    let a = model
+        .animations
+        .iter()
+        .find(|a| a.name == "throwgren")
+        .unwrap();
     let hand = |t: f32| {
         let m = model.world_matrices(Some(&a.sample(&model, t)));
         m.iter()

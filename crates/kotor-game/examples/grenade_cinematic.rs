@@ -26,7 +26,9 @@ fn main() {
         }
         seen = ev.len();
         for (h, at) in g.world.effects_at.drain(..).collect::<Vec<_>>() {
-            let rec = h.checked_sub(1).and_then(|i| g.world.effects.get(i as usize));
+            let rec = h
+                .checked_sub(1)
+                .and_then(|i| g.world.effects.get(i as usize));
             println!("{:.1}s burst at {at:?}: {rec:?}", g.world.time);
         }
     }

@@ -191,10 +191,17 @@ fn a_thrown_grenade_flies_before_it_bursts_and_hurts_where_it_lands() {
         }
         if burst_at.is_none() && !w.effects_at.is_empty() {
             burst_at = Some(w.time - t0);
-            assert!(w.object(foe).unwrap().hp < 500, "the damage lands with the burst");
+            assert!(
+                w.object(foe).unwrap().hp < 500,
+                "the damage lands with the burst"
+            );
         }
         if burst_at.is_none() {
-            assert_eq!(w.object(foe).unwrap().hp, 500, "nothing hurt before it lands");
+            assert_eq!(
+                w.object(foe).unwrap().hp,
+                500,
+                "nothing hurt before it lands"
+            );
         }
     }
     let burst_at = burst_at.expect("it bursts");
@@ -203,13 +210,29 @@ fn a_thrown_grenade_flies_before_it_bursts_and_hurts_where_it_lands() {
         (burst_at - (RELEASE_SECONDS + 0.9)).abs() < 0.2,
         "burst at {burst_at}"
     );
-    assert!(path.len() >= 10, "seen in the air over several frames: {}", path.len());
-    assert!(path.first().unwrap().0 >= RELEASE_SECONDS - 0.1, "not before it leaves the hand");
+    assert!(
+        path.len() >= 10,
+        "seen in the air over several frames: {}",
+        path.len()
+    );
+    assert!(
+        path.first().unwrap().0 >= RELEASE_SECONDS - 0.1,
+        "not before it leaves the hand"
+    );
     let x: Vec<f32> = path.iter().map(|p| p.1[0]).collect();
-    assert!(x.windows(2).all(|p| p[1] >= p[0]), "it travels towards the target: {x:?}");
-    assert!(x.last().unwrap() - x.first().unwrap() > 6.0, "it covers the distance: {x:?}");
+    assert!(
+        x.windows(2).all(|p| p[1] >= p[0]),
+        "it travels towards the target: {x:?}"
+    );
+    assert!(
+        x.last().unwrap() - x.first().unwrap() > 6.0,
+        "it covers the distance: {x:?}"
+    );
     let top = path.iter().map(|p| p.1[2]).fold(f32::MIN, f32::max);
-    assert!(top > path.first().unwrap().1[2] + 0.5, "it rises on an arc: {top}");
+    assert!(
+        top > path.first().unwrap().1[2] + 0.5,
+        "it rises on an arc: {top}"
+    );
     // It lands on the target.
     let end = path.last().unwrap().1;
     let foe_at = w.object(foe).unwrap().position;
