@@ -1,10 +1,11 @@
 ﻿# The swoop race in the running window: the lights, Space shifting, the keys steering, the finish and what comes after.
 # Like drive_window.ps1 it posts messages to the viewer's own handle only, and holds only at 1x: see docs/FASTTEST.md.
-param([string]$Shots)
+param([string]$Size = "1280x720", [string]$Shots)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 . "$PSScriptRoot\drive_common.ps1"
+$script:ClickScale = [double]($Size -split "x")[1] / 720.0
 $script:stateFile = "$scratch\kotor_race.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--state-log","--skip-menu","--module","tar_m03mg","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_race.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--state-log","--skip-menu","--module","tar_m03mg","--frames","400000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_race.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"

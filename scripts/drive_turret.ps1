@@ -1,12 +1,13 @@
 # The Ebon Hawk's turret in the running window: the mouse and keys turn the view, the guns fire, fighters come apart, and the
 # story goes on.
 # Like drive_window.ps1 it posts messages to the viewer's own handle only, and holds only at 1x: see docs/FASTTEST.md.
-param([string]$Shots)
+param([string]$Size = "1280x720", [string]$Shots)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window. It writes no saves.
 # --auto-aim points the guns for it: a driver cannot chase a fighter by posted mouse moves.
 . "$PSScriptRoot\drive_common.ps1"
+$script:ClickScale = [double]($Size -split "x")[1] / 720.0
 $script:stateFile = "$scratch\kotor_turret_hands.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","M12ab","--skip-menu","--state-log","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_turret_hands.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","M12ab","--skip-menu","--state-log","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_turret_hands.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 WaitLog
@@ -26,7 +27,7 @@ FocusReport
 Stop-Process -Id $v.Id -Force
 
 $script:stateFile = "$scratch\kotor_turret.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","M12ab","--skip-menu","--state-log","--auto-aim","--global","K_KOTOR_MASTER=10,K_TURRET_SKYBOX=5","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_turret.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","M12ab","--skip-menu","--state-log","--auto-aim","--global","K_KOTOR_MASTER=10,K_TURRET_SKYBOX=5","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_turret.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"

@@ -74,11 +74,14 @@ function Key([int]$vk, [int]$scan, [int]$ms = 10) {
   $up = [long]0xC0000001 -bor ([long]$scan -shl 16)
   [void][Drv]::PostMessage($h, 0x101, [IntPtr]$vk, [IntPtr][long]$up)
 }
-function Hover([int]$x, [int]$y) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]0, [IntPtr](($y -shl 16) -bor $x)) }
+# A driver with a -Size says how much bigger than 1280x720 the window is: positions below are given at 1280x720.
+if (-not $script:ClickScale) { $script:ClickScale = 1.0 }
+function Scaled([int]$v) { [int]($v * $script:ClickScale) }
+function Hover([int]$x, [int]$y) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]0, [IntPtr](((Scaled $y) -shl 16) -bor (Scaled $x))) }
 function Click([int]$x, [int]$y) {
   WatchFocus
   Hover $x $y
-  $l = [IntPtr](($y -shl 16) -bor $x)
+  $l = [IntPtr](((Scaled $y) -shl 16) -bor (Scaled $x))
   [void][Drv]::PostMessage($h, 0x201, [IntPtr]1, $l)
   [void][Drv]::PostMessage($h, 0x202, [IntPtr]0, $l)
 }
