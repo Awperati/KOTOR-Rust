@@ -4,6 +4,7 @@
 #   -Only NAME   only this crate's tests, for example kotor-game, or gpu for everything in gpu\ (implies -Fast)
 #   -Jobs N      test binaries at once (default: half the logical processors, at least 2)
 #   -BinaryLimit S  seconds a test binary may run (default 600). Past that it is killed, named, and counts as failed.
+#                   autopilot gets 1500 s: 72 s alone, and 450 to over 600 s among the others on a loaded machine.
 # A binary that uses the GPU is marked [GPU] in what it prints, so that a hang can be placed.
 # It prints a last line "gate: P passed, F failed" and exits 0 only when F is 0 and nothing else failed.
 param([switch]$Fast, [string]$Only = '', [int]$Jobs = 0, [int]$BinaryLimit = 600)
@@ -15,6 +16,9 @@ $root = (Get-Location).Path
 $gpu = Test-Path gpu\Cargo.lock
 
 function Fail($why) { "gate: $why"; exit 1 }
+
+# Seconds this test binary may run.
+function Limit-Of($bin) { if ($bin.name -eq 'autopilot') { [Math]::Max($BinaryLimit, 1500) } else { $BinaryLimit } }
 
 # Build the tests of a cargo workspace, and return each test binary with the folder cargo would run it in.
 function Build-Tests([string[]]$CargoArgs) {
@@ -69,7 +73,7 @@ function Run-Tests($bins) {
                 $t.code = $t.proc.ExitCode
                 $t.seconds = $t.watch.Elapsed.TotalSeconds
                 $results += $t
-            } elseif ($t.watch.Elapsed.TotalSeconds -gt $BinaryLimit) {
+            } elseif ($t.watch.Elapsed.TotalSeconds -gt (Limit-Of $t.bin)) {
                 # A hang must not stop the gate for good, and must not pass.
                 Stop-Process -Id $t.proc.Id -Force -ErrorAction SilentlyContinue
                 $t.proc.WaitForExit()
@@ -91,7 +95,7 @@ function Run-Tests($bins) {
         }
         if ($t.timedOut) {
             $failed++
-            "--- $($t.bin.name)$(Gpu-Mark $t.bin) TIMED OUT: killed after $BinaryLimit s"
+            "--- $($t.bin.name)$(Gpu-Mark $t.bin) TIMED OUT: killed after $(Limit-Of $t.bin) s"
         }
         if ($t.code -ne 0 -or -not $m.Success) {
             $broken++
