@@ -897,6 +897,53 @@ fn the_custom_content_rows_open_each_folder() {
 }
 
 #[test]
+fn the_words_for_a_row_name_the_key_it_has_now() {
+    let Some((mut s, dir)) = in_game("key_words") else {
+        return;
+    };
+    s.use_settings_file(dir.join("settings.txt"));
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    let rows = s.menu_rows("LB_OPTIONS");
+    let row = rows
+        .iter()
+        .position(|r| r.text.starts_with("Cel shading"))
+        .unwrap();
+    let words = |s: &mut Stage| -> String {
+        for _ in 0..rows.len() {
+            s.menu_wheel(-1.0);
+        }
+        let p = s.menu_pixel("LB_OPTIONS", Some(row), SIZE).unwrap();
+        s.hover(p, SIZE);
+        s.update(DT);
+        s.menu_button_words("LB_DESC").unwrap()
+    };
+    let before = words(&mut s);
+    assert!(before.contains("F7 turns it off"), "{before}");
+    assert!(!before.contains('{'), "{before}");
+
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "BTN_KEYMAP");
+    press(&mut s, "BTN_Filter_Game");
+    let list = s.menu_rows("LST_EventList");
+    let key_row = list
+        .iter()
+        .position(|r| r.text.starts_with("Cel Shading"))
+        .unwrap();
+    for _ in 0..key_row.saturating_sub(5) {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LST_EventList", key_row);
+    assert!(s.capture_key("KeyG"));
+    press(&mut s, "BTN_Accept");
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_FEEDBACK");
+    let after = words(&mut s);
+    assert!(after.contains("G turns it off"), "{after}");
+}
+
+#[test]
 fn a_rounded_button_has_no_square_plate_behind_it() {
     let Some((mut s, _)) = in_game("rounded") else {
         return;

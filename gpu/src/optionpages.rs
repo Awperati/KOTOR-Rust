@@ -58,7 +58,7 @@ const STYLE_ROWS: [(&str, &str, &str); 19] = [
     (
         "Nameplates: On",
         "Nameplates: Off",
-        "A name and a health bar over every enemy in sight. Click one to attack it. F6 turns all of this off and on.",
+        "A name and a health bar over every enemy in sight. Click one to attack it. {Nameplates} turns all of this off and on.",
     ),
     (
         "Neutral creatures' plates: Always",
@@ -122,7 +122,7 @@ const VALUE_ROWS: [(&str, &str); 4] = [
     ("Nameplate size", "How large plates are, in per cent."),
     (
         "Cel shading",
-        "Light in steps and a thin dark outline round characters and props, in the manner of a cartoon. Off, Subtle or Strong. F7 turns it off and on.",
+        "Light in steps and a thin dark outline round characters and props, in the manner of a cartoon. Off, Subtle or Strong. {CelShading} turns it off and on.",
     ),
     (
         "Pickup radius",
@@ -134,15 +134,15 @@ const CUSTOM_HEADING: &str = "Custom content";
 const CUSTOM_ROWS: [(&str, &str); 3] = [
     (
         "Textures: Open folder",
-        "Your own textures, by the game's texture name, as PNG or TGA. F8 reads them again. A click opens the folder, and makes it if it is not there.",
+        "Your own textures, by the game's texture name, as PNG or TGA. {ReloadCustom} reads them again. A click opens the folder, and makes it if it is not there.",
     ),
     (
         "Animations: Open folder",
-        "Your own clips, as .anim.txt files. F8 reads them again, and F9 plays those of your own. A click opens the folder, and makes it if it is not there.",
+        "Your own clips, as .anim.txt files. {ReloadCustom} reads them again, and {CustomClip} plays those of your own. A click opens the folder, and makes it if it is not there.",
     ),
     (
         "Meshes: Open folder",
-        "Your own garments, as .glb files with items.txt. F8 reads them again, and F10 goes through them. A click opens the folder, and makes it if it is not there.",
+        "Your own garments, as .glb files with items.txt. {ReloadCustom} reads them again, and {CustomGarment} goes through them. A click opens the folder, and makes it if it is not there.",
     ),
 ];
 /// What the Cel shading row says.
@@ -261,7 +261,10 @@ impl Stage {
                 };
                 v.text(list, text);
             }
-            (None, Some(why)) => v.text(list, why),
+            (None, Some(why)) => {
+                let words = self.with_keys(why);
+                v.text(list, words);
+            }
             (None, None) => v.hide(&[list]),
         }
     }

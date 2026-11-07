@@ -195,6 +195,15 @@ impl Stage {
         })
     }
 
+    /// Words with `{Action}` in them, with the key that action has now.
+    pub(super) fn with_keys(&self, words: &str) -> String {
+        let mut out = words.to_string();
+        for (action, key) in self.menus.keys.0.iter() {
+            out = out.replace(&format!("{{{action}}}"), pretty(key));
+        }
+        out
+    }
+
     /// Each action and its key.
     pub fn key_bindings(&self) -> Vec<(&'static str, String)> {
         let keys = &self.menus.keys.0;
