@@ -266,7 +266,7 @@ fn the_last_attack_result_and_power_are_remembered_per_creature() {
         .find(|l| l.attacker == pc)
         .unwrap();
     let want = match last.outcome {
-        Outcome::Hit => 1,
+        Outcome::Hit | Outcome::Glance => 1,
         Outcome::Critical => 2,
         Outcome::Miss => 4,
     };
