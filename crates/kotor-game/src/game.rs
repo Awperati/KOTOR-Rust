@@ -395,6 +395,11 @@ impl Game {
         }
     }
 
+    /// The attacker of a ground finisher plays the owner's `finisher` clip for `seconds`, over the swing it began.
+    pub fn play_finisher(&mut self, id: ObjId, seconds: f32) {
+        self.play_once(id, "finisher", seconds);
+    }
+
     /// Play a clip at once, over what is playing.
     fn play_once(&mut self, id: ObjId, name: &'static str, seconds: f32) {
         // The same clip again starts over.

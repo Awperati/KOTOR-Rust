@@ -541,6 +541,11 @@ impl World {
         1 + (flat.max(0) + level / 4) / 2
     }
 
+    /// Whether a creature is lying on the floor to be struck or shot at: knocked down by a push or a knockdown, down or dead.
+    pub fn is_prone(&self, id: ObjId) -> bool {
+        self.is_knocked_down(id) || self.objects.get(&id).is_some_and(|o| o.down || o.dead)
+    }
+
     /// `EffectAssuredHit` is on: a blow cannot miss.
     fn has_assured_hit(&self, id: ObjId) -> bool {
         self.objects.get(&id).is_some_and(|o| {
@@ -590,6 +595,13 @@ impl World {
         }
         if outcome == Outcome::Miss && self.no_misses {
             outcome = Outcome::Glance;
+        }
+        // Someone on the floor is finished off: a melee blow on a creature knocked down is a critical, whatever the roll.
+        if self.ground_finishers && !weapon.ranged && self.is_knocked_down(target) {
+            outcome = Outcome::Critical;
+            if self.finishers.len() < 64 {
+                self.finishers.push((attacker, target));
+            }
         }
         let mut dealt = 0;
         if outcome != Outcome::Miss {

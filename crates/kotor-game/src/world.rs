@@ -423,6 +423,10 @@ pub struct World {
     pub orientation_locked: std::collections::HashSet<ObjId>,
     /// "No misses": an attack that would miss lands as a glancing blow for the least damage it can do. Off: the original rules.
     pub no_misses: bool,
+    /// "Ground finishers": a melee blow on someone knocked down is an automatic critical, and the attacker is listed in `finishers`.
+    pub ground_finishers: bool,
+    /// Melee blows struck as ground finishers since the window last looked: attacker and victim. For the attacker's clip.
+    pub finishers: Vec<(ObjId, ObjId)>,
     pub story: crate::story_branches::StoryState,
     /// The player takes each level on a screen, instead of when the experience comes in.
     pub hold_levels: bool,
@@ -728,6 +732,8 @@ impl World {
             extended_story: false,
             orientation_locked: Default::default(),
             no_misses: false,
+            ground_finishers: false,
+            finishers: Vec::new(),
             story: Default::default(),
             hold_levels: false,
             party_screen: false,

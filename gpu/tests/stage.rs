@@ -1583,3 +1583,42 @@ fn a_glancing_blow_floats_as_glancing_with_its_damage() {
     assert!(shown.iter().any(|f| f == "Glancing 2"), "{shown:?}");
     assert!(shown.iter().any(|f| f == "7"), "{shown:?}");
 }
+
+/// Ground finishers: a blaster's carrier pitches down at a target on the floor, in its ready and firing clips, and a blade does not.
+#[test]
+fn a_blaster_aims_down_at_someone_on_the_floor() {
+    let Some(mut s) = stage() else {
+        return;
+    };
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    let pc = s.game.world.pc;
+    let at = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 3.0, at[1], at[2]]);
+    s.game.world.combat.target.insert(pc, foe);
+    let clip = |name| {
+        Some(kotor_game::Clip {
+            name,
+            time: 0.0,
+            fade: None,
+        })
+    };
+    assert_eq!(s.aim_down_of(pc, &clip("b5a1")), 0.0, "standing target");
+    s.game
+        .world
+        .effects
+        .push(kotor_game::EffectRec::new("EffectKnockdown"));
+    let handle = s.game.world.effects.len() as u32;
+    s.game
+        .world
+        .apply_effect(pc, foe, handle, kotor_game::DURATION_TEMPORARY, 10.0);
+    for name in ["b5a1", "g5r1", "g7r1", "b9a1", "b6a1"] {
+        assert!(s.aim_down_of(pc, &clip(name)) > 20.0, "{name}");
+    }
+    for name in ["g2r1", "c2a1", "pause1", "walk"] {
+        assert_eq!(s.aim_down_of(pc, &clip(name)), 0.0, "{name}");
+    }
+}

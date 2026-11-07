@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 21] = [
+const STYLE_ROWS: [(&str, &str, &str); 22] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -119,6 +119,11 @@ const STYLE_ROWS: [(&str, &str, &str); 21] = [
         "No misses: On",
         "No misses: Off",
         "An attack that would miss lands as a glancing blow for the least damage it can do: 1, and more with the attacker's level, abilities and feats. Hits and criticals stay as they are. Off: the game's own rules, with misses.",
+    ),
+    (
+        "Ground finishers: On",
+        "Ground finishers: Off",
+        "A melee blow on someone knocked down, by a Force push or the like, is an automatic critical, and the attacker swings the owner's finisher move once he has made one. Blasters aim down at them either way. Off: no automatic critical.",
     ),
 ];
 /// What the Pickup radius goes round, in metres.
@@ -240,6 +245,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         23 => &mut s.override_talk,
         24 => &mut s.extended_story,
         25 => &mut s.no_misses,
+        26 => &mut s.ground_finishers,
         _ => return None,
     })
 }

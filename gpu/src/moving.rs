@@ -803,6 +803,23 @@ const NECK_JOINTS: [&str; 3] = ["necklwr_g", "neck_g", "head_g"];
 /// The bones' own axes cannot be used: `rcollar_g` is flipped against `lcollar_g`, and an arm's frame leans with the arm, so
 /// a turn about a parent's own x goes a different way on each side, and twists the limb. So each line is said in the body's
 /// frame of the standing pose, and carried into the frame of the joint's parent there. A knee's line still turns with the thigh.
+/// The weapon arm pitched down at something on the floor: the spine leans forward and the arms drop, `degrees` in all.
+pub(super) fn aim_down(pose: &mut Pose, rig: &Rig, degrees: f32) {
+    let mut angles = vec![[0.0f32; 3]; JOINTS.len()];
+    for (name, share) in [
+        ("torso_g", 0.25),
+        ("torsoupr_g", 0.25),
+        ("rcollar_g", 0.2),
+        ("rbicep_g", 0.6),
+        ("lbicep_g", 0.6),
+    ] {
+        if let Some(i) = JOINTS.iter().position(|j| j.name == name) {
+            angles[i][0] = degrees * share;
+        }
+    }
+    turn_joints(pose, rig, &angles);
+}
+
 fn turn_joints(pose: &mut Pose, rig: &Rig, angles: &[[f32; 3]]) {
     let frames: HashMap<String, (Mat, Mat)> = rig
         .joint_frames(None)

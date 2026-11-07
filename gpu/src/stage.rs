@@ -43,6 +43,11 @@ type Mat = [[f32; 4]; 4];
 
 /// A sound from a place is heard whole this near the player, and not at all this far (metres). **Assumed:** a duel 43 m from
 /// where a new game starts played at full strength for good. The video has none of it there.
+/// How high above the floor a bolt hits someone lying on it, in metres. **Assumed:** a body on its back is about this thick.
+const PRONE_AIM: f32 = 0.3;
+/// How far the weapon arm and spine pitch down, in degrees, at someone on the floor. **Assumed**, from how far a person leans to look
+/// at their feet while holding a pistol out.
+const AIM_DOWN_DEGREES: f32 = 35.0;
 const HEARD_WHOLE: f32 = 8.0;
 const HEARD_AT_MOST: f32 = 32.0;
 /// Creatures farther than this from the player are not drawn (metres).
@@ -927,6 +932,13 @@ impl Stage {
             self.settings().extended_story && (self.pilot.is_none() || self.pilot_takes_branches);
         // The same for "No misses": a scripted player's fights keep the game's own rules, so its route does not move.
         self.game.world.no_misses = self.settings().no_misses && self.pilot.is_none();
+        self.game.world.ground_finishers = self.settings().ground_finishers && self.pilot.is_none();
+        // A finisher swings the owner's clip, once he has made one. Till then the game's stock swing has played.
+        for (attacker, _) in std::mem::take(&mut self.game.world.finishers) {
+            if let Some(c) = kotor_render::custom_clip::get("finisher") {
+                self.game.play_finisher(attacker, c.length.max(0.3));
+            }
+        }
         if let Some((who, clip)) = self.game.world.story.cue.take() {
             // The owner's own clip, once he has made it. Till then the game's stock attack has played.
             if kotor_render::custom_clip::get(clip).is_some() {
@@ -2521,8 +2533,14 @@ impl Stage {
                         from[1] + dy / len * 0.6,
                         from[2] + 1.15,
                     ];
+                    // Someone on the floor is shot at on the body there, from above.
+                    let up = if w.is_prone(v.target) {
+                        PRONE_AIM
+                    } else {
+                        1.15
+                    };
                     self.effects
-                        .fire(muzzle, [to[0], to[1], to[2] + 1.15], &v.bolt, v.color);
+                        .fire(muzzle, [to[0], to[1], to[2] + up], &v.bolt, v.color);
                     if let Some(s) = v.shot.clone() {
                         self.effect_from(&s, from);
                     }
@@ -3105,6 +3123,7 @@ impl Stage {
                         scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                         continue;
                     }
+                    let aim = self.aim_down_of(pose.id, &clip);
                     self.add_speaking_creature(
                         &mut scene,
                         &rig,
@@ -3114,6 +3133,7 @@ impl Stage {
                         pose.heading,
                         &underwear,
                         self.mouth_of(pose.id),
+                        aim,
                     );
                     scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                 }
@@ -3175,7 +3195,23 @@ impl Stage {
         heading: f32,
         underwear: &str,
     ) {
-        self.add_speaking_creature(scene, rig, hands, clip, at, heading, underwear, None);
+        self.add_speaking_creature(scene, rig, hands, clip, at, heading, underwear, None, 0.0);
+    }
+
+    /// How far down, in degrees, creature `id` pitches its weapon: with a ranged weapon in its ranged clips, at a target lying on the floor.
+    pub fn aim_down_of(&self, id: ObjId, clip: &Option<Clip>) -> f32 {
+        let w = &self.game.world;
+        let ranged = clip.as_ref().is_some_and(|c| {
+            let b = c.name.as_bytes();
+            // The blaster sets: pistol 5, two pistols 6, rifle 7, heavy 9, in their ready (`g`) and firing (`b`) clips.
+            b.len() >= 2 && matches!(b[0], b'b' | b'g') && matches!(b[1], b'5' | b'6' | b'7' | b'9')
+        });
+        let prone = w.combat.target.get(&id).is_some_and(|t| w.is_prone(*t));
+        if ranged && prone {
+            AIM_DOWN_DEGREES
+        } else {
+            0.0
+        }
     }
 
     /// Like `add_creature`, with a mouth that speaks: how far open, and the talking loop's clock (`Stage::mouth_of`).
@@ -3190,6 +3226,7 @@ impl Stage {
         heading: f32,
         underwear: &str,
         mouth: Option<(f32, f32)>,
+        aim_down: f32,
     ) {
         // Models face +y at rest; turn so +y points along the heading.
         let angle = heading - std::f32::consts::FRAC_PI_2;
@@ -3220,6 +3257,11 @@ impl Stage {
             Some((open, clock)) => rig.speaking_face(name, t, open, clock),
             None => rig.sample_face(name, t),
         });
+        if aim_down > 0.0 {
+            if let Some(p) = pose.as_mut() {
+                moving::aim_down(p, rig, aim_down);
+            }
+        }
         let Ok(mut body) = rig.posed_with_face(pose.as_ref(), face.as_ref()) else {
             return;
         };
