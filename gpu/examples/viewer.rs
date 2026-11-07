@@ -932,6 +932,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(folder) = opt("--pose-folder") {
         stage.use_pose_folder(folder.into());
     }
+    if let Some(level) = opt("--skin-shading") {
+        stage.set_skin_shading(match level.as_str() {
+            "off" => 0.0,
+            "strong" => 2.0,
+            _ => 1.0,
+        });
+    }
     stage.reload_custom_clips();
     stage.reload_custom_meshes();
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);

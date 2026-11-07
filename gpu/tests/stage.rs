@@ -1222,6 +1222,9 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         }
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
+        if let Ok(level) = std::env::var("FRAME_SHADING") {
+            s.set_skin_shading(level.parse().unwrap_or(1.0));
+        }
         if let Ok(clip) = std::env::var("FRAME_CLIP") {
             // The owner's clips, if KOTOR_RS_ANIMS names a folder of them.
             s.reload_custom_clips();
@@ -1237,7 +1240,9 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         } else {
             1.0
         };
-        let (dist, high, fov) = if std::env::var("FRAME_BELLY").is_ok() {
+        let (dist, high, fov) = if std::env::var("FRAME_BODY").is_ok() {
+            (2.0, 0.85, 40.0)
+        } else if std::env::var("FRAME_BELLY").is_ok() {
             (1.05, 1.08, 40.0)
         } else if std::env::var("FRAME_FACE").is_ok() {
             (0.75, 1.6, 40.0)

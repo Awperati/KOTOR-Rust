@@ -439,3 +439,56 @@ fn the_chest_has_a_shape_for_the_bra_to_sit_on() {
         );
     }
 }
+
+/// The skin is shaded by the body's own shape: off changes nothing; subtle darkens hollows and lightens what stands out, by a
+/// few levels, keeping the picture's mean; strong does the same by more. On every body and skin family.
+#[test]
+fn the_skin_is_shaded_by_the_shape_of_the_body_at_three_strengths() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let lum = |p: &[u8]| 0.3 * f32::from(p[0]) + 0.59 * f32::from(p[1]) + 0.11 * f32::from(p[2]);
+    for body in ["pfbas", "pfbam", "pfbal"] {
+        let plan = underwear::plan_for(&mut inst, body).unwrap();
+        for family in ["", "a", "b"] {
+            let name = format!("{body}{family}01");
+            let mut base = load_texture(&mut inst, &name).unwrap();
+            plan.apply(&mut base);
+            let (mut off, mut subtle, mut strong) = (base.clone(), base.clone(), base.clone());
+            plan.shade_skin(&mut off, 0.0);
+            plan.shade_skin(&mut subtle, 1.0);
+            plan.shade_skin(&mut strong, 2.0);
+            assert_eq!(off.rgba, base.rgba, "{name}: off is the picture as it was");
+            let spread = |a: &kotor_image::Image| -> (f32, f32, f32) {
+                let (mut darker, mut lighter, mut moved) = (0.0f32, 0.0f32, 0.0f32);
+                for (x, y) in a.rgba.chunks(4).zip(base.rgba.chunks(4)) {
+                    let d = lum(x) - lum(y);
+                    moved = moved.max(d.abs());
+                    darker = darker.min(d);
+                    lighter = lighter.max(d);
+                }
+                (darker, lighter, moved)
+            };
+            let (s_dark, s_light, s_most) = spread(&subtle);
+            let (g_dark, g_light, g_most) = spread(&strong);
+            assert!(
+                s_dark < -2.0 && s_light > 2.0,
+                "{name}: subtle {s_dark} {s_light}"
+            );
+            assert!(s_most < 28.0, "{name}: subtle moves a texel by {s_most}");
+            assert!(
+                g_most > s_most && g_dark < s_dark && g_light > s_light,
+                "{name}: strong {g_dark} {g_light} against {s_dark} {s_light}"
+            );
+            let mean = |a: &kotor_image::Image| {
+                a.rgba.chunks(4).map(lum).sum::<f32>() / (a.rgba.len() / 4) as f32
+            };
+            assert!(
+                (mean(&subtle) - mean(&base)).abs() < 3.0,
+                "{name}: the mean light moves"
+            );
+        }
+    }
+}

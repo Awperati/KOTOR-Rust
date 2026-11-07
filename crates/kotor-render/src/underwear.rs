@@ -448,6 +448,10 @@ pub struct Plan {
     fill_alpha: Vec<f32>,
     cloth_soft: Vec<f32>,
     paint_soft: Vec<f32>,
+    /// How the shape of the body shades each texel (1 where it neither stands out nor lies in a hollow), and how much of each
+    /// texel is skin the style left as it was, which is what the form shading goes on.
+    form: Vec<f32>,
+    skin_soft: Vec<f32>,
     /// How much of the paint is a strap at the back, which takes the band's colour, not the cups'.
     back_soft: Vec<f32>,
     /// The texels of the band that are cloth: the colour the back straps take.
@@ -993,7 +997,8 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
             marks[n] = PAINT;
         }
     }
-    let shaded = |mesh: &Mesh, relief: &mut [f32]| {
+    let mut form = vec![1.0f32; WORK * WORK];
+    let shaded = |mesh: &Mesh, relief: &mut [f32], form: &mut [f32]| {
         let shade = shape_shade(mesh);
         let by_place: std::collections::HashMap<[u32; 3], f32> = mesh
             .positions
@@ -1016,9 +1021,12 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
         );
         for n in 0..WORK * WORK {
             relief[n] *= each[n];
+            if each[n] != 1.0 {
+                form[n] = each[n];
+            }
         }
     };
-    shaded(mesh, &mut relief);
+    shaded(mesh, &mut relief, &mut form);
     let mut first = mesh.positions.len() as u32;
     let mut rim = Vec::new();
     rim_of(mesh, at, &torso_islands, &mut rim);
@@ -1048,7 +1056,7 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
                 };
             },
         );
-        shaded(arm, &mut relief);
+        shaded(arm, &mut relief, &mut form);
         rim_of(arm, |p| placed(&world, name, p), &arm_islands, &mut rim);
     }
     let links = seam_links(&rim);
@@ -1101,7 +1109,7 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
     }
     tone_from.sort_unstable();
     tone_from.dedup();
-    let mut plan = Plan::new(marks, islands, links, relief, neck, &tags);
+    let mut plan = Plan::new(marks, islands, links, relief, neck, &tags, form);
     for family in ["", "a", "b"] {
         let (Some(picture), Some(middle)) = (
             load_texture(inst, &format!("{body}{family}01")),
@@ -1132,6 +1140,7 @@ impl Plan {
         mut relief: Vec<f32>,
         neck: Vec<bool>,
         tags: &[u8],
+        form: Vec<f32>,
     ) -> Plan {
         let takes = |m: usize| marks[m] == CLEAR || marks[m] == SKIN;
         let mut across: Vec<Vec<u32>> = vec![Vec::new(); WORK * WORK];
@@ -1212,6 +1221,8 @@ impl Plan {
         let cloth_soft = soften(&cloth, &islands, CLOTH_SOFTEN, |_| true);
         let paint: Vec<f32> = marks.iter().map(|m| f32::from(*m == PAINT)).collect();
         let paint_soft = soften(&paint, &islands, CLOTH_SOFTEN, |_| true);
+        let kept_skin: Vec<f32> = marks.iter().map(|m| f32::from(*m == SKIN)).collect();
+        let skin_soft = soften(&kept_skin, &islands, CLOTH_SOFTEN, |_| true);
         let back: Vec<f32> = (0..WORK * WORK)
             .map(|n| f32::from(marks[n] == PAINT && tags[n] == 1))
             .collect();
@@ -1243,6 +1254,8 @@ impl Plan {
             fill_alpha,
             cloth_soft,
             paint_soft,
+            form,
+            skin_soft,
             back_soft,
             band_from,
             neck: neck_ring,
@@ -1595,6 +1608,37 @@ impl Plan {
             }
         }
         img.rgba = out;
+    }
+
+    /// Shade the skin the style left as it was, by the body's own shape, at `strength` (0 off, 1 subtle, 2 strong): darker in the hollows
+    /// (the armpit, the bend of an elbow, the groin line, under the bust), lighter on what stands out (shoulders, collarbones, knees,
+    /// shins), a little redder in a hollow and a little cooler on a ridge, as skin is. What the plan filled already carries it.
+    pub fn shade_skin(&self, img: &mut Image, strength: f32) {
+        if strength <= 0.0 {
+            return;
+        }
+        let (w, h) = (img.width as usize, img.height as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let u = (x as f32 + 0.5) * WORK as f32 / w as f32 - 0.5;
+                let v = (y as f32 + 0.5) * WORK as f32 / h as f32 - 0.5;
+                let skin = bilinear1(&self.skin_soft, u, v);
+                if skin <= 0.0 {
+                    continue;
+                }
+                // How far above or below 1 the shape puts this place, as a share of the most the shape ever does.
+                let form = bilinear1(&self.form, u, v) - 1.0;
+                let amount = (form / SHAPE_SHADE).clamp(-1.0, 1.0) * strength * skin;
+                let p = (y * w + x) * 4;
+                // Light and dark: up to 9 levels in a hundred at `strength` 1; colour: a hollow loses blue and green, a ridge red.
+                let (light, warm) = (1.0 + 0.09 * amount, 0.045 * amount);
+                let gains = [light + warm * 0.5, light - warm * 0.25, light - warm];
+                for k in 0..3 {
+                    img.rgba[p + k] =
+                        (img.rgba[p + k] as f32 * gains[k] + 0.5).clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
     }
 
     /// How well a texture this plan was applied to hides it.

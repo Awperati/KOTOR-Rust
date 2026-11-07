@@ -448,6 +448,8 @@ pub struct Stage {
     /// The underwear the character creation screen's figures wear: a variant's id, empty for the standard paint.
     preview_underwear: String,
     underwear_plans: HashMap<String, Option<kotor_render::underwear::Plan>>,
+    /// How strongly the body's skin is shaded by its own shape: 0 off, 1 subtle, 2 strong.
+    skin_shading: f32,
     neck_plans: HashMap<String, Option<kotor_render::underwear::NeckPlan>>,
     baseitems: Option<TwoDa>,
     /// The clips `animations.2da` marks `hideequ`: whoever plays one holds nothing in sight (`inject`, picking a lock).
@@ -651,6 +653,7 @@ impl Stage {
             conventional_underwear: true,
             preview_underwear: String::new(),
             underwear_plans: HashMap::new(),
+            skin_shading: 1.0,
             neck_plans: HashMap::new(),
             held: HashMap::new(),
             doors: HashMap::new(),
@@ -1961,6 +1964,7 @@ impl Stage {
         let conventional = self.conventional_underwear;
         let plans = &mut self.underwear_plans;
         let necks = &mut self.neck_plans;
+        let shading = self.skin_shading;
         let folder = self.texture_folder.clone();
         let problems = &mut self.texture_problems;
         let mut problem_found = false;
@@ -2004,6 +2008,7 @@ impl Stage {
                         .or_insert_with(|| kotor_render::underwear::plan_for(inst, &body));
                     if let Some(plan) = plan {
                         plan.apply(&mut img);
+                        plan.shade_skin(&mut img, shading);
                         // A player's chosen underwear: our bra and briefs in the blues of its folder's sheet.
                         if let Some(palette) = kotor_render::underwear::variant_palette(&variant) {
                             plan.tint(&mut img, &palette);
@@ -2267,6 +2272,15 @@ impl Stage {
             } else {
                 "Back to the game's own".to_string()
             });
+        }
+    }
+
+    /// How strongly the body's skin is shaded by its own shape: 0 off, 1 subtle (the default), 2 strong. The pictures are made again.
+    pub fn set_skin_shading(&mut self, level: f32) {
+        let level = level.clamp(0.0, 3.0);
+        if (level - self.skin_shading).abs() > f32::EPSILON {
+            self.skin_shading = level;
+            self.textures.clear();
         }
     }
 
