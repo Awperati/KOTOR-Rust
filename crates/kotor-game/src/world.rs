@@ -502,6 +502,8 @@ pub struct World {
     /// Attack mode: the player may attack anyone. `docs/law.tsv` says what that costs.
     pub attack_mode: bool,
     pub law: crate::law::LawState,
+    /// Who the player killed that had a conversation, not hostile: (tag, name). Each is a line in the journal, kept across areas.
+    pub lost_quests: Vec<(String, String)>,
     /// Voice lines to be played where the creature is: who and the name of the wave file. A screen takes them.
     pub sound_cues: Vec<(ObjId, String)>,
     pub(crate) ssf_cache: BTreeMap<i32, Vec<u32>>,
@@ -661,6 +663,7 @@ impl World {
             flights: Vec::new(),
             attack_mode: false,
             law: Default::default(),
+            lost_quests: Vec::new(),
             sound_cues: Vec::new(),
             ssf_cache: BTreeMap::new(),
             sound_turn: 0,

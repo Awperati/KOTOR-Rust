@@ -170,3 +170,32 @@ fn a_double_bladed_weapon_swings_twice_with_the_same_penalties() {
     wield(&mut w, pc, "g_w_lghtsbr01", None);
     assert_eq!(one_round(&mut w, pc, foe).len(), 1, "a single blade");
 }
+
+/// The feat's words: a "balanced" weapon in the off hand takes 2 more off the main hand's penalty (Two-Weapon Fighting: -4/-6
+/// instead of -6/-6). Balanced is taken to mean a small weapon, so a short lightsaber is and a long sword is not.
+#[test]
+fn a_small_weapon_in_the_off_hand_eases_the_main_hand_by_two() {
+    let Some((mut w, pc, foe)) = world() else {
+        return;
+    };
+    with_feat(&mut w, pc, Some(3));
+    wield(&mut w, pc, "g_w_lngswrd01", Some("g_w_lngswrd01"));
+    let heavy = one_round(&mut w, pc, foe);
+    wield(&mut w, pc, "g_w_lngswrd01", Some("g_w_shortsbr01"));
+    let light = one_round(&mut w, pc, foe);
+    assert_eq!(heavy.len(), 2);
+    assert_eq!(light.len(), 2);
+    assert_eq!(
+        light[0].bonus - heavy[0].bonus,
+        2,
+        "main hand: {heavy:?} against {light:?}"
+    );
+    // Two-Weapon Fighting does not touch the main hand (-6 either way), so without it the main hand is as eased by the same 2.
+    with_feat(&mut w, pc, None);
+    wield(&mut w, pc, "g_w_lngswrd01", Some("g_w_shortsbr01"));
+    let none = one_round(&mut w, pc, foe);
+    assert_eq!(
+        none[0].bonus, light[0].bonus,
+        "the feat eases the off hand only"
+    );
+}

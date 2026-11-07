@@ -165,3 +165,75 @@ fn a_plot_creature_cannot_be_hurt_and_so_is_no_crime() {
     assert!(!w.hurt(pc, civilian, 50));
     assert_eq!(w.wanted_level(), 0);
 }
+
+#[test]
+fn a_killed_giver_of_quests_is_a_lost_line_in_the_journal_and_the_party_disapproves() {
+    let Some((mut w, pc, _, civilian)) = upper_city() else {
+        return;
+    };
+    // The first creature of the area that has a conversation of its own and is not an enemy.
+    let giver = w
+        .objects
+        .values()
+        .find(|o| {
+            o.kind == kotor_game::Kind::Creature
+                && !o.conversation.is_empty()
+                && !o.plot
+                && o.id != civilian
+                && !o.template.contains("sithpat")
+        })
+        .map(|o| o.id);
+    let giver = giver.expect("a creature with a conversation in the Upper City");
+    let mate = w.spawn_creature("n_calonord", [0.0, 0.0, -300.0]);
+    w.object_mut(mate).unwrap().party_member = true;
+    w.party.push(mate);
+    near(&mut w, giver, pc, 2.0);
+    let name = w.object(giver).unwrap().name.clone();
+    let o = w.object_mut(giver).unwrap();
+    (o.hp, o.max_hp, o.faction) = (10, 10, 5);
+    w.hurt(pc, giver, 100);
+    assert!(w.object(giver).unwrap().dead);
+    assert!(
+        w.lost_quests.iter().any(|(_, n)| *n == name),
+        "{:?}",
+        w.lost_quests
+    );
+    let lost = w
+        .quests()
+        .into_iter()
+        .find(|q| q.name.starts_with("Lost: "));
+    assert!(lost.is_some_and(|q| q.completed && q.text.contains("will not be done")));
+    assert!(
+        w.events.iter().any(|e| e.contains("disapproves")),
+        "the party minds: {:?}",
+        w.events.iter().rev().take(5).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_civilian_who_sees_a_crime_calls_the_nearest_authority() {
+    let Some((mut w, pc, patrol, civilian)) = upper_city() else {
+        return;
+    };
+    send_others_away(&mut w, patrol);
+    // The victim and a bystander near the player; the patrol 25 m off, out of sight and out of hearing of a blow.
+    let bystander = w
+        .objects
+        .values()
+        .find(|o| o.template.contains("drunk") && o.id != civilian)
+        .map(|o| o.id);
+    let Some(bystander) = bystander else {
+        return;
+    };
+    near(&mut w, civilian, pc, 2.0);
+    near(&mut w, bystander, pc, 3.0);
+    near(&mut w, patrol, pc, 25.0);
+    let o = w.object_mut(civilian).unwrap();
+    (o.hp, o.max_hp) = (30, 30);
+    w.hurt(pc, civilian, 3);
+    assert!(
+        w.law.hostile.contains(&patrol),
+        "the bystander ran to the patrol: {:?}",
+        w.law.witnessed
+    );
+}

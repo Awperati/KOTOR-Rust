@@ -476,19 +476,37 @@ impl World {
     /// The attack penalty of the main hand and the off hand when two weapons (or both blades of one) are used: -6 and
     /// -10, and with the feat Two-Weapon Fighting -6 and -6, Advanced -4 and -4, Mastery -2 and -2. The words of the
     /// feats in the install say so, and the second game's Superior Two-Weapon Fighting takes more off Mastery's: see
-    /// `k2feats.rs`. **Not built:** the "balanced" off-hand weapon that takes 2 more off the main hand.
-    pub(crate) fn two_weapon_penalties(&self, id: ObjId) -> (i32, i32) {
-        let has = |f: i32| self.objects.get(&id).is_some_and(|o| o.feats.contains(&f));
-        if has(85) {
+    /// `k2feats.rs`. A "balanced" weapon in the off hand takes 2 off the main hand's penalty ("-4/-6" for Two-Weapon Fighting
+    /// instead of -6/-6, as that feat's words say): `off_hand_is_balanced`.
+    pub(crate) fn two_weapon_penalties(&mut self, id: ObjId) -> (i32, i32) {
+        let has = |w: &World, f: i32| w.objects.get(&id).is_some_and(|o| o.feats.contains(&f));
+        let (main, off) = if has(self, 85) {
             let (main, off) = self.superior_two_weapon_eases(id);
             (-2 + main, -2 + off)
-        } else if has(9) {
+        } else if has(self, 9) {
             (-4, -4)
-        } else if has(3) {
+        } else if has(self, 3) {
             (-6, -6)
         } else {
             (-6, -10)
-        }
+        };
+        let ease = if self.off_hand_is_balanced(id) { 2 } else { 0 };
+        ((main + ease).min(0), off)
+    }
+
+    /// Whether the weapon in the left hand is "balanced". **Assumed:** a small one, `weaponsize` 2 in `baseitems.2da` (the short
+    /// sword, the vibro-blade and the short lightsaber): the words of the feat name no weapon, and the table has no such column.
+    fn off_hand_is_balanced(&mut self, id: ObjId) -> bool {
+        let base = self
+            .objects
+            .get(&id)
+            .and_then(|o| o.equipped.get(&5))
+            .and_then(|i| self.objects.get(i))
+            .map(|i| i.base_item.max(0) as usize);
+        let (Some(base), Some(t)) = (base, self.table("baseitems")) else {
+            return false;
+        };
+        t.int(base, "weaponsize") == Some(2) && t.int(base, "rangedweapon").unwrap_or(0) == 0
     }
 
     /// The `DAMAGE_TYPE_*` bits of the weapon in the right hand: its `damageflags` column, bludgeoning for a fist.

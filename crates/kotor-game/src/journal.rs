@@ -95,6 +95,18 @@ impl World {
                 })
             })
             .collect();
+        // The ones the player has killed: a line each, newest, finished.
+        for (tag, name) in self.lost_quests.iter().rev() {
+            out.push(Quest {
+                tag: format!("law_{tag}"),
+                name: format!("Lost: {name}"),
+                text: format!("You killed {name}. Whatever {name} had for you will not be done."),
+                planet: None,
+                priority: 0,
+                completed: true,
+                received: 0,
+            });
+        }
         out.sort_by_key(|q| q.received);
         out
     }

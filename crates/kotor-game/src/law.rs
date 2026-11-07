@@ -365,6 +365,32 @@ impl World {
                 kind.name()
             ));
         }
+        // Someone who talked to the player and is not an enemy takes what they had for the player with them: a line in the journal.
+        // **Assumed:** a creature with a conversation of its own is a giver of quests or a seller, and a plot creature cannot die.
+        if kind != KillKind::Hostile {
+            let given = self
+                .objects
+                .get(&victim)
+                .filter(|o| !o.conversation.is_empty());
+            if let Some(o) = given {
+                let (tag, name) = (o.tag.clone(), o.name.clone());
+                if !self.lost_quests.iter().any(|(t, _)| *t == tag) {
+                    self.events.push(format!(
+                        "{name} is dead: what they had for you will not be done"
+                    ));
+                    self.lost_quests.push((tag, name));
+                }
+            }
+        }
+        // The party minds: those who are not of the dark side say so.
+        if cost >= 5 {
+            for id in self.party.clone() {
+                if id != killer && self.objects.get(&id).is_some_and(|o| !o.dead) {
+                    self.events
+                        .push(format!("{} disapproves", self.describe(id)));
+                }
+            }
+        }
         self.law.hostile.remove(&victim);
         self.law.witnessed.remove(&victim);
     }

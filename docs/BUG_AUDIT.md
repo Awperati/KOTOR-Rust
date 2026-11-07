@@ -89,6 +89,12 @@ creatures had heartbeats. Placeables have them now, and one opened before its fi
 opened, 439 with items, none with an unnamed item. The 47 left have no items and no script in their files, `footlker001` for one.
 They are empty in the game's data. I have not seen one in the original.
 
+**A4 piece 2 (attack mode and the law).** A killed giver (a creature with a conversation of its own, not hostile) is a finished
+"Lost: name" line in the journal (`World::lost_quests`, shown by `quests()`; not saved with the game yet), and living party members
+say they disapprove of a kill that costs 5 or more; a civilian who sees a crime calls the nearest authority within 40 m (test);
+shops shut and talk is refused from wanted level 2 (piece 1). `docs/LAW.md` explains `docs/law.tsv` for the owner. GAPS row 11: the
+"balanced" off-hand weapon is built (a small off-hand weapon takes 2 off the main-hand penalty; assumed `weaponsize` 2).
+
 **A4, attack mode and the law, piece 1 (owner's addendum, 7 Nov; Top Dog's defaults).** `crates/kotor-game/src/law.rs`, data in
 `docs/law.tsv` (the owner edits it): `World::attack_mode`/`toggle_attack_mode` (a click on a creature attacks it, not talks), the dark
 side cost of a kill by kind (civilian -10, armed or authority non-hostile -5, fleeing hostile -2, hostile 0; a plot creature cannot be
