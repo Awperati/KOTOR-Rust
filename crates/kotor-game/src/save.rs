@@ -370,6 +370,12 @@ impl World {
                         st(vec![("Id", Value::Int(*id as i32))])
                     }),
                 ),
+                (
+                    "LostQuests",
+                    list_of(self.lost_quests.iter(), |(tag, name)| {
+                        st(vec![("Tag", s(tag)), ("Name", s(name))])
+                    }),
+                ),
                 ("RestrictMode", Value::Byte(self.restrict_mode as u8)),
                 (
                     "Unselectable",
@@ -1044,6 +1050,13 @@ impl World {
             .unwrap_or_default()
             .iter()
             .filter_map(|x| Some(x.int("Id")? as ObjId))
+            .collect();
+        self.lost_quests = globals
+            .root
+            .list("LostQuests")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| Some((x.str("Tag")?.to_string(), x.str("Name")?.to_string())))
             .collect();
         self.restrict_mode = globals.root.int("RestrictMode").unwrap_or(0) != 0;
         self.unselectable = globals

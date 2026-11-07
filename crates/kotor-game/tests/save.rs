@@ -47,6 +47,29 @@ fn an_item_the_talk_table_names_with_a_tag_goes_by_its_kind_through_a_save_too()
 }
 
 #[test]
+fn a_save_keeps_the_quests_lost_to_a_killing() {
+    let Some(mut w) = world() else { return };
+    w.lost_quests
+        .push(("some_tag".to_string(), "Some Name".to_string()));
+    let bytes = w.save_bytes("lost").unwrap();
+    w.lost_quests.clear();
+    w.load_save(&bytes).unwrap();
+    assert_eq!(
+        w.lost_quests,
+        [("some_tag".to_string(), "Some Name".to_string())]
+    );
+    assert!(format!("{:?}", w.quests()).contains("Lost: Some Name"));
+    // A save from before it has none.
+    let mut older = fresh();
+    older
+        .lost_quests
+        .push(("other".to_string(), "Other".to_string()));
+    let clean = fresh().save_bytes("clean").unwrap();
+    older.load_save(&clean).unwrap();
+    assert!(older.lost_quests.is_empty());
+}
+
+#[test]
 fn a_save_keeps_attack_mode_and_what_the_law_knows() {
     let Some(mut w) = world() else { return };
     let someone = w.pc;
