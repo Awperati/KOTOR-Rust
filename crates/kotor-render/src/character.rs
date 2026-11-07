@@ -228,6 +228,34 @@ impl Rig {
         self.posed_with_face(pose.as_ref(), face.as_ref())
     }
 
+    /// The body's model, as the game has it.
+    pub fn body_model(&self) -> &Model {
+        &self.body
+    }
+
+    /// The head's model, if the creature has one.
+    pub fn head_model(&self) -> Option<&Model> {
+        self.head.as_ref()
+    }
+
+    /// The texture the body's meshes that name none are drawn with.
+    pub fn body_texture(&self) -> Option<&str> {
+        self.body_tex.as_deref()
+    }
+
+    /// Every clip of the body and its chain of supermodels, by name, each once.
+    pub fn clip_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for m in self.models() {
+            for a in &m.animations {
+                if !names.iter().any(|n| n.eq_ignore_ascii_case(&a.name)) {
+                    names.push(a.name.clone());
+                }
+            }
+        }
+        names
+    }
+
     /// A named animation sampled at `t`, from the nearest supermodel that has it.
     pub fn sample(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
         let name = self.clip_name(name)?;

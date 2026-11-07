@@ -3,6 +3,7 @@
 //! Set `KOTOR_DIR` to point at another install. The game folder is never written to.
 
 mod author;
+mod gltf;
 mod render;
 
 use kotor_archive::Install;
@@ -400,6 +401,36 @@ fn run(args: &[String]) -> Result<()> {
                 height
             );
             std::fs::write(out, kotor_image::to_png(&img))?;
+        }
+        "blender-export" => {
+            // blender-export <body model> <out dir> [--head H] [--texture BASE] [--appearance ROW] [--name N] [--clips a,b|all]
+            let out = std::path::PathBuf::from(need(args, 2)?);
+            let opt = |name: &str| -> Option<&str> {
+                let i = args.iter().position(|a| a == name)?;
+                args.get(i + 1).map(String::as_str)
+            };
+            let mut inst = open()?;
+            inst.load_texture_packs()?;
+            let rig = match opt("--appearance").and_then(|r| r.parse::<usize>().ok()) {
+                Some(row) => kotor_render::rig_for_appearance(&mut inst, row, 1)?,
+                None => kotor_render::Rig::load(
+                    &mut inst,
+                    need(args, 1)?,
+                    opt("--head"),
+                    opt("--texture").map(str::to_string),
+                )?,
+            };
+            let name = opt("--name").unwrap_or("character").to_string();
+            // --clips a,b,c names the clips; --clips all writes every one.
+            let clips: Option<Vec<String>> = opt("--clips").map(|c| {
+                if c == "all" {
+                    Vec::new()
+                } else {
+                    c.split(',').map(str::to_string).collect()
+                }
+            });
+            let line = gltf::export(&mut inst, &rig, &name, &out, clips.as_deref())?;
+            println!("{line}");
         }
         "character" => {
             // character <body> <out.png> [--head H] [--anim name] [--time s] [--size WxH]
