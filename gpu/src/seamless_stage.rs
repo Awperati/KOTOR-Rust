@@ -507,7 +507,7 @@ impl Stage {
             .seamless
             .attached
             .values()
-            .filter(|a| a.portal == portal)
+            .filter(|a| a.seen_through_doorway() == portal)
             .map(|a| (a.scenery.figures.clone(), a.rigid))
             .collect();
         let mut nth = 0;
@@ -594,11 +594,15 @@ impl Stage {
         let attached = &self.game.world.seamless.attached;
         let want: Vec<(String, Rigid)> = attached
             .values()
-            .filter(|a| !a.portal)
+            .filter(|a| !a.seen_through_doorway())
             .map(|a| (a.module.clone(), a.rigid))
             .collect();
-        // One doorway at a time is seen into; the first loaded is the one.
-        let door = attached.values().find(|a| a.portal).map(|a| {
+        // One doorway at a time is seen into: the nearest.
+        let here = self.pc_position();
+        let away = |a: &&Attached| (a.at[0] - here[0]).hypot(a.at[1] - here[1]);
+        let doors = attached.values().filter(|a| a.seen_through_doorway());
+        let nearest = doors.min_by(|a, b| away(a).total_cmp(&away(b)));
+        let door = nearest.map(|a| {
             (
                 a.module.clone(),
                 a.rigid,

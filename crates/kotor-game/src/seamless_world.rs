@@ -58,6 +58,15 @@ pub struct Attached {
     pub gap_after: f32,
 }
 
+impl Attached {
+    /// Whether its picture is drawn only through the doorway. A portal's is. So is that of a door with a pocket behind it on
+    /// either side: the other module stands where the pocket is, and drawn together the two floors lie in one plane and fight
+    /// for the pixels, and each one's walls stand in the other's rooms.
+    pub fn seen_through_doorway(&self) -> bool {
+        self.portal || !self.cut_ours.is_empty() || !self.cut_theirs.is_empty()
+    }
+}
+
 /// How the last crossing moved things, for whoever draws: take it once.
 #[derive(Clone, Debug)]
 pub struct Crossing {
