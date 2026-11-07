@@ -696,6 +696,8 @@ pub(super) struct Menus {
     option_reason: Option<&'static str>,
     /// V-Sync when its page opened, and what it should become.
     vsync_before: bool,
+    /// A folder a row has asked to be opened.
+    folder_to_open: Option<PathBuf>,
     wanted_vsync: Option<bool>,
     /// The icons flashing on the HUD and when they stop, and what they were last compared with.
     notices: Vec<(&'static str, f32)>,

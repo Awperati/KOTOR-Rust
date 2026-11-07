@@ -861,6 +861,42 @@ fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
 }
 
 #[test]
+fn the_custom_content_rows_open_each_folder() {
+    let Some((mut s, dir)) = in_game("custom_content") else {
+        return;
+    };
+    s.use_settings_file(dir.join("settings.txt"));
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    let rows = s.menu_rows("LB_OPTIONS");
+    let heading = rows
+        .iter()
+        .position(|r| r.text == "Custom content")
+        .expect("the heading");
+    assert!(rows[heading].dim);
+    // Six rows fit, and the wheel brings up the rest.
+    for _ in 0..rows.len() {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_OPTIONS", heading);
+    assert_eq!(s.take_folder_to_open(), None, "the heading does nothing");
+    for (n, (word, folder)) in [
+        ("Textures: Open folder", "textures"),
+        ("Animations: Open folder", "anims"),
+        ("Meshes: Open folder", "meshes"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(rows[heading + 1 + n].text, word);
+        click_row(&mut s, "LB_OPTIONS", heading + 1 + n);
+        let opened = s.take_folder_to_open().expect("a folder");
+        assert!(opened.ends_with(folder), "{}", opened.display());
+    }
+    assert_eq!(s.take_folder_to_open(), None, "once for each click");
+}
+
+#[test]
 fn a_rounded_button_has_no_square_plate_behind_it() {
     let Some((mut s, _)) = in_game("rounded") else {
         return;

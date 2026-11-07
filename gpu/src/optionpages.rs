@@ -129,6 +129,22 @@ const VALUE_ROWS: [(&str, &str); 4] = [
         "How far the Pickup button and its key reach, in metres.",
     ),
 ];
+/// The rows after those, under a heading: the folders of the player's own content, what each row says, and what it is for.
+const CUSTOM_HEADING: &str = "Custom content";
+const CUSTOM_ROWS: [(&str, &str); 3] = [
+    (
+        "Textures: Open folder",
+        "Your own textures, by the game's texture name, as PNG or TGA. F8 reads them again. A click opens the folder, and makes it if it is not there.",
+    ),
+    (
+        "Animations: Open folder",
+        "Your own clips, as .anim.txt files. F8 reads them again, and F9 plays those of your own. A click opens the folder, and makes it if it is not there.",
+    ),
+    (
+        "Meshes: Open folder",
+        "Your own garments, as .glb files with items.txt. F8 reads them again, and F10 goes through them. A click opens the folder, and makes it if it is not there.",
+    ),
+];
 /// What the Cel shading row says.
 pub(super) const CEL_NAMES: [&str; 3] = ["Off", "Subtle", "Strong"];
 /// A box on the Auto-Pause page, and its words.
@@ -358,6 +374,17 @@ impl Stage {
             selected: true,
             ..Row::default()
         });
+        rows.push(Row {
+            text: CUSTOM_HEADING.to_string(),
+            dim: true,
+            ..Row::default()
+        });
+        for (words, _) in CUSTOM_ROWS {
+            rows.push(Row {
+                text: words.to_string(),
+                ..Row::default()
+            });
+        }
         // More rows than fit: the wheel brings up the rest.
         v.lists
             .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
@@ -409,9 +436,12 @@ impl Stage {
         }
         if let (Screen::Feedback, Some(Hit::Row(_, row))) = (screen, &self.menus.hover) {
             let past = row.checked_sub(FEEDBACK.len());
-            let words = past.and_then(|n| STYLE_ROWS.get(n).map(|r| r.2)).or(past
-                .and_then(|n| n.checked_sub(STYLE_ROWS.len()))
-                .and_then(|n| VALUE_ROWS.get(n).map(|r| r.1)));
+            let past_style = past.and_then(|n| n.checked_sub(STYLE_ROWS.len()));
+            let past_values = past_style.and_then(|n| n.checked_sub(VALUE_ROWS.len() + 1));
+            let words = past
+                .and_then(|n| STYLE_ROWS.get(n).map(|r| r.2))
+                .or(past_style.and_then(|n| VALUE_ROWS.get(n).map(|r| r.1)))
+                .or(past_values.and_then(|n| CUSTOM_ROWS.get(n).map(|r| r.1)));
             if let Some(words) = words {
                 self.menus.option_words = None;
                 self.menus.option_reason = Some(words);
@@ -442,6 +472,11 @@ impl Stage {
         self.settings_changed();
     }
 
+    /// A folder a row has asked to be opened: the window does that, and makes it if it is not there.
+    pub fn take_folder_to_open(&mut self) -> Option<std::path::PathBuf> {
+        self.menus.folder_to_open.take()
+    }
+
     /// A click on a row of the Feedback list.
     pub(super) fn feedback_row(&mut self, row: usize) {
         if let Some(flag) = feedback_flag(&mut self.menus.settings, row) {
@@ -460,6 +495,9 @@ impl Stage {
                 s.cel_last = s.cel_shading.max(1);
             }
             Some(3) => s.pickup_radius = next_of(&PICKUP_RADII, s.pickup_radius),
+            Some(5) => self.menus.folder_to_open = crate::texture_override::folder(),
+            Some(6) => self.menus.folder_to_open = Stage::anim_folder(),
+            Some(7) => self.menus.folder_to_open = Stage::mesh_folder(),
             _ => {}
         }
         self.settings_changed();

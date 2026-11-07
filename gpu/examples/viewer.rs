@@ -429,6 +429,10 @@ impl App {
             self.pilot_seen = p.log.len();
         }
         self.sound.pump();
+        if let Some(dir) = self.stage.take_folder_to_open() {
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+        }
         if let Some(on) = self.stage.take_wanted_vsync() {
             st.presenter.set_vsync(&st.gpu, on);
         }
