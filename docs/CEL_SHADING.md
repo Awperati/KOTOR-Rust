@@ -4,8 +4,8 @@ Options, Feedback, last row: **Cel shading: Off / Subtle / Strong**. Default Sub
 
 ## What it does
 
-- **Light in steps.** In the fragment shader (`gpu/src/lib.rs`, `cel_steps`) the brightness of the light is cut into steps and the texture is left whole: textures and detail stay readable. A body lit by the one lamp runs from 0.55 to 1 in brightness, so its steps divide that; a level's lightmap runs from 0. Subtle is four steps with a soft edge and 70 per cent of the way to the step. Strong is three, a sharper edge, all the way.
-- **A thin dark outline** round characters, doors and props (the meshes drawn each frame, not the rooms): the mesh again, fatter along its normals by a width in pixels, with only its faces turned away drawn (`vs_outline`). Subtle is 1.4 pixels at 1080 lines, strong 2.2; the width goes with the picture's height, so it is as thin at 2160 lines, and a little thinner far off. Alpha-cut textures (hair, grilles) cut the outline too.
+- **Light in steps.** In the fragment shader (`gpu/src/lib.rs`, `cel_steps`) the brightness of the light is cut into steps and the texture is left whole: textures and detail stay readable. A body lit by the one lamp runs from 0.55 to 1 in brightness, so its steps divide that; a level's lightmap runs from 0. Subtle is four steps with a soft edge and 85 per cent of the way to the step. Strong is three, a sharper edge, all the way.
+- **A thin dark outline** round characters, doors and props (the meshes drawn each frame, not the rooms): the mesh again, fatter along its normals by a width in pixels, with only its faces turned away drawn (`vs_outline`). Subtle is 1.9 pixels at 1080 lines, strong 2.2; the width goes with the picture's height, so it is as thin at 2160 lines, and a little thinner far off. Alpha-cut textures (hair, grilles) cut the outline too.
 - **Left alone:** the HUD and text (drawn over the picture), particles, the sky.
 
 ## Cost

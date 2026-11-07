@@ -74,8 +74,8 @@ fn vs_main(v: VsIn) -> VsOut {
 fn cel_steps(x: f32, lo: f32) -> f32 {
     let strong = g.mode.y > 1.5;
     let n = select(4.0, 3.0, strong);
-    let soft = select(0.2, 0.08, strong);
-    let amount = select(0.7, 1.0, strong);
+    let soft = select(0.15, 0.08, strong);
+    let amount = select(0.85, 1.0, strong);
     let u = clamp((x - lo) / (1.0 - lo), 0.0, 1.0) * n;
     let f = min(floor(u), n - 1.0);
     let r = smoothstep(0.5 - soft, 0.5 + soft, u - f);
@@ -868,7 +868,7 @@ impl GpuRenderer {
                 if self.cel == 0 {
                     0.0
                 } else {
-                    (if self.cel == 1 { 1.4 } else { 2.2 })
+                    (if self.cel == 1 { 1.9 } else { 2.2 })
                         * (self.height as f32 / 1080.0).max(0.75)
                 },
             ],

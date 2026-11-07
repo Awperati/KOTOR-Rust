@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .cloned()
         .unwrap_or_else(|| "tar02_aprtdoor".into());
     let out = args.get(3).cloned().unwrap_or_else(|| "door.png".into());
-    let on = args.get(4).map_or(true, |a| a == "on");
+    let on = args.get(4).is_none_or(|a| a == "on");
     let back: f32 = args.get(5).and_then(|a| a.parse().ok()).unwrap_or(4.0);
     let frames: usize = args.get(6).and_then(|a| a.parse().ok()).unwrap_or(300);
     let mut s = Stage::open(&module, true)?;
