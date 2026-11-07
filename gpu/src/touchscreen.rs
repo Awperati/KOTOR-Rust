@@ -1,9 +1,10 @@
 //! Fingers and the mouse on the on-screen controls. The window hands over what each finger does; this says what it has hold
-//! of. A stick and buttons at once, each finger by its own id. A finger on nothing taps, or on the right half drags the camera.
+//! of. Two sticks and buttons at once, each finger by its own id. A finger on nothing taps, or on the right half drags the camera.
 //! On a screen, in a conversation, at the turret and in a race a finger does what the mouse or the keys do there.
 //!
 //! **Assumed:** a light push on the stick walks, under `WALK_BELOW`. A list scrolls one row for `SCROLL_SHARE` of the window.
 //! The Attack button goes for the target if it is an enemy, else the nearest enemy seen. Attack mode has its own button.
+//! The look stick at its middle speed and pushed all the way turns the camera `LOOK_TURN`, and tilts it `LOOK_TILT` of that.
 
 use super::{slot_is_pickup, Stage};
 use kotor_game::Kind;
@@ -17,6 +18,10 @@ const SCROLL_SHARE: f32 = 0.06;
 /// How far the camera turns for a drag is the mouse's at this window height, so that it does not fall off at bigger sizes.
 const LOOK_HEIGHT: f32 = 720.0;
 const STICK_DEAD: f32 = 0.15;
+/// Radians a second, with the speed's slider at its middle, about what the keys that turn the camera do.
+const LOOK_TURN: f32 = 2.0;
+const LOOK_TILT: f32 = 0.5;
+const LOOK_SLIDER_MIDDLE: f32 = 0.5;
 const WALK_BELOW: f32 = 0.55;
 /// The left and right parts of the window steer in a race. Between them is the gear.
 const RACE_SIDE_SHARE: f32 = 1.0 / 3.0;
@@ -24,6 +29,7 @@ const RACE_SIDE_SHARE: f32 = 1.0 / 3.0;
 #[derive(Clone, Copy, PartialEq)]
 enum Holds {
     Stick,
+    Look,
     Key(TouchKey),
     /// A tap if it does not move. `looks`: the camera follows it when it does.
     Free {
@@ -50,6 +56,7 @@ struct Finger {
 pub(super) struct Fingers {
     down: Vec<Finger>,
     stick: [f32; 2],
+    look: [f32; 2],
 }
 
 impl Stage {
@@ -64,8 +71,9 @@ impl Stage {
         self.menus
             .touch
             .down
-            .retain(|f| !matches!(f.holds, Holds::Stick | Holds::Key(_)));
+            .retain(|f| !matches!(f.holds, Holds::Stick | Holds::Look | Holds::Key(_)));
         self.menus.touch.stick = [0.0; 2];
+        self.menus.touch.look = [0.0; 2];
         self.settings_changed();
         let view = self.touch_view();
         self.ui.set_touch(view);
@@ -90,6 +98,7 @@ impl Stage {
         TouchView {
             on: self.menus.settings.touch_controls,
             stick: fingers.stick,
+            look: fingers.look,
             held: fingers
                 .down
                 .iter()
@@ -113,7 +122,32 @@ impl Stage {
 
     fn set_stick(&mut self, at: (f32, f32), size: (u32, u32)) {
         let (x, y) = self.layout_of(at, size);
-        self.menus.touch.stick = self.ui.touch_stick_value(x, y);
+        self.menus.touch.stick = self.ui.touch_stick_value(TouchPart::Stick, x, y);
+    }
+
+    fn set_look(&mut self, at: (f32, f32), size: (u32, u32)) {
+        let (x, y) = self.layout_of(at, size);
+        self.menus.touch.look = self.ui.touch_stick_value(TouchPart::Look, x, y);
+    }
+
+    /// Once a frame: the look stick turns the camera for as long as it is pushed, the faster the further. The Invert Camera box
+    /// goes for it as for the mouse. A pause does not stop it, as it does not stop the mouse.
+    pub(in crate::stage) fn touch_look_tick(&mut self, dt: f32) {
+        let fingers = &self.menus.touch;
+        if !fingers.down.iter().any(|f| f.holds == Holds::Look) {
+            return;
+        }
+        let [right, down] = fingers.look;
+        let push = right.hypot(down);
+        if push < STICK_DEAD || self.menu_open() || self.choice_view().is_some() {
+            return;
+        }
+        let s = self.settings();
+        let strength = (push - STICK_DEAD) / (1.0 - STICK_DEAD) / push;
+        let turn = LOOK_TURN * s.look_stick_speed / LOOK_SLIDER_MIDDLE * strength * dt;
+        let flip = if s.invert_y { -1.0 } else { 1.0 };
+        self.yaw -= right * turn;
+        self.pitch = (self.pitch + down * flip * turn * LOOK_TILT).clamp(-0.2, 1.2);
     }
 
     /// What is under a finger of the layer, and what its going down does.
@@ -122,6 +156,10 @@ impl Stage {
             TouchPart::Stick => {
                 self.set_stick(at, size);
                 Holds::Stick
+            }
+            TouchPart::Look => {
+                self.set_look(at, size);
+                Holds::Look
             }
             TouchPart::Key(key) => {
                 self.touch_key(key);
@@ -197,8 +235,8 @@ impl Stage {
             self.click(at, size);
             return Holds::Nothing;
         }
-        if self.ui.touch_stick_takes(x, y) {
-            return self.take_part(TouchPart::Stick, at, size);
+        if let Some(stick) = self.ui.touch_stick_takes(x, y) {
+            return self.take_part(stick, at, size);
         }
         let right_half = x * 2.0 >= self.ui_width as f32;
         Holds::Free {
@@ -233,6 +271,7 @@ impl Stage {
         let look = LOOK_HEIGHT / short;
         match finger.holds {
             Holds::Stick => self.set_stick(at, size),
+            Holds::Look => self.set_look(at, size),
             Holds::Free { looks, moved } => {
                 let gone = (at.0 - finger.start.0).hypot(at.1 - finger.start.1);
                 if moved || gone > short * TAP_SHARE {
@@ -288,6 +327,7 @@ impl Stage {
         };
         match self.menus.touch.down.remove(n).holds {
             Holds::Stick => self.menus.touch.stick = [0.0; 2],
+            Holds::Look => self.menus.touch.look = [0.0; 2],
             Holds::Turret => self.turret_fire(false),
             _ => {}
         }
@@ -364,14 +404,15 @@ impl Stage {
 
     /// A finger is turning the camera.
     pub fn touch_looking(&self) -> bool {
-        let looking = |f: &Finger| {
-            matches!(
-                f.holds,
-                Holds::Free {
-                    looks: true,
-                    moved: true
-                }
-            )
+        let [right, down] = self.menus.touch.look;
+        let pushed = right.hypot(down) >= STICK_DEAD;
+        let looking = |f: &Finger| match f.holds {
+            Holds::Look => pushed,
+            Holds::Free {
+                looks: true,
+                moved: true,
+            } => true,
+            _ => false,
         };
         self.menus.touch.down.iter().any(looking)
     }
@@ -403,7 +444,8 @@ impl Stage {
     pub(in crate::stage) fn touch_state(&mut self) -> String {
         let layout = (self.ui_width, 480);
         let mut places = Vec::new();
-        for (name, part) in std::iter::once(("stick", TouchPart::Stick)).chain(
+        let sticks = [("stick", TouchPart::Stick), ("look", TouchPart::Look)];
+        for (name, part) in sticks.into_iter().chain(
             [
                 "action", "attack", "jump", "roll", "pickup", "pause", "mode",
             ]
@@ -415,8 +457,9 @@ impl Stage {
             }
         }
         let [right, down] = self.menus.touch.stick;
+        let [look_right, look_down] = self.menus.touch.look;
         format!(
-            "touch={} stick={right:.2},{down:.2} fingers={} touchat={}",
+            "touch={} stick={right:.2},{down:.2} lookstick={look_right:.2},{look_down:.2} fingers={} touchat={}",
             self.touch_on(),
             self.fingers_down(),
             if places.is_empty() {

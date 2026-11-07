@@ -82,6 +82,8 @@ pub const TOUCH_KEYS: [TouchKey; 7] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TouchPart {
     Stick,
+    /// The other stick: it turns the camera.
+    Look,
     Key(TouchKey),
 }
 
@@ -94,6 +96,8 @@ pub struct TouchView {
     pub on: bool,
     /// Where the knob is, each way from -1 to 1: right and down.
     pub stick: [f32; 2],
+    /// And the look stick's.
+    pub look: [f32; 2],
     /// Being pressed now.
     pub held: Vec<TouchKey>,
     /// A thing that is on: the pause, Attack mode.
@@ -121,6 +125,7 @@ impl TouchView {
     fn differs(&self, other: &TouchView, part: TouchPart) -> bool {
         match part {
             TouchPart::Stick => self.stick != other.stick,
+            TouchPart::Look => self.look != other.look,
             TouchPart::Key(k) => {
                 self.held.contains(&k) != other.held.contains(&k)
                     || self.lit.contains(&k) != other.lit.contains(&k)
@@ -319,7 +324,8 @@ impl Ui<'_> {
     }
 
     /// Where each part of the layer is, in layout units. The stick stands over the portraits, against the left edge. The
-    /// four big buttons stand over the slots, against the right edge, with the three small ones to their left.
+    /// four big buttons stand over the slots, against the right edge, with the three small ones to their left and the look
+    /// stick left of those, as the right stick of a controller is further in than its buttons.
     pub(crate) fn touch_places(&self, panel: &Control) -> Vec<(TouchPart, [i32; 4])> {
         let side = self.touch_side();
         let gap = side * GAP_SIDES;
@@ -360,6 +366,8 @@ impl Ui<'_> {
             let at = (column, middle.1 + dy);
             out.push((TouchPart::Key(key), self.round_box(at, small)));
         }
+        let look = (column - small / 2.0 - gap - half, middle.1);
+        out.push((TouchPart::Look, self.round_box(look, half * 2.0)));
         out
     }
 
@@ -386,11 +394,11 @@ impl Ui<'_> {
             .map(|(part, _)| part)
     }
 
-    /// The stick's middle in pixels and how far a finger goes from it for the most, in pixels.
-    fn stick_middle(&mut self) -> Option<((f32, f32), f32)> {
+    /// A stick's middle in pixels and how far a finger goes from it for the most, in pixels.
+    fn stick_middle(&mut self, stick: TouchPart) -> Option<((f32, f32), f32)> {
         let gui = self.hud_layout(None)?;
         let places = self.touch_places(&gui.panel);
-        let (_, e) = places.into_iter().find(|p| p.0 == TouchPart::Stick)?;
+        let (_, e) = places.into_iter().find(|p| p.0 == stick)?;
         let middle = (
             (e[0] as f32 + e[2] as f32 / 2.0) * self.hud_across(),
             (e[1] as f32 + e[3] as f32 / 2.0) * self.scale,
@@ -398,22 +406,25 @@ impl Ui<'_> {
         Some((middle, self.touch_side() * (STICK_SIDES - KNOB_SIDES / 2.0)))
     }
 
-    /// Whether a finger at this point of the layout takes the stick, though it is a little off it.
-    pub fn touch_stick_takes(&mut self, x: f32, y: f32) -> bool {
+    /// The stick a finger at this point of the layout takes, though it is a little off it.
+    pub fn touch_stick_takes(&mut self, x: f32, y: f32) -> Option<TouchPart> {
+        if !self.touch.on {
+            return None;
+        }
         let across = self.hud_across();
         let down = self.scale;
-        let side = self.touch_side();
-        self.touch.on
-            && self.stick_middle().is_some_and(|(m, _)| {
-                (x * across - m.0).hypot(y * down - m.1) <= side * STICK_SIDES * STICK_GRABS
-            })
+        let reach = self.touch_side() * STICK_SIDES * STICK_GRABS;
+        [TouchPart::Stick, TouchPart::Look].into_iter().find(|s| {
+            self.stick_middle(*s)
+                .is_some_and(|(m, _)| (x * across - m.0).hypot(y * down - m.1) <= reach)
+        })
     }
 
     /// Where the knob goes for a finger at this point of the layout, each way from -1 to 1: right and down.
-    pub fn touch_stick_value(&mut self, x: f32, y: f32) -> [f32; 2] {
+    pub fn touch_stick_value(&mut self, stick: TouchPart, x: f32, y: f32) -> [f32; 2] {
         let across = self.hud_across();
         let down = self.scale;
-        let Some((m, most)) = self.stick_middle() else {
+        let Some((m, most)) = self.stick_middle(stick) else {
             return [0.0; 2];
         };
         let (dx, dy) = ((x * across - m.0) / most, (y * down - m.1) / most);
@@ -490,7 +501,8 @@ impl Ui<'_> {
         }
         for (part, e) in self.touch_places(panel) {
             match part {
-                TouchPart::Stick => self.draw_stick(cv, e),
+                TouchPart::Stick => self.draw_stick(cv, e, self.touch.stick),
+                TouchPart::Look => self.draw_stick(cv, e, self.touch.look),
                 TouchPart::Key(key) => self.draw_touch_key(cv, key, e),
             }
         }
@@ -503,15 +515,15 @@ impl Ui<'_> {
         }
     }
 
-    fn draw_stick(&mut self, cv: &mut Canvas, e: [i32; 4]) {
+    fn draw_stick(&mut self, cv: &mut Canvas, e: [i32; 4], knob_at: [f32; 2]) {
         self.draw_picture(cv, DISC_PICTURE, e);
         let (across, down) = (self.hud_across(), self.scale);
         let side = self.touch_side();
         let knob = side * KNOB_SIDES * 2.0;
         let most = side * STICK_SIDES - knob / 2.0;
         let middle = (
-            (e[0] as f32 + e[2] as f32 / 2.0) * across + self.touch.stick[0] * most,
-            (e[1] as f32 + e[3] as f32 / 2.0) * down + self.touch.stick[1] * most,
+            (e[0] as f32 + e[2] as f32 / 2.0) * across + knob_at[0] * most,
+            (e[1] as f32 + e[3] as f32 / 2.0) * down + knob_at[1] * most,
         );
         let at = self.round_box(middle, knob);
         self.draw_picture(cv, KNOB_PICTURE, at);

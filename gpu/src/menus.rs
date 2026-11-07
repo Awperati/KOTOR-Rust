@@ -336,6 +336,8 @@ pub struct Settings {
     pub pickup_radius: i32,
     /// The stick and round buttons on the HUD: the blue button turns them on and off.
     pub touch_controls: bool,
+    /// How fast the look stick turns the camera, 0 to 1; a half is about what the keys do.
+    pub look_stick_speed: f32,
     /// The install's `Override` folder is read first. Takes hold at the next start, as all of these do.
     pub override_folder: bool,
     /// And of it: compiled scripts, tables, and a talk table in place of the game's.
@@ -396,6 +398,7 @@ impl Default for Settings {
             cel_last: 1,
             pickup_radius: 3,
             touch_controls: false,
+            look_stick_speed: 0.5,
             override_folder: false,
             override_scripts: false,
             override_tables: false,
@@ -411,7 +414,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -458,6 +461,7 @@ impl Settings {
             self.cel_shading,
             self.pickup_radius,
             self.touch_controls,
+            self.look_stick_speed,
             self.override_folder,
             self.override_scripts,
             self.override_tables,
@@ -525,6 +529,7 @@ impl Settings {
                 }
                 "pickup_radius" => s.pickup_radius = v.parse().unwrap_or(s.pickup_radius),
                 "touch_controls" => s.touch_controls = v == "true",
+                "look_stick_speed" => s.look_stick_speed = level(v, s.look_stick_speed),
                 "override_folder" => s.override_folder = v == "true",
                 "override_scripts" => s.override_scripts = v == "true",
                 "override_tables" => s.override_tables = v == "true",
@@ -1589,6 +1594,7 @@ impl Stage {
             "SLI_FX" => s.effects = along,
             "SLI_GAMMA" => s.brightness = along,
             "SLI_MOUSESEN" => s.mouse_sensitivity = along,
+            keyscreen::LOOK_SLIDER => s.look_stick_speed = along,
             _ => return,
         }
         self.settings_changed();

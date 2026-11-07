@@ -271,5 +271,9 @@ The owner: "Can you add a top right blue button with a gamepad icon for on-scree
 
 The owner's, on a door's picture: under the name and in the middle of it, a quarter smaller, with arrows or not, on doors and containers. An enemy's slots stay as they were. The lock is the Security skill's picture without its frame, cut out at run time (`LOCK_PICTURE`). The lower arrow of every slot pointed up, as the file has the one picture for both: it is turned over now, under an enemy too and on the quick slots. Frames: `gpu/examples/lock_shots.rs`.
 
+## The look stick
+
+The owner: "add a joystick button for looking just like the moving one. Like a normal controller". The same size and look as the other stick, left of the round buttons. It turns the camera while pushed, at a speed from how far and the Look Stick Speed row on the Controls page, and Invert Camera flips it. A drag on the right half still works. **Assumed:** the speed at the slider's middle and all the way over, 2 radians a second.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

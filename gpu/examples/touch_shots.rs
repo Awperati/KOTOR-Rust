@@ -71,10 +71,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         s.finger_moved(2, (stick.0 + 30.0, stick.1 - 60.0), size);
         let jump = s.touch_pixel(TouchPart::Key(TouchKey::Jump), size).unwrap();
         s.finger_down(3, jump, size);
+        // And the other thumb on the look stick.
+        let look = s
+            .touch_pixel(TouchPart::Look, size)
+            .expect("the look stick");
+        s.finger_down(4, look, size);
+        s.finger_moved(4, (look.0 - 40.0, look.1 + 25.0), size);
         println!("steer {:?}, {} fingers", s.touch_steer(), s.fingers_down());
         shot(&mut s, "touch_pressed");
         s.finger_up(2, stick, size);
         s.finger_up(3, jump, size);
+        s.finger_up(4, look, size);
 
         let (layer, hud) = s.touch_boxes().expect("the layer");
         let overlaps = |a: [i32; 4], b: [i32; 4]| {

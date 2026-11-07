@@ -91,7 +91,8 @@ The blue button with a gamepad on it, in the top right corner under the menu key
 | What | Where | Does |
 |---|---|---|
 | Stick | left edge, over the portrait | Moves, Modern or Classic as set. A light push walks. |
-| Drag on the right half | anywhere free | Turns the camera. |
+| Look stick | right of the middle, left of the round buttons | Turns the camera while it is pushed, the faster the further. Its speed is on the Controls page, and Invert Camera goes for it too. |
+| Drag on the right half | anywhere free | Turns the camera as well. |
 | Tap | anywhere free | What a click does: walk there, use or talk to what is under it. |
 | Action | round buttons, over the slots | Says what it will do: talk, open, use. |
 | Attack | | Goes for the target if it is an enemy, else the nearest enemy seen. |

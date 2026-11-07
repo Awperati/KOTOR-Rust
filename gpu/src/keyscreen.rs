@@ -74,6 +74,14 @@ const CONTROLS_TITLE: &str = "Controls";
 const TOUCH_BOX: &str = "CB_TOUCH";
 const TOUCH_BOX_AT: [i32; 4] = [60, 232, 240, 40];
 const TOUCH_BOX_WORDS: &str = "On-screen Controls";
+/// The look stick's speed, under that: a copy of the mouse's slider and its name.
+pub(super) const LOOK_SLIDER: &str = "SLI_LOOKSEN";
+const LOOK_SLIDER_AT: [i32; 4] = [60, 297, 240, 24];
+const LOOK_LABEL: &str = "LBL_LOOKSEN";
+const LOOK_LABEL_AT: [i32; 4] = [60, 272, 240, 24];
+const LOOK_WORDS: &str = "Look Stick Speed";
+const LOOK_ABOUT: &str =
+    "How fast the on-screen look stick turns the camera. The Invert Camera box goes for it too.";
 const TOUCH_BOX_ABOUT: &str = "A stick, round buttons and bigger menu keys on the HUD, for a touch screen or the mouse. The blue button at the top right turns them on and off too.";
 const LIST: &str = "LST_EventList";
 /// Keys that always mean the same, whatever the page says.
@@ -338,7 +346,14 @@ impl Stage {
         v.copy_control("CB_REVBUTTONS", TOUCH_BOX, TOUCH_BOX_AT);
         v.value(TOUCH_BOX, s.touch_controls as i32, 1);
         v.text(TOUCH_BOX, TOUCH_BOX_WORDS.to_string());
+        v.copy_control("LBL_MOUSESEN", LOOK_LABEL, LOOK_LABEL_AT);
+        v.text(LOOK_LABEL, LOOK_WORDS.to_string());
+        v.copy_control("SLI_MOUSESEN", LOOK_SLIDER, LOOK_SLIDER_AT);
+        v.value(LOOK_SLIDER, (s.look_stick_speed * 100.0) as i32, 100);
         match &self.menus.hover {
+            Some(kotor_ui::Hit::Slider(t, _)) if t == LOOK_SLIDER => {
+                v.text("LB_DESC", LOOK_ABOUT.to_string());
+            }
             Some(kotor_ui::Hit::Button(t)) if t == "CB_REVBUTTONS" => {
                 let words = self.ui.strref(STR_REVERSE_WORDS);
                 v.text("LB_DESC", words);
@@ -362,6 +377,7 @@ impl Stage {
                 let d = super::Settings::default();
                 (s.mouse_sensitivity, s.reverse_buttons) = (d.mouse_sensitivity, d.reverse_buttons);
                 s.touch_controls = d.touch_controls;
+                s.look_stick_speed = d.look_stick_speed;
             }
             "CB_REVBUTTONS" => s.reverse_buttons = !s.reverse_buttons,
             TOUCH_BOX => s.touch_controls = !s.touch_controls,

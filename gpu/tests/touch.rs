@@ -176,7 +176,7 @@ fn the_layer_stays_off_the_hud_and_itself_and_is_big_at_every_size() {
         let width = s.ui_layout_width() as i32;
         let (across, down) = (size.0 as f32 / width as f32, size.1 as f32 / 480.0);
         let (layer, hud) = s.touch_boxes().unwrap();
-        assert_eq!(layer.len(), 8, "the stick and seven buttons");
+        assert_eq!(layer.len(), 9, "two sticks and seven buttons");
         for (n, a) in layer.iter().enumerate() {
             assert!(
                 a[0] >= 0 && a[1] >= 0 && a[0] + a[2] <= width && a[1] + a[3] <= 480,
@@ -288,6 +288,165 @@ fn a_thumb_on_the_stick_fingers_on_buttons_and_on_the_camera_all_work_at_once() 
     s.fingers_gone();
     assert_eq!(s.fingers_down(), 0);
     assert_eq!(s.touch_steer(), None);
+}
+
+/// Nobody starts a conversation: one swings the camera round to the speaker, whatever the stick says.
+fn quiet_room(s: &mut Stage) {
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    for o in w.objects.values_mut().filter(|o| o.id != pc) {
+        o.conversation.clear();
+        o.scripts.clear();
+    }
+    w.delayed.clear();
+}
+
+fn look_stick(s: &mut Stage) -> (f32, f32) {
+    s.touch_pixel(TouchPart::Look, SIZE)
+        .expect("the look stick")
+}
+
+/// How far the camera turns round and tilts in a second, with the look stick pushed this far from its middle.
+fn looked(s: &mut Stage, by: (f32, f32)) -> (f32, f32) {
+    let at = look_stick(s);
+    s.finger_down(5, at, SIZE);
+    s.finger_moved(5, (at.0 + by.0, at.1 + by.1), SIZE);
+    s.pitch = 0.5;
+    let (yaw, pitch) = (s.yaw, s.pitch);
+    run(s, 30);
+    assert!(!s.game.world.in_dialogue());
+    let turned = (s.yaw - yaw, s.pitch - pitch);
+    s.finger_up(5, at, SIZE);
+    turned
+}
+
+#[test]
+fn the_look_stick_turns_the_camera_while_it_is_pushed_the_faster_the_further() {
+    let Some(mut s) = on_floor("look") else {
+        return;
+    };
+    quiet_room(&mut s);
+    turn_on(&mut s, SIZE);
+    // All the way to the right: round to the right, as the mouse turns it.
+    let (full, tilt) = looked(&mut s, (200.0, 0.0));
+    assert!(full < -1.5 && full > -2.5, "{full}");
+    assert!(tilt.abs() < 0.01, "{tilt}");
+    assert!(!s.touch_looking());
+    // And the same the other way.
+    let (left, _) = looked(&mut s, (-200.0, 0.0));
+    assert!((left + full).abs() < 0.1, "{left} {full}");
+    // Half way is slower.
+    let (half, _) = looked(&mut s, (38.0, 0.0));
+    assert!(half < -0.3 && half > full * 0.7, "{half} {full}");
+    // Hardly at all is nothing.
+    let (none, _) = looked(&mut s, (4.0, 0.0));
+    assert_eq!(none, 0.0);
+    // Let go, it stops.
+    let yaw = s.yaw;
+    run(&mut s, 20);
+    assert_eq!(s.yaw, yaw);
+    // It holds still when the stick is held still: its speed is in how far, and the finger need not move.
+    let at = look_stick(&mut s);
+    s.finger_down(5, at, SIZE);
+    s.finger_moved(5, (at.0 + 200.0, at.1), SIZE);
+    run(&mut s, 5);
+    let first = s.yaw;
+    run(&mut s, 5);
+    assert!((first - s.yaw) > 0.1, "still turning");
+    assert!(s.touch_looking());
+    s.finger_up(5, (at.0 + 200.0, at.1), SIZE);
+    // Pushed down it looks down, and the Invert Camera box is for it too.
+    let (_, tilt) = looked(&mut s, (0.0, 200.0));
+    assert!(tilt > 0.5, "{tilt}");
+    let press = |s: &mut Stage, tag: &str| {
+        let p = s
+            .menu_pixel(tag, None, SIZE)
+            .unwrap_or_else(|| panic!("no {tag} on {}", s.menu_name()));
+        s.hover(p, SIZE);
+        s.click(p, SIZE);
+    };
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "CB_INVERTCAM");
+    assert!(s.settings().invert_y);
+    press(&mut s, "BTN_MOUSE");
+    // The speed's row, past the middle of its slider, and it remembers.
+    assert_eq!(
+        s.menu_button_words("LBL_LOOKSEN").as_deref(),
+        Some("Look Stick Speed")
+    );
+    let middle = s.menu_pixel("SLI_LOOKSEN", None, SIZE).unwrap();
+    let far = (middle.0 + 150.0, middle.1);
+    s.hover(far, SIZE);
+    s.click(far, SIZE);
+    let speed = s.settings().look_stick_speed;
+    assert!(speed > 0.6, "{speed}");
+    let dir = std::env::temp_dir().join(format!("kotor_touch_look_{}", std::process::id()));
+    let said = std::fs::read_to_string(dir.join("settings.txt")).unwrap();
+    assert!(said.contains("look_stick_speed="), "{said}");
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_BACK");
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    let (_, tilt) = looked(&mut s, (0.0, 200.0));
+    assert!(tilt < -0.5, "the other way: {tilt}");
+    let (faster, _) = looked(&mut s, (200.0, 0.0));
+    assert!(faster < full * 1.15, "{faster} {full}");
+}
+
+#[test]
+fn both_sticks_and_a_button_go_together_and_the_mouse_can_hold_either() {
+    let Some(mut s) = on_floor("both") else {
+        return;
+    };
+    quiet_room(&mut s);
+    let at = look_stick(&mut s);
+    assert!(!s.mouse_down_on_layer(at, SIZE), "the layer is off");
+    turn_on(&mut s, SIZE);
+
+    let (from, yaw) = (where_is(&s), s.yaw);
+    let thumb = stick(&mut s);
+    s.finger_down(1, thumb, SIZE);
+    s.finger_moved(1, (thumb.0, thumb.1 - 120.0), SIZE);
+    s.finger_down(2, at, SIZE);
+    s.finger_moved(2, (at.0 + 200.0, at.1), SIZE);
+    let jump = key(&mut s, TouchKey::Jump);
+    s.finger_down(3, jump, SIZE);
+    assert!(s.game.world.jump_request);
+    assert_eq!(s.fingers_down(), 3);
+    run(&mut s, 30);
+    let here = where_is(&s);
+    assert!((here[0] - from[0]).hypot(here[1] - from[1]) > 0.5, "it ran");
+    assert!(s.yaw < yaw - 1.0, "it looked round: {yaw} {}", s.yaw);
+    assert!(s.touch_steer().unwrap().0 > 0.9, "the one is not the other");
+    s.fingers_gone();
+    assert_eq!(s.touch_steer(), None);
+    let yaw = s.yaw;
+    run(&mut s, 10);
+    assert_eq!(s.yaw, yaw);
+
+    // The mouse holds it as a finger does, and then the other, and neither is steered by the other.
+    assert!(s.mouse_down_on_layer(at, SIZE));
+    s.mouse_moved_on_layer((at.0 - 200.0, at.1), SIZE);
+    assert_eq!(s.touch_steer(), None, "it does not move the player");
+    run(&mut s, 10);
+    assert!(s.yaw > yaw + 0.2, "{yaw} {}", s.yaw);
+    s.mouse_up_on_layer();
+    let yaw = s.yaw;
+    run(&mut s, 10);
+    assert_eq!(s.yaw, yaw);
+    assert!(s.mouse_down_on_layer(thumb, SIZE));
+    s.mouse_moved_on_layer((thumb.0, thumb.1 - 120.0), SIZE);
+    assert!(s.touch_steer().unwrap().0 > 0.9);
+    run(&mut s, 5);
+    assert_eq!(s.yaw, yaw, "and the other way about");
+    s.mouse_up_on_layer();
+
+    // A drag on the right half off the sticks still turns the camera.
+    s.finger_down(1, (900.0, 200.0), SIZE);
+    s.finger_moved(1, (1000.0, 200.0), SIZE);
+    assert!((s.yaw - yaw).abs() > 0.1);
+    s.finger_up(1, (1000.0, 200.0), SIZE);
 }
 
 #[test]
@@ -613,7 +772,10 @@ fn the_hud_drawn_in_part_for_a_moved_stick_is_the_hud_drawn_whole() {
     }
     let thumb = stick(&mut s);
     let attack = key(&mut s, TouchKey::Attack);
+    let look = look_stick(&mut s);
     s.finger_down(1, thumb, SIZE);
+    s.finger_down(3, look, SIZE);
+    s.finger_moved(3, (look.0 + 20.0, look.1 + 20.0), SIZE);
     s.update(0.0);
     for n in 1..4 {
         let version = s.overlay_version;

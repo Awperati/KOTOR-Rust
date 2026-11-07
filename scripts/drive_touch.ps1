@@ -45,6 +45,18 @@ function Finger([string]$what, [int]$id, [int]$x, [int]$y) {
 function Tap([int]$id, $at) { Finger "down" $id $at[0] $at[1]; Finger "up" $id $at[0] $at[1]; [void](State); State }
 function MouseDown([int]$x, [int]$y) { PostHover $x $y; [void][Drv]::PostMessage($h, 0x201, [IntPtr]1, [IntPtr](($y -shl 16) -bor $x)) }
 function MouseUp([int]$x, [int]$y) { [void][Drv]::PostMessage($h, 0x202, [IntPtr]0, [IntPtr](($y -shl 16) -bor $x)) }
+# Whether the state log says this, since the mark, in the next seconds. A look at the state now and then can miss what is over
+# in a moment when the machine is busy, and the log has every line.
+function LogMark { (Get-Item $script:stateFile).Length }
+function LogSays([long]$mark, [string]$words, [int]$seconds) {
+  $until = (Get-Date).AddSeconds($seconds)
+  do {
+    $all = Get-Content $script:stateFile -Raw
+    if ($all -and $all.Length -gt $mark -and $all.Substring($mark).Contains($words)) { return $true }
+    Start-Sleep -Milliseconds 50
+  } while ((Get-Date) -lt $until)
+  $false
+}
 # The mouse is not listened to just after a finger: Windows can follow one with a mouse message of its own.
 function AfterFingers { Start-Sleep -Milliseconds 900 }
 
@@ -67,6 +79,15 @@ Report "The mouse holds the stick" ((Moved $from $s) -ge 0.5) "moved $(Moved $fr
 MouseUp $thumb[0] ($thumb[1] - $push)
 $s = WaitFor "fingers" "0"
 Report "And lets it go" ($s.stick -eq "0.00,0.00" -and $s.fingers -eq "0") "stick=$($s.stick) fingers=$($s.fingers)"
+$look = PartAt $s "look"
+$yaw = [double]$s.yaw
+MouseDown $look[0] $look[1]
+PostHover ($look[0] + $push) $look[1]
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ([Math]::Abs([double]$s.yaw - $yaw) -lt 0.3 -and (Get-Date) -lt $until)
+Report "The mouse holds the look stick" ([Math]::Abs([double]$s.yaw - $yaw) -ge 0.3) "yaw $yaw to $($s.yaw), lookstick=$($s.lookstick)"
+MouseUp ($look[0] + $push) $look[1]
+$s = WaitFor "fingers" "0"
 
 # Fingers: the stick and a jump and the camera, all at once.
 $from = State
@@ -76,11 +97,11 @@ $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ((Moved $from $s) -lt 0.5 -and (Get-Date) -lt $until)
 Report "A finger runs on the stick" ((Moved $from $s) -ge 0.5 -and $s.fingers -eq "1") "moved $(Moved $from $s), stick=$($s.stick)"
 $jump = PartAt $s "jump"
+$mark = LogMark
 Finger "down" 2 $jump[0] $jump[1]
-$airborne = $false
-$until = (Get-Date).AddSeconds(3)
-do { $s = State; if ($s.air -ne "false" -and $s.air -ne "-") { $airborne = $true } } while (-not $airborne -and (Get-Date) -lt $until)
-Report "A second finger jumps with the first down" ($airborne -and $s.fingers -eq "2") "air=$($s.air) fingers=$($s.fingers) stick=$($s.stick)"
+$airborne = LogSays $mark " air=true " 5
+$s = State
+Report "A second finger jumps with the first down" ($airborne -and $s.fingers -eq "2") "airborne=$airborne fingers=$($s.fingers) stick=$($s.stick)"
 $yaw = [double]$s.yaw
 $x0 = [int]($wide * 0.6); $y0 = [int]($tall * 0.3); $x1 = $x0 + [int]($tall * 0.2)
 Finger "down" 3 $x0 $y0
@@ -94,6 +115,37 @@ Finger "up" 1 $thumb[0] ($thumb[1] - $push)
 $s = WaitFor "fingers" "0"
 $s = WaitFor "stick" "0.00,0.00"
 Report "All up" ($s.fingers -eq "0" -and $s.stick -eq "0.00,0.00") "fingers=$($s.fingers) stick=$($s.stick)"
+
+# Both sticks and a jump, at once. The look stick goes on turning with the finger still.
+$from = $s
+$yaw = [double]$s.yaw
+Finger "down" 1 $thumb[0] $thumb[1]
+Finger "move" 1 $thumb[0] ($thumb[1] - $push)
+Finger "down" 2 $look[0] $look[1]
+Finger "move" 2 ($look[0] - $push) $look[1]
+$until = (Get-Date).AddSeconds(5)
+do { $s = State } while ([Math]::Abs([double]$s.yaw - $yaw) -lt 0.3 -and (Get-Date) -lt $until)
+$first = [double]$s.yaw
+Report "A finger on the look stick" ([Math]::Abs($first - $yaw) -ge 0.3 -and $s.fingers -eq "2") "yaw $yaw to $first, lookstick=$($s.lookstick) fingers=$($s.fingers)"
+Start-Sleep -Milliseconds 300
+$s = State
+Report "It goes on turning" ([Math]::Abs([double]$s.yaw - $first) -gt 0.1) "yaw $first to $($s.yaw)"
+Report "With the other stick running" ((Moved $from $s) -ge 0.3 -and $s.stick -ne "0.00,0.00") "moved $(Moved $from $s), stick=$($s.stick)"
+$mark = LogMark
+Finger "down" 3 $jump[0] $jump[1]
+$airborne = LogSays $mark " air=true " 5
+$s = State
+Report "And a jump" ($airborne -and $s.fingers -eq "3") "airborne=$airborne fingers=$($s.fingers)"
+Finger "up" 3 $jump[0] $jump[1]
+Finger "up" 2 ($look[0] - $push) $look[1]
+Finger "up" 1 $thumb[0] ($thumb[1] - $push)
+$s = WaitFor "fingers" "0"
+$s = WaitFor "lookstick" "0.00,0.00"
+[void](State)
+$still = State
+Start-Sleep -Milliseconds 200
+$s = State
+Report "Let go, the camera stays" ($s.lookstick -eq "0.00,0.00" -and $s.yaw -eq $still.yaw) "yaw $($still.yaw) to $($s.yaw)"
 
 # Each button.
 Start-Sleep -Milliseconds 800
