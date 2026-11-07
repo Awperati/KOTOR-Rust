@@ -52,7 +52,37 @@ pub struct Rig {
 
 /// The `talk` clip's jaw opens and shuts 7 to 9 times a second, as fast as a line could be said; a voice has 4 to 5 syllables a
 /// second. The clip is played at this share of its own speed, so that the mouth follows the voice: 4 to 5.5 times a second.
-pub const MOUTH_RATE: f32 = 0.6;
+pub const MOUTH_RATE: f32 = 0.3;
+
+/// Steps of a voice's loudness in a second (see `mouth_at`).
+pub const VOICE_STEPS: f32 = 50.0;
+
+/// How far the mouth is open at `t` seconds into a line, from 0 to 1, and the clock of the `talk` loop, for a voice whose loudness
+/// is `energy` (`VOICE_STEPS` a second, 0 in a pause between words). The mouth opens and shuts with the voice's own syllables, and
+/// the loop's clock runs only while the voice does, so that the mouth does not keep moving through a pause, and moves through the
+/// shapes of the loop at a rate of its own (`MOUTH_RATE` of the clip's speed) and not at a fixed cycle. A line with no voice file
+/// is spoken at an even pace for `said` seconds.
+pub fn mouth_at(energy: &[f32], t: f32, said: f32) -> (f32, f32) {
+    let open = if energy.is_empty() {
+        0.85
+    } else {
+        let at = (t * VOICE_STEPS) as usize;
+        // Over a tenth of a second: the mouth opens for a syllable and shuts between them, and does not flutter at 50 Hz.
+        (at.saturating_sub(2)..=at + 2)
+            .map(|i| energy.get(i).copied().unwrap_or(0.0))
+            .sum::<f32>()
+            / 5.0
+    };
+    // The mouth shuts at the line's very start and end.
+    let edge = (t / 0.12).min((said - t) / 0.12).clamp(0.0, 1.0);
+    let clock = if energy.is_empty() {
+        t
+    } else {
+        let upto = ((t * VOICE_STEPS) as usize).min(energy.len());
+        energy[..upto].iter().filter(|e| **e > 0.0).count() as f32 / VOICE_STEPS
+    };
+    (open * edge, clock * MOUTH_RATE)
+}
 
 /// How much further than the `talk` clip the mouth goes at full voice: the clip's jaw turns about three degrees, which a head
 /// seen from across a room does not show.

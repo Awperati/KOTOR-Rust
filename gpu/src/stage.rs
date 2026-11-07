@@ -151,7 +151,7 @@ fn placement_flat(p: [f32; 3], angle: f32) -> Mat {
 }
 
 /// Steps of `Stage::voice_energy` in a second.
-const VOICE_RATE: f32 = 50.0;
+const VOICE_RATE: f32 = kotor_render::VOICE_STEPS;
 
 /// How loud a voice file is, 50 times a second, from 0 (a pause between words) to 1: the mean size of the samples over 20 ms
 /// against the 90th percentile of them. Empty when the file cannot be read.
@@ -1403,25 +1403,11 @@ impl Stage {
         if !says || self.beat_time >= said {
             return None;
         }
-        let open = if self.voice_energy.is_empty() {
-            0.85
-        } else {
-            let at = (self.beat_time * VOICE_RATE) as usize;
-            // A little ahead and behind, so that the mouth does not flutter at 50 Hz.
-            let around = |k: usize| {
-                (at.saturating_sub(k)..=at + k)
-                    .map(|i| self.voice_energy.get(i).copied().unwrap_or(0.0))
-                    .sum::<f32>()
-                    / (2 * k + 1) as f32
-            };
-            // Over a sixth of a second, which is a syllable: the mouth opens for a syllable and not for each wobble of the voice.
-            around(4)
-        };
-        // The mouth shuts at the line's very start and end.
-        let edge = (self.beat_time / 0.12)
-            .min((said - self.beat_time) / 0.12)
-            .clamp(0.0, 1.0);
-        Some((open * edge, self.beat_time * kotor_render::MOUTH_RATE))
+        Some(kotor_render::mouth_at(
+            &self.voice_energy,
+            self.beat_time,
+            said,
+        ))
     }
 
     /// Whether a fixed camera stands closer to whoever says the line than `TOO_CLOSE_METRES`. Carth's on the
