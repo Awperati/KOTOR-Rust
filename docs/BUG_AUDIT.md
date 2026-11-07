@@ -7,7 +7,7 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 `scripts/` or a frame.
 
 - **Drivers run:** window 37, chargen 23, fight 17, level 8, party 5, plates 7, look 21, move 35, keys 4, solo 6, store 6,
-  cinematic 2, seamless 18, bench 9, alignment 10 checks, none failed. Grenades failed 2 of 4: see the end.
+  cinematic 2, seamless 18, bench 9, alignment 10 checks, none failed. Grenades did not hold: see the end.
 - **Frames:** made by those drivers, `gpu/examples/audit_shots.rs`, `sweep_shots.rs`, `menu_shots.rs`, `combat_shots.rs` and
   `death_shots.rs`. They hold game pictures, so they are not in the repo: they are in the session notes folder, `bug-audit`.
 - **What a test cannot say:** nobody here hears the sound or plays by feel. Where that is all that is left, the row says so.
@@ -89,9 +89,10 @@ creatures had heartbeats. Placeables have them now, and one opened before its fi
 opened, 439 with items, none with an unnamed item. The 47 left have no items and no script in their files, `footlker001` for one.
 They are empty in the game's data. I have not seen one in the original.
 
-**Open: `scripts/drive_grenades.ps1` fails, twice in a row.** A soldier armed by `--grenadier` holds its 5 grenades for 90 s and
-the player keeps 12 hit points. `a_grenade_bursts_where_it_lands` and `gpu/tests/grenades.rs` pass. Not bisected. The arming picks
-the nearest enemy, who may not be in the fight. Owner: Combat.
+**Open: `scripts/drive_grenades.ps1` is not reliable.** At `c73d608` it failed twice in a row: a soldier armed by `--grenadier` held
+its 5 grenades for 90 s and the player kept 12 hit points. On the tip over `d3dc804` it throws, and only "It hurts" fails: the
+player was already at 1 hit point, so the check cannot pass. One run each way, so whether a commit changed it or the fight differs
+from run to run is not known. `a_grenade_bursts_where_it_lands` and `gpu/tests/grenades.rs` pass. Owner: Combat.
 
 **Seen once, not explained.** In one 2160p run a bright blue square covered the Inventory tab, while pictures were being upscaled.
 It did not come back in 5 more runs.
