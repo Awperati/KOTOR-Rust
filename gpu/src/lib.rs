@@ -159,6 +159,8 @@ const APERTURE_HEIGHT: f32 = 3.6;
 
 struct Portal {
     draws: Vec<Draw>,
+    /// What moves in it, drawn afresh each frame.
+    moving: Vec<Draw>,
     aperture: Aperture,
 }
 
@@ -597,8 +599,24 @@ impl GpuRenderer {
     ) {
         self.portal = other.map(|(scene, aperture)| Portal {
             draws: self.build_draws(scene, textures),
+            moving: Vec::new(),
             aperture,
         });
+    }
+
+    /// What moves in the area seen through the doorway, for the frames from now on: the creatures standing in it.
+    pub fn set_portal_moving(
+        &mut self,
+        scene: &Scene,
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+    ) {
+        if self.portal.is_none() {
+            return;
+        }
+        let draws = self.build_draws(scene, textures);
+        if let Some(p) = self.portal.as_mut() {
+            p.moving = draws;
+        }
     }
 
     /// The view of a named texture, decoding and uploading it the first time.
@@ -895,6 +913,7 @@ impl GpuRenderer {
                 parts.extend(
                     p.draws
                         .iter()
+                        .chain(&p.moving)
                         .filter(|d| d.sky.is_none())
                         .map(|d| (d, g_portal)),
                 );

@@ -480,3 +480,44 @@ fn a_path_across_a_portal_doorway_goes_straight_from_anywhere_along_it() {
         assert!(path.len() <= 3, "from lat {lat}: {path:?}");
     }
 }
+
+/// A link trigger in the open (Korriban's valley) is joined and walked through with no door and no transition request, and
+/// the valley stays joined behind.
+#[test]
+fn a_trigger_link_is_walked_through_without_a_loading_screen() {
+    let Some(mut w) = world("korr_m36aa") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "k36_trg_k34")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("a trigger joins");
+    let (rigid, out) = (att.rigid, att.out);
+    let trigger = w.link_door_at(site.at).unwrap();
+    w.seamless_attach(trigger, att);
+    let start = [
+        site.at[0] - out.cos() * 3.0,
+        site.at[1] - out.sin() * 3.0,
+        site.at[2],
+    ];
+    let path = walk_through(&mut w, start, out, rigid, 80);
+    assert!(
+        w.transition_request.is_none(),
+        "no loading screen asked for"
+    );
+    assert_eq!(w.module, "korr_m34aa", "through the trigger");
+    assert_eq!(
+        path.windows(2).filter(|p| dist(p[0], p[1]) > 0.5).count(),
+        0,
+        "nobody jumps"
+    );
+    assert!(
+        w.seamless.attached.values().any(|a| a.behind),
+        "the valley is joined behind"
+    );
+}

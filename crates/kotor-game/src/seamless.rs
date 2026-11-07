@@ -22,6 +22,8 @@ pub const JAMB: f32 = 1.5;
 /// When two modules overlap, each is walkable only this far (metres) from the door that joins them, and the other is
 /// drawn through the doorway alone. See `Attached::portal`.
 pub const PORTAL_REACH: f32 = 20.0;
+/// The most floor that may be missing across a doorway, in metres, before a link falls back.
+pub const MAX_GAP: f32 = 12.0;
 /// Tried in turn, widest first: a crowded street takes a portal only close to the door. The party keeps within a few
 /// metres of the leader, so the smallest still holds it.
 pub const PORTAL_REACHES: [f32; 3] = [PORTAL_REACH, 10.0, 6.0];
@@ -62,6 +64,8 @@ pub enum Fallback {
     NoWayBack,
     Disagree(f32, f32),
     Overlaps(String),
+    /// The two floors are this many metres apart across the doorway: too far to walk without seeing the join.
+    Gap(f32),
     Unloadable(String),
 }
 
@@ -77,6 +81,7 @@ impl std::fmt::Display for Fallback {
                 r.to_degrees()
             ),
             Fallback::Overlaps(w) => write!(f, "overlaps {w}"),
+            Fallback::Gap(m) => write!(f, "the floors are {m:.0} m apart"),
             Fallback::Unloadable(e) => write!(f, "cannot load: {e}"),
         }
     }
@@ -101,6 +106,9 @@ pub struct Placed {
     pub back_stub: Vec<usize>,
     /// The two modules overlap, so each is walkable only near the door; the other is seen through the doorway.
     pub portal: bool,
+    /// How far short of the doorway our floor stops, and how far past it the neighbour's begins, in metres.
+    pub gap_before: f32,
+    pub gap_after: f32,
     /// With `portal`, the faces of ours and of the neighbour's that lie beyond `PORTAL_REACH` of the door.
     pub far_ours: Vec<usize>,
     pub far_theirs: Vec<usize>,
@@ -364,6 +372,55 @@ fn plan_with(
         let (along, across) = beyond(site.at, out, c);
         along.abs() > JAMB || across > site.half + 0.5
     };
+    // How far the floors stop short of the doorway line on each side: nothing for a door, which sits in the floor, and
+    // some metres where a trigger stands in the open between two areas.
+    let nearest = |tris: &[Tri], toward_us: bool| -> f32 {
+        let (sn, cs) = out.sin_cos();
+        let on_floor = |p: [f32; 2]| {
+            tris.iter().any(|t| {
+                let side = |a: [f32; 3], b: [f32; 3]| {
+                    (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+                };
+                let (d0, d1, d2) = (side(t[0], t[1]), side(t[1], t[2]), side(t[2], t[0]));
+                (d0 >= 0.0 && d1 >= 0.0 && d2 >= 0.0) || (d0 <= 0.0 && d1 <= 0.0 && d2 <= 0.0)
+            })
+        };
+        let lats = (0..=(2.0 * (site.half + 0.5) / 0.5) as i32)
+            .map(|i| -(site.half + 0.5) + i as f32 * 0.5)
+            .collect::<Vec<_>>();
+        let mut d = 0.0f32;
+        while d <= MAX_GAP {
+            let along = if toward_us { -d } else { d };
+            for lat in &lats {
+                let p = [
+                    site.at[0] + cs * along - sn * lat,
+                    site.at[1] + sn * along + cs * lat,
+                ];
+                if on_floor(p) {
+                    return d;
+                }
+            }
+            d += 0.5;
+        }
+        MAX_GAP + 1.0
+    };
+    let moved_all: Vec<Tri> = move_tris(&theirs_full, &forward);
+    let (gap_before, gap_after) = (nearest(&from.tris, true), nearest(&moved_all, false));
+    let (gap_before, gap_after) = (
+        if gap_before == f32::MAX {
+            0.0
+        } else {
+            gap_before
+        },
+        if gap_after == f32::MAX {
+            0.0
+        } else {
+            gap_after
+        },
+    );
+    if gap_before + gap_after > MAX_GAP {
+        return Err(Fallback::Gap(gap_before + gap_after));
+    }
     let place = |tris: &[Tri]| -> Vec<Tri> {
         move_tris(tris, &forward)
             .into_iter()
@@ -427,6 +484,8 @@ fn plan_with(
         portal,
         far_ours,
         far_theirs,
+        gap_before,
+        gap_after,
     })
 }
 
@@ -487,6 +546,8 @@ pub fn prepare(
             portal: p.portal,
             far_ours: p.far_ours,
             far_theirs: p.far_theirs,
+            gap_before: p.gap_before,
+            gap_after: p.gap_after,
         },
         sketch,
     ))

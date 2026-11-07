@@ -16,6 +16,8 @@ pub struct Figure {
     pub armour: Option<(i32, String)>,
     pub at: [f32; 3],
     pub heading: f32,
+    /// The name of the underwear it wears under its armour, as the object has it.
+    pub underwear: String,
 }
 
 /// What stands in a module besides its floor, in its own space, for drawing it before the party gets there: its
@@ -51,6 +53,9 @@ pub struct Attached {
     pub portal: bool,
     pub far_ours: Vec<usize>,
     pub far_theirs: Vec<usize>,
+    /// Floor missing before and after the doorway line, in metres: the strip across the doorway covers it.
+    pub gap_before: f32,
+    pub gap_after: f32,
 }
 
 /// How the last crossing moved things, for whoever draws: take it once.
@@ -117,11 +122,12 @@ fn doorway_strip(a: &Attached) -> Bwm {
         ]
     };
     let reach = a.half + 0.3;
+    let (back, front) = (a.gap_before + 0.6, a.gap_after + 0.6);
     let vertices = vec![
-        at(-0.6, -reach),
-        at(0.6, -reach),
-        at(0.6, reach),
-        at(-0.6, reach),
+        at(-back, -reach),
+        at(front, -reach),
+        at(front, reach),
+        at(-back, reach),
     ];
     let face = |v: [u32; 3]| kotor_walkmesh::Face {
         vertices: v,
@@ -188,6 +194,7 @@ impl World {
                         armour,
                         at: o.position,
                         heading: o.facing.to_radians(),
+                        underwear: o.underwear.clone(),
                     });
                 }
                 Kind::Door => s.doors.push((o.template.clone(), o.position)),
@@ -197,17 +204,30 @@ impl World {
         s
     }
 
-    /// The link door of this module standing at `at`.
+    /// The link door or link trigger of this module standing at `at`: a trigger stands at the middle of its polygon.
     pub fn link_door_at(&self, at: [f32; 3]) -> Option<ObjId> {
+        let place = |o: &crate::world::Object| -> [f32; 3] {
+            if o.kind == Kind::Trigger && o.polygon.len() >= 3 {
+                let n = o.polygon.len() as f32;
+                [
+                    o.polygon.iter().map(|p| p[0]).sum::<f32>() / n,
+                    o.polygon.iter().map(|p| p[1]).sum::<f32>() / n,
+                    o.position[2],
+                ]
+            } else {
+                o.position
+            }
+        };
         self.objects
             .values()
-            .filter(|o| o.kind == Kind::Door && !o.link_module.is_empty())
+            .filter(|o| matches!(o.kind, Kind::Door | Kind::Trigger) && !o.link_module.is_empty())
+            .map(|o| (o, place(o)))
             .min_by(|a, b| {
                 let d = |p: [f32; 3]| (p[0] - at[0]).hypot(p[1] - at[1]);
-                d(a.position).total_cmp(&d(b.position))
+                d(a.1).total_cmp(&d(b.1))
             })
-            .filter(|o| (o.position[0] - at[0]).hypot(o.position[1] - at[1]) < 1.0)
-            .map(|o| o.id)
+            .filter(|(_, p)| (p[0] - at[0]).hypot(p[1] - at[1]) < 1.0)
+            .map(|(o, _)| o.id)
     }
 
     /// Join a neighbour through `door`: its floor becomes walkable beyond the door, and a door that is opened leads there.
@@ -285,7 +305,8 @@ impl World {
             while k * 0.75 <= a.half {
                 let lat = k * 0.75;
                 let find = |sign: f32| {
-                    (1..=30).map(|i| sign * i as f32 * 0.1).find(|&d| {
+                    let steps = ((a.gap_before.max(a.gap_after) + 3.0) / 0.1) as i32;
+                    (1..=steps).map(|i| sign * i as f32 * 0.1).find(|&d| {
                         let p = at(d, lat);
                         nav.locate_if(p[0], p[1], p[2] + 0.5, &|i| i < real)
                             .is_some()
@@ -380,6 +401,7 @@ impl World {
             let (half, at) = self
                 .objects
                 .get(&d2)
+                .filter(|o| o.kind == Kind::Door)
                 .map_or((a.half, there), |o| (o.door_half_width, o.position));
             self.seamless.attached.insert(
                 d2,
@@ -397,6 +419,8 @@ impl World {
                     portal: a.portal,
                     far_ours: a.far_theirs.clone(),
                     far_theirs: a.far_ours.clone(),
+                    gap_before: a.gap_after,
+                    gap_after: a.gap_before,
                 },
             );
         }
@@ -415,7 +439,11 @@ impl World {
         }
         let pos = self.pc_mover.pos;
         let through = self.seamless.attached.iter().find_map(|(id, a)| {
-            let open = self.objects.get(id).is_some_and(|d| d.open);
+            // A trigger has no door to open: walking through is the crossing.
+            let open = self
+                .objects
+                .get(id)
+                .is_some_and(|d| d.open || d.kind == Kind::Trigger);
             let (along, across) = beyond(a.at, a.out, pos);
             (open && along > THRESHOLD && across <= a.half + 0.5).then_some(*id)
         });
@@ -437,5 +465,71 @@ impl World {
         for id in gone {
             self.seamless_detach(id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{MovementMode, World};
+    use kotor_archive::Install;
+
+    /// A player in the air as the crossing comes, in Modern movement, comes down on the new floor and is not flung.
+    #[test]
+    fn a_fall_that_is_under_way_at_the_crossing_lands_on_the_new_floor() {
+        let Some(dir) = kotor_core::install_dir() else {
+            return;
+        };
+        let mut w = World::new(Install::open(&dir).unwrap()).unwrap();
+        w.load_module("tar_m02ac").unwrap();
+        let sketch = w.sketch();
+        let site = sketch
+            .sites
+            .iter()
+            .find(|s| s.tag == "Apartments")
+            .unwrap()
+            .clone();
+        let (att, _) = crate::seamless::prepare(&dir, &sketch, &site, &Default::default()).unwrap();
+        let door = w.link_door_at(site.at).unwrap();
+        let (rigid, out) = (att.rigid, att.out);
+        w.seamless_attach(door, att);
+        w.use_door(door);
+        for _ in 0..90 {
+            w.step(1.0 / 60.0);
+        }
+        w.movement = MovementMode::Modern;
+        let pc = w.pc;
+        w.teleport(
+            pc,
+            [
+                site.at[0] - out.cos() * 4.0,
+                site.at[1] - out.sin() * 4.0,
+                site.at[2],
+            ],
+        );
+        w.step(1.0 / 60.0);
+        let floor = rigid.inverse().apply(site.at)[2];
+        let (mut dropped, mut crossed) = (false, false);
+        for _ in 0..300 {
+            w.steer = Some(([out.cos(), out.sin()], true));
+            let p = w.pc_mover.pos;
+            let near = (p[0] - site.at[0]).hypot(p[1] - site.at[1]);
+            if !dropped && w.module == "tar_m02ac" && near < 1.6 {
+                // Lifted a metre and a half, so that it falls across the line.
+                w.pc_body.pos[2] += 1.5;
+                w.pc_body.grounded = false;
+                w.pc_mover.pos[2] += 1.5;
+                w.body_mark = w.pc_mover.pos;
+                dropped = true;
+            }
+            w.step(1.0 / 60.0);
+            crossed |= w.module == "tar_m02aa";
+        }
+        assert!(dropped && crossed);
+        assert!(w.pc_body.grounded, "landed");
+        assert!(
+            (w.pc_mover.pos[2] - floor).abs() < 0.5,
+            "on the floor of the new module: {} against {floor}",
+            w.pc_mover.pos[2]
+        );
     }
 }

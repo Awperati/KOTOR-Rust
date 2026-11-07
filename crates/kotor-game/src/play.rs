@@ -589,7 +589,11 @@ impl World {
                     if let Some(s) = script {
                         let _ = self.run_script(&s, t);
                     }
-                    if !link.0.is_empty() && w == self.pc {
+                    // A neighbour joined here is walked into, see `update_seamless`.
+                    if !link.0.is_empty()
+                        && w == self.pc
+                        && !self.seamless.attached.contains_key(&t)
+                    {
                         self.transition_request = Some(link);
                     }
                 } else if !now && was {

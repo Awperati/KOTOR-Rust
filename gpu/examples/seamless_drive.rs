@@ -41,6 +41,8 @@ fn shot(gpu: &mut GpuRenderer, s: &mut Stage, seen: &mut (u64, u64), path: &std:
         });
         seen.1 = s.portal_version();
     }
+    let moving = s.portal_figures();
+    gpu.set_portal_moving(&moving, &mut |n| s.texture(n));
     let scene = s.dynamic_scene();
     let cam = s.camera();
     gpu.set_particles(s.particles());
@@ -88,13 +90,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         step(&mut s);
     }
     // The door, and the way through it: from where the player stands, away from the walkmesh's pocket behind the door.
-    let door_id = {
-        let w = &s.game.world;
-        w.by_tag(&tag)
-            .into_iter()
-            .find(|i| w.object(*i).is_some_and(|o| !o.link_module.is_empty()))
-            .ok_or("no such link door")?
-    };
     let sketch = s.game.world.sketch();
     let site = sketch
         .sites
@@ -102,7 +97,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find(|x| x.tag == tag)
         .ok_or("no such site")?
         .clone();
-    let out_angle = site.out.ok_or("door has no clear way through")?;
+    let door_id = s
+        .game
+        .world
+        .link_door_at(site.at)
+        .ok_or("no such link door")?;
+    let is_trigger = site.kind == kotor_game::Kind::Trigger;
+    // A trigger has no door to say which way is through: the plan works it out from the neighbour's arrival point.
+    let out_angle = match site.out {
+        Some(o) => o,
+        None => {
+            let dir = kotor_core::install_dir().ok_or("no install")?;
+            kotor_game::seamless::prepare(&dir, &sketch, &site, &Default::default())
+                .map_err(|e| format!("{e}"))?
+                .0
+                .out
+        }
+    };
     let start = [
         site.at[0] - out_angle.cos() * 7.0,
         site.at[1] - out_angle.sin() * 7.0,
@@ -189,8 +200,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let before_use = s.game.world.module.clone();
-    s.game.world.use_door(door_id);
-    let opened = s.game.world.object(door_id).is_some_and(|o| o.open);
+    if !is_trigger {
+        s.game.world.use_door(door_id);
+    }
+    let opened = is_trigger || s.game.world.object(door_id).is_some_and(|o| o.open);
     r.check(
         "using the door opens it, and does not change module",
         opened && s.game.world.transition_request.is_none(),
@@ -300,6 +313,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut back = 0;
     let mut back_shot = false;
     while back < 900 && s.game.world.module == inside {
+        // Head for the doorway we came through, not along a line: the floor beyond a trigger can be a winding path.
+        if let Some(a) = s.game.world.seamless.attached.values().find(|a| a.behind) {
+            let p = s.game.world.pc_mover.pos;
+            s.yaw = (a.at[1] - p[1]).atan2(a.at[0] - p[0]);
+        }
         step(&mut s);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
@@ -316,19 +334,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             back_shot = true;
         }
     }
+    // Back through: stand still, so that the frames after it show the old area alone.
+    s.steer = (0.0, 0.0, false);
     for _ in 0..90 {
         step(&mut s);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
     }
-    s.steer = (0.0, 0.0, false);
     r.check(
         "and back out of the same door, with no load",
         s.game.world.module == module && teleports == 0 && max_step <= bound,
         format!(
-            "now in {}, largest step {max_step:.3} m, {teleports} jumps, {back} frames",
-            s.game.world.module
+            "now in {}, largest step {max_step:.3} m, {teleports} jumps, {back} frames, joined {:?}, player at {:?}",
+            s.game.world.module,
+            s.game.world
+                .seamless
+                .attached
+                .values()
+                .map(|a| (a.module.clone(), a.behind, a.at, a.out))
+                .collect::<Vec<_>>(),
+            s.game.world.pc_mover.pos
         ),
     );
     r.check(

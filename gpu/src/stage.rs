@@ -2129,6 +2129,7 @@ impl Stage {
                 _ => {}
             }
         }
+        self.neighbour_figures(&mut scene, false);
         scene
     }
 

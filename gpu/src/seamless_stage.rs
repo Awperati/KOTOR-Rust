@@ -157,7 +157,7 @@ impl Stage {
         let w = &mut self.game.world;
         let here = w.pc_mover.pos;
         let near = w.objects.values().any(|o| {
-            o.kind == Kind::Door
+            matches!(o.kind, Kind::Door | Kind::Trigger)
                 && !o.link_module.is_empty()
                 && (o.position[0] - here[0]).hypot(o.position[1] - here[1]) < PRELOAD_RANGE
         });
@@ -184,7 +184,6 @@ impl Stage {
         for site in sketch
             .sites
             .iter()
-            .filter(|s| s.kind == Kind::Door)
             .filter(|s| (s.at[0] - here[0]).hypot(s.at[1] - here[1]) < PRELOAD_RANGE)
         {
             let joined = w
@@ -249,9 +248,8 @@ impl Stage {
         let (area, doorway) = (still.area.clone(), still.doorway);
         let mut scene = Scene::default();
         if let Some(f) = figure {
-            if let Some(rig) = self.rig_for(f.appearance, &f.template, f.armour.clone()) {
-                self.add_creature(&mut scene, &rig, &[], &None, f.at, f.heading, "");
-            }
+            // Only the body is loaded now, one a frame; it is drawn each frame by `neighbour_figures`, idling.
+            let _ = self.rig_for(f.appearance, &f.template, f.armour.clone());
         }
         if let Some((template, pos)) = door {
             if (pos[0] - doorway[0]).hypot(pos[1] - doorway[1]) >= 1.5 {
@@ -266,6 +264,51 @@ impl Stage {
         if still.done() {
             self.seam.figure_version += 1;
         }
+    }
+
+    /// The creatures of the neighbours joined side by side, standing in the neighbour's space moved into ours, each at its
+    /// own point of the idle clip, for the frame. Those of a portal are drawn apart: see `portal_figures`.
+    pub(super) fn neighbour_figures(&mut self, scene: &mut Scene, portal: bool) {
+        let here = self.pc_position();
+        let attached: Vec<(Vec<Figure>, Rigid)> = self
+            .game
+            .world
+            .seamless
+            .attached
+            .values()
+            .filter(|a| a.portal == portal)
+            .map(|a| (a.scenery.figures.clone(), a.rigid))
+            .collect();
+        let mut nth = 0;
+        for (figures, rigid) in attached {
+            for f in figures {
+                let at = rigid.apply(f.at);
+                if (at[0] - here[0]).hypot(at[1] - here[1]) > super::DRAW_RANGE {
+                    continue;
+                }
+                let Some(rig) = self.rig_for(f.appearance, &f.template, f.armour.clone()) else {
+                    continue;
+                };
+                nth += 1;
+                let clip = self.idling(nth);
+                self.add_creature(
+                    scene,
+                    &rig,
+                    &[],
+                    &clip,
+                    at,
+                    f.heading + rigid.yaw,
+                    &f.underwear,
+                );
+            }
+        }
+    }
+
+    /// The creatures standing in the area seen through a doorway: drawn like the picture of that area, only through it.
+    pub fn portal_figures(&mut self) -> Scene {
+        let mut scene = Scene::default();
+        self.neighbour_figures(&mut scene, true);
+        scene
     }
 
     /// Make the picture show this module and whatever is joined to it.

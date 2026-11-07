@@ -426,6 +426,10 @@ impl App {
         if self.frames.is_multiple_of(self.render_every) {
             let (scene, cam, figure) = stage.frame_scene();
             st.gpu.set_figure_only(figure);
+            if !figure && stage.portal().is_some() {
+                let moving = stage.portal_figures();
+                st.gpu.set_portal_moving(&moving, &mut |n| stage.texture(n));
+            }
             // A turret's sky has its ships and planets far off in it, each too wide to be anything else's sky.
             st.gpu
                 .set_sky_at_infinity(stage.game.world.minigame.is_none());

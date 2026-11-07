@@ -33,8 +33,8 @@ Two areas often cannot stand side by side: the Cantina's floor would lie under t
 
 ## Assumptions and limits
 
-- **Triggers do not go seamless.** A trigger link has no door to open, so it loads the old way. The planner can place one, but nothing draws it.
-- **The neighbour's creatures and door models are shown before the crossing, standing still.** They are drawn once, one a frame so that no frame pays for all (`Stage::scenery_step`), at the spot and heading they have in the neighbour's own module, in the armour they wear, with the default idle pose. They do not move, talk or react until the crossing, when the real ones take over. The neighbour's own door back to us is left out, because ours stands there.
+- **Triggers go seamless too.** A link trigger (the open ground between two areas on Dantooine, Korriban, Tatooine, Manaan) has no door to open. It stands at the middle of its polygon. The neighbour is joined and stitched as for a door, the trigger does not fire its transition while the neighbour is joined, and the crossing is walking 0.4 m past that middle (`update_seamless`). Where floor is missing across it, a strip of floor fills the gap (`Attached::gap_before` and `gap_after`, measured by `plan_with`, at most 12 m, else `Fallback::Gap`).
+- **The neighbour's creatures and door models are shown before the crossing.** Their bodies are loaded one a frame so that no frame pays for all (`Stage::scenery_step`). A creature is drawn each frame at the spot and heading it has in the neighbour's own module, in the armour and underwear it wears, playing its idle clip at its own point of it (`Stage::neighbour_figures`; in a portal, drawn only through the doorway by `GpuRenderer::set_portal_moving`). Doors are drawn closed. They do not walk, talk or react until the crossing, when the real ones take over. The neighbour's own door back to us is left out, because ours stands there.
 - **Lights and fog** need nothing: this engine lights areas with baked lightmaps, which are part of the neighbour's picture, and has no area fog to carry.
 - **Minimap and map notes** switch at the crossing, not before.
 - **Uploading the stitched picture** costs a frame when a neighbour joins or leaves (worst update 30 to 100 ms measured, median 0.1 ms).
@@ -83,12 +83,32 @@ Run `cargo run --release -p kotor-game --example seamless_survey -- tar_m02aa ta
 
 **Reading the table.** The doors of Taris that most people think of, Upper City to Apartments, to the Sith base, to the shop `tar_m02ad` and to the Cantina, join. The Apartments, the Sith base and `tar_m02ad` stand beside the street. The Cantina and the two Upper City street links (north and south) overlap it, so they are portals. Of the Lower City's doors the street doors that lead to a shop whose floor reaches the street itself (three of them) and the elevators keep the loading screen; the survey names the place. The Endar Spire's one link is one-way.
 
+## The other planets
+
+Surveyed on 8 Nov 2026 with `seamless_survey` (every module of each planet except the minigames and the Ebon Hawk, whose door back to a planet is one-way). The survey lists every link; its output is not committed. **Side by side** is a join with no overlap, **portal** is one seen through the doorway only, **old way** is the loading screen.
+
+| Planet | Links | Side by side | Portal | Old way | Why the old way |
+|---|---|---|---|---|---|
+| Taris | 39 | 8 | 13 | 18 | see the Taris table: elevators, shop doors that overlap near the door, one-way links |
+| Dantooine | 23 | 0 | 6 | 17 | the trigger links of the five open areas overlap each other (9), arrival waypoints face the wrong way (6), no door back (1), no clear side (1) |
+| Tatooine | 22 | 6 | 8 | 8 | arrival waypoints disagree with the trigger (4), no link back (2), overlap (2) |
+| Kashyyyk | 11 | 6 | 1 | 4 | no link back (3), overlap (1) |
+| Manaan | 12 | 6 | 3 | 3 | no link back (2), overlap (1) |
+| Korriban | 17 | 16 | 0 | 1 | the Ebon Hawk link has no way back |
+| Endar Spire | 1 | 0 | 0 | 1 | `end_m01ab` has no door back |
+| Leviathan | 5 | 0 | 3 | 2 | the hangar names no arrival waypoint, one door has no clear side |
+| Star Forge | 9 | 0 | 4 | 5 | the lift doors: arrival points face opposite ways (4), no link back to the Ebon Hawk (1) |
+| Unknown World | 16 | 9 | 0 | 7 | the trigger links of the overworld overlap each other (6), arrival points disagree (1) |
+
+All of these join with no other change: the planners, the stage and the driver work from the module's own doors and triggers, and the setting is global. Driven in the stage, hidden, at 1280x720: Korriban `k36_trg_k34` and Dantooine `to14be` (triggers, both ways, no jump, no menu frame), the Cantina and the Apartments on Taris (doors). `korr_m34aa k34_trg_k36` and `manm26ab to27a` fail only the driver's 7 m run-up, whose start is off the floor; they are not a fault of the join. **Not walked by hand:** the rest.
+
 ## Tests and the driver
 
 - `kotor-walkmesh`: unit tests for the move (`place`, `join`, inverse, `beyond`) and for overlap (touching rooms, crossing rooms, other floors, a big face over a small one).
 - `kotor-game` `seamless.rs`: planner on two synthetic rooms: placed side by side, overlap falls back, no door back falls back, a waypoint facing the wrong way falls back, two colliding neighbours leave the second on the old way, a missing waypoint falls back.
 - `crates/kotor-game/tests/seamless.rs`, on the real game: the player walks from Upper City South through the open Apartments door and on; the module changes with no step larger than the 10 cm walked, the module behind is joined and then let go; and the Apartments fit while the Cantina is a portal; a party of four (the leader and three companions) goes through the Cantina doorway with nobody moving more than a metre in a frame and all four within 4.5 m of the leader afterwards. Skipped when the game is not installed.
 - `gpu/tests/seamless_boot.rs` (the boot smoke test): a save made in Upper City South with a party of four is loaded from the main menu with a settings file in the old format (no `seamless_areas` line, which reads as on), the Cantina joins, the party walks through, no menu shows, no error is logged. It uses a folder of its own, never the player's settings or saves.
+- A fall under way at the crossing (the player lifted 1.5 m as the door is reached, Modern movement) lands on the floor of the new module, standing (`seamless_world.rs`, unit test).
 - A sprint and a roll through the Apartments door and through the Cantina portal: the roll is still under way at the crossing, the biggest step is 0.145 m a frame, and the body is on the floor afterwards (modern movement).
 - A save made with a neighbour joined, before and after the crossing, loads into the same world with nothing joined, the player where they were and standing on the floor.
 - A party of four through a Lower City door turned 85 degrees.
@@ -103,7 +123,7 @@ Cantina portal, same day: largest step 0.113 m against 0.144 m, 0 jumps, no menu
 
 ## Not done
 
+- Creatures that walk, talk or fight before the crossing: the neighbour is a still scene with idling bodies, as it has no world of its own that runs.
 - The elevators, three Lower City shop doors and other links that overlap near the door or have no clear side still load the old way.
-- The neighbour's creatures stand still before the crossing.
 - Triggers.
-- Every module outside Taris and the Endar Spire has not been surveyed.
+- Modules the survey did not list (the Ebon Hawk, minigames, the `STUNT` modules) are not joined.
