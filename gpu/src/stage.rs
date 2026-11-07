@@ -924,6 +924,7 @@ impl Stage {
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.idle_clock += dt;
         self.touch_look_tick(dt);
+        self.touch_fire_tick();
         self.walkers_tick(dt);
         self.pictures_left = PICTURES_A_FRAME;
         self.take_upscaled();

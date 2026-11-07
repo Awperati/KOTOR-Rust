@@ -5,10 +5,14 @@
 //! **Assumed:** a light push on the stick walks, under `WALK_BELOW`. A list scrolls one row for `SCROLL_SHARE` of the window.
 //! The Attack button goes for the target if it is an enemy, else the nearest enemy seen. Attack mode has its own button.
 //! The look stick at its middle speed and pushed all the way turns the camera `LOOK_TURN`, and tilts it `LOOK_TILT` of that.
+//!
+//! Modern combat adds Aim, held, Lock on, and Force, which opens a wheel of the first four powers the player knows, in the
+//! Force page's order. Attack fires while aiming and strikes with a blade in a fight, again and again while held. **Assumed:**
+//! which four powers, and that the wheel takes the four big buttons' places. See `docs/MODERN_COMBAT.md`.
 
 use super::{slot_is_pickup, Stage};
 use kotor_game::Kind;
-use kotor_ui::{TouchBoxes, TouchKey, TouchPart, TouchView, TOUCH_KEYS};
+use kotor_ui::{TouchBoxes, TouchKey, TouchPart, TouchView, MODERN_KEYS, TOUCH_KEYS};
 
 /// The mouse has no finger's id: this is its own.
 const MOUSE_FINGER: u64 = u64::MAX;
@@ -57,7 +61,21 @@ pub(super) struct Fingers {
     down: Vec<Finger>,
     stick: [f32; 2],
     look: [f32; 2],
+    /// Modern combat's wheel of powers is open.
+    wheel: bool,
+    /// The wheel's powers: the Force page's action, the name, and whether the Force points are short for it.
+    powers: Vec<(&'static str, String, bool)>,
+    /// What the Attack and Aim buttons say in Modern combat, if not that.
+    attack_word: &'static str,
+    aim_word: &'static str,
 }
+
+/// Modern combat's words for the Attack and Aim buttons, as they do other things there.
+const FIRE: &str = "Fire";
+const STRIKE: &str = "Strike";
+const GUARD: &str = "Guard";
+/// The wheel has the first powers of the Force page the player knows, as many as this.
+const WHEEL_POWERS: usize = 4;
 
 impl Stage {
     /// The on-screen controls are on.
@@ -68,6 +86,15 @@ impl Stage {
     /// The blue button.
     pub fn toggle_touch(&mut self) {
         self.menus.settings.touch_controls = !self.menus.settings.touch_controls;
+        if self
+            .menus
+            .touch
+            .down
+            .iter()
+            .any(|f| f.holds == Holds::Key(TouchKey::Aim))
+        {
+            self.set_aim_held(false);
+        }
         self.menus
             .touch
             .down
@@ -75,8 +102,55 @@ impl Stage {
         self.menus.touch.stick = [0.0; 2];
         self.menus.touch.look = [0.0; 2];
         self.settings_changed();
+        self.touch_set_view();
+    }
+
+    /// The HUD has the layer as it is now.
+    fn touch_set_view(&mut self) {
+        self.touch_refresh();
         let view = self.touch_view();
         self.ui.set_touch(view);
+    }
+
+    /// What Modern combat's buttons say and which powers the wheel has, kept for the view.
+    fn touch_refresh(&mut self) {
+        let modern = self.modern_combat();
+        let fingers = &mut self.menus.touch;
+        (fingers.attack_word, fingers.aim_word) = ("", "");
+        if !modern {
+            fingers.wheel = false;
+            fingers.powers.clear();
+            return;
+        }
+        let pc = self.game.world.pc;
+        let blade = self.game.blade_stance(pc).is_some();
+        let fight = self.in_fight_now();
+        self.menus.touch.attack_word = if blade && fight {
+            STRIKE
+        } else if self.aiming() {
+            FIRE
+        } else {
+            ""
+        };
+        self.menus.touch.aim_word = if blade { GUARD } else { "" };
+        let w = &self.game.world;
+        let me = w.object(pc);
+        let known: Vec<(&'static str, i32)> = super::keyscreen::force_rows()
+            .iter()
+            .filter(|r| me.is_some_and(|o| o.spells.contains(&r.1)))
+            .take(WHEEL_POWERS)
+            .copied()
+            .collect();
+        let mut powers = Vec::new();
+        for (action, power) in known {
+            let w = &mut self.game.world;
+            let name = w.power_row(power).map(|r| r.0);
+            let cost = w.power_cost(pc, power).unwrap_or(0);
+            let short = w.object(pc).is_some_and(|o| o.force < cost);
+            let name = name.map(|n| self.ui.strref(n)).unwrap_or_default();
+            powers.push((action, name, short));
+        }
+        self.menus.touch.powers = powers;
     }
 
     /// What the HUD draws of the layer.
@@ -99,7 +173,29 @@ impl Stage {
         if matches!(self.touch_steer(), Some((_, _, true))) && !dim.contains(&TouchKey::Jump) {
             dim.push(TouchKey::Jump);
         }
+        let modern = self.modern_combat();
+        if modern {
+            if self.lock_on.is_some() {
+                lit.push(TouchKey::Lock);
+            }
+            if fingers.wheel {
+                lit.push(TouchKey::Force);
+            }
+            if !self.in_fight_now() {
+                dim.push(TouchKey::Aim);
+            }
+            for (n, p) in fingers.powers.iter().enumerate() {
+                if p.2 {
+                    dim.push(TouchKey::Power(n as u8));
+                }
+            }
+        }
         TouchView {
+            modern,
+            wheel: modern && fingers.wheel,
+            powers: fingers.powers.iter().map(|p| p.1.clone()).collect(),
+            attack: fingers.attack_word.to_string(),
+            aim: fingers.aim_word.to_string(),
             on: self.menus.settings.touch_controls,
             stick: fingers.stick,
             look: fingers.look,
@@ -181,6 +277,7 @@ impl Stage {
                     None => self.interact(),
                 }
             }
+            TouchKey::Attack if self.modern_fire() => {}
             TouchKey::Attack => {
                 let w = &self.game.world;
                 let is_foe = |id: &u32| {
@@ -208,6 +305,49 @@ impl Stage {
                 self.hud_click_sound("");
                 self.attack_mode_key();
             }
+            TouchKey::Aim => self.set_aim_held(true),
+            TouchKey::Lock => {
+                self.hud_click_sound("");
+                self.lock_key();
+            }
+            TouchKey::Force => {
+                self.hud_click_sound("");
+                self.menus.touch.wheel = !self.menus.touch.wheel;
+            }
+            TouchKey::Power(n) => {
+                self.menus.touch.wheel = false;
+                let action = self.menus.touch.powers.get(n as usize).map(|p| p.0);
+                if let Some(action) = action {
+                    self.power_key(action);
+                }
+            }
+        }
+    }
+
+    /// Modern combat's Attack button: a shot while aiming, a blow with a blade in a fight. Anything else is the button's as
+    /// ever, and this says false.
+    fn modern_fire(&mut self) -> bool {
+        if !self.modern_combat() {
+            return false;
+        }
+        if self.aiming() {
+            if !self.blow_click() {
+                self.aim_click();
+            }
+            return true;
+        }
+        self.blow_click()
+    }
+
+    /// Once a frame: Modern combat's buttons are kept up, and the Attack button held fires again, as fast as the weapon goes.
+    pub(in crate::stage) fn touch_fire_tick(&mut self) {
+        if !self.touch_on() {
+            return;
+        }
+        self.touch_refresh();
+        let held = |f: &Finger| f.holds == Holds::Key(TouchKey::Attack);
+        if self.menus.touch.down.iter().any(held) {
+            self.modern_fire();
         }
     }
 
@@ -252,8 +392,7 @@ impl Stage {
     /// A finger came down, at a pixel of a window of `size`.
     pub fn finger_down(&mut self, id: u64, at: (f32, f32), size: (u32, u32)) {
         self.finger_lost(id);
-        let view = self.touch_view();
-        self.ui.set_touch(view);
+        self.touch_set_view();
         let holds = self.what_a_finger_takes(at, size);
         self.menus.touch.down.push(Finger {
             id,
@@ -333,6 +472,7 @@ impl Stage {
             Holds::Stick => self.menus.touch.stick = [0.0; 2],
             Holds::Look => self.menus.touch.look = [0.0; 2],
             Holds::Turret => self.turret_fire(false),
+            Holds::Key(TouchKey::Aim) => self.set_aim_held(false),
             _ => {}
         }
     }
@@ -356,8 +496,7 @@ impl Stage {
         {
             return false;
         }
-        let view = self.touch_view();
-        self.ui.set_touch(view);
+        self.touch_set_view();
         let (x, y) = self.layout_of(at, size);
         let Some(part) = self.ui.touch_at(x, y) else {
             return false;
@@ -426,6 +565,19 @@ impl Stage {
         self.touch_view().dim.contains(&key)
     }
 
+    /// What a round button says, and whether it is lit, for a test.
+    pub fn touch_key_word(&mut self, key: TouchKey) -> (String, bool) {
+        self.touch_refresh();
+        let view = self.touch_view();
+        let word = match key {
+            TouchKey::Attack if !view.attack.is_empty() => view.attack.clone(),
+            TouchKey::Aim if !view.aim.is_empty() => view.aim.clone(),
+            TouchKey::Power(n) => view.powers.get(n as usize).cloned().unwrap_or_default(),
+            other => format!("{other:?}"),
+        };
+        (word, view.lit.contains(&key) || view.held.contains(&key))
+    }
+
     /// How many fingers are down, for a test.
     pub fn fingers_down(&self) -> usize {
         self.menus.touch.down.len()
@@ -433,15 +585,13 @@ impl Stage {
 
     /// The boxes of the layer and of what it must stay off, for a test.
     pub fn touch_boxes(&mut self) -> Option<TouchBoxes> {
-        let view = self.touch_view();
-        self.ui.set_touch(view);
+        self.touch_set_view();
         self.ui.touch_boxes()
     }
 
     /// The pixel of a window of `size` in the middle of a part of the layer, for a test or a driver.
     pub fn touch_pixel(&mut self, part: TouchPart, size: (u32, u32)) -> Option<(f32, f32)> {
-        let view = self.touch_view();
-        self.ui.set_touch(view);
+        self.touch_set_view();
         let (x, y) = self.ui.touch_point(part)?;
         Some((
             x * size.0 as f32 / self.ui_width as f32,
@@ -454,13 +604,17 @@ impl Stage {
         let layout = (self.ui_width, 480);
         let mut places = Vec::new();
         let sticks = [("stick", TouchPart::Stick), ("look", TouchPart::Look)];
-        for (name, part) in sticks.into_iter().chain(
-            [
-                "action", "attack", "jump", "roll", "pickup", "pause", "mode",
-            ]
-            .into_iter()
-            .zip(TOUCH_KEYS.map(TouchPart::Key)),
-        ) {
+        let keys = [
+            "action", "attack", "jump", "roll", "pickup", "pause", "mode",
+        ]
+        .into_iter()
+        .zip(TOUCH_KEYS.map(TouchPart::Key));
+        let modern = [
+            "aim", "lock", "force", "power0", "power1", "power2", "power3",
+        ]
+        .into_iter()
+        .zip(MODERN_KEYS.map(TouchPart::Key));
+        for (name, part) in sticks.into_iter().chain(keys).chain(modern) {
             if let Some(p) = self.touch_pixel(part, layout).filter(|_| self.touch_on()) {
                 places.push(format!("{name}:{:.0}:{:.0}", p.0, p.1));
             }

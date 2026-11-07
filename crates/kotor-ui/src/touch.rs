@@ -65,7 +65,25 @@ pub enum TouchKey {
     Pickup,
     Pause,
     AttackMode,
+    /// Modern combat's: held, it aims, or guards with a blade.
+    Aim,
+    Lock,
+    /// It opens the wheel of powers in the place of the four big buttons, and shuts it.
+    Force,
+    /// A power of the wheel, 0 to 3: top, right, bottom, left.
+    Power(u8),
 }
+
+/// Modern combat's, in the order a driver is told of them.
+pub const MODERN_KEYS: [TouchKey; 7] = [
+    TouchKey::Aim,
+    TouchKey::Lock,
+    TouchKey::Force,
+    TouchKey::Power(0),
+    TouchKey::Power(1),
+    TouchKey::Power(2),
+    TouchKey::Power(3),
+];
 
 /// All of them, in the order a driver is told of them.
 pub const TOUCH_KEYS: [TouchKey; 7] = [
@@ -106,18 +124,33 @@ pub struct TouchView {
     pub dim: Vec<TouchKey>,
     /// What the Action button says.
     pub action: String,
+    /// Modern combat is on: its buttons are there.
+    pub modern: bool,
+    /// The wheel of powers is open.
+    pub wheel: bool,
+    /// The wheel's powers by name, at most four.
+    pub powers: Vec<String>,
+    /// What the Attack and Aim buttons say, if not that.
+    pub attack: String,
+    pub aim: String,
 }
 
 impl TouchView {
     fn word(&self, key: TouchKey) -> &str {
         match key {
             TouchKey::Action => &self.action,
+            TouchKey::Attack if !self.attack.is_empty() => &self.attack,
             TouchKey::Attack => "Attack",
             TouchKey::Jump => "Jump",
             TouchKey::Roll => "Roll",
             TouchKey::Pickup => "Pickup",
             TouchKey::Pause => "Pause",
             TouchKey::AttackMode => "Attack mode",
+            TouchKey::Aim if !self.aim.is_empty() => &self.aim,
+            TouchKey::Aim => "Aim",
+            TouchKey::Lock => "Lock on",
+            TouchKey::Force => "Force",
+            TouchKey::Power(n) => self.powers.get(n as usize).map_or("", |p| p.as_str()),
         }
     }
 
@@ -329,7 +362,14 @@ impl Ui<'_> {
     /// Where each part of the layer is, in layout units. The stick stands over the portraits, against the left edge. The
     /// four big buttons stand over the slots, against the right edge, with the three small ones to their left and the look
     /// stick left of those, as the right stick of a controller is further in than its buttons.
+    ///
+    /// In Modern combat Force stands in their middle, Lock and Aim at the top corners. The wheel of powers takes the four's
+    /// places while it is open.
     pub(crate) fn touch_places(&self, panel: &Control) -> Vec<(TouchPart, [i32; 4])> {
+        self.places_for(panel, &self.touch)
+    }
+
+    fn places_for(&self, panel: &Control, view: &TouchView) -> Vec<(TouchPart, [i32; 4])> {
         let side = self.touch_side();
         let gap = side * GAP_SIDES;
         let down = self.scale;
@@ -349,16 +389,38 @@ impl Ui<'_> {
             right - reach - side / 2.0,
             slots_top - gap - reach - side / 2.0,
         );
-        for (key, dx, dy) in [
+        let four = [
             (TouchKey::Action, 0.0, reach),
             (TouchKey::Attack, reach, 0.0),
             (TouchKey::Jump, 0.0, -reach),
             (TouchKey::Roll, -reach, 0.0),
-        ] {
+        ];
+        let wheel = [
+            (TouchKey::Power(0), 0.0, -reach),
+            (TouchKey::Power(1), reach, 0.0),
+            (TouchKey::Power(2), 0.0, reach),
+            (TouchKey::Power(3), -reach, 0.0),
+        ];
+        let big: Vec<_> = if view.modern && view.wheel {
+            wheel[..view.powers.len().min(4)].to_vec()
+        } else {
+            four.to_vec()
+        };
+        for (key, dx, dy) in big {
             let at = (middle.0 + dx, middle.1 + dy);
             out.push((TouchPart::Key(key), self.round_box(at, side)));
         }
         let small = side * SMALL_SIDES;
+        if view.modern {
+            out.push((
+                TouchPart::Key(TouchKey::Force),
+                self.round_box(middle, small),
+            ));
+            for (key, dx) in [(TouchKey::Lock, -reach), (TouchKey::Aim, reach)] {
+                let at = (middle.0 + dx, middle.1 - reach);
+                out.push((TouchPart::Key(key), self.round_box(at, small)));
+            }
+        }
         let column = middle.0 - reach - side / 2.0 - gap - small / 2.0;
         let step = small + gap;
         for (key, dy) in [
@@ -490,9 +552,13 @@ impl Ui<'_> {
         was: &TouchView,
         now: &TouchView,
     ) -> Vec<[u32; 4]> {
-        self.touch_places(panel)
+        let (before, after) = (self.places_for(panel, was), self.places_for(panel, now));
+        // Buttons came or went: all of both.
+        let all = before.iter().map(|p| p.0).ne(after.iter().map(|p| p.0));
+        before
             .into_iter()
-            .filter(|(part, _)| was.differs(now, *part))
+            .chain(after)
+            .filter(|(part, _)| all || was.differs(now, *part))
             .filter_map(|(_, e)| self.pixel_box(e, PART_PAD))
             .collect()
     }

@@ -124,6 +124,11 @@ pub(in crate::stage) fn force_row(action: &str) -> Option<i32> {
     FORCE_ROWS.iter().find(|r| r.0 == action).map(|r| r.1)
 }
 
+/// The Force page's actions and their powers, in its order.
+pub(in crate::stage) fn force_rows() -> &'static [(&'static str, i32)] {
+    &FORCE_ROWS
+}
+
 const FILTERS: [&str; 3] = ["BTN_Filter_Move", "BTN_Filter_Game", "BTN_Filter_Mini"];
 const STR_REVERSE_WORDS: u32 = 48450;
 /// The page is about more than the mouse now, and the box for the on-screen controls goes under the file's.
