@@ -828,6 +828,23 @@ impl Stage {
         self.top().is_some()
     }
 
+    /// The module the screen up is about to start: the one of the save chosen on the Load screen, or the first of a new game
+    /// while the character is made. The stage loads it ahead.
+    pub(crate) fn menu_goal(&self) -> Option<String> {
+        match self.top()? {
+            Screen::Saves(Mode::Load) => self
+                .selected_file(Mode::Load)
+                .map(|f| f.info.module.to_ascii_lowercase()),
+            Screen::ChargenClass
+            | Screen::ChargenMain
+            | Screen::ChargenPortrait
+            | Screen::ChargenAttributes
+            | Screen::ChargenName => Some(self.first_module.to_ascii_lowercase()),
+            _ => None,
+        }
+        .filter(|m| !m.is_empty())
+    }
+
     /// The screen that has the input.
     fn top(&self) -> Option<Screen> {
         let w = &self.game.world;

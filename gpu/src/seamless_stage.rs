@@ -72,33 +72,7 @@ fn number(inst: &mut Install, name: &str, ty: ResType, field: &str) -> Option<i6
 
 /// What the thread makes of a neighbour's creatures and doors: the bodies and the doors' picture, ready to hand over.
 fn prepare_scenery(inst: &mut Install, sc: &Scenery, doorway: [f32; 3]) -> (Vec<RigEntry>, Scene) {
-    let baseitems = inst
-        .read("baseitems", ResType::TWODA)
-        .ok()
-        .and_then(|b| TwoDa::parse(&b).ok());
-    let mut rigs: Vec<RigEntry> = Vec::new();
-    for f in &sc.figures {
-        let mut var = number(inst, &f.template, ResType(2027), "TextureVar").unwrap_or(1);
-        let mut letter = None;
-        if let Some((base, item)) = &f.armour {
-            letter = baseitems
-                .as_ref()
-                .and_then(|t| t.get(*base as usize, "bodyvar"))
-                .and_then(|v| v.chars().next());
-            if let Some(v) = number(inst, item, ResType(2025), "TextureVar") {
-                var = v;
-            }
-        }
-        let key = (f.appearance, var as u32, letter);
-        if rigs.iter().any(|r| r.0 == key) {
-            continue;
-        }
-        if let Ok(rig) =
-            kotor_render::rig_for_outfit(inst, f.appearance as usize, var as u32, letter)
-        {
-            rigs.push((key, rig));
-        }
-    }
+    let rigs = prepare_rigs(inst, sc);
     let mut doors = Scene::default();
     let genericdoors = inst
         .read("genericdoors", ResType::TWODA)
@@ -140,13 +114,45 @@ fn prepare_scenery(inst: &mut Install, sc: &Scenery, doorway: [f32; 3]) -> (Vec<
     (rigs, doors)
 }
 
-/// Every texture a scene names, lower-cased, once.
+/// The bodies of a module's creatures, built as `Stage::rig_for` would key them.
+fn prepare_rigs(inst: &mut Install, sc: &Scenery) -> Vec<RigEntry> {
+    let baseitems = inst
+        .read("baseitems", ResType::TWODA)
+        .ok()
+        .and_then(|b| TwoDa::parse(&b).ok());
+    let mut rigs: Vec<RigEntry> = Vec::new();
+    for f in &sc.figures {
+        let mut var = number(inst, &f.template, ResType(2027), "TextureVar").unwrap_or(1);
+        let mut letter = None;
+        if let Some((base, item)) = &f.armour {
+            letter = baseitems
+                .as_ref()
+                .and_then(|t| t.get(*base as usize, "bodyvar"))
+                .and_then(|v| v.chars().next());
+            if let Some(v) = number(inst, item, ResType(2025), "TextureVar") {
+                var = v;
+            }
+        }
+        let key = (f.appearance, var as u32, letter);
+        if rigs.iter().any(|r| r.0 == key) {
+            continue;
+        }
+        if let Ok(rig) =
+            kotor_render::rig_for_outfit(inst, f.appearance as usize, var as u32, letter)
+        {
+            rigs.push((key, rig));
+        }
+    }
+    rigs
+}
+
+/// Every texture a scene names, once, spelt as the picture asks for it: the stage's cache is keyed by that spelling.
 fn texture_names(scene: &Scene) -> Vec<String> {
     let mut names: Vec<String> = scene
         .meshes
         .iter()
         .flat_map(|m| m.texture.iter().chain(m.lightmap.iter()))
-        .map(|n| n.to_ascii_lowercase())
+        .cloned()
         .collect();
     names.sort();
     names.dedup();
@@ -165,6 +171,72 @@ pub(super) struct Preloaded {
     module: String,
     scene: Scene,
     chests: Vec<String>,
+    /// Where the player stood when a conversation's scripts named it: kept until they walk far from there. Nothing for one
+    /// loaded for an exit, which is kept while the exit is near.
+    talk: Option<[f32; 3]>,
+    /// The bodies of its creatures, built on the thread.
+    rigs: Vec<RigEntry>,
+}
+
+/// The text constants of a compiled script: an instruction `CONST string` is `04 05`, a length of two bytes and the text.
+fn script_strings(code: &[u8]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 13;
+    while i + 4 <= code.len() {
+        if code[i] == 0x04 && code[i + 1] == 0x05 {
+            let len = u16::from_be_bytes([code[i + 2], code[i + 3]]) as usize;
+            if let Some(text) = code.get(i + 4..i + 4 + len) {
+                if text.iter().all(|b| b.is_ascii_graphic()) {
+                    out.push(String::from_utf8_lossy(text).into_owned());
+                    i += 4 + len;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// The module a conversation ends by sending the player to, if its scripts name one that is installed: the scripts of its
+/// lines are read for text that is the name of a module file.
+fn module_a_talk_goes_to(
+    inst: &mut Install,
+    dir: &std::path::Path,
+    talk: &str,
+    here: &str,
+) -> Option<String> {
+    let dlg = Gff::parse(&inst.read(talk, ResType::DLG).ok()?).ok()?;
+    let mut scripts: Vec<String> = ["EndConversation", "EndConverAbort"]
+        .iter()
+        .filter_map(|f| dlg.root.str(f).map(str::to_string))
+        .collect();
+    for list in ["EntryList", "ReplyList"] {
+        for node in dlg.root.list(list).unwrap_or_default() {
+            scripts.extend(node.str("Script").map(str::to_string));
+        }
+    }
+    scripts.retain(|s| !s.is_empty());
+    scripts.sort();
+    scripts.dedup();
+    let modules = dir.join("modules");
+    for script in scripts {
+        let Ok(code) = inst.read(&script, ResType::NCS) else {
+            continue;
+        };
+        for text in script_strings(&code) {
+            // A cutscene module is not worth the memory: it is short and starts behind a screen of its own.
+            let known = !text.eq_ignore_ascii_case(here)
+                && !text.to_ascii_lowercase().starts_with("stunt_")
+                && ["rim", "mod"]
+                    .iter()
+                    .any(|e| modules.join(format!("{text}.{e}")).is_file());
+            if known {
+                return Some(text.to_ascii_lowercase());
+            }
+        }
+    }
+    None
 }
 
 /// What a preload thread sends back: the module and its decoded textures.
@@ -279,12 +351,18 @@ impl Stage {
 
     /// Load the module behind the nearest exit that leads elsewhere, on a thread, while the player is near it, so that going
     /// through shows no long freeze. One job at a time, one module kept, nothing when memory is short or the exit is far.
-    fn preload_tick(&mut self) {
+    pub(super) fn preload_tick(&mut self) {
         if let Some(job) = &self.seam.pre_job {
             match job.rx.try_recv() {
-                Ok(Some((p, images))) => {
+                Ok(Some((mut p, images))) => {
                     for (n, img) in images {
                         self.textures.entry(n).or_insert(Some(img));
+                    }
+                    let conventional = self.conventional_underwear;
+                    for (key, rig) in std::mem::take(&mut p.rigs) {
+                        self.rigs
+                            .entry(key)
+                            .or_insert_with(|| Some(super::styled(rig, conventional)));
                     }
                     self.seam.pre = Some(p);
                     self.seam.pre_job = None;
@@ -298,10 +376,7 @@ impl Stage {
             }
         }
         let w = &self.game.world;
-        if w.minigame.is_some()
-            || w.module.is_empty()
-            || std::env::var_os("KOTOR_NO_PRELOAD").is_some()
-        {
+        if w.minigame.is_some() || std::env::var_os("KOTOR_NO_PRELOAD").is_some() {
             return;
         }
         let here = w.pc_mover.pos;
@@ -324,28 +399,48 @@ impl Stage {
             .filter(|(_, m)| *m != w.module && !joined.contains(m.as_str()))
             .collect();
         exits.sort_by(|a, b| a.0.total_cmp(&b.0));
-        // What is kept goes when its exit is out of reach.
+        // What is kept goes when its exit is out of reach, or when the player has walked away from the talk that named it.
         if let Some(p) = &self.seam.pre {
-            if !exits
-                .iter()
-                .any(|(d, m)| *m == p.module && *d < PRELOAD_RANGE + 8.0)
-            {
+            let kept = match p.talk {
+                Some(at) => (at[0] - here[0]).hypot(at[1] - here[1]) < PRELOAD_RANGE + 8.0,
+                None => exits
+                    .iter()
+                    .any(|(d, m)| *m == p.module && *d < PRELOAD_RANGE + 8.0),
+            };
+            if !kept {
                 self.seam.pre = None;
             }
         }
         if self.seam.pre_job.is_some() {
             return;
         }
-        let Some((_, module)) = exits.into_iter().find(|(d, m)| {
-            *d < PRELOAD_RANGE
+        // While they talk, the exits are not the way out: what the conversation ends in is.
+        let talking = w.conversation_name().map(str::to_ascii_lowercase);
+        let near = exits.into_iter().find(|(d, m)| {
+            talking.is_none()
+                && *d < PRELOAD_RANGE
                 && !self.seam.pre_failed.contains(m)
                 && self.seam.pre.as_ref().is_none_or(|p| p.module != *m)
-        }) else {
-            return;
+        });
+        // A conversation whose scripts send the player elsewhere: that module is loaded while they talk.
+        let talk = talking
+            .filter(|t| !self.seam.pre_failed.contains(&format!("talk:{t}")))
+            .filter(|_| self.seam.pre.as_ref().is_none_or(|p| p.talk.is_none()));
+        // A screen that is about to start a module: the save chosen to load, or a new game while the character is made.
+        let menu = self.menu_goal().filter(|m| {
+            !self.seam.pre_failed.contains(&format!("menu:{m}"))
+                && self.seam.pre.as_ref().is_none_or(|p| p.module != *m)
+        });
+        let (key, exit, talk) = match (menu.clone(), near, talk) {
+            (Some(m), _, _) => (format!("menu:{m}"), Some(m), Some(String::new())),
+            (None, Some((_, m)), _) => (m.clone(), Some(m), None),
+            (None, None, Some(t)) => (format!("talk:{t}"), None, Some(t)),
+            (None, None, None) => return,
         };
+        let module = key;
         let (dir, hd) = (self.dir.clone(), self.hd3d.clone());
         let (tx, rx) = channel();
-        let name = module.clone();
+        let current = w.module.clone();
         std::thread::spawn(move || {
             let min = std::env::var("KOTOR_PRELOAD_MIN_MB")
                 .ok()
@@ -356,6 +451,14 @@ impl Stage {
                     return None;
                 }
                 let mut inst = Install::open(&dir).ok()?;
+                let name = match (&exit, &talk) {
+                    (Some(m), _) => m.clone(),
+                    (None, Some(t)) => {
+                        inst.load_module(&current).ok()?;
+                        module_a_talk_goes_to(&mut inst, &dir, t, &current)?
+                    }
+                    (None, None) => return None,
+                };
                 inst.load_module(&name).ok()?;
                 let ifo = Gff::parse(&inst.read("module", ResType::IFO).ok()?).ok()?;
                 let area = ifo.root.str("Mod_Entry_Area")?.to_string();
@@ -363,7 +466,27 @@ impl Stage {
                 let mut scene = kotor_render::load_area(&mut inst, &area).ok()?;
                 kotor_render::add_area_objects_except(&mut scene, &mut inst, &area, false, &chests)
                     .ok()?;
-                let images = texture_names(&scene)
+                // The creatures' bodies and their textures too, which the stage would otherwise build on the main thread.
+                let rigs = Install::open(&dir)
+                    .ok()
+                    .and_then(|i| kotor_game::World::new(i).ok())
+                    .and_then(|mut w| {
+                        w.load_module(&name).ok()?;
+                        Some(prepare_rigs(&mut inst, &w.scenery()))
+                    })
+                    .unwrap_or_default();
+                let mut names = texture_names(&scene);
+                for (_, rig) in &rigs {
+                    if let Ok(body) = rig.posed(None) {
+                        names.extend(texture_names(&body).into_iter().filter(|n| {
+                            kotor_render::underwear::body_of_texture(n).is_none()
+                                && !kotor_render::underwear::is_hero_head(n)
+                        }));
+                    }
+                }
+                names.sort();
+                names.dedup();
+                let images = names
                     .into_iter()
                     .filter_map(|n| {
                         let img = hd
@@ -378,6 +501,8 @@ impl Stage {
                         module: name.clone(),
                         scene,
                         chests,
+                        talk: talk.is_some().then_some(here),
+                        rigs,
                     },
                     images,
                 ))
@@ -385,6 +510,14 @@ impl Stage {
             let _ = tx.send(load());
         });
         self.seam.pre_job = Some(PreJob { module, rx });
+    }
+
+    /// The module the scripts of conversation `talk` send the player to, if they name one: what the stage loads ahead while
+    /// that conversation is open.
+    pub fn talk_goes_to(&mut self, talk: &str) -> Option<String> {
+        let here = self.game.world.module.clone();
+        let dir = self.dir.clone();
+        module_a_talk_goes_to(&mut self.inst, &dir, talk, &here)
     }
 
     /// Called once a frame after the world has stepped.

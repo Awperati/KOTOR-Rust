@@ -150,6 +150,16 @@ A neighbour joining and leaving used to hitch: the picture went up to the GPU in
 
 Measured at 3840x2160, best of three, Upper City South to the Cantina: no frame of the join or the leave takes more than 15 ms on the main thread (before: 25 to 195 ms a frame for the figures), the worst upload is 18 to 29 ms (before 145 to 363), and the worst update is 41 to 47 ms, which is the crossing's own module load. At 1280x720 the worst update is 39 to 41 ms for the Apartments. The first picture of the module itself, at its start, is 190 to 230 ms and is not a join. On a loaded machine (other builds running) the same runs read two to ten times worse; the figures above are the quiet ones.
 
+## Loaded ahead (links that cannot be joined)
+
+A link that is not joined (a lift, a shop door that overlaps the street, a script's jump) used to freeze the frame while the module loaded: 1980 ms for the Upper City South lift. `Stage::preload_tick` loads the module on a thread instead, and `seamless_arrive` takes it when the world changes to it.
+
+- **When:** the player is within 24 m of a door or trigger that leads elsewhere; or a conversation is open whose scripts name an installed module (read from the text constants of the compiled scripts, `cutscene` modules skipped); or the Load screen has a save chosen, or the character screens of a new game are up.
+- **What the thread builds:** the picture, the chests, the creatures' bodies and every texture, as for a joined neighbour. Textures are filed under the spelling the picture asks for, because the stage's cache is keyed by it.
+- **Limits:** one job at a time, one module kept, nothing under 4 GB of free memory (`KOTOR_PRELOAD_MIN_MB` changes it, `KOTOR_NO_PRELOAD` turns it off). What is kept goes when the player walks 32 m from its exit or its conversation.
+- **Not loaded ahead:** the galaxy map, whose script picks the module only after a planet is chosen.
+- `cargo run --release --example load_times -- tar_m10aa:tar_m10ac` times a module change (`PRELOAD=1` waits for the load ahead first); `talk_scan` lists which conversations of a module name a module.
+
 ## Not done
 
 - Creatures that walk, talk or fight before the crossing: the neighbour is a still scene with idling bodies, as it has no world of its own that runs. Two ways to change that, sized in `docs/SEAMLESS_CREATURES.md`: scripted waypoint walks and turning to face the player (about 400 lines, only 74 of 680 counted creatures have a waypoint route), or a second `World` for the neighbour (thousands of lines and the game's global state shared by two worlds; not recommended).

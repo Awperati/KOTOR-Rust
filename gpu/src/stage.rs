@@ -926,6 +926,8 @@ impl Stage {
         self.notices_tick();
         self.aim_tick(dt);
         if self.menu_open() && !self.container_up() {
+            // The module a screen is about to start loads meanwhile.
+            self.preload_tick();
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
         }

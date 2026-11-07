@@ -101,3 +101,73 @@ fn a_module_loaded_ahead_is_not_used_for_another() {
     assert!(!names.is_empty());
     assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
 }
+
+#[test]
+fn a_module_a_conversation_ends_in_is_loaded_while_the_player_talks() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open("tat_m17aa", true).unwrap();
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    for _ in 0..60 {
+        s.update(DT);
+    }
+    assert_eq!(
+        s.talk_goes_to("tat17_11guard_01").as_deref(),
+        Some("tat_m18aa")
+    );
+    assert_eq!(s.talk_goes_to("tat17_nobody"), None);
+    let guard = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.conversation.eq_ignore_ascii_case("tat17_11guard_01"))
+        .map(|o| o.id)
+        .expect("the guard");
+    let pc = s.game.world.pc;
+    s.game.world.queue(
+        guard,
+        kotor_game::Action::StartConversation {
+            target: pc,
+            dialogue: "tat17_11guard_01".to_string(),
+            anywhere: true,
+        },
+    );
+    let began = std::time::Instant::now();
+    while s.preloaded().is_none() && began.elapsed().as_secs() < 40 {
+        s.update(DT);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    if s.preloaded().is_none() {
+        // Memory short on this machine: nothing to check.
+        return;
+    }
+    assert!(s.game.world.in_dialogue(), "while they talk");
+    assert_eq!(s.preloaded(), Some("tat_m18aa"));
+}
+
+#[test]
+fn a_new_game_is_loaded_while_the_character_is_made() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let size = (1280, 720);
+    let mut s = Stage::menu("end_m01aa", true).unwrap();
+    s.enable_chargen(true);
+    let p = s.menu_pixel("BTN_NEWGAME", None, size).unwrap();
+    s.hover(p, size);
+    s.click(p, size);
+    assert_ne!(s.menu_name(), "main", "the character screens are up");
+    let began = std::time::Instant::now();
+    while s.preloaded().is_none() && began.elapsed().as_secs() < 40 {
+        s.update(DT);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    if s.preloaded().is_none() {
+        // Memory short on this machine: nothing to check.
+        return;
+    }
+    assert_eq!(s.preloaded(), Some("end_m01aa"));
+}

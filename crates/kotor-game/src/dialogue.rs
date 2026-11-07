@@ -311,6 +311,11 @@ impl World {
         self.conv.as_ref().map(|c| c.owner)
     }
 
+    /// The file of the conversation running, if one is.
+    pub fn conversation_name(&self) -> Option<&str> {
+        self.conv.as_ref().map(|c| c.name.as_str())
+    }
+
     /// Whether an interactive conversation is waiting for the player.
     pub fn in_dialogue(&self) -> bool {
         self.conv.is_some()
