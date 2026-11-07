@@ -1,4 +1,4 @@
-//! Frames of the Graphics options pages, with Anti-aliasing and Motion blur. Offscreen: no window, no screen capture, no saves.
+//! Frames of the Graphics options pages, with Anti-aliasing and Motion blur, and the Gameplay page with Click to move. Offscreen: no window, no screen capture, no saves.
 //!
 //!   cargo run --release --example graphics_shots -- [out_dir] [width] [height]
 use kotor_gpu::stage::Stage;
@@ -15,6 +15,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut gpu = GpuRenderer::new(width, height)?;
     let mut s = Stage::menu("end_m01aa", true)?;
     s.set_view(size);
+    // A file of its own, so that no click here changes the player's settings.
+    let settings =
+        std::env::temp_dir().join(format!("kotor_graphics_shots_{}.txt", std::process::id()));
+    let _ = std::fs::remove_file(&settings);
+    s.use_settings_file(settings);
     let hover = |s: &mut Stage, tag: &str| {
         let p = s.menu_pixel(tag, None, size).expect("the button");
         s.hover(p, size);
@@ -54,5 +59,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     click(&mut s, "BTN_ADVANCED");
     hover(&mut s, "BTN_ANTIALIAS");
     shot(&mut s, "graphics_advanced");
+    click(&mut s, "BTN_BACK");
+    click(&mut s, "BTN_BACK");
+    click(&mut s, "BTN_GAMEPLAY");
+    hover(&mut s, "CB_CLICK_TO_MOVE");
+    shot(&mut s, "gameplay_click_off");
+    click(&mut s, "CB_CLICK_TO_MOVE");
+    shot(&mut s, "gameplay_click_on");
     Ok(())
 }

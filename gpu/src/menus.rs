@@ -402,7 +402,7 @@ impl Default for Settings {
             glow_boxes: true,
             movement_modern: true,
             combat_modern: false,
-            click_to_walk: true,
+            click_to_walk: false,
             australian_english: true,
             seamless_areas: true,
             extended_story: true,
@@ -1635,6 +1635,23 @@ impl Stage {
         if !s.movement_modern {
             v.inert(&[optionpages::COMBAT_BOX]);
         }
+        v.copy_control(
+            optionpages::MOVEMENT_BOX,
+            optionpages::CLICK_BOX,
+            optionpages::CLICK_BOX_AT,
+        );
+        v.value(optionpages::CLICK_BOX, s.click_to_walk as i32, 1);
+        v.text(
+            optionpages::CLICK_BOX,
+            if s.click_to_walk {
+                optionpages::CLICK_ON
+            } else {
+                optionpages::CLICK_OFF
+            },
+        );
+        for (tag, at) in optionpages::UNDER_CLICK {
+            v.patches.entry(tag.to_string()).or_default().place = Some(at);
+        }
         v.value("CB_LEVELUP", s.auto_level as i32, 1);
         v.value("CB_DISABLEMOVE", s.combat_movement as i32, 1);
         v.value("CB_INVERTCAM", s.invert_y as i32, 1);
@@ -1847,7 +1864,7 @@ impl Stage {
         if self.menu_open() || self.choice_view().is_some() {
             return;
         }
-        let radius = self.menus.settings.pickup_radius as f32;
+        let radius = self.pickup_reach();
         if self.game.world.proximity_pickup(radius) == 0 {
             self.say_over_player(NOTHING_NEARBY.to_string());
         }
@@ -2417,6 +2434,10 @@ impl Stage {
                 self.menus.settings.movement_modern = !self.menus.settings.movement_modern;
                 self.settings_changed();
             }
+            (Screen::Gameplay, optionpages::CLICK_BOX) => {
+                let on = !self.menus.settings.click_to_walk;
+                self.set_click_to_move(on);
+            }
             (Screen::Gameplay, optionpages::COMBAT_BOX) => {
                 if self.menus.settings.movement_modern {
                     self.menus.settings.combat_modern = !self.menus.settings.combat_modern;
@@ -2453,6 +2474,7 @@ impl Stage {
                 let s = &mut self.menus.settings;
                 (s.invert_y, s.autosave, s.difficulty) = (d.invert_y, d.autosave, d.difficulty);
                 (s.auto_level, s.combat_movement) = (d.auto_level, d.combat_movement);
+                s.click_to_walk = d.click_to_walk;
                 self.settings_changed();
             }
             (Screen::Graphics, "BTN_DEFAULT") => {

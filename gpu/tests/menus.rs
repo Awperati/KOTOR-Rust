@@ -1496,12 +1496,18 @@ fn pickup_opens_what_is_near_as_one_container_and_what_is_taken_leaves_its_own()
             o.useable = false;
         }
     }
-    // A spot in sight at 3.5 m, past the reach.
-    let far_at = (0..16)
+    // The row says 3 m, and Pickup reaches half as far again: a spot in sight just past 4.5 m, and one just inside it.
+    assert_eq!(s.pickup_reach(), 4.5);
+    let way = (0..16)
         .map(|n| (n as f32 * std::f32::consts::TAU / 16.0).sin_cos())
-        .map(|(y, x)| [here[0] + 3.5 * x, here[1] + 3.5 * y, here[2]])
-        .find(|at| s.game.world.can_see_along(here, *at))
+        .find(|(y, x)| {
+            let at = [here[0] + 4.8 * x, here[1] + 4.8 * y, here[2]];
+            s.game.world.can_see_along(here, at)
+        })
         .expect("somewhere in sight");
+    let along = |m: f32| [here[0] + m * way.1, here[1] + m * way.0, here[2]];
+    let far_at = along(4.8);
+    let (_, inside) = remains_at(&mut s, along(4.2), "g_w_lngswrd01", 1);
     let (body, medpac) = remains_at(
         &mut s,
         [here[0] + 0.5, here[1], here[2]],
@@ -1519,10 +1525,11 @@ fn pickup_opens_what_is_near_as_one_container_and_what_is_taken_leaves_its_own()
     s.click(slot, SIZE);
     assert_eq!(s.menu_name(), "container");
     let w = &s.game.world;
-    assert_eq!(w.open_sources().len(), 2, "{:?}", w.open_sources());
+    assert_eq!(w.open_sources().len(), 3, "{:?}", w.open_sources());
     let listed: Vec<u32> = w.container_items().iter().map(|i| i.0).collect();
     assert!(listed.contains(&medpac));
-    assert!(!listed.contains(&sword), "out of reach");
+    assert!(listed.contains(&inside), "just inside the reach");
+    assert!(!listed.contains(&sword), "just out of reach");
     let locker_had = w.object(locker).unwrap().inventory.clone();
     assert!(!locker_had.is_empty(), "this footlocker has its own things");
     // Its own Medpacs are on the row of those on the remains.
@@ -3563,6 +3570,38 @@ fn vsync_is_the_advanced_graphics_box_that_works_and_the_rest_say_why_not() {
     press(&mut s, "BTN_ADVANCED");
     press(&mut s, "BTN_DEFAULT");
     assert!(s.settings().vsync);
+}
+
+#[test]
+fn the_gameplay_page_has_click_to_move_off_at_first() {
+    let Some((mut s, dir)) = in_game("click_row") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    let _ = std::fs::remove_file(&file);
+    s.use_settings_file(file.clone());
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    assert_eq!(s.menu_name(), "gameplay");
+    s.update(DT);
+    let words = |s: &mut Stage| s.menu_button_words("CB_CLICK_TO_MOVE").unwrap_or_default();
+    assert_eq!(words(&mut s), "Click to move: Off");
+    assert!(!s.settings().click_to_walk);
+    let (_, too_big) = s.words_fit();
+    assert!(too_big.is_empty(), "{too_big:?}");
+    press(&mut s, "CB_CLICK_TO_MOVE");
+    assert!(s.settings().click_to_walk);
+    assert_eq!(words(&mut s), "Click to move: On");
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("click_to_walk=true"));
+    // The cursor on it says what it does, and Default turns it off again.
+    let plain = frame(&mut s);
+    let at = s.menu_pixel("CB_CLICK_TO_MOVE", None, SIZE).unwrap();
+    s.hover(at, SIZE);
+    assert!(frame(&mut s) != plain);
+    press(&mut s, "BTN_DEFAULT");
+    assert!(!s.settings().click_to_walk);
 }
 
 #[test]

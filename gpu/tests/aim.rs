@@ -851,7 +851,7 @@ fn a_power_goes_to_the_lock_with_no_crosshair() {
 
 #[test]
 fn a_click_while_aiming_does_not_walk() {
-    let Some((mut s, file)) = stage("click", "") else {
+    let Some((mut s, file)) = stage("click", "click_to_walk=true\n") else {
         return;
     };
     s.set_combat_modern(true);

@@ -72,7 +72,7 @@ fn modern_is_the_default_and_classic_is_a_setting() {
         return;
     };
     assert!(s.settings().movement_modern);
-    assert!(s.settings().click_to_walk);
+    assert!(!s.settings().click_to_walk, "Click to move is off at first");
     assert_eq!(s.game.world.movement, MovementMode::Modern);
     std::fs::remove_file(&file).ok();
 
@@ -280,9 +280,10 @@ fn floor_pixel(s: &mut Stage) -> (f32, f32) {
 #[test]
 fn click_to_walk_works_in_both_modes_and_can_be_turned_off() {
     for (lines, walks) in [
-        ("", true),
-        ("movement_modern=false\n", true),
+        ("click_to_walk=true\n", true),
+        ("movement_modern=false\nclick_to_walk=true\n", true),
         ("click_to_walk=false\n", false),
+        ("", false),
     ] {
         let name = format!("click_{}", lines.len());
         let Some((mut s, file)) = stage(&name, lines) else {
@@ -301,6 +302,39 @@ fn click_to_walk_works_in_both_modes_and_can_be_turned_off() {
         );
         std::fs::remove_file(&file).ok();
     }
+}
+
+#[test]
+fn click_to_move_goes_round_the_way_and_a_movement_key_or_a_tap_acts_as_the_mouse_does() {
+    let Some((mut s, file)) = stage("click_move", "click_to_walk=true\n") else {
+        return;
+    };
+    // A click walks a route on the walkmesh, and W stops it where it is.
+    let px = floor_pixel(&mut s);
+    s.click(px, SIZE);
+    assert!(s.game.world.pc_walking());
+    run(&mut s, 5);
+    s.steer = (1.0, 0.0, false);
+    run(&mut s, 1);
+    s.steer = (0.0, 0.0, false);
+    assert!(!s.game.world.pc_walking(), "the key stopped the walk");
+    // A tap is a click.
+    s.finger_down(3, px, SIZE);
+    s.finger_up(3, px, SIZE);
+    assert!(s.game.world.pc_walking(), "a tap walks");
+    run(&mut s, 2);
+    // Off: neither walks.
+    s.set_click_to_move(false);
+    s.steer = (1.0, 0.0, false);
+    run(&mut s, 1);
+    s.steer = (0.0, 0.0, false);
+    run(&mut s, 2);
+    let px = floor_pixel(&mut s);
+    s.click(px, SIZE);
+    s.finger_down(4, px, SIZE);
+    s.finger_up(4, px, SIZE);
+    assert!(!s.game.world.pc_walking());
+    std::fs::remove_file(&file).ok();
 }
 
 #[test]
@@ -595,6 +629,7 @@ fn a_click_cuts_a_roll_short_and_the_walk_follows() {
     s.roll_key();
     s.update(DT);
     let px = floor_pixel(&mut s);
+    s.set_click_to_move(true);
     s.click(px, SIZE);
     assert!(s.game.world.pc_walking(), "the click was taken");
     let cut = frames(&mut s);

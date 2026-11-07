@@ -21,7 +21,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | X | Attack mode on and off (Key Mapping has it, under Attack Mode) |
 | F8 | read the roll, landing and jump pose files again: see [MOVEMENT_POSE.md](MOVEMENT_POSE.md) |
 | Right button drag, or the arrow keys | turn the camera round the player |
-| Left click on the floor | run there, unless Click to walk is off in Feedback |
+| Left click on the floor | run there, when Click to move is on (Options, Gameplay; off at first). A movement key stops the walk |
 | Left click on a creature, door or placeable | run up and talk, open or use; an enemy is attacked |
 | E | use the nearest thing within 2.5 m |
 | Left click on a reply, or 1-9 | take that reply, or take an item from a container or a body |

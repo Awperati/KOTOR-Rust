@@ -253,6 +253,7 @@ fn the_loop_plays_a_conversation_walks_opens_a_door_and_draws() {
         }
     }
     let px = hit.expect("floor somewhere on screen, a metre away");
+    s.set_click_to_move(true);
     s.click(px, SIZE);
     assert!(s.game.world.pc_walking(), "the click started a walk");
     let still = bytes_of(&s.dynamic_scene());

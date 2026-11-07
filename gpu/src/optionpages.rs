@@ -36,8 +36,8 @@ const STYLE_ROWS: [(&str, &str, &str); 24] = [
         "The main character feels the Force from the first room, or from Dantooine as the game has it. For new games only: a game keeps what it started with.",
     ),
     (
-        "Click to walk: On",
-        "Click to walk: Off",
+        "Click to move: On",
+        "Click to move: Off",
         "A click on the floor walks there. Off: only the keys move the player, and clicks still use what is under them.",
     ),
     (
@@ -219,6 +219,19 @@ pub(super) const COMBAT_BOX_AT: [i32; 4] = [330, 368, 240, 40];
 pub(super) const COMBAT_MODERN: &str = "Combat: Modern";
 pub(super) const COMBAT_CLASSIC: &str = "Combat: Classic";
 const COMBAT_WORDS: &str = "Ticked, Modern: a crosshair, aimed shots, sabre chains, and a key for every Force power. It needs Modern movement. Not ticked, Classic: the game's own rounds.";
+/// The box for Click to move: the owner, "Add a click to move toggleable setting in the menu settings". It goes under the
+/// file's column of boxes, and the two buttons under that go side by side to make room.
+pub(super) const CLICK_BOX: &str = "CB_CLICK_TO_MOVE";
+pub(super) const CLICK_BOX_AT: [i32; 4] = [60, 316, 240, 40];
+pub(super) const UNDER_CLICK: [(&str, [i32; 4]); 2] = [
+    ("BTN_MOUSE", [60, 360, 118, 23]),
+    ("BTN_KEYMAP", [182, 360, 118, 23]),
+];
+pub(super) const CLICK_ON: &str = "Click to move: On";
+pub(super) const CLICK_OFF: &str = "Click to move: Off";
+const CLICK_WORDS: &str = "On: a left click on the ground, or a tap, walks you there round what is in the way. A click on a person, a door or a thing still uses it, and the movement keys stop the walk. Off: the ground does nothing when clicked.";
+/// How far Pickup reaches for each metre its row says: the owner, "Increase the range of the proximity pickup by about 50%".
+pub(super) const PICKUP_REACH: f32 = 1.5;
 /// Words for the boxes on the Gameplay page that do something new.
 const GAMEPLAY_WORDS: [(&str, u32); 2] = [("CB_LEVELUP", 42266), ("CB_DISABLEMOVE", 42484)];
 
@@ -476,7 +489,11 @@ impl Stage {
             ..Row::default()
         });
         rows.push(Row {
-            text: format!("{}: {} m", VALUE_ROWS[3].0, settings.pickup_radius),
+            text: format!(
+                "{}: {} m",
+                VALUE_ROWS[3].0,
+                settings.pickup_radius as f32 * PICKUP_REACH
+            ),
             selected: true,
             ..Row::default()
         });
@@ -578,6 +595,11 @@ impl Stage {
             self.menus.option_words = None;
             self.menus.option_reason = Some(COMBAT_WORDS);
         }
+        if matches!((screen, &self.menus.hover), (Screen::Gameplay, Some(Hit::Button(tag))) if tag == CLICK_BOX)
+        {
+            self.menus.option_words = None;
+            self.menus.option_reason = Some(CLICK_WORDS);
+        }
         if let (Screen::Feedback, Some(Hit::Row(_, row))) = (screen, &self.menus.hover) {
             let past = row.checked_sub(FEEDBACK.len());
             let past_style = past.and_then(|n| n.checked_sub(STYLE_ROWS.len()));
@@ -608,6 +630,17 @@ impl Stage {
             s.cel_shading = s.cel_last.clamp(1, 2);
         }
         self.settings_changed();
+    }
+
+    /// Click to move, as the Gameplay page sets it. For a test or a driver.
+    pub fn set_click_to_move(&mut self, on: bool) {
+        self.menus.settings.click_to_walk = on;
+        self.settings_changed();
+    }
+
+    /// How far Pickup reaches now, in metres.
+    pub fn pickup_reach(&self) -> f32 {
+        self.menus.settings.pickup_radius as f32 * PICKUP_REACH
     }
 
     /// The anti-aliasing level the renderer is to draw with: 0 off, 1 4x, 2 8x, 3 16x.
