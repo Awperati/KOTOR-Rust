@@ -73,10 +73,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     o.conversation = "anything".to_string();
     o.faction = 5;
     o.useable = true;
+    // A quest with a step to show. What knows the steps is built on a thread, the first time.
     let tags = w.quest_tags();
-    let tag = tags.first().cloned().expect("a quest");
+    let mut tag = tags.first().cloned().expect("a quest");
+    'found: for _ in 0..120 {
+        for t in &tags {
+            w.journal.clear();
+            w.journal.insert(t.clone(), 1);
+            if w.next_step(t).is_some() {
+                tag = t.clone();
+                break 'found;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    w.journal.clear();
     w.journal.insert(tag.clone(), 1);
     w.journal_order = vec![tag.clone()];
+    println!("tracking {tag}: {:?}", w.next_step(&tag));
 
     for size in sizes {
         s.set_view(size);
@@ -108,11 +122,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // The step behind the camera: the arrow.
         let here = s.game.world.pc_mover.pos;
-        let step = s.game.world.next_step(&tag).expect("a step");
-        let bearing = (step.position[1] - here[1]).atan2(step.position[0] - here[0]);
-        s.yaw = bearing + 2.4;
-        let _ = s.compass_now();
-        shot(&mut s, "compass_arrow");
+        if let Some(step) = s.game.world.next_step(&tag) {
+            let bearing = (step.position[1] - here[1]).atan2(step.position[0] - here[0]);
+            s.yaw = bearing + 2.4;
+            let _ = s.compass_now();
+            shot(&mut s, "compass_arrow");
+        }
 
         // The journal, with its buttons.
         s.yaw = yaw;
