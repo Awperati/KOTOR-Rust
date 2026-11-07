@@ -286,6 +286,10 @@ pub(super) struct Seam {
     pre_failed: HashSet<String>,
     /// When a load ahead last stopped for want of memory.
     pre_wait: Option<std::time::Instant>,
+    /// Where a script of a nearby object sends the party, by script, looked up at that time: the globals it reads change.
+    script_to: HashMap<String, (std::time::Instant, Option<String>)>,
+    /// The first module of the planet chosen on the galaxy map, for the planet it was worked out for.
+    journey: Option<(i32, Option<String>)>,
     /// The loaded module's sites, made once the player is near a door.
     sketch: Option<Sketch>,
     jobs: Vec<Job>,
@@ -323,6 +327,8 @@ impl Seam {
         self.jobs.clear();
         self.failed.clear();
         self.pre_failed.clear();
+        self.script_to.clear();
+        self.journey = None;
         self.parts.clear();
         self.portal_key = None;
         self.figures.clear();
@@ -382,11 +388,13 @@ impl Stage {
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
-        let w = &self.game.world;
-        if w.minigame.is_some() || std::env::var_os("KOTOR_NO_PRELOAD").is_some() {
+        if self.game.world.minigame.is_some() || std::env::var_os("KOTOR_NO_PRELOAD").is_some() {
             return;
         }
-        let here = w.pc_mover.pos;
+        let here = self.game.world.pc_mover.pos;
+        let scripted = self.scripted_exits(here);
+        let journey = self.journey_goal();
+        let w = &self.game.world;
         let joined: HashSet<&str> = w
             .seamless
             .attached
@@ -405,6 +413,12 @@ impl Stage {
             })
             .filter(|(_, m)| *m != w.module && !joined.contains(m.as_str()))
             .collect();
+        // A lift, ramp or ladder that is a script and not a link.
+        exits.extend(
+            scripted
+                .into_iter()
+                .filter(|(_, m)| *m != w.module && !joined.contains(m.as_str())),
+        );
         exits.sort_by(|a, b| a.0.total_cmp(&b.0));
         // What is kept goes when its exit is out of reach, or when the player has walked away from the talk that named it.
         if let Some(p) = &self.seam.pre {
@@ -445,11 +459,18 @@ impl Stage {
             !self.seam.pre_failed.contains(&format!("menu:{m}"))
                 && self.seam.pre.as_ref().is_none_or(|p| p.module != *m)
         });
+        let nothing_kept = self.seam.pre.is_none();
         let (key, exit, talk) = match (menu.clone(), near, talk) {
             (Some(m), _, _) => (format!("menu:{m}"), Some(m), Some(String::new())),
             (None, Some((_, m)), _) => (m.clone(), Some(m), None),
             (None, None, Some(t)) => (format!("talk:{t}"), None, Some(t)),
-            (None, None, None) => return,
+            // The planet chosen on the galaxy map, while the ship or its cut scene is up: its first module, behind the ramp.
+            (None, None, None) => match journey
+                .filter(|m| nothing_kept && !self.seam.pre_failed.contains(&format!("journey:{m}")))
+            {
+                Some(m) => (format!("journey:{m}"), Some(m), Some(String::new())),
+                None => return,
+            },
         };
         let module = key;
         let (dir, hd) = (self.dir.clone(), self.hd3d.clone());
@@ -529,6 +550,79 @@ impl Stage {
             let _ = tx.send(load());
         });
         self.seam.pre_job = Some(PreJob { module, rx });
+    }
+
+    /// Modules that the scripts of nearby doors, triggers and placeables start, with how far each object is: the lifts, ramps
+    /// and ladders that are scripts and have no link to load by. Found by `World::script_destination`, which changes nothing;
+    /// a script is looked at again after a second, as the globals it reads move on.
+    fn scripted_exits(&mut self, here: [f32; 3]) -> Vec<(f32, String)> {
+        const SLOTS: [&str; 6] = [
+            "OnUsed",
+            "OnOpen",
+            "OnFailToOpen",
+            "OnClick",
+            "ScriptOnEnter",
+            "OnEnter",
+        ];
+        let near: Vec<(f32, Vec<String>)> = self
+            .game
+            .world
+            .objects
+            .values()
+            .filter(|o| {
+                matches!(o.kind, Kind::Door | Kind::Trigger | Kind::Placeable)
+                    && o.link_module.is_empty()
+            })
+            .filter_map(|o| {
+                let d = (o.position[0] - here[0]).hypot(o.position[1] - here[1]);
+                let scripts: Vec<String> = SLOTS
+                    .iter()
+                    .filter_map(|s| o.scripts.get(*s))
+                    .filter(|s| !s.is_empty())
+                    .cloned()
+                    .collect();
+                (d < PRELOAD_RANGE + 8.0 && !scripts.is_empty()).then_some((d, scripts))
+            })
+            .collect();
+        let mut out = Vec::new();
+        for (d, scripts) in near {
+            for script in scripts {
+                let fresh = self
+                    .seam
+                    .script_to
+                    .get(&script)
+                    .filter(|(at, _)| at.elapsed().as_secs() < 1)
+                    .map(|(_, to)| to.clone());
+                let to = match fresh {
+                    Some(to) => to,
+                    None => {
+                        let to = self.game.world.script_destination(&script, -1);
+                        self.seam
+                            .script_to
+                            .insert(script.clone(), (std::time::Instant::now(), to.clone()));
+                        to
+                    }
+                };
+                out.extend(to.map(|m| (d, m)));
+            }
+        }
+        out
+    }
+
+    /// The first module of the planet chosen on the galaxy map, while the ship or the cut scene on the way to it is up.
+    fn journey_goal(&mut self) -> Option<String> {
+        let w = &mut self.game.world;
+        let (planet, here) = (w.selected_planet, w.module.to_ascii_lowercase());
+        if planet < 0 || !(here.starts_with("stunt_") || here.starts_with("ebo_")) {
+            return None;
+        }
+        if self.seam.journey.as_ref().is_none_or(|(p, _)| *p != planet) {
+            let to = w
+                .planet_first_module(planet, "k_pebn_exithawk")
+                .filter(|m| *m != here);
+            self.seam.journey = Some((planet, to));
+        }
+        self.seam.journey.as_ref().and_then(|(_, m)| m.clone())
     }
 
     /// The module the scripts of conversation `talk` send the player to, if they name one: what the stage loads ahead while

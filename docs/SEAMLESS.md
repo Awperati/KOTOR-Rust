@@ -154,10 +154,11 @@ Measured at 3840x2160, best of three, Upper City South to the Cantina: no frame 
 
 A link that is not joined (a lift, a shop door that overlaps the street, a script's jump) used to freeze the frame while the module loaded: 1980 ms for the Upper City South lift. `Stage::preload_tick` loads the module on a thread instead, and `seamless_arrive` takes it when the world changes to it.
 
-- **When:** the player is within 24 m of a door or trigger that leads elsewhere; or a conversation is open whose scripts name an installed module (read from the text constants of the compiled scripts, `cutscene` modules skipped); or the Load screen has a save chosen, or the character screens of a new game are up.
+- **When:** the player is within 24 m of a door or trigger that leads elsewhere; or within 24 m of a door, trigger or placeable whose script starts a module (a ladder, the Ebon Hawk's ramp: `World::script_destination` runs the script on a copy of the globals and changes nothing, see `script_probe.rs`); or a conversation is open whose scripts name an installed module (read from the text constants of the compiled scripts, `cutscene` modules skipped); or the Load screen has a save chosen, or the character screens of a new game are up; or a planet is chosen on the galaxy map and the ship (or the cut scene on the way) is up: its first module is worked out by running the travel script and then the ramp's script on one copy of the globals.
 - **What the thread builds:** the picture, the chests, the creatures' bodies and every texture, as for a joined neighbour. Textures are filed under the spelling the picture asks for, because the stage's cache is keyed by it.
 - **Limits:** one job at a time, one module kept, nothing under 4 GB of free memory (`KOTOR_PRELOAD_MIN_MB` changes it, `KOTOR_NO_PRELOAD` turns it off). What is kept goes when the player walks 32 m from its exit or its conversation.
-- **Not loaded ahead:** the galaxy map, whose script picks the module only after a planet is chosen.
+- **Galaxy map:** nothing is loaded while the player only looks at planets; the travel script picks the module once Travel is pressed. From then, the planet's first module is loaded while the cut scene and the ship load (`tests/preload.rs`, row 4 gives `tat_m17ab`).
+- **Every way the game changes module, counted, and which are loaded ahead:** `docs/TRANSITIONS.md`.
 - `cargo run --release --example load_times -- tar_m10aa:tar_m10ac` times a module change (`PRELOAD=1` waits for the load ahead first); `talk_scan` lists which conversations of a module name a module.
 
 ## Not done

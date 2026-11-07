@@ -46,6 +46,7 @@ mod pazaak;
 mod play;
 mod rules;
 mod save;
+mod script_probe;
 pub mod seamless;
 pub mod seamless_walk;
 mod seamless_world;

@@ -172,3 +172,80 @@ fn a_new_game_is_loaded_while_the_character_is_made() {
     }
     assert_eq!(s.preloaded(), Some("end_m01aa"));
 }
+
+/// Wait for a module to be loaded ahead. None when nothing is within 40 s (memory short on this machine).
+fn wait_for_any(s: &mut Stage) -> Option<String> {
+    let began = std::time::Instant::now();
+    while s.preloaded().is_none() && began.elapsed().as_secs() < 40 {
+        s.update(DT);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    s.preloaded().map(str::to_string)
+}
+
+fn opened(module: &str) -> Stage {
+    let mut s = Stage::open(module, true).unwrap();
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    for _ in 0..60 {
+        s.update(DT);
+    }
+    s
+}
+
+#[test]
+fn a_ladder_that_is_a_script_is_loaded_ahead_too() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = opened("tar_m05aa");
+    let at = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.tag == "tar05_lad04aai")
+        .map(|o| o.position)
+        .expect("the ladder");
+    s.game.world.pc_mover = kotor_walkmesh::Mover::new([at[0] + 6.0, at[1], at[2]], 0.0);
+    if let Some(m) = wait_for_any(&mut s) {
+        assert_eq!(m, "tar_m04aa");
+    }
+}
+
+#[test]
+fn the_ramp_of_the_ship_loads_the_planet_it_will_open_on() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = opened("ebo_m12aa");
+    s.game
+        .world
+        .global_numbers
+        .insert("K_CURRENT_PLANET".into(), 15);
+    let at = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.tag == "ebn12_ebonexit")
+        .map(|o| o.position)
+        .expect("the ramp");
+    s.game.world.pc_mover = kotor_walkmesh::Mover::new([at[0] + 4.0, at[1], at[2]], 0.0);
+    if let Some(m) = wait_for_any(&mut s) {
+        assert_eq!(m, "danm13");
+    }
+}
+
+#[test]
+fn a_planet_chosen_on_the_map_is_loaded_before_the_player_reaches_the_ramp() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = opened("ebo_m12aa");
+    // Row 4 of the map is Tatooine. The player stands where they spawned, wherever that is from the ramp.
+    s.game.world.selected_planet = 4;
+    if let Some(m) = wait_for_any(&mut s) {
+        assert_eq!(m, "tat_m17ab");
+    }
+}
