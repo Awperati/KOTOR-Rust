@@ -112,6 +112,84 @@ pub fn body_of_texture(name: &str) -> Option<String> {
     (rest.len() == 2 && rest.bytes().all(|b| b.is_ascii_digit())).then(|| format!("pfba{size}"))
 }
 
+/// How far the painted bra's cups stand out from a flat chest, as a share of the torso's half width, and where they are: their
+/// centres' height and distance from the middle, and how far each reaches, all as shares of the torso's height and half width.
+const CHEST_OUT: f32 = 0.11;
+/// How far the cups stand out from the chest under them, in metres, on every body: the small body's, which looked best in profile.
+const CHEST_PROJECTION: f32 = 0.034;
+const CHEST_HEIGHT: f32 = 0.873;
+const CHEST_HEIGHT_REACH: f32 = 0.085;
+const CHEST_ACROSS: f32 = 0.30;
+const CHEST_ACROSS_REACH: f32 = 0.32;
+
+/// The base mesh of a woman's torso is flat where the cups are painted, so the bra lay on a board and, in profile, stood off
+/// the skin. The chest vertices are pushed forward and a little out to the sides by a smooth bump under each cup, at load.
+/// Nothing of the game's files changes. Call before [`soften_shading`], which takes the normals from the shape.
+pub fn shape_chest(m: &mut Model) {
+    let world = m.world_matrices(None);
+    let Some(w) = world
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("Torso"))
+        .map(|x| x.1)
+    else {
+        return;
+    };
+    let turn = [0, 1, 2].map(|r| [w[r][0], w[r][1], w[r][2]]);
+    let at = |p: &[f32; 3]| [0, 1, 2].map(|k| dot3(turn[k], *p) + w[k][3]);
+    fn find_mut<'a>(n: &'a mut kotor_model::Node, name: &str) -> Option<&'a mut kotor_model::Node> {
+        if n.name.eq_ignore_ascii_case(name) {
+            return Some(n);
+        }
+        n.children.iter_mut().find_map(|c| find_mut(c, name))
+    }
+    let Some(mesh) = find_mut(&mut m.root, "Torso").and_then(|n| n.mesh.as_mut()) else {
+        return;
+    };
+    let (top, half) = torso_size(mesh, at);
+    if top <= 0.0 || half <= 0.0 {
+        return;
+    }
+    let bump = |x: f32, centre: f32, reach: f32| {
+        let t = ((x - centre).abs() / reach).min(1.0);
+        0.5 + 0.5 * (t * std::f32::consts::PI).cos()
+    };
+    // The bodies stand out by different amounts under the cups to begin with (1.6 to 2.0 cm); each gets what brings it to the
+    // same projection, a bump raising the front by four fifths of its own height.
+    let (mut band, mut cup) = (f32::MIN, f32::MIN);
+    for p in &mesh.positions {
+        let q = at(p);
+        let (h, side) = (q[2] / top, q[0].abs() / half);
+        if (0.80..0.83).contains(&h) && side < 0.5 {
+            band = band.max(q[1]);
+        }
+        if (0.86..0.89).contains(&h) && (0.1..0.5).contains(&side) {
+            cup = cup.max(q[1]);
+        }
+    }
+    let wanted = if band > f32::MIN && cup > f32::MIN {
+        ((CHEST_PROJECTION - (cup - band)) / 0.8).clamp(0.0, 0.04)
+    } else {
+        CHEST_OUT * half
+    };
+    for p in &mut mesh.positions {
+        let q = at(p);
+        let (h, side) = (q[2] / top, q[0].abs() / half);
+        let front = (q[1] / 0.02).clamp(0.0, 1.0);
+        let weight = bump(h, CHEST_HEIGHT, CHEST_HEIGHT_REACH)
+            * bump(side, CHEST_ACROSS, CHEST_ACROSS_REACH)
+            * front;
+        if weight <= 0.0 {
+            continue;
+        }
+        let out = wanted * weight;
+        // Forward, and a little away from the middle, in the world; back into the mesh's own frame, a pure turn.
+        let delta = [q[0].signum() * 0.25 * out, out, 0.0];
+        for k in 0..3 {
+            p[k] += dot3([turn[0][k], turn[1][k], turn[2][k]], delta);
+        }
+    }
+}
+
 /// The sports top is modelled as well as painted: its hems and collar are ridges of the skin's shading, which would show
 /// as lines on bare skin. Even out the shading of the arms and the torso above the waist. The shape stays as it is.
 pub fn soften_shading(m: &mut Model) {

@@ -401,3 +401,41 @@ fn a_variants_blues_colour_our_bra_and_briefs_and_leave_the_skin() {
         );
     }
 }
+
+/// The base mesh of a woman's torso is flat under the painted cups, so in profile the bra stood off the skin. The chest is
+/// shaped at load: the front of it comes forward by a few centimetres, nothing at the back moves, and no vertex moves far.
+#[test]
+fn the_chest_has_a_shape_for_the_bra_to_sit_on() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    for body in ["pfbas", "pfbam", "pfbal"] {
+        let mdl = inst.read(body, kotor_core::ResType::MDL).unwrap();
+        let mdx = inst
+            .read(body, kotor_core::ResType::MDX)
+            .unwrap_or_default();
+        let before = kotor_model::parse_model(&mdl, &mdx).unwrap();
+        let mut after = kotor_model::parse_model(&mdl, &mdx).unwrap();
+        underwear::shape_chest(&mut after);
+        let mesh = |m: &kotor_model::Model| m.root.find("Torso").unwrap().mesh.clone().unwrap();
+        let (a, b) = (mesh(&before), mesh(&after));
+        let moves: Vec<f32> = a
+            .positions
+            .iter()
+            .zip(&b.positions)
+            .map(|(p, q)| (0..3).map(|k| (p[k] - q[k]).powi(2)).sum::<f32>().sqrt())
+            .collect();
+        let most = moves.iter().cloned().fold(0.0, f32::max);
+        let moved = moves.iter().filter(|d| **d > 0.0).count();
+        assert!(
+            (0.01..0.05).contains(&most),
+            "{body}: the chest comes forward by {most:.3} m at most"
+        );
+        assert!(
+            moved > 8 && moved * 4 < moves.len(),
+            "{body}: {moved} of {} vertices move",
+            moves.len()
+        );
+    }
+}

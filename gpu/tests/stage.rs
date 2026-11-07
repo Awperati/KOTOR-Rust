@@ -1242,10 +1242,16 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         } else {
             (3.2, 0.95, 40.0)
         };
+        // FRAME_SIDE looks from the hero's left, along the profile.
+        let (dx, dy) = if std::env::var("FRAME_SIDE").is_ok() {
+            (-heading.sin(), heading.cos())
+        } else {
+            (heading.cos(), heading.sin())
+        };
         let cam = kotor_render::Camera {
             eye: [
-                at[0] + heading.cos() * dist * side,
-                at[1] + heading.sin() * dist * side,
+                at[0] + dx * dist * side,
+                at[1] + dy * dist * side,
                 at[2] + high + 0.05,
             ],
             target: [at[0], at[1], at[2] + high],
