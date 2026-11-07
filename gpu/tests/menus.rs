@@ -6118,6 +6118,7 @@ fn combat_is_classic_until_the_box_is_ticked_and_modern_needs_modern_movement() 
     press(&mut s, "BTN_DEFAULT");
     assert!(s.modern_combat());
     std::fs::remove_file(&file).ok();
+}
 
 /// How many pixels of the Attack mode button's line show.
 fn mode_line(s: &mut Stage) -> usize {
