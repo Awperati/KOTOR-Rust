@@ -583,6 +583,14 @@ impl Ui<'_> {
             );
             return;
         }
+        // A screen is stretched across a wide window, and a portrait is square. It stays in the middle of its place.
+        let fill = patch.fill.as_deref().unwrap_or(&c.border.fill);
+        let r = if fill.to_ascii_lowercase().starts_with("po_") {
+            let wide = ((r[2] as f32 * cv.scale / cv.scale_x).round() as i32).min(r[2]);
+            [r[0] + (r[2] - wide) / 2, r[1], wide, r[3]]
+        } else {
+            r
+        };
         if c.kind == SLIDER {
             return self.draw_slider(cv, c, r, &patch, lit);
         }

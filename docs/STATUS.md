@@ -247,5 +247,9 @@ Beside the hourglass, in the place `mipc28x6` keeps for stealth, which has no bu
 
 At the end of the Feedback page: a heading and a row for each of `textures`, `anims` and `meshes`. A click opens the folder in Explorer, and makes it if it is not there. **Assumed:** rows of the list, as the file has no room for another section or button. Test: `the_custom_content_rows_open_each_folder`.
 
+## Square portraits
+
+A picture whose name starts `po_` on a stretched screen stays square, in the middle of its place: the Abilities, Equipment, Inventory and character-making screens, the change buttons and the party screen. Test: `a_portrait_stays_square_on_a_wide_window`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

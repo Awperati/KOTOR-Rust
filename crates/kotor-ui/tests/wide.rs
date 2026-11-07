@@ -47,6 +47,37 @@ fn a_picture_in_a_list_row_stays_square_on_a_wide_window() {
 }
 
 #[test]
+fn a_portrait_stays_square_on_a_wide_window() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    let mut ui = Ui::new(&mut inst);
+    for (w, h) in [(1280, 720), (3840, 2160)] {
+        ui.set_view((w, h));
+        let mut with = MenuView::new("abilities");
+        with.fill("LBL_PORTRAIT", "po_pfha2");
+        let with = ui.menu_overlay(&with).unwrap();
+        let without = ui.menu_overlay(&MenuView::new("abilities")).unwrap();
+        let (mut left, mut right, mut top, mut bottom) = (w, 0, h, 0);
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                if with.rgba[i..i + 4] != without.rgba[i..i + 4] {
+                    left = left.min(x);
+                    right = right.max(x);
+                    top = top.min(y);
+                    bottom = bottom.max(y);
+                }
+            }
+        }
+        let (wide, high) = (right + 1 - left, bottom + 1 - top);
+        assert!(high > 100, "{high} high at {w}");
+        assert!(wide.abs_diff(high) <= 3, "{wide} by {high} at {w}");
+    }
+}
+
+#[test]
 fn the_interface_reaches_the_edges_of_a_wide_screen() {
     let Some(dir) = kotor_core::install_dir() else {
         return;
