@@ -737,6 +737,17 @@ impl World {
                     self.run_event(id, "ScriptHeartbeat");
                 }
             }
+            // Placeables beat too. Most of the game's treasure is made this way: `OnHeartbeat` of a `g_tres*` template is
+            // `k_plc_tres*`, which fills it once (bug 12: their footlockers stayed empty).
+            let beating: Vec<ObjId> = self
+                .objects
+                .values()
+                .filter(|o| o.kind == Kind::Placeable && o.scripts.contains_key("OnHeartbeat"))
+                .map(|o| o.id)
+                .collect();
+            for id in beating {
+                self.run_event(id, "OnHeartbeat");
+            }
             if self.minigame.is_none() {
                 self.run_module_script("Mod_OnHeartbeat");
             }

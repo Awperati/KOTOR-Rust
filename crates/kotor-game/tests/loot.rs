@@ -259,3 +259,59 @@ fn credits_a_script_gives_are_credits_and_the_player_is_called_by_their_name() {
     let line = w.fill_line_for_test("I am <FullName>, or <FirstName> of the <LastName>s.");
     assert_eq!(line, "I am Revan Ordo, or Revan of the Ordos.");
 }
+
+#[test]
+fn a_treasure_footlocker_fills_on_its_heartbeat_and_only_once() {
+    // Bug 12: `g_tresmillow001` has no items and no `OnOpen`. Its `OnHeartbeat` is `k_plc_tresmillow`.
+    let Some(mut w) = world_in("tar_m10aa") else {
+        return;
+    };
+    let chest = w
+        .objects
+        .values()
+        .find(|o| {
+            o.kind == Kind::Placeable
+                && o.scripts
+                    .get("OnHeartbeat")
+                    .is_some_and(|s| s.eq_ignore_ascii_case("k_plc_tresmillow"))
+        })
+        .expect("a footlocker with a treasure heartbeat")
+        .id;
+    let in_it = |w: &World| w.object(chest).unwrap().inventory.len();
+    assert_eq!(in_it(&w), 0);
+    for _ in 0..(7.0 * 20.0) as i32 {
+        w.step(0.05);
+    }
+    let made = in_it(&w);
+    assert!(made > 0, "a heartbeat has passed");
+    for _ in 0..(20.0 * 20.0) as i32 {
+        w.step(0.05);
+    }
+    assert_eq!(in_it(&w), made, "the script keeps to one filling");
+    assert!(w.errors.is_empty(), "{:?}", w.errors);
+    w.object_mut(chest).unwrap().locked = false;
+    assert!(use_it(&mut w, chest));
+    assert_eq!(w.opened, Some(chest));
+    assert_eq!(w.container_items().len(), made);
+}
+
+#[test]
+fn a_treasure_footlocker_opened_at_once_is_not_empty() {
+    let Some(mut w) = world_in("tar_m10aa") else {
+        return;
+    };
+    let chest = w
+        .objects
+        .values()
+        .find(|o| {
+            o.kind == Kind::Placeable
+                && o.scripts
+                    .get("OnHeartbeat")
+                    .is_some_and(|s| s.eq_ignore_ascii_case("k_plc_tresmillow"))
+        })
+        .unwrap()
+        .id;
+    w.object_mut(chest).unwrap().locked = false;
+    assert!(use_it(&mut w, chest));
+    assert!(!w.container_items().is_empty());
+}

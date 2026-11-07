@@ -1074,6 +1074,8 @@ impl World {
             return;
         }
         if self.filled.insert(id) {
+            // One opened before its first heartbeat has its treasure too.
+            self.run_event(id, "OnHeartbeat");
             let names: Vec<String> = utp
                 .as_ref()
                 .and_then(|g| g.root.list("ItemList"))
