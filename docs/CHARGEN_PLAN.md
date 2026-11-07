@@ -69,10 +69,13 @@ The animation session answered on 2026-11-07. The integration is **not built yet
 - Ours fits the three female bodies with every skin. Men's bodies have no plan yet.
 - "None" is not defined yet. See question 3.
 
-## Questions for the owner
+## Decided
 
-1. **Hair pieces:** make new art for them? I recommend yes, but last, and hair colour first. Meanwhile, I carry on with everything else.
-2. **Quick Character:** does it keep its short path, with Custom having the new page? I recommend yes. Meanwhile, I build it for Custom and leave Quick as it is.
-3. **"None" for underwear:** I recommend it means the game's own painted top, the stock body with no change. There is no bare body in the game's textures, and I do not plan to make one. Meanwhile, I build it that way.
-4. **Who may change their look after the start?** I recommend only at creation, as in the game. Meanwhile, I leave it at that.
-5. **The panel's look:** the game has no file for this page. I recommend the Options pages' frame and sliders, with a big figure on the right. Meanwhile, I build that.
+Top Dog gave these on 2026-11-07, under the owner's standing order to take the recommendations. The owner may overrule any of them.
+
+1. **Hair pieces:** new art, but last. Hair colour comes first.
+2. **Quick Character:** it keeps its short path. Custom has the new page.
+3. **"None" for underwear:** the game's own painted top, the stock body with no change. There is no bare body in the game's textures, and none will be made.
+4. **Changing a look:** only at creation, as in the game.
+5. **The panel's look:** the Options pages' frame and sliders, with a big figure on the right.
+6. **"Underwear choice":** texture variants of our built-in underwear, as the pack has no meshes. New meshes would be new art, if the owner wants them.
