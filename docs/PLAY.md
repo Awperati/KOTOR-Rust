@@ -155,6 +155,19 @@ B or the HUD's hourglass pauses and goes on, outside conversations and with no c
 ## Fights
 An enemy under the cursor has a red bar and three slots: the attack, a feat and a Force power. The arrows go through what each has, and a click attacks with it next. Feats are Power Attack, Power Blast, Critical Strike, Sniper Shot, Flurry and Rapid Shot, at the strongest level known and for the weapon held. The numbers are the talk table's words for each. Blows show over the target, with Floating Numbers on. Disengage stops attacking.
 
+## Modern combat
+The Combat box on the Gameplay page turns it on, with Modern movement. Classic is the default, and enemies and party members fight the same either way.
+
+| Input | What it does in Modern combat |
+|---|---|
+| Right button held, in a fight, with an enemy seen or with Attack mode on | aim over the shoulder with a crosshair, which drifts more on the move and after a shot |
+| Left click while aiming, with a blaster | one shot, at most one in 0.5 s, up to 30 m. A wall or a closed door stops it |
+| Left click in a fight, with a blade | a blow. Clicks in time chain five. Right held with a blade guards |
+| Q (Key Mapping, under Lock On) | lock on to the creature nearest the middle of the view, or let go. The wheel goes to the next |
+| The Force page of Key Mapping | a key for each power, none to begin with, and Alt plus a key is allowed. It goes at once to the crosshair's target, the lock or the player |
+
+A pause holds these. There is no queue. A power that cannot be cast says why over the player.
+
 
 ## Feedback and Auto-Pause
 From the pause menu or the main menu's Options. Feedback has Hide Unequippable, Tutorial Popups, Subtitles, Mini Map and Floating Numbers. Auto-Pause has End of Combat Round, Enemy Sighted, Party Member Down, Action Menu Used and New Target Selected; Mine Sighted is greyed, as there are no mines. See Pause. Auto Level Up on the Gameplay page takes the player's levels as they come, and with Combat Movement off the keys and the floor do not move the player in a fight. Enemy Sighted and Party Member Down start ticked: **assumed**. All of it is kept in the settings file.

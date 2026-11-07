@@ -115,6 +115,8 @@ pub struct Game {
     /// Until what step a creature that fought keeps its combat stance.
     ready_until: HashMap<ObjId, u64>,
     log_seen: usize,
+    /// The clip of a Modern chain of blows, and how fast it plays.
+    blow_clip: Option<(&'static str, f32)>,
     names: HashMap<String, &'static str>,
     headings: HashMap<ObjId, f32>,
     /// The line of a conversation last turned to.
@@ -177,6 +179,10 @@ const MAX_CATCH_UP: f32 = 0.25;
 /// Most fixed steps one call may run: about a fifth of a second of simulation at its slowest.
 pub const MAX_STEPS_PER_CALL: usize = 4096;
 
+/// A chain's clips, as written. Assumed: how long what a chain hits staggers, and how much of a parry clip plays.
+const BLOW_CLIP_SECONDS: f32 = 1.467;
+const STAGGER_SECONDS: f32 = 0.4;
+const PARRY_SECONDS: f32 = 0.6;
 /// Under this speed in m/s an aimed shot plays its clip. Assumed.
 const AIMED_CLIP_BELOW: f32 = 0.5;
 
@@ -194,6 +200,7 @@ impl Game {
             ready_until: HashMap::new(),
             scripted: HashMap::new(),
             log_seen: 0,
+            blow_clip: None,
             names: HashMap::new(),
             headings: HashMap::new(),
             line_seen: None,
@@ -352,6 +359,8 @@ impl Game {
                 } else if modern && id == pc && want == "walk" {
                     // And a walk, going from a stand to a run through it. The clip covers 1.7 m a second.
                     (self.world.pc_body.speed() / WALK_CLIP_SPEED).clamp(0.6, 1.5)
+                } else if id == pc && self.blow_clip.is_some_and(|b| b.0 == want) {
+                    self.blow_clip.map_or(1.0, |b| b.1)
                 } else {
                     1.0
                 };
@@ -380,19 +389,36 @@ impl Game {
         self.log_seen = n;
         // Two who fight each other strike in the same step: a swing is not to be replaced by the flinch at the other's.
         let hold = self.steps + (STANCE_HOLD_SECONDS / self.dt) as u64;
+        // A Modern chain of blows has its own clips, is not stopped by a flinch, and staggers what it hits only for a moment.
+        let (pc, blowing) = (self.world.pc, self.world.pc_blowing);
         for l in &new {
             self.ready_until.insert(l.attacker, hold);
             self.ready_until.insert(l.target, hold);
+            if l.target == pc && blowing {
+                continue;
+            }
             if l.outcome == crate::combat::Outcome::Miss {
-                let dodge = self.style_clip(l.target, Move::Dodge);
-                self.play_once(l.target, dodge, DODGE_CLIP_SECONDS);
+                if l.target == pc && self.world.pc_guard {
+                    self.play_parry(pc);
+                } else {
+                    let dodge = self.style_clip(l.target, Move::Dodge);
+                    self.play_once(l.target, dodge, DODGE_CLIP_SECONDS);
+                }
             } else {
                 let hit = self.style_clip(l.target, Move::Hit);
-                self.play_once(l.target, hit, COMBAT_CLIP_SECONDS);
+                let seconds = if l.attacker == pc && blowing {
+                    STAGGER_SECONDS
+                } else {
+                    COMBAT_CLIP_SECONDS
+                };
+                self.play_once(l.target, hit, seconds);
             }
         }
         // A swing waits for a flinch or dodge in progress, so that being hit is always seen to the end.
         for l in &new {
+            if l.attacker == pc && blowing {
+                continue;
+            }
             let swing = self.style_clip(l.attacker, Move::Attack);
             // An aimed shot starts its clip over, standing. On the move the legs go on, and the shot is only the bolt.
             if l.attacker == self.world.pc && self.world.pc_aim.is_some() {
@@ -408,6 +434,34 @@ impl Game {
     /// The attacker of a ground finisher plays the owner's `finisher` clip for `seconds`, over the swing it began.
     pub fn play_finisher(&mut self, id: ObjId, seconds: f32) {
         self.play_once(id, "finisher", seconds);
+    }
+
+    /// The digit of the chain's clips for the weapon in hand, if it is a blade that has them: `c2a1` to `c4a5`.
+    pub fn blade_stance(&mut self, id: ObjId) -> Option<i32> {
+        let (stance, ranged) = self.weapon_stance(id);
+        (!ranged && (2..=4).contains(&stance)).then_some(stance)
+    }
+
+    /// A clip's name, kept.
+    fn clip_name(&mut self, name: String) -> &'static str {
+        self.names
+            .entry(name)
+            .or_insert_with_key(|n| Box::leak(n.clone().into_boxed_str()))
+    }
+
+    /// A step of a Modern chain of blows plays, `rate` times as fast as written, over what is playing.
+    pub fn play_blow(&mut self, id: ObjId, stance: i32, step: usize, rate: f32) {
+        let name = self.clip_name(format!("c{stance}a{}", step + 1));
+        self.blow_clip = Some((name, rate));
+        self.play_once(id, name, BLOW_CLIP_SECONDS / rate);
+    }
+
+    /// A blade parries, one of the stance's five, by the clock of the game.
+    fn play_parry(&mut self, id: ObjId) {
+        if let Some(stance) = self.blade_stance(id) {
+            let name = self.clip_name(format!("c{stance}p{}", self.steps % 5 + 1));
+            self.play_once(id, name, PARRY_SECONDS);
+        }
     }
 
     /// Keep a creature in its fighting stance a little longer, as a fight does. Modern combat's aim calls it.

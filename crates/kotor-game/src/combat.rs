@@ -581,6 +581,21 @@ impl World {
         self.aimed = false;
     }
 
+    /// One blow of a Modern chain: an ordinary attack, its rolls and its penalties, for `share` of the damage. With a weapon in each
+    /// hand the steps of the chain go from hand to hand.
+    pub fn resolve_blow(&mut self, attacker: ObjId, target: ObjId, step: usize, share: f32) {
+        let (main, left) = if self.off_hand(attacker).is_some() {
+            self.two_weapon_penalties(attacker)
+        } else {
+            (0, 0)
+        };
+        let other = step % 2 == 1 && self.hand_weapon(attacker, 5).is_some();
+        let (slot, penalty) = if other { (5, left) } else { (4, main) };
+        self.blow_share = Some(share);
+        self.resolve_hand(attacker, target, Default::default(), slot, penalty);
+        self.blow_share = None;
+    }
+
     /// One attack with the weapon in `slot` (4 right hand, 5 left), with `penalty` added to the roll.
     fn resolve_hand(
         &mut self,
@@ -636,6 +651,9 @@ impl World {
                     + boost.damage
                     + more
                     + self.story_blow(attacker);
+            }
+            if let Some(share) = self.blow_share {
+                dealt = ((dealt as f32 * share).round() as i32).max(1);
             }
             dealt = self.story_soften(attacker, target, dealt);
             // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.

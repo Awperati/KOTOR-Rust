@@ -437,6 +437,12 @@ pub struct World {
     pub ground_finishers: bool,
     /// Set while `resolve_aimed` runs: an aimed shot's would-be miss is a graze of half the rolled damage.
     pub(crate) aimed: bool,
+    /// Set while `resolve_blow` runs: how much of the damage a blow of a Modern chain does.
+    pub(crate) blow_share: Option<f32>,
+    /// The player is in a Modern chain of blows: its log lines are not rounds, and it is not stopped by a flinch.
+    pub pc_blowing: bool,
+    /// The player guards, right held with a blade in hand: an attack that fails on them is parried.
+    pub pc_guard: bool,
     /// Melee blows struck as ground finishers since the window last looked: attacker and victim. For the attacker's clip.
     pub finishers: Vec<(ObjId, ObjId)>,
     pub story: crate::story_branches::StoryState,
@@ -757,6 +763,9 @@ impl World {
             no_misses: false,
             ground_finishers: false,
             aimed: false,
+            blow_share: None,
+            pc_blowing: false,
+            pc_guard: false,
             finishers: Vec::new(),
             story: Default::default(),
             hold_levels: false,

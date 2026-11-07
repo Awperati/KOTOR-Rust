@@ -72,7 +72,12 @@ impl Stage {
 
     /// Whether the aim can begin or go on now.
     fn may_aim(&self) -> bool {
-        if !self.aim_held || !self.modern_combat() || self.menu_open() {
+        self.aim_held && self.in_fight_now()
+    }
+
+    /// Whether Modern combat's fighting is up: in a fight, with an enemy in sight, locked on, or with Attack mode on.
+    pub(super) fn in_fight_now(&self) -> bool {
+        if !self.modern_combat() || self.menu_open() {
             return false;
         }
         let w = &self.game.world;
@@ -83,7 +88,11 @@ impl Stage {
             || w.in_race()
             || self.beat_camera().is_some()
             || w.object(w.pc).is_none_or(|o| o.down || o.dead);
-        !busy && (self.party_blocked() || w.attack_mode() || self.seen_enemy().is_some())
+        !busy
+            && (self.party_blocked()
+                || w.attack_mode()
+                || self.lock_on.is_some()
+                || self.seen_enemy().is_some())
     }
 
     /// Each frame of the game.

@@ -18,6 +18,8 @@ use std::rc::Rc;
 
 #[path = "aimscreen.rs"]
 mod aimscreen;
+#[path = "bladescreen.rs"]
+mod bladescreen;
 #[path = "bodypose.rs"]
 mod bodypose;
 #[path = "deathscreen.rs"]
@@ -529,6 +531,8 @@ pub struct Stage {
     /// What the player is locked on to, and how long it has been out of sight.
     lock_on: Option<ObjId>,
     lock_lost: f32,
+    /// Where the player is in a chain of blows.
+    blows: bladescreen::Blows,
     /// Seconds since the player was last in the air, or in a landing.
     since_fall: f32,
     /// The roll's and the landing's poses.
@@ -722,6 +726,7 @@ impl Stage {
             aim_sway: 0.0,
             lock_on: None,
             lock_lost: 0.0,
+            blows: Default::default(),
             since_fall: 0.0,
             body_poses: moving::BodyPoses::default(),
             camera_z: None,
@@ -880,6 +885,7 @@ impl Stage {
         } else {
             self.effects.load_area(&mut self.inst, &area);
             self.lock_on = None;
+            self.blows = Default::default();
         }
         self.log_seen = 0;
         self.door_seen.clear();
@@ -935,6 +941,7 @@ impl Stage {
         self.notices_tick();
         self.aim_tick(dt);
         self.lock_tick(dt);
+        self.blow_tick();
         if self.menu_open() && !self.container_up() {
             // The module a screen is about to start loads meanwhile.
             self.preload_tick();
@@ -1867,7 +1874,9 @@ impl Stage {
             return;
         }
         if self.aiming() {
-            self.aim_click();
+            if !self.blow_click() {
+                self.aim_click();
+            }
             return;
         }
         // The first action slot (`LBH_BORDER1` in `maininterface.gui`) uses the target it shows.
@@ -1896,6 +1905,9 @@ impl Stage {
             } else {
                 self.hud_button(&tag);
             }
+            return;
+        }
+        if self.blow_click() {
             return;
         }
         let cam = self.camera();
@@ -2622,6 +2634,11 @@ impl Stage {
                     self.effects.fire(muzzle, end, &v.bolt, v.color);
                     if v.near {
                         self.effect_from(NEAR_MISS_BOLT, to);
+                        // Guarding, it comes back off the blade. The bolts are only drawn: the failed roll is what counts.
+                        if v.target == self.game.world.pc && self.game.world.pc_guard {
+                            self.effects
+                                .fire([to[0], to[1], to[2] + up], muzzle, &v.bolt, v.color);
+                        }
                     }
                     if let Some(s) = v.shot.clone() {
                         self.effect_from(&s, from);
