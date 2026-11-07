@@ -148,10 +148,8 @@ impl World {
                 if s.calm >= HOLD_SECONDS {
                     s.hold = false;
                 }
-                if s.calm >= AUTO_OFF_SECONDS {
-                    if s.on && (s.auto || (s.fought && auto)) {
-                        *s = Stance::default();
-                    }
+                if s.calm >= AUTO_OFF_SECONDS && s.on && (s.auto || (s.fought && auto)) {
+                    *s = Stance::default();
                 }
             }
         }
