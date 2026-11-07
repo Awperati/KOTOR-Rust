@@ -22,6 +22,8 @@ mod items;
 mod journal;
 mod k2feats;
 mod labels;
+mod soundset;
+mod volley;
 pub use labels::ObjectLabel;
 mod keymap;
 mod levelup;
@@ -60,6 +62,7 @@ pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use earlyforce::FORCE_PUSH;
 pub use flight::{Flight, InFlight, RELEASE_SECONDS, THROW_SPEED};
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
+pub use force::{push_metres, Thud};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use galaxy::{GalaxyOpen, PlanetLine};
 pub use game::item_use_clip as item_use_clip_for_test;
@@ -104,5 +107,6 @@ pub use swoop::{
     Rider,
 };
 pub use traps::{Disarm, Trap};
+pub use volley::{fire_times, is_ranged_attack};
 pub use workbench::BenchKind;
 pub use world::{Action, Delayed, DoorState, EffectRec, Kind, ObjId, Object, World};

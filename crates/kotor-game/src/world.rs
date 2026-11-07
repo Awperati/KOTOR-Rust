@@ -175,6 +175,8 @@ pub struct Object {
     pub challenge_rating: f32,
     /// `appearance.2da` row (the body), `heads.2da` row, 0 male / 1 female, portrait texture name.
     pub appearance: i32,
+    /// The row of `soundset.2da` whose voice the creature has: `SoundSetFile` of its file.
+    pub soundset: i32,
     pub head: i32,
     pub gender: i32,
     pub portrait: String,
@@ -262,6 +264,7 @@ impl Object {
             max_force: 0,
             challenge_rating: 1.0,
             appearance: 0,
+            soundset: -1,
             head: 0,
             gender: 0,
             portrait: String::new(),
@@ -283,7 +286,7 @@ pub struct World {
     pub(crate) inst: Install,
     pub(crate) routines: Rc<Routines>,
     programs: HashMap<String, Option<Rc<Program>>>,
-    tlk: Option<Tlk>,
+    pub(crate) tlk: Option<Tlk>,
     pub objects: BTreeMap<ObjId, Object>,
     next_id: ObjId,
     pub pc: ObjId,
@@ -384,6 +387,8 @@ pub struct World {
     pub(crate) effect_expiry: HashMap<u32, f32>,
     /// Creatures being thrown back by Force Push: who, from, to, start time (`force.rs`).
     pub shoves: Vec<crate::force::Shove>,
+    /// Thrown creatures that have come down since a screen last looked: for the sounds of a wall and the floor.
+    pub thuds: Vec<crate::force::Thud>,
     /// Creatures an encounter brought out (`GetIsEncounterCreature`).
     pub encounter_creatures: BTreeSet<ObjId>,
     /// `SetPartyAIStyle`: 0 aggressive, 1 defensive, 2 passive (`PARTY_AISTYLE_*`).
@@ -488,6 +493,9 @@ pub struct World {
     pub(crate) casts: Vec<(ObjId, i32)>,
     /// Grenades thrown and not yet burst.
     pub(crate) flights: Vec<crate::flight::Flight>,
+    /// Voice lines to be played where the creature is: who and the name of the wave file. A screen takes them.
+    pub sound_cues: Vec<(ObjId, String)>,
+    pub(crate) ssf_cache: BTreeMap<i32, Vec<u32>>,
     /// For a profiler: when on, where `World::step` spends its time. Each name has its count, total and worst, in milliseconds.
     pub step_profile: Option<BTreeMap<&'static str, (u32, f64, f64)>>,
     /// The template of the item being thrown, for the flight `cast_spell` starts.
@@ -557,6 +565,7 @@ fn creature_defaults(o: &mut Object, utc: &Struct) {
     o.force = utc.int("CurrentForce").unwrap_or(0) as i32;
     o.max_force = utc.int("ForcePoints").unwrap_or(0) as i32;
     o.appearance = utc.int("Appearance_Type").unwrap_or(0) as i32;
+    o.soundset = utc.int("SoundSetFile").map_or(-1, |v| v as i32);
     o.gender = utc.int("Gender").unwrap_or(0) as i32;
     o.alignment = utc.int("GoodEvil").unwrap_or(50) as i32;
     o.challenge_rating = utc.float("ChallengeRating").unwrap_or(1.0) as f32;
@@ -640,6 +649,8 @@ impl World {
             hp_regen: 0.0,
             casts: Vec::new(),
             flights: Vec::new(),
+            sound_cues: Vec::new(),
+            ssf_cache: BTreeMap::new(),
             step_profile: None,
             thrown_item: None,
             animations: Vec::new(),
@@ -664,6 +675,7 @@ impl World {
             spell: crate::force::SpellContext::default(),
             effect_expiry: HashMap::new(),
             shoves: Vec::new(),
+            thuds: Vec::new(),
             encounter_creatures: BTreeSet::new(),
             party_ai_style: 0,
             game_over: false,

@@ -1398,3 +1398,119 @@ fn a_sonic_weapons_hit_sounds_like_a_blasters_when_its_own_is_missing() {
     assert!(heard("cb_sh_sonbl1"), "the sonic's own shot");
     assert!(heard("cb_ht_blastleth1"), "a hit is not silent");
 }
+
+/// The owner's bug of 7 Nov: a rifle's attack clip kicks three times and one bolt came out, at the start. One bolt now leaves at
+/// each kick, each with its flash and its sound: three for a rifle, two for a pistol.
+#[test]
+fn a_burst_fires_one_bolt_for_each_shot_of_the_clip() {
+    for (item, shots) in [("g_w_blstrrfl001", 3), ("g_w_blstrpstl001", 2)] {
+        let Some(mut s) = stage() else {
+            return;
+        };
+        s.enable_tutorials(false);
+        s.enable_auto_pause(false);
+        for _ in 0..30 {
+            s.update(DT);
+        }
+        let pc = s.game.world.pc;
+        let at = s.game.world.object(pc).unwrap().position;
+        let foe = s
+            .game
+            .world
+            .spawn_creature("n_calonord", [at[0] + 6.0, at[1], at[2]]);
+        let f = s.game.world.object_mut(foe).unwrap();
+        (f.hp, f.max_hp) = (900, 900);
+        let gun = s.game.world.spawn_item(item);
+        s.game.world.equip(pc, gun, Some(4)).unwrap();
+        s.game.world.attack(pc, foe);
+        let shot = wav(match item {
+            "g_w_blstrrfl001" | "g_w_blstrpstl001" => "cb_sh_blast1",
+            _ => unreachable!(),
+        });
+        let mut at_step: Vec<usize> = Vec::new();
+        let mut sounds = 0;
+        let mut last = s.effects.bolts_fired;
+        for i in 0..(7.0 / DT) as usize {
+            let cues = s.update(DT);
+            sounds += cues
+                .iter()
+                .filter(|c| matches!(c, Cue::Effect(b) | Cue::FaintEffect(b, _) if *b == shot))
+                .count();
+            while s.effects.bolts_fired > last {
+                at_step.push(i);
+                last += 1;
+            }
+        }
+        // The shots of one attack, up to a pause of a second before the next round's.
+        let mut first: Vec<usize> = vec![at_step[0]];
+        for p in at_step.windows(2) {
+            if (p[1] - p[0]) as f32 * DT > 1.0 {
+                break;
+            }
+            first.push(p[1]);
+        }
+        assert_eq!(first.len(), shots, "{item}: bolts at steps {at_step:?}");
+        let gaps: Vec<f32> = first
+            .windows(2)
+            .map(|p| (p[1] - p[0]) as f32 * DT)
+            .collect();
+        assert!(
+            gaps.iter().all(|g| *g > 0.3),
+            "{item}: shots apart by {gaps:?}"
+        );
+        assert_eq!(
+            sounds,
+            at_step.len(),
+            "{item}: a shot's sound for each bolt"
+        );
+    }
+}
+
+/// The owner's bug of 7 Nov: no death sounds. A creature's soundset (`SoundSetFile`, its `.ssf`) holds its pain grunts and its
+/// dying line, and a blow that hurts or kills plays them where it stands.
+#[test]
+fn the_hurt_cry_out_and_the_dying_say_their_last() {
+    let Some(mut s) = stage() else {
+        return;
+    };
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    for _ in 0..30 {
+        s.update(DT);
+    }
+    let pc = s.game.world.pc;
+    let at = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 3.0, at[1], at[2]]);
+    let f = s.game.world.object_mut(foe).unwrap();
+    (f.hp, f.max_hp) = (20, 20);
+    let pains: Vec<Vec<u8>> = [12, 13]
+        .iter()
+        .filter_map(|slot| s.game.world.soundset_sound(foe, *slot))
+        .map(|n| wav(&n))
+        .collect();
+    let last = s
+        .game
+        .world
+        .soundset_sound(foe, 15)
+        .map(|n| wav(&n))
+        .expect("Calo Nord has a dying line");
+    assert!(!pains.is_empty(), "and pain grunts");
+    let heard = |cues: &[Cue], want: &dyn Fn(&Vec<u8>) -> bool| {
+        cues.iter()
+            .any(|c| matches!(c, Cue::Effect(b) | Cue::FaintEffect(b, _) if want(b)))
+    };
+    s.game.world.hurt(pc, foe, 5);
+    let cues = s.update(DT);
+    assert!(
+        heard(&cues, &|b| pains.contains(b)),
+        "a blow that does not kill is cried out at"
+    );
+    assert!(!heard(&cues, &|b| *b == last), "and no last words yet");
+    s.game.world.hurt(pc, foe, 50);
+    let cues = s.update(DT);
+    assert!(s.game.world.object(foe).unwrap().dead);
+    assert!(heard(&cues, &|b| *b == last), "the dying line at death");
+}

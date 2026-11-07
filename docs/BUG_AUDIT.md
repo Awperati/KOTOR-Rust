@@ -89,6 +89,23 @@ creatures had heartbeats. Placeables have them now, and one opened before its fi
 opened, 439 with items, none with an unnamed item. The 47 left have no items and no script in their files, `footlker001` for one.
 They are empty in the game's data. I have not seen one in the original.
 
+**Owner's list of 7 Nov, B1, B3, A2.**
+- *B1, blaster burst.* The clips carry no events, so the shots are read from the clips' motion (`crates/kotor-model/examples/fire_frames.rs`):
+  rifle and heavy (`b7a1`, `b9a1`) kick at 0.23, 0.70 and 1.23 s, pistol (`b5a1`) at 0.53 and 1.03, two pistols (`b6a1`) at 0.43 and
+  1.03 (`crates/kotor-game/src/volley.rs`). The stage fires one bolt, flash and shot sound as the clip passes each moment, at the
+  target. Test `a_burst_fires_one_bolt_for_each_shot_of_the_clip`: three bolts for a rifle, two for a pistol, each with its sound.
+  **Assumed:** a kick is a shot.
+- *B3, death sounds.* A creature's `SoundSetFile` names a row of `soundset.2da` and an `.ssf` of 40 `dialog.tlk` strings
+  (`crates/kotor-game/src/soundset.rs`); a blow that hurts plays one of the pain slots (12, 13) and a death or knock-out the
+  dead slot (15), where the creature stands. Test `the_hurt_cry_out_and_the_dying_say_their_last`. **Assumed:** the slot numbers, read
+  from a soldier's file. Not played yet: battle cries, attack grunts, low health.
+- *A2, Force Push.* 8 m (Force Wave 10 m, another power 6 m; it was 3 m), a flight of 0.3 s and 0.07 s a metre, down three seconds and
+  then up. A throw that ends against a wall, a closed door or the edge of the floor is marked `wall`; it plays a hard blow on
+  metal (`cb_ht_bllrgmetal`) and then the floor (`cb_ht_bllrgleth1`); in the open only the floor. Test
+  `force_push_throws_eight_metres_in_the_open_and_stops_at_a_wall`, frames `docs/shots/combat/push_strip_open_720p.png` and `push_strip_wall_720p.png`
+  (`gpu/examples/push_strip.rs`). **Not built:** a separate smack clip and slide down the wall (the thrown one lies from the start of its
+  flight, as before), and push strength by the caster's level (it goes by power).
+
 **Combat stutter (bug 22), after the HUD fix.** Measured at 2160p with `--frame-log` at the player's pace (`--autopilot --speed 1`, 333 s,
 24,480 frames): all frames median 11.5 ms, p99 49.0, p99.9 88.4; frames outside fights p99 45.8; in fights (3,714 frames) median
 16.4, p99 58.6, worst 113. A fight frame's mean is 1.6 ms update, 1.4 HUD, 0.7 upload, 6.1 scene, 7.4 draw: the earlier 9.3 and

@@ -1,6 +1,6 @@
 //! Where in the grenade throw the hand lets go: the right hand's speed along the throw, every thirtieth of a second.
 //!
-//!   cargo run --release -p kotor-model --example throw_release
+//!   cargo run --release -p kotor-model --example throw_release -- [clip]
 use kotor_archive::Install;
 use kotor_core::ResType;
 
@@ -12,7 +12,7 @@ fn main() {
     let a = model
         .animations
         .iter()
-        .find(|a| a.name == "throwgren")
+        .find(|a| a.name == std::env::args().nth(1).unwrap_or("throwgren".into()))
         .unwrap();
     let hand = |t: f32| {
         let m = model.world_matrices(Some(&a.sample(&model, t)));
@@ -23,11 +23,12 @@ fn main() {
     };
     let mut last = hand(0.0);
     let mut best = (0.0f32, 0.0f32);
-    for k in 1..=45 {
+    let n = (a.length * 30.0) as usize;
+    for k in 1..=n {
         let t = k as f32 / 30.0;
         let p = hand(t);
         let v: f32 = (0..3).map(|i| (p[i] - last[i]).powi(2)).sum::<f32>().sqrt() * 30.0;
-        println!("{t:.3} s: hand speed {v:.2} m/s at {p:.2?}");
+        println!("{t:.3} s: hand speed {v:.2} m/s");
         if v > best.1 {
             best = (t, v);
         }

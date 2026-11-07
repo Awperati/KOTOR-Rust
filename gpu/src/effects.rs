@@ -132,6 +132,8 @@ struct Flash {
 
 #[derive(Default)]
 pub struct Effects {
+    /// How many bolts have been fired, for a test.
+    pub bolts_fired: usize,
     sources: Vec<Source>,
     bolts: Vec<Bolt>,
     flashes: Vec<Flash>,
@@ -370,6 +372,7 @@ impl Effects {
             life: 0.07,
             texture: "fx_muzflash".to_string(),
         });
+        self.bolts_fired += 1;
         self.bolts.push(Bolt {
             at: from,
             to,

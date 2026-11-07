@@ -75,8 +75,18 @@ const DISABLING: &[&str] = &[
 /// How far Force Push throws someone, and how long the throw and the fall last.
 ///
 /// **Assumed, not measured:** the script gives only 0.1 s, so the engine must size these itself.
-pub const PUSH_METRES: f32 = 3.0;
-pub const PUSH_SLIDE_SECONDS: f32 = 0.5;
+/// How far a power throws, by its `spells.2da` row: Force Push 8 m, Force Wave 10 m, another 6 m (owner, 7 Nov: "much further
+/// than now", which was 3 m). **Assumed**, as are the flight's speed and the three seconds down.
+pub fn push_metres(spell: i32) -> f32 {
+    match spell {
+        23 => 8.0,
+        26 => 10.0,
+        _ => 6.0,
+    }
+}
+/// A throw takes this long and this much longer for each metre.
+pub const PUSH_SLIDE_SECONDS: f32 = 0.3;
+pub const PUSH_SECONDS_PER_METRE: f32 = 0.07;
 pub const PUSH_DOWN_SECONDS: f32 = 3.0;
 
 /// A creature sliding from `from` to `to` after a push, begun at `start` (game seconds).
@@ -86,6 +96,17 @@ pub struct Shove {
     pub from: [f32; 3],
     pub to: [f32; 3],
     pub start: f32,
+    /// How long the flight takes.
+    pub seconds: f32,
+    /// It ends against a wall, a closed door or the edge of the floor, and not in open air.
+    pub wall: bool,
+}
+
+/// A thrown creature has come down: where, and whether on a wall first (a smack, and then the floor).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Thud {
+    pub who: ObjId,
+    pub wall: bool,
 }
 
 /// The power being cast right now (`GetSpellId`, `GetSpellTargetObject`, `GetLastSpellCaster`).
@@ -319,28 +340,36 @@ impl World {
             .map(|o| [o.position[0], o.position[1]])
             .collect();
         let mut at = b;
-        for i in 1..=(PUSH_METRES / 0.25) as usize {
+        let metres = push_metres(self.spell.id);
+        let mut wall = false;
+        for i in 1..=(metres / 0.25) as usize {
             let s = i as f32 * 0.25;
             let (x, y) = (b[0] + dx * s, b[1] + dy * s);
             let Some(z) = nav.height_at(x, y, at[2] + 0.4) else {
+                wall = true;
                 break;
             };
             let next = [x, y, z];
-            let hit = nav.crosses_block(at, next)
+            let blocked = nav.crosses_block(at, next);
+            let hit = blocked
                 || blockers
                     .iter()
                     .any(|c| (c[0] - x).hypot(c[1] - y) < 2.0 * crate::follow::CREATURE_RADIUS);
             if hit {
+                wall = blocked;
                 break;
             }
             at = next;
         }
         self.shoves.retain(|s| s.who != target);
+        let length = dist2d(b, at);
         self.shoves.push(Shove {
             who: target,
             from: b,
             to: at,
             start: self.time,
+            seconds: PUSH_SLIDE_SECONDS + PUSH_SECONDS_PER_METRE * length,
+            wall,
         });
         if let Some(o) = self.objects.get_mut(&target) {
             o.facing = (-dy).atan2(-dx).to_degrees();
@@ -352,7 +381,7 @@ impl World {
         let now = self.time;
         let shoves = std::mem::take(&mut self.shoves);
         for s in shoves {
-            let t = ((now - s.start) / PUSH_SLIDE_SECONDS).clamp(0.0, 1.0);
+            let t = ((now - s.start) / s.seconds).clamp(0.0, 1.0);
             // Fast at first, slowing to a stop.
             let e = 1.0 - (1.0 - t).powi(2);
             let at = [0, 1, 2].map(|i| s.from[i] + (s.to[i] - s.from[i]) * e);
@@ -364,6 +393,11 @@ impl World {
             }
             if t < 1.0 {
                 self.shoves.push(s);
+            } else {
+                self.thuds.push(Thud {
+                    who: s.who,
+                    wall: s.wall,
+                });
             }
         }
     }

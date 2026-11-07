@@ -679,9 +679,14 @@ impl World {
             t.hp = t.hp.max(1);
         }
         if t.hp > 0 {
+            self.say_from_soundset(target, &crate::soundset::PAIN_SLOTS);
             return false;
         }
         t.hp = 0;
+        self.say_from_soundset(target, &[crate::soundset::DEAD_SLOT]);
+        let Some(t) = self.objects.get_mut(&target) else {
+            return false;
+        };
         if party_side {
             t.down = true;
         } else {

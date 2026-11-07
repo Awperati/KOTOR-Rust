@@ -83,6 +83,17 @@ struct DoorBody {
     xf: Mat,
 }
 
+/// A shooter's attack in progress: the look of its bolt and its sound, and how far into its clip the last shot was.
+struct Volley {
+    target: ObjId,
+    bolt: String,
+    color: [f32; 3],
+    shot: Option<String>,
+    seen: bool,
+    last: f32,
+    age: f32,
+}
+
 /// Z rotation by `angle` radians, then translation.
 fn placement(p: [f32; 3], angle: f32) -> Mat {
     let (s, c) = angle.sin_cos();
@@ -420,6 +431,8 @@ pub struct Stage {
     baseitems: Option<TwoDa>,
     /// The clips `animations.2da` marks `hideequ`: whoever plays one holds nothing in sight (`inject`, picking a lock).
     hide_equipment: Option<std::collections::BTreeSet<String>>,
+    /// Shooters whose attack clip is on or coming: each shot leaves at its moment of the clip (`kotor_game::fire_times`).
+    volleys: std::collections::BTreeMap<ObjId, Volley>,
     /// An item's model, by item.
     held: HashMap<ObjId, Option<Rc<Model>>>,
     doors: HashMap<ObjId, Option<Rc<DoorBody>>>,
@@ -576,6 +589,7 @@ impl Stage {
             rigs: HashMap::new(),
             baseitems: None,
             hide_equipment: None,
+            volleys: Default::default(),
             effects: Default::default(),
             chests: Vec::new(),
             chest_bodies: HashMap::new(),
@@ -869,6 +883,7 @@ impl Stage {
         self.seamless_tick();
         self.scan_music_events();
         self.play_world_sounds(dt_game);
+        self.fire_on_frames(dt_game);
         self.play_effects_at();
         if let Some(id) = self.game.world.opened {
             self.lids.entry(id).or_insert(0.0);
@@ -1950,6 +1965,21 @@ impl Stage {
         for l in new {
             self.attack_effects(l.attacker, l.target, l.outcome != kotor_game::Outcome::Miss);
         }
+        // A thrown creature comes down: against a wall first (a hard blunt blow on metal), then the floor.
+        for t in std::mem::take(&mut self.game.world.thuds) {
+            if let Some(at) = self.game.world.object(t.who).map(|o| o.position) {
+                if t.wall {
+                    self.effect_from("cb_ht_bllrgmetal", at);
+                }
+                self.effect_from("cb_ht_bllrgleth1", at);
+            }
+        }
+        // What the hurt and the dying say, from their soundsets.
+        for (id, sound) in std::mem::take(&mut self.game.world.sound_cues) {
+            if let Some(at) = self.game.world.object(id).map(|o| o.position) {
+                self.effect_from(&sound, at);
+            }
+        }
         let doors: Vec<(ObjId, bool, String, [f32; 3])> = self
             .game
             .world
@@ -1991,6 +2021,53 @@ impl Stage {
                     self.effect(&sound);
                 }
             }
+        }
+    }
+
+    /// Fire the shots of every ranged attack clip whose moment has come since the last frame.
+    fn fire_on_frames(&mut self, dt: f32) {
+        let ids: Vec<ObjId> = self.volleys.keys().copied().collect();
+        for id in ids {
+            let clip = self.game.clip(id).map(|c| (c.name, c.time));
+            let Some(mut v) = self.volleys.remove(&id) else {
+                continue;
+            };
+            v.age += dt;
+            let ranged = clip.filter(|(n, _)| kotor_game::is_ranged_attack(n));
+            let Some((name, time)) = ranged else {
+                // The clip has come and gone, or has not come in four seconds: no more shots.
+                if !(v.seen || v.age > 4.0) {
+                    self.volleys.insert(id, v);
+                }
+                continue;
+            };
+            if !v.seen || time < v.last {
+                v.seen = true;
+                v.last = -1.0;
+            }
+            for t in kotor_game::fire_times(name) {
+                if v.last < *t && *t <= time {
+                    let w = &self.game.world;
+                    let (Some(a), Some(g)) = (w.object(id), w.object(v.target)) else {
+                        continue;
+                    };
+                    let (from, to) = (a.position, g.position);
+                    let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+                    let len = dx.hypot(dy).max(0.01);
+                    let muzzle = [
+                        from[0] + dx / len * 0.6,
+                        from[1] + dy / len * 0.6,
+                        from[2] + 1.15,
+                    ];
+                    self.effects
+                        .fire(muzzle, [to[0], to[1], to[2] + 1.15], &v.bolt, v.color);
+                    if let Some(s) = v.shot.clone() {
+                        self.effect_from(&s, from);
+                    }
+                }
+            }
+            v.last = time;
+            self.volleys.insert(id, v);
         }
     }
 
@@ -2076,11 +2153,20 @@ impl Stage {
                 from[1] + dy / len * 0.6,
                 from[2] + 1.15,
             ];
-            self.effects
-                .fire(muzzle, [to[0], to[1], to[2] + 1.15], &bolt, color);
-            if let Some(s) = shot {
-                self.effect_from(&s, from);
-            }
+            let _ = muzzle;
+            // The shots leave at their moments of the attack clip, each with its flash and its sound.
+            self.volleys.insert(
+                attacker,
+                Volley {
+                    target,
+                    bolt,
+                    color,
+                    shot,
+                    seen: false,
+                    last: -1.0,
+                    age: 0.0,
+                },
+            );
             if hit {
                 if let Some(s) = impact {
                     self.effect_from(&s, to);
