@@ -421,7 +421,7 @@ const CUP_TOP: f32 = 0.897;
 const STRAP_TOP: f32 = 1.0;
 /// How far out the straps lean by the top, as a share of the half width, and how far past the neck's own height they go: the
 /// shoulder's top is lower than the neck's, but the arm's cap reaches round it.
-const STRAP_OUT: f32 = 0.15;
+const STRAP_OUT: f32 = 0.0;
 const STRAP_OVER: f32 = 0.04;
 const CUP_INNER: f32 = 0.03;
 const CUP_OUTER: f32 = 0.57;
@@ -2407,7 +2407,7 @@ mod strap_tests {
         let half = 0.228;
         let (front, back) = (strap_at(STRAP_TOP, true), strap_at(STRAP_TOP, false));
         assert!((front - back).abs() < 1e-4, "{front} and {back}");
-        assert!(front > STRAP_AT + 0.1, "{front}");
+        assert!((front - STRAP_AT).abs() < 1e-4, "a strap runs straight up, not on a slant: {front}");
         // On the torso, up the front and the back, at the strap's own place, it is a strap; beside it, it is not.
         for (y, h) in [(0.1, 0.95), (-0.1, 0.95), (0.1, 1.02), (-0.1, 1.02)] {
             let x = strap_at(h, y > 0.0) * half;

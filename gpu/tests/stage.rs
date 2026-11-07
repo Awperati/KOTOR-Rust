@@ -76,6 +76,18 @@ fn a_duel_in_another_room_cannot_be_heard_from_where_a_new_game_starts() {
 }
 
 #[test]
+fn a_voice_line_is_found_in_the_folder_of_its_module() {
+    let Some(s) = stage() else { return };
+    // Most lines live at `streamwaves\m02ab\boun01\...`, not at the top.
+    let Some(p) = s.sound_file("nm02abboun01004_") else {
+        return; // an install without that module
+    };
+    assert!(p.is_file() && p.to_string_lossy().to_lowercase().contains("m02ab"), "{p:?}");
+    assert!(s.sound_file("NM02ABBOUN01004_").is_some(), "the case does not matter");
+    assert!(s.sound_file("no_such_line_").is_none());
+}
+
+#[test]
 fn tilted_right_up_the_camera_stays_under_the_ceiling() {
     let Some(mut s) = stage() else {
         return;
