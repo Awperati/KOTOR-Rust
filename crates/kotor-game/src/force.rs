@@ -471,6 +471,12 @@ impl World {
                 return Err("out of range".into());
             }
         }
+        // The player's own: under a stronger power of its line the power's script puts nothing on, so nothing is paid.
+        if !cheat && caster == self.pc {
+            if let Some(on) = self.stronger_on(target, spell) {
+                return Err(format!("power {on}, a stronger one, is on"));
+            }
+        }
         let script = self
             .table("spells")
             .and_then(|t| t.get(spell as usize, "impactscript").map(str::to_string))
