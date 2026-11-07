@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 19] = [
+const STYLE_ROWS: [(&str, &str, &str); 20] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -109,6 +109,11 @@ const STYLE_ROWS: [(&str, &str, &str); 19] = [
         "Override talk table: On",
         "Override talk table: Off",
         "A dialog.tlk in the Override folder takes the place of the game's. It changes wording in about 5,200 lines and the sound names of 16,000. Takes hold at the next start.",
+    ),
+    (
+        "Extended story branches: On",
+        "Extended story branches: Off",
+        "Scenes added to the game's story, as Trask's question when he meets the Dark Jedi on the Endar Spire. Off: the game's own scenes, as they were.",
     ),
 ];
 /// What the Pickup radius goes round, in metres.
@@ -228,6 +233,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         21 => &mut s.override_tables,
         22 => &mut s.override_screens,
         23 => &mut s.override_talk,
+        24 => &mut s.extended_story,
         _ => return None,
     })
 }

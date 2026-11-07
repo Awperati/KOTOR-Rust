@@ -724,6 +724,7 @@ impl World {
             return;
         }
         self.timed("tick", |w| w.tick(dt));
+        self.update_story(dt);
         self.update_flights();
         self.update_minigame(dt);
         self.update_race(dt);

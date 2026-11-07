@@ -5309,6 +5309,35 @@ fn a_guarded_stage_keeps_its_hands_off_a_save_it_did_not_make() {
     assert!(theirs.is_file());
 }
 
+/// The added story branches are on to begin with, the row turns them off, and a scripted player keeps the game's own scenes.
+#[test]
+fn the_extended_story_row_flips_and_the_pilot_keeps_the_games_scenes() {
+    let Some((mut s, dir)) = in_game("story_row") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    s.update(DT);
+    assert!(s.settings().extended_story && s.game.world.extended_story);
+    s.pilot = Some(kotor_game::Autopilot::new());
+    s.update(DT);
+    assert!(
+        !s.game.world.extended_story,
+        "the pilot's route does not move"
+    );
+    s.pilot = None;
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    for _ in 0..20 {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_OPTIONS", 24);
+    assert!(!s.settings().extended_story);
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("extended_story=false"));
+}
+
 /// The Override rows flip and the file keeps them. All are off to begin with, as the folder does not pass the gate with them on.
 #[test]
 fn the_override_rows_flip_and_start_off() {
@@ -5401,7 +5430,7 @@ fn the_cel_shading_row_goes_round_and_the_key_toggles_it() {
     for _ in 0..30 {
         s.menu_wheel(-1.0);
     }
-    click_row(&mut s, "LB_OPTIONS", 26);
+    click_row(&mut s, "LB_OPTIONS", 27);
     assert_eq!(s.settings().cel_shading, (start + 1) % 3);
     assert!(std::fs::read_to_string(&file)
         .unwrap()

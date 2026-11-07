@@ -24,6 +24,11 @@ mod k2feats;
 mod labels;
 mod law;
 mod soundset;
+mod story_branches;
+pub use story_branches::{
+    StoryState, ABANDONED_CLIP, BANDON_BLOWS, BANDON_FULL_HEALTH, BANDON_HEALTH, STORY_POINTS,
+    TRASK_DAMAGE,
+};
 mod volley;
 pub use items::name_is_a_tag;
 pub use labels::ObjectLabel;

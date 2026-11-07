@@ -166,6 +166,11 @@ impl World {
     }
 
     /// A roll of a die with `sides` sides, from the world's random stream.
+    /// Start the dice from here, for a measure of many fights.
+    pub fn seed_dice(&mut self, seed: u64) {
+        self.rng = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    }
+
     pub fn roll(&mut self, sides: i32) -> i32 {
         self.rng ^= self.rng << 13;
         self.rng ^= self.rng >> 7;
@@ -576,7 +581,11 @@ impl World {
             let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
             let mod_ = self.flat_damage(attacker, slot, weapon.ranged);
             let more = self.roll_gear_damage(attacker, slot, target, outcome == Outcome::Critical);
-            dealt = damage(dice, mod_, outcome, weapon.multiplier) + boost.damage + more;
+            dealt = damage(dice, mod_, outcome, weapon.multiplier)
+                + boost.damage
+                + more
+                + self.story_blow(attacker);
+            dealt = self.story_soften(attacker, target, dealt);
             // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.
             let kind = self.weapon_damage_type(attacker, slot);
             dealt = self.adjust_damage(target, dealt, kind);

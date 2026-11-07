@@ -69,7 +69,9 @@ impl World {
 
     fn run_node_script(&mut self, n: &Node, owner: ObjId) {
         if let Some(s) = n.script.as_deref().filter(|s| !s.is_empty()) {
-            let _ = self.run_script(s, owner);
+            if !self.run_story_script(s) {
+                let _ = self.run_script(s, owner);
+            }
         }
         // Journal entries ride on the node as `Quest` and `QuestEntry`. `PlotIndex` is -1 on nearly all of them.
         let quest = n.extra.iter().find_map(|(l, v)| match (l.as_str(), v) {
@@ -316,6 +318,8 @@ impl World {
         let gff = Gff::parse(&bytes).map_err(|e| format!("dialogue {name}: {e}"))?;
         let d = Dialog::from_gff(&gff).map_err(|e| format!("dialogue {name}: {e}"))?;
         d.check().map_err(|e| format!("dialogue {name}: {e}"))?;
+        let mut d = d;
+        self.add_story_branches(&name, &mut d);
         let before = self.transcript.len();
         self.in_conversation = true;
         self.events.push(format!(

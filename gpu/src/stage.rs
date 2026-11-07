@@ -909,6 +909,14 @@ impl Stage {
             MovementMode::Classic
         };
         let speed = self.speed;
+        // A scripted player keeps to the game's own scenes, so that its route and digests do not move.
+        self.game.world.extended_story = self.settings().extended_story && self.pilot.is_none();
+        if let Some((who, clip)) = self.game.world.story.cue.take() {
+            // The owner's own clip, once he has made it. Till then the game's stock attack has played.
+            if kotor_render::custom_clip::get(clip).is_some() {
+                self.force_clip(who, Some(clip));
+            }
+        }
         if let Some(mut p) = self.pilot.take() {
             // A scripted player opens no screens: levels and forced party members come straight away.
             self.game.world.hold_levels = false;

@@ -417,6 +417,9 @@ pub struct World {
     pub hero: ObjId,
     /// Conversations wait for the player instead of running to the end (see `World::dialogue_view`).
     pub interactive_dialogue: bool,
+    /// The owner's added story branches (`story_branches.rs`). Off, the game's scenes play as the files have them.
+    pub extended_story: bool,
+    pub story: crate::story_branches::StoryState,
     /// The player takes each level on a screen, instead of when the experience comes in.
     pub hold_levels: bool,
     /// `ShowPartySelectionGUI` waits for a screen, instead of bringing the forced members straight away.
@@ -718,6 +721,8 @@ impl World {
             conv_paused_at: None,
             hero: 1,
             interactive_dialogue: false,
+            extended_story: false,
+            story: Default::default(),
             hold_levels: false,
             party_screen: false,
             party_request: None,
