@@ -112,6 +112,26 @@ fn dist(a: [f32; 3], b: [f32; 3]) -> f32 {
     (a[0] - b[0]).hypot(a[1] - b[1])
 }
 
+/// The module's own hostiles are not what is being driven: the party is kept on its feet, as the autopilot does.
+fn keep_alive(s: &mut Stage) {
+    let mut ids = s.game.world.party.clone();
+    ids.push(s.game.world.pc);
+    for id in ids {
+        if let Some(o) = s.game.world.object_mut(id) {
+            // Harm is ignored (the plot flag), and anyone already down gets up.
+            o.plot = true;
+            if o.hp < o.max_hp / 2 || o.down || o.dead {
+                o.hp = o.max_hp.max(1);
+                o.down = false;
+                o.dead = false;
+            }
+        }
+    }
+    s.game.world.game_over = false;
+}
+
+static DOWN_SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let module = args.get(1).map_or("tar_m02ac", String::as_str).to_string();
@@ -131,7 +151,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let frames_wall = std::cell::RefCell::new(Vec::<f32>::new());
     let step = |s: &mut Stage| {
         let t = Instant::now();
+        // The module's own hostiles are not what is being driven: the player is kept on his feet, as the autopilot does.
+        keep_alive(s);
         s.update(DT);
+        keep_alive(s);
+        if std::env::var_os("DRIVE_DEBUG").is_some() {
+            let pc = s.game.world.pc;
+            if let Some(o) = s.game.world.objects.get(&pc) {
+                if o.down && !DOWN_SEEN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    println!(
+                        "the player is down: hp {} of {} plot {} events {:?}",
+                        o.hp,
+                        o.max_hp,
+                        o.plot,
+                        s.game.world.events.iter().rev().take(4).collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
         frames_wall
             .borrow_mut()
             .push(t.elapsed().as_secs_f32() * 1000.0);
@@ -234,6 +271,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     let loaded_in = began.elapsed().as_secs_f32();
+    if std::env::var_os("DRIVE_DEBUG").is_some() {
+        println!(
+            "after the wait: menu {} {} dialogue {} module {} pc {:?}",
+            s.menu_open(),
+            s.menu_name(),
+            s.game.world.in_dialogue(),
+            s.game.world.module,
+            s.game.world.pc_mover.pos
+        );
+    }
     let joined = s.game.world.seamless.attached.contains_key(&door_id);
     r.check(
         "the area behind the door loads in the background",
@@ -279,8 +326,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 s.game.world.module, last, p
             );
         }
+        // Someone of the module standing against the player pushes it aside by up to a metre in a frame: that is a shove,
+        // not a seam. A step of metres is still a step.
+        let shoved = d > 0.3
+            && d <= 1.0
+            && s.game.world.objects.values().any(|o| {
+                o.kind == kotor_game::Kind::Creature
+                    && o.id != s.game.world.pc
+                    && !s.game.world.party.contains(&o.id)
+                    && (o.position[0] - p[0]).hypot(o.position[1] - p[1]) < 1.2
+            });
+        if shoved {
+            println!("  (shoved by a creature of the module)");
+        }
         *last = p;
-        d
+        if shoved {
+            0.0
+        } else {
+            d
+        }
     };
     let mut walked = 0;
     // By the route the game itself finds, to a point just before the doorway: the floor before it can wind.
@@ -319,6 +383,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
         menus += s.menu_open() as u32;
+        if s.menu_open() && menus == 1 {
+            println!(
+                "first menu frame: {} in {} at {:?}",
+                s.menu_name(),
+                s.game.world.module,
+                s.game.world.pc_mover.pos
+            );
+        }
         walked += 1;
     }
     s.steer = (0.0, 0.0, false);
@@ -378,12 +450,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut shot_mid = false;
     let mut crossed_at = None;
     while through < 400 {
+        // Someone of the module stands in the straight line to the doorway: go round by the game's own route.
+        if through == 120 && crossed_at.is_none() {
+            for ahead in [0.8f32, 1.5, 3.0] {
+                let (x, y) = (
+                    site.at[0] + out_angle.cos() * ahead,
+                    site.at[1] + out_angle.sin() * ahead,
+                );
+                let Some(z) = s
+                    .game
+                    .world
+                    .nav
+                    .as_ref()
+                    .and_then(|n| n.walkable_at(x, y, site.at[2] + 2.0))
+                else {
+                    continue;
+                };
+                if s.game.world.walk_to([x, y, z]) {
+                    println!("round the one in the way, by the game's route, to {ahead} m past the doorway");
+                    s.steer = (0.0, 0.0, false);
+                    break;
+                }
+            }
+        }
         step(&mut s);
         sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
         menus += s.menu_open() as u32;
+        if s.menu_open() && menus == 1 {
+            println!(
+                "first menu frame: {} in {} at {:?}",
+                s.menu_name(),
+                s.game.world.module,
+                s.game.world.pc_mover.pos
+            );
+        }
         through += 1;
         if through % 100 == 1 && std::env::var_os("DRIVE_DEBUG").is_some() {
             if let Some(nav) = s.game.world.nav.as_ref() {
@@ -408,6 +511,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "joined {} portal {} gaps {:.2} {:.2} half {:.2} out {:.2}",
                     a.module, a.portal, a.gap_before, a.gap_after, a.half, a.out
                 );
+            }
+            let at = s.game.world.pc_mover.pos;
+            if let Some(nav) = s.game.world.nav.as_ref() {
+                let row: String = (0..30)
+                    .map(|i| {
+                        let (x, y) = (
+                            at[0] + out_angle.cos() * (i as f32 * 0.25 - 1.0),
+                            at[1] + out_angle.sin() * (i as f32 * 0.25 - 1.0),
+                        );
+                        if nav.walkable_at(x, y, at[2] + 1.0).is_some() {
+                            '#'
+                        } else {
+                            '.'
+                        }
+                    })
+                    .collect();
+                let to = [
+                    at[0] + out_angle.cos() * 0.3,
+                    at[1] + out_angle.sin() * 0.3,
+                    at[2],
+                ];
+                let w = &s.game.world;
+                println!(
+                    "conv {} pc down {:?} movement {:?} frozen? {}",
+                    w.in_dialogue(),
+                    w.objects
+                        .get(&w.pc)
+                        .map(|o| (o.down, o.dead, o.hp, o.max_hp)),
+                    w.movement,
+                    w.objects.get(&w.pc).map_or(0, |o| o.actions.len())
+                );
+                println!(
+                    "sight_blocked {} same_island {} body {:?} vel {:?} mover {:?}",
+                    nav.sight_blocked(at, to),
+                    nav.same_island(at, to),
+                    s.game.world.pc_body.pos,
+                    s.game.world.pc_body.vel,
+                    s.game.world.pc_mover.pos
+                );
+                println!("crosses_block 0.3 m ahead: {}", nav.crosses_block(at, to));
+                println!("nav along out from -1 m, 0.25 m steps: {row}");
+            }
+            for o in s.game.world.objects.values() {
+                let d = ((o.position[0] - at[0]).powi(2) + (o.position[1] - at[1]).powi(2)).sqrt();
+                if d < 2.5 && o.id != s.game.world.pc {
+                    println!(
+                        "near {:?} {} {} at {:.2} m hp {} dead {} open {} door {:?}",
+                        o.kind, o.tag, o.template, d, o.hp, o.dead, o.open, o.door
+                    );
+                }
             }
             println!(
                 "through {through}: pc {:?} steer {:?} yaw {:.2} out {out_angle:.2}",
@@ -503,6 +656,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
         menus += s.menu_open() as u32;
+        if s.menu_open() && menus == 1 {
+            println!(
+                "first menu frame: {} in {} at {:?}",
+                s.menu_name(),
+                s.game.world.module,
+                s.game.world.pc_mover.pos
+            );
+        }
         back += 1;
         if !back_shot && back == 60 {
             shot(

@@ -104,19 +104,16 @@ All of these join with no other change: the planners, the stage and the driver w
 
 ### Walked
 
-Every link that joins on Korriban, Tatooine and Manaan, 39 in all, was walked in the stage, hidden, at 1280x720, by `scripts/drive_seamless.ps1`'s driver: up to the doorway by the game's own route, through, and back the same way (`seamless_drive <module> <tag>`, `<tag>#2` for the second door of that tag). **31 pass** every check: no jump (the biggest step 0.113 m a frame), no menu frame, the party on the new floor, back through with no load. The other eight, and what each is:
+Every link that joins on Korriban, Tatooine and Manaan, 39 in all, was walked in the stage, hidden, at 1280x720, by `scripts/drive_seamless.ps1`'s driver: up to the doorway by the game's own route, through, and back the same way (`seamless_drive <module> <tag>`, `<tag>#2` for the second door of that tag). **34 pass** every check: no jump (the biggest step 0.113 m a frame, a shove by a creature of the module not counted), no menu frame, the party on the new floor, back through with no load. The driver keeps its party on its feet, as the autopilot does: three of the first run's failures were the module's hostiles killing the lone player (a war droid in `korr_m38aa`, warriors in `tat_m20aa`), which put up the game-over screen. The other five, and what each is:
 
 | Link | What happened | What it is |
 |---|---|---|
 | `tat_m18aa` and `tat_m18ab` `AreaTransition` | now fall back: overlaps the other area at (275, 64) and (119, 305) | measured at the height of the floor under the trigger, the two floors overlap; they keep the loading screen |
-| `tat_m17aa` `TatooineTransition`, 1 of the 6 | the driver could not tell which side | the stage reads it right: in the driver the module has run 600 frames and a joined neighbour hides the closed door, so the driver now takes the doorway before it runs |
-| `tat_m20aa` `TatooineDoor3` | a conversation opens on entering | a menu frame counted by the driver, not a join fault |
-| `manm26ab` `to27a` (trigger) | the player slides along a creature standing in the trigger | the module's own creature in the way; the join is fine |
+| `manm26ab` `to27a` (trigger) | the player slides along a wall and never reaches the trigger | `man26ab_door02` stands 2.5 m before it and is locked: the trigger is behind a locked door, not a creature |
 | `korr_m33ab` `k33b_dor_academy` | a script moves the player 87 m on the way back | the academy's own entrance trigger |
 | `korr_m34aa` `k34_trg_k36` | no floor 1 to 7 m before it for the driver to start from | a driver limit |
-| `korr_m36aa` `kor36_kor38a`, `korr_m38aa` `kor38a_kor36` | a conversation opens in the academy module | menu frames counted by the driver |
 
-The way back out of every joined link is the same join the other way, so the 31 cover 62 crossings.
+The way back out of every joined link is the same join the other way, so the 34 cover 68 crossings.
 
 ## Tests and the driver
 
@@ -152,7 +149,7 @@ Measured at 3840x2160, best of three, Upper City South to the Cantina: no frame 
 ## Not done
 
 - Creatures that walk, talk or fight before the crossing: the neighbour is a still scene with idling bodies, as it has no world of its own that runs. A second `World` stepped on the main thread for the neighbour would give it scripts and patrols, at the cost of a script machine's frame time and the neighbour's globals; left out.
-- **Two Lower City shop doors that overlap within 6 m** (`tar04_stddoor` to `tar_m03ad`, and `tar03_stddoor` back from it) stay on the loading screen. A portal reaching only 3.5 m would join two more, but the party then follows from outside the floor that is left, and a follower 8.7 m off it is put back on it in one frame: tried, and a test of four people fails.
+- **Two Lower City shop doors that overlap within 6 m** (`tar04_stddoor` to `tar_m03ad`, and `tar03_stddoor` back from it) stay on the loading screen. A portal reaching only 3.5 m seemed to join two more shops (`tar_m03ab`, `tar_m03ae`), but only because a face is kept or dropped by where its middle is: the big street face under the door has its middle further than 3.5 m, so it was dropped, and the followers 3 m behind the door stood on no floor after the crossing and were put on the nearest floor, in the shop, 5 to 9 m away (a test of four people failed). Kept by any corner, edge or middle within reach, that face stays, and the shops overlap the street there: they cannot be joined without removing floor the party stands on. That rule also lost one join that works today (`tar_m11aa` `ptar_secdoor` to `tar_m11ab`), so it was not kept.
 - The elevators, two Lower City shop doors and other links that overlap near the door or have no clear side still load the old way.
 - Triggers.
 - Modules the survey did not list (the Ebon Hawk, minigames, the `STUNT` modules) are not joined.
