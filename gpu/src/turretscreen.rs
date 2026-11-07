@@ -128,9 +128,10 @@ impl Stage {
 
     /// The mouse has moved by this many pixels.
     pub fn turret_look(&mut self, dx: f32, dy: f32) {
+        let flip = if self.settings().invert_y { -1.0 } else { 1.0 };
         let k = TURN_PER_PIXEL * self.settings().mouse_sensitivity / SLIDER_MIDDLE;
         if let Some(g) = self.game.world.minigame.as_mut() {
-            g.turn_by(-dy * k, -dx * k);
+            g.turn_by(-dy * k * flip, -dx * k);
         }
     }
 

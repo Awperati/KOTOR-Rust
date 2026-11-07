@@ -231,7 +231,7 @@ pub struct Settings {
     /// 0 to 1; a half changes nothing.
     pub brightness: f32,
     /// Dragging the camera up tilts it the other way.
-    pub mouse_look: bool,
+    pub invert_y: bool,
     /// Save on every change of module.
     pub autosave: bool,
     /// 0 easy, 1 normal, 2 difficult.
@@ -301,7 +301,7 @@ impl Default for Settings {
             voice: 1.0,
             effects: 1.0,
             brightness: 0.5,
-            mouse_look: false,
+            invert_y: false,
             autosave: false,
             difficulty: 1,
             size: None,
@@ -347,12 +347,12 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\nmouse_look={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\n",
             self.music,
             self.voice,
             self.effects,
             self.brightness,
-            self.mouse_look,
+            self.invert_y,
             self.autosave,
             self.difficulty,
             self.tutorials,
@@ -403,7 +403,8 @@ impl Settings {
                 "voice" => s.voice = level(v, s.voice),
                 "effects" => s.effects = level(v, s.effects),
                 "brightness" => s.brightness = level(v, s.brightness),
-                "mouse_look" => s.mouse_look = v == "true",
+                // Not `invert_camera`: that box was called Mouse Look, and a tick left in an old file would flip the mouse unasked.
+                "invert_y" => s.invert_y = v == "true",
                 "movement_modern" => s.movement_modern = v == "true",
                 "click_to_walk" => s.click_to_walk = v == "true",
                 "autosave" => s.autosave = v == "true",
@@ -1373,7 +1374,9 @@ impl Stage {
         );
         v.value("CB_LEVELUP", s.auto_level as i32, 1);
         v.value("CB_DISABLEMOVE", s.combat_movement as i32, 1);
-        v.value("CB_INVERTCAM", s.mouse_look as i32, 1);
+        v.value("CB_INVERTCAM", s.invert_y as i32, 1);
+        // The file's own name for this box is "Mouse Look", and all it does is flip the mouse up and down.
+        v.text("CB_INVERTCAM", "Invert Camera".to_string());
         v.value("CB_AUTOSAVE", s.autosave as i32, 1);
         let name = self.ui.strref(STR_DIFFICULTY + s.difficulty as u32);
         v.text("BTN_DIFFICULTY", name);
@@ -1966,7 +1969,7 @@ impl Stage {
                 self.menus.stack.pop();
             }
             (Screen::Gameplay, "CB_INVERTCAM") => {
-                self.menus.settings.mouse_look = !self.menus.settings.mouse_look;
+                self.menus.settings.invert_y = !self.menus.settings.invert_y;
                 self.settings_changed();
             }
             (Screen::Gameplay, "CB_AUTOSAVE") => {
@@ -1982,7 +1985,7 @@ impl Stage {
             (Screen::Gameplay, "BTN_DEFAULT") => {
                 let d = Settings::default();
                 let s = &mut self.menus.settings;
-                (s.mouse_look, s.autosave, s.difficulty) = (d.mouse_look, d.autosave, d.difficulty);
+                (s.invert_y, s.autosave, s.difficulty) = (d.invert_y, d.autosave, d.difficulty);
                 (s.auto_level, s.combat_movement) = (d.auto_level, d.combat_movement);
                 self.settings_changed();
             }

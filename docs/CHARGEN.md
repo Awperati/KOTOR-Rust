@@ -21,3 +21,10 @@ numbers); only the first-level build exists (no multiclass, no Jedi class choice
 Class, attributes, hit points, skills, feats, force and the look are saved with the world.
 
 The screens over these rules are `gpu/src/chargenscreen.rs`. Each class's frame is from the reference video at 0:24: Scoundrel small, Scout medium, Soldier large (`BodySize::of_class`). `World::random_name` reads `humanm.ltr`, `humanf.ltr` and `humanl.ltr`; how long a name runs is my guess. Feats in a spec are taken as a level's page takes them (`choose_feat`), so a regular slot holds a feat of either list.
+
+## Underwear
+
+For a female body the Portrait page has a row the game's `portcust.gui` has not got: the variants of
+`kotor_render::underwear::list_underwear_variants` that fit, under the picture. Turning it shows the whole body in its
+underwear in place of the head. Its Cancel takes the choice back, and New Game puts it on the player and in the saves.
+With one variant, or for a male body, there is no row.

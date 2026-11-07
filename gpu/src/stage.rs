@@ -554,6 +554,9 @@ impl Stage {
                 .ok_or("no recommended character")?,
         };
         world.create_character(&spec)?;
+        // The one on the character screen's figure: the world under those screens is not this one.
+        world.set_player_underwear(&self.preview_underwear);
+        self.preview_underwear.clear();
         self.game = Game::new(world);
         self.apply_difficulty();
         self.forget_view();
@@ -1197,12 +1200,7 @@ impl Stage {
             }
             // Not while the mouse is looking: it decides where the camera goes. In Modern the keys go by the camera,
             // so a camera that followed them would turn a strafe into a circle.
-            _ if self.looking
-                || self.mouse_look_on()
-                || (w.movement == MovementMode::Modern && w.steer.is_some()) =>
-            {
-                None
-            }
+            _ if self.looking || (w.movement == MovementMode::Modern && w.steer.is_some()) => None,
             _ => w.pc_walking().then_some(w.pc_mover.heading),
         };
         if let Some(a) = wanted {
@@ -1282,14 +1280,6 @@ impl Stage {
         }
     }
 
-    /// Whether the mouse turns the camera with no button held: the Mouse Look box, while the game is being played.
-    pub fn mouse_look_on(&self) -> bool {
-        self.settings().mouse_look
-            && !self.menu_open()
-            && !self.turret_on()
-            && !self.game.world.in_dialogue()
-    }
-
     /// How far the camera points down, from -1 straight up to 1 straight down, for a test driver.
     pub fn looks_down(&self) -> f32 {
         let c = self.camera();
@@ -1301,13 +1291,14 @@ impl Stage {
         -d[2] / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-3)
     }
 
-    /// Drag with the right button, or move with the Mouse Look box on: turn the camera round the player and tilt it.
-    /// The mouse going down looks down, and going up looks up: `pitch` lifts the camera above the player.
+    /// Drag with the right button: turn the camera round the player and tilt it. The mouse going down looks down and going up
+    /// looks up, since `pitch` lifts the camera above the player. The Invert Camera box is the other way round.
     pub fn look(&mut self, dx: f32, dy: f32) {
         // A half on the Mouse Settings slider is the speed this always had.
         let speed = self.settings().mouse_sensitivity * 2.0;
         self.yaw -= dx * 0.005 * speed;
-        self.pitch = (self.pitch + dy * 0.004 * speed).clamp(-0.2, 1.2);
+        let flip = if self.settings().invert_y { -1.0 } else { 1.0 };
+        self.pitch = (self.pitch + dy * flip * 0.004 * speed).clamp(-0.2, 1.2);
     }
 
     /// What the replies on screen are, in the conversation.
@@ -1821,6 +1812,21 @@ impl Stage {
             .entry(key)
             .or_insert_with(|| {
                 kotor_render::rig_for_outfit(inst, appearance as usize, 1, Some(CLOTHES_LETTER))
+                    .ok()
+                    .map(|rig| styled(rig, conventional))
+            })
+            .clone()
+    }
+
+    /// A body with nothing over its underwear, for the character screen.
+    fn bare_rig(&mut self, appearance: i32) -> Option<Rc<Rig>> {
+        let key = (appearance, 1, None);
+        let inst = &mut self.inst;
+        let conventional = self.conventional_underwear;
+        self.rigs
+            .entry(key)
+            .or_insert_with(|| {
+                kotor_render::rig_for_outfit(inst, appearance as usize, 1, None)
                     .ok()
                     .map(|rig| styled(rig, conventional))
             })
@@ -2474,6 +2480,24 @@ impl Stage {
         let plate0 = shown
             .first()
             .map_or("-".to_string(), |(_, p)| format!("{},{}", p.0, p.1));
+        // Who stands nearest the camera, and how far its eye is from the top of them, in metres.
+        let eye = self.camera().eye;
+        let near_camera = self
+            .game
+            .world
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Creature && !o.dead && o.id != self.game.world.pc)
+            .map(|o| {
+                let head = [o.position[0], o.position[1], o.position[2] + 1.7];
+                let d = (0..3)
+                    .map(|k| (head[k] - eye[k]).powi(2))
+                    .sum::<f32>()
+                    .sqrt();
+                (d, o.tag.replace(' ', "_"))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map_or("-".to_string(), |(d, tag)| format!("{tag},{d:.2}"));
         let enemy_plate = self
             .enemy_plate()
             .map_or("-".to_string(), |p| format!("{},{}", p.0, p.1));
@@ -2486,7 +2510,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

@@ -187,7 +187,6 @@ struct App {
     turning: f32,
     keys: [bool; 5],
     looking: bool,
-    cursor_known: bool,
     state: Option<State>,
     failed: Option<String>,
 }
@@ -564,9 +563,6 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let now = (position.x as f32, position.y as f32);
-                // A cursor that has just come into the window has not moved from anywhere.
-                let from = if self.cursor_known { self.cursor } else { now };
-                self.cursor_known = true;
                 if self.stage.turret_on() {
                     if self.turret_cursor_known {
                         self.stage
@@ -578,19 +574,9 @@ impl ApplicationHandler for App {
                         self.cursor = middle;
                         return;
                     }
-                } else if self.looking != self.stage.mouse_look_on() {
-                    // With the Mouse Look box on it is the other way round: the button frees the cursor to reach the screen's edge.
-                    self.stage.look(now.0 - from.0, now.1 - from.1);
-                    if self.stage.mouse_look_on() {
-                        if let Some(st) = &self.state {
-                            let z = st.window.inner_size();
-                            self.stage.hover(now, (z.width, z.height));
-                            if let Some(middle) = back_to_middle(st, now) {
-                                self.cursor = middle;
-                                return;
-                            }
-                        }
-                    }
+                } else if self.looking {
+                    self.stage
+                        .look(now.0 - self.cursor.0, now.1 - self.cursor.1);
                 } else if let Some(st) = &self.state {
                     let z = st.window.inner_size();
                     self.stage.hover(now, (z.width, z.height));
@@ -603,7 +589,6 @@ impl ApplicationHandler for App {
             WindowEvent::Focused(false) => {
                 self.keys = [false; 5];
                 self.looking = false;
-                self.cursor_known = false;
                 self.turning = 0.0;
             }
             WindowEvent::MouseInput { state, button, .. }
@@ -817,7 +802,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         turning: 0.0,
         keys: [false; 5],
         looking: false,
-        cursor_known: false,
         state: None,
         failed: None,
     };

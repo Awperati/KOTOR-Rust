@@ -1,4 +1,4 @@
-# The mouse and the camera in the running window: going down looks down, with the Mouse Look box on or off, in both movements.
+# The mouse and the camera in the running window: dragging down looks down, and the Invert Camera box flips it, in both movements.
 # Like the other drivers it posts messages to the viewer's own handle only. The window opens on DISPLAY2 and is never active.
 # It holds only at 1x: see docs/FASTTEST.md. It keeps its settings in a temporary file, and writes no saves.
 param([string]$Size = "1280x720")
@@ -20,10 +20,10 @@ function Sweep([int]$from, [int]$to, [int]$buttons) {
 function Reading { $s = State; @{ pitch = [double]$s.pitch; down = [double]$s.lookdown } }
 
 foreach ($modern in @($true, $false)) {
-  foreach ($box in @($false, $true)) {
-    $name = "movement " + $(if ($modern) { "Modern" } else { "Classic" }) + ", box " + $(if ($box) { "On" } else { "Off" })
+  foreach ($invert in @($false, $true)) {
+    $name = "movement " + $(if ($modern) { "Modern" } else { "Classic" }) + ", Invert Camera " + $(if ($invert) { "On" } else { "Off" })
     $file = "$scratch\kotor_look_settings.txt"
-    "movement_modern=$($modern.ToString().ToLower())`nmouse_look=$($box.ToString().ToLower())`n" | Set-Content $file -Encoding ascii
+    "movement_modern=$($modern.ToString().ToLower())`ninvert_y=$($invert.ToString().ToLower())`n" | Set-Content $file -Encoding ascii
     $script:stateFile = "$scratch\kotor_look.out"
     Remove-Item $script:stateFile -ErrorAction SilentlyContinue
     $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","danm14aa","--place","165.17,136.66,1.85,1.767","--skip-menu","--state-log","--settings",$file,"--size",$Size,"--frames","100000")
@@ -39,28 +39,22 @@ foreach ($modern in @($true, $false)) {
     MoveTo 640 300 0
     [void](State)
 
-    # No button held.
-    $a = Reading; Sweep 300 400 0; $b = Reading; Sweep 400 200 0; $c = Reading
-    "$name, no button: down {0:n4} -> {1:n4} -> up {2:n4}; pitch {3:n4} -> {4:n4} -> {5:n4}" -f $a.down, $b.down, $c.down, $a.pitch, $b.pitch, $c.pitch
-    if ($box) {
-      Report "$name, no button: down looks down" ($b.down -gt $a.down + 0.05) "lookdown $($a.down) then $($b.down)"
-      Report "$name, no button: up looks up" ($c.down -lt $b.down - 0.05) "lookdown $($b.down) then $($c.down)"
-    } else {
-      Report "$name, no button: the camera stays" ([Math]::Abs($c.pitch - $a.pitch) -lt 0.0001) "pitch $($a.pitch) then $($c.pitch)"
-    }
+    # No button held: nothing moves the camera.
+    $a = Reading; Sweep 300 400 0; Sweep 400 300 0; $b = Reading
+    Report "$name, no button: the camera stays" ([Math]::Abs($b.pitch - $a.pitch) -lt 0.0001) "pitch $($a.pitch) then $($b.pitch)"
 
-    # The button held: the drag looks with the box off, and frees the cursor with it on.
-    Sweep 200 300 0
+    # The right button held: the drag looks. The range is -0.2 to 1.2, so go the way there is room first.
     [void][Drv]::PostMessage($h, $WM_RBUTTONDOWN, [IntPtr]2, (Point 640 300))
     [void](State)
-    $a = Reading; Sweep 300 400 2; $b = Reading; Sweep 400 200 2; $c = Reading
-    [void][Drv]::PostMessage($h, $WM_RBUTTONUP, [IntPtr]0, (Point 640 200))
-    "$name, right button: down {0:n4} -> {1:n4} -> up {2:n4}; pitch {3:n4} -> {4:n4} -> {5:n4}" -f $a.down, $b.down, $c.down, $a.pitch, $b.pitch, $c.pitch
-    if ($box) {
-      Report "$name, right button: the cursor is free" ([Math]::Abs($c.pitch - $a.pitch) -lt 0.0001) "pitch $($a.pitch) then $($c.pitch)"
+    $a = Reading; Sweep 300 340 2; $b = Reading; Sweep 340 300 2; $c = Reading
+    [void][Drv]::PostMessage($h, $WM_RBUTTONUP, [IntPtr]0, (Point 640 300))
+    "$name, mouse down: lookdown {0:n4} -> {1:n4}, back up -> {2:n4}; pitch {3:n4} -> {4:n4} -> {5:n4}" -f $a.down, $b.down, $c.down, $a.pitch, $b.pitch, $c.pitch
+    if ($invert) {
+      Report "$name, mouse down looks up" ($b.down -lt $a.down - 0.02) "lookdown $($a.down) then $($b.down)"
+      Report "$name, mouse up looks down" ($c.down -gt $b.down + 0.02) "lookdown $($b.down) then $($c.down)"
     } else {
-      Report "$name, right drag: down looks down" ($b.down -gt $a.down + 0.05) "lookdown $($a.down) then $($b.down)"
-      Report "$name, right drag: up looks up" ($c.down -lt $b.down - 0.05) "lookdown $($b.down) then $($c.down)"
+      Report "$name, mouse down looks down" ($b.down -gt $a.down + 0.02) "lookdown $($a.down) then $($b.down)"
+      Report "$name, mouse up looks up" ($c.down -lt $b.down - 0.02) "lookdown $($b.down) then $($c.down)"
     }
     FocusReport
     Stop-Process -Id $v.Id -Force -ErrorAction SilentlyContinue

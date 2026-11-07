@@ -743,10 +743,10 @@ fn the_option_pages_change_what_they_say_and_keep_it() {
     assert_eq!(again.take_wanted_size(), Some((1920, 1080)));
     press(&mut again, "BTN_NEWGAME");
     assert_eq!(again.game.world.difficulty, 2);
-    // The file's Mouse Look box has the tag of an inverted camera, and the owner wants no flip from it: bug 17.
+    // Invert Camera was ticked above and has been kept: the mouse going down now looks up.
     let before = again.pitch;
     again.look(0.0, 10.0);
-    assert!(again.pitch > before);
+    assert!(again.pitch < before);
     let _ = std::fs::remove_file(&file);
 
     // Also from the pause menu.
@@ -899,45 +899,41 @@ fn the_arrow_on_a_portrait_goes_to_the_character_when_a_level_waits() {
 }
 
 #[test]
-fn the_mouse_going_down_looks_down_with_the_box_on_or_off() {
-    let Some((mut s, dir)) = in_game("mouse_look") else {
+fn the_mouse_going_down_looks_down_and_invert_camera_flips_it() {
+    let Some((mut s, dir)) = in_game("invert_camera") else {
         return;
     };
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("settings.txt");
-    for (text, box_on) in [
-        ("mouse_look=false\nmovement_modern=true\n", false),
-        ("mouse_look=false\nmovement_modern=false\n", false),
-        ("mouse_look=true\nmovement_modern=true\n", true),
-        ("mouse_look=true\nmovement_modern=false\n", true),
-        // An old file's name for the box turns nothing on.
+    for (text, flipped) in [
+        ("movement_modern=true\n", false),
+        ("movement_modern=false\n", false),
+        ("invert_y=true\nmovement_modern=true\n", true),
+        ("invert_y=true\nmovement_modern=false\n", true),
+        // What an old file calls the box does nothing.
         ("invert_camera=true\n", false),
     ] {
         std::fs::write(&file, text).unwrap();
         s.use_settings_file(file.clone());
-        assert_eq!(s.mouse_look_on(), box_on, "{text}");
+        s.look(0.0, 50.0);
         let before = s.looks_down();
         s.look(0.0, 10.0);
-        let lower = s.looks_down();
-        assert!(lower > before, "{text}: {before} then {lower}");
-        s.look(0.0, -20.0);
-        assert!(s.looks_down() < lower, "{text}");
+        let after = s.looks_down();
+        assert_eq!(after < before, flipped, "{text}: {before} then {after}");
+        assert!((after - before).abs() > 1e-4, "{text}");
     }
 }
 
 #[test]
-fn the_mouse_look_box_leaves_the_mouse_alone_in_a_menu() {
-    let Some((mut s, dir)) = in_game("mouse_look_menu") else {
+fn invert_camera_begins_off() {
+    let Some((mut s, _)) = in_game("invert_label") else {
         return;
     };
-    std::fs::create_dir_all(&dir).unwrap();
-    let file = dir.join("settings.txt");
-    std::fs::write(&file, "mouse_look=true\n").unwrap();
-    s.use_settings_file(file);
-    assert!(s.mouse_look_on());
+    assert!(!s.settings().invert_y, "off to begin with");
     s.escape();
-    assert!(s.menu_open());
-    assert!(!s.mouse_look_on());
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "CB_INVERTCAM");
+    assert!(s.settings().invert_y);
 }
 
 #[test]
@@ -2631,6 +2627,50 @@ fn quick_character_takes_what_the_class_recommends() {
     assert!(portrait_rows
         .iter()
         .any(|p| w.portrait_appearance(*p, kotor_game::BodySize::Small) == Some(o.appearance)));
+}
+
+#[test]
+fn underwear_is_chosen_on_the_portrait_page_and_goes_with_the_character() {
+    let on_offer: Vec<_> = kotor_render::underwear::list_underwear_variants()
+        .into_iter()
+        .filter(|v| v.fits)
+        .collect();
+    let Some(mut s) = at_chargen("chargen_underwear") else {
+        return;
+    };
+    // A male body has no choice to make.
+    press(&mut s, "BTN_SEL1");
+    press(&mut s, "QUICK_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    assert!(s.menu_pixel("BTN_UNDERWEAR_RIGHT", None, SIZE).is_none());
+    s.escape();
+    press(&mut s, "BTN_CANCEL");
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_SEL6");
+    press(&mut s, "QUICK_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    if on_offer.len() < 2 {
+        // Nothing to choose: no row.
+        assert!(s.menu_pixel("BTN_UNDERWEAR_RIGHT", None, SIZE).is_none());
+        return;
+    }
+    // The row changes the picture, and Cancel takes it back.
+    let head = frame(&mut s);
+    press(&mut s, "BTN_UNDERWEAR_RIGHT");
+    assert_ne!(frame(&mut s), head, "its name is on the row");
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(frame(&mut s), head);
+    // Taken, it is on the character the game starts with.
+    press(&mut s, "BTN_UNDERWEAR_RIGHT");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME2");
+    s.type_text("Mira");
+    press(&mut s, "END_BTN");
+    press(&mut s, "BTN_STEPNAME3");
+    assert_eq!(s.menu_name(), "-", "{}", s.menu_message());
+    let pc = s.game.world.pc;
+    assert_eq!(s.game.world.object(pc).unwrap().underwear, on_offer[1].id);
 }
 
 #[test]

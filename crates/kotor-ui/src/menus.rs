@@ -7,7 +7,7 @@
 //! the cursor has yellow text.
 
 use crate::canvas::Canvas;
-use crate::gui::Control;
+use crate::gui::{Control, Gui};
 use crate::screens::{Patch, Ui, SCREEN};
 use kotor_image::Image;
 use std::collections::BTreeMap;
@@ -131,6 +131,8 @@ pub struct MenuView {
     /// Controls that are holes in the picture, for a figure behind them, and how much that is dimmed.
     pub holes: Vec<String>,
     pub hole_veil: u8,
+    /// Controls the file has not got: a copy of one it has, with a new tag, at a place of the panel.
+    pub copies: Vec<(String, String, [i32; 4])>,
 }
 
 impl MenuView {
@@ -139,6 +141,11 @@ impl MenuView {
             gui: gui.to_string(),
             ..MenuView::default()
         }
+    }
+
+    /// One more control, a copy of one the file has, at a place of the panel: left, top, width, height.
+    pub fn copy_control(&mut self, from: &str, tag: &str, at: [i32; 4]) {
+        self.copies.push((from.to_string(), tag.to_string(), at));
     }
 
     pub fn hide(&mut self, tags: &[&str]) {
@@ -228,6 +235,23 @@ impl Ui<'_> {
     }
 
     /// A screen on black, or with `over` left showing around a dialog.
+    /// A view's file, with the controls it has added.
+    fn view_gui(&mut self, view: &MenuView) -> Option<Gui> {
+        let mut gui = self.gui(&view.gui)?;
+        for (from, tag, at) in &view.copies {
+            let Some(mut c) = gui.find(from).cloned() else {
+                continue;
+            };
+            c.tag.clone_from(tag);
+            c.extent.left = at[0];
+            c.extent.top = at[1];
+            c.extent.width = at[2];
+            c.extent.height = at[3];
+            gui.panel.children.push(c);
+        }
+        Some(gui)
+    }
+
     pub fn menu_overlay(&mut self, view: &MenuView) -> Option<Image> {
         self.measure_for_menus();
         let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
@@ -297,7 +321,7 @@ impl Ui<'_> {
     }
 
     fn draw_view(&mut self, cv: &mut Canvas, view: &MenuView) -> Option<()> {
-        let gui = self.gui(&view.gui)?;
+        let gui = self.view_gui(view)?;
         let p = &gui.panel;
         let (ox, oy) = self.panel_origin(p);
         let r = [ox, oy, p.extent.width, p.extent.height];
@@ -696,7 +720,7 @@ impl Ui<'_> {
         if let Some(hit) = view.top.as_ref().and_then(|t| self.menu_hit(t, x, y)) {
             return Some(hit);
         }
-        let gui = self.gui(&view.gui)?;
+        let gui = self.view_gui(view)?;
         let (ox, oy) = self.panel_origin(&gui.panel);
         let (x, y) = (x - ox as f32, y - oy as f32);
         let inside = |r: [i32; 4]| {
@@ -760,7 +784,7 @@ impl Ui<'_> {
         row: usize,
         cell: usize,
     ) -> Option<(f32, f32)> {
-        let gui = self.gui(&view.gui)?;
+        let gui = self.view_gui(view)?;
         let (ox, oy) = self.panel_origin(&gui.panel);
         let c = gui.find(tag)?;
         let first = view.lists.get(tag).map_or(0, |l| l.1);
@@ -793,7 +817,7 @@ impl Ui<'_> {
         if let Some(d) = &view.dialog {
             return self.menu_point(d, tag, row);
         }
-        let gui = self.gui(&view.gui)?;
+        let gui = self.view_gui(view)?;
         let (ox, oy) = self.panel_origin(&gui.panel);
         let Some(c) = gui.find(tag) else {
             return self.menu_point(view.top.as_ref()?, tag, row);
