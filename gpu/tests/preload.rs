@@ -135,8 +135,9 @@ fn a_module_a_conversation_ends_in_is_loaded_while_the_player_talks() {
             anywhere: true,
         },
     );
+    // A module for a nearby exit may be there first: the talk's replaces it.
     let began = std::time::Instant::now();
-    while s.preloaded().is_none() && began.elapsed().as_secs() < 40 {
+    while s.preloaded() != Some("tat_m18aa") && began.elapsed().as_secs() < 40 {
         s.update(DT);
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
