@@ -106,6 +106,8 @@ The blue button with a gamepad on it, in the top right corner under the menu key
 | Attack | | Goes for the target if it is an enemy, else the nearest enemy seen. |
 | Jump, Roll | | As their keys, so Jump does nothing under a light push of the stick. Greyed in Classic movement. |
 | Pickup, Pause, Attack mode | | As their keys. |
+| Lock on, Aim | Modern combat only, the top corners of the four big buttons | As the lock-on key, and as the right button held. Aim says Guard with a blade. |
+| Force | Modern combat only, in the middle of the four big buttons | Opens a wheel of the first four powers you know in their places. A tap casts one and shuts it. A power short of Force points is greyed. |
 | Four slots, menu keys | the HUD's own | Bigger while the controls are on. |
 
 The Jump button is greyed during a light push of the stick, as there is no jump at a walk.
@@ -165,13 +167,14 @@ The Combat box on the Gameplay page turns it on, with Modern movement. Classic i
 
 | Input | What it does in Modern combat |
 |---|---|
-| Right button held, in a fight, with an enemy seen or with Attack mode on | aim over the shoulder with a crosshair, which drifts more on the move and after a shot |
+| Right button held, in a fight, locked on, with an enemy seen or with Attack mode on | aim over the shoulder with a crosshair, which drifts more on the move and after a shot |
 | Left click while aiming, with a blaster | one shot, at most one in 0.5 s, up to 30 m. A wall or a closed door stops it |
 | Left click in a fight, with a blade | a blow. Clicks in time chain five. Right held with a blade guards |
 | Q (Key Mapping, under Lock On) | lock on to the creature nearest the middle of the view, or let go. The wheel goes to the next |
-| The Force page of Key Mapping | a key for each power, none to begin with, and Alt plus a key is allowed. It goes at once to the crosshair's target, the lock or the player |
+| The Force page of Key Mapping | a key for each power, none to begin with, and Alt plus a key is allowed. It goes at once to the crosshair's target, the lock or the player. A second press ends a power on the player that lasts |
+| On-screen controls | Aim, Lock on and a Force wheel, as above. Attack says Fire while aiming and Strike with a blade in a fight, and goes on while held |
 
-A pause holds these. There is no queue. A power that cannot be cast says why over the player.
+A pause holds shots, blows and powers: there is no queue. The lock can still be chosen in a pause. A power that cannot be cast says why over the player. A weaker power under a stronger one of its line, such as Force Aura under Force Armour, says the stronger one is on and costs nothing.
 
 
 ## Feedback and Auto-Pause
