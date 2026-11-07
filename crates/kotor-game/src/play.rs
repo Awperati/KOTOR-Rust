@@ -617,6 +617,10 @@ impl World {
     /// Move to another module: everything except the player, party and carried items is replaced; globals, journal
     /// and XP carry over. The player arrives at the waypoint tagged `waypoint` (or the module's entry point).
     pub fn transition(&mut self, module: &str, waypoint: &str) -> Result<()> {
+        // A loading screen leaves no neighbour joined: whatever was stitched on belonged to the module being left, and in
+        // the new one it would stand as a second copy of its creatures and doors, and cut its floor. (A seamless crossing
+        // clears them itself before it comes here, and joins the module it left afterwards.)
+        self.seamless.forget_neighbours();
         let mut keep: HashSet<ObjId> = std::iter::once(self.pc)
             .chain(self.party.iter().copied())
             .collect();

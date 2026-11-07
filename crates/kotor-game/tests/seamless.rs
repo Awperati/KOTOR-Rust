@@ -531,3 +531,67 @@ fn a_trigger_link_is_walked_through_without_a_loading_screen() {
         "the valley is joined behind"
     );
 }
+
+/// A loading screen while a neighbour is joined: the neighbour is let go with the module it belonged to. Left joined, it
+/// stood in the new module as a second copy of its creatures (two Larrims at the console of the Apartments) and of its
+/// doors, and a door in it let the player and the camera through.
+#[test]
+fn a_loading_screen_lets_go_of_the_neighbours_joined_before_it() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "Apartments")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("fits");
+    let door = w.link_door_at(site.at).unwrap();
+    w.seamless_attach(door, att);
+    assert!(!w.seamless.attached.is_empty(), "joined to begin with");
+    // The old way, into the very module that is joined.
+    w.transition("tar_m02aa", "").unwrap();
+    assert!(
+        w.seamless.attached.is_empty(),
+        "nothing joined: {:?}",
+        w.seamless
+            .attached
+            .values()
+            .map(|a| a.module.clone())
+            .collect::<Vec<_>>()
+    );
+    let larrims = w
+        .objects
+        .values()
+        .filter(|o| o.kind == Kind::Creature && o.tag.eq_ignore_ascii_case("tar02_larrim"))
+        .count();
+    assert_eq!(larrims, 1, "one Larrim");
+    // Every closed door of the module is a wall again: a line across it is blocked.
+    let nav = w.nav.as_ref().unwrap();
+    let mut checked = 0;
+    for d in w
+        .objects
+        .values()
+        .filter(|o| o.kind == Kind::Door && !o.open && o.door_half_width > 0.3)
+    {
+        let (ax, ay) = (d.door_axis[0], d.door_axis[1]);
+        let z = nav.walkable_at(d.position[0], d.position[1], d.position[2] + 1.0);
+        let Some(z) = z.or_else(|| {
+            nav.walkable_at(d.position[0] - ax, d.position[1] - ay, d.position[2] + 1.0)
+        }) else {
+            continue;
+        };
+        let a = [d.position[0] - ax * 1.5, d.position[1] - ay * 1.5, z];
+        let b = [d.position[0] + ax * 1.5, d.position[1] + ay * 1.5, z];
+        assert!(
+            nav.crosses_block(a, b),
+            "the closed door {} blocks the way across it",
+            d.tag
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "a closed door was tried");
+}
