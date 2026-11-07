@@ -91,6 +91,8 @@ pub struct SceneMesh {
     pub lightmap: Option<String>,
     /// How much of the light it gets, where it is not all: 0 means all, for most things.
     pub shade: f32,
+    /// How far faded out it is, from 0 (all there) to 1 (gone): a body the camera has come too close to.
+    pub fade: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -303,6 +305,7 @@ impl Scene {
             };
             let mut out = SceneMesh {
                 shade: 0.0,
+                fade: 0.0,
                 name: node.name.clone(),
                 positions: match &skinned {
                     Some((p, _)) => p.clone(),

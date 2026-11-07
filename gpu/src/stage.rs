@@ -349,8 +349,8 @@ fn union_box(a: Option<[u32; 4]>, b: Option<[u32; 4]>) -> Option<[u32; 4]> {
 }
 
 /// How near the line from a body's feet to its head the camera is when that body goes, and when it comes back, in metres.
-const HIDE_WITHIN: f32 = 0.5;
-const SHOW_PAST: f32 = 0.65;
+const FADE_FROM: f32 = 0.6;
+const GONE_WITHIN: f32 = 0.25;
 const BODY_TALL: f32 = 1.8;
 const SLOTS_AND_GAP: i32 = kotor_ui::TARGET_BAR_AND_SLOTS_HIGH - kotor_ui::TARGET_BAR_HIGH;
 
@@ -397,7 +397,6 @@ pub struct Stage {
     shell: roomshell::RoomShell,
     plates: nameplates::PlateState,
     /// Party members the camera is too close to draw.
-    at_the_eye: std::collections::HashSet<ObjId>,
     hud_under_plates: Option<Image>,
     /// What moves all the time on the HUD, as last drawn.
     /// The HUD is what was last drawn, and not a conversation's box, so part of it can be drawn again.
@@ -608,7 +607,6 @@ impl Stage {
             floor: None,
             shell: Default::default(),
             plates: Default::default(),
-            at_the_eye: Default::default(),
             hud_under_plates: None,
             hud_is_up: false,
             map_seen_more: false,
@@ -2591,26 +2589,26 @@ impl Stage {
             .clone()
     }
 
-    /// A party member following the leader can stand where the camera is, and the view is then the inside of their head.
-    /// The camera stops for walls and not for people, so they are not drawn while it is that close. It takes a step further
-    /// off to come back, or they would flicker at the edge. The renderer has no way to fade one body, so they go at once.
-    /// Not in a conversation or a cutscene, where the shot is chosen and may be of them.
-    fn in_the_cameras_way(&mut self, id: ObjId, at: [f32; 3], eye: [f32; 3]) -> bool {
+    /// How far out to fade a body, 0 to 1, for the camera at `eye`. A party member following the leader can stand where the
+    /// camera is, and in a tight room the camera comes in to the player itself, and the view is then the inside of a body. Head,
+    /// armour and what is in the hands all go together. Not in a conversation or a cutscene, where the shot is chosen and may be
+    /// of them.
+    fn eye_fade(&self, id: ObjId, at: [f32; 3], eye: [f32; 3]) -> f32 {
         let w = &self.game.world;
-        let follower = id != w.pc && w.object(id).is_some_and(|o| o.party_member);
-        if !follower || w.in_dialogue() || self.beat_camera().is_some() {
-            self.at_the_eye.remove(&id);
-            return false;
+        let ours = id == w.pc || w.object(id).is_some_and(|o| o.party_member);
+        if !ours || w.in_dialogue() || self.beat_camera().is_some() {
+            return 0.0;
         }
         let across = (at[0] - eye[0]).hypot(at[1] - eye[1]);
         let up = (eye[2] - at[2]).clamp(0.0, BODY_TALL);
         let off = across.hypot(at[2] + up - eye[2]);
-        if off < HIDE_WITHIN {
-            self.at_the_eye.insert(id);
-        } else if off > SHOW_PAST {
-            self.at_the_eye.remove(&id);
-        }
-        self.at_the_eye.contains(&id)
+        ((FADE_FROM - off) / (FADE_FROM - GONE_WITHIN)).clamp(0.0, 1.0)
+    }
+
+    /// How far out the player is faded now, for a test.
+    pub fn player_fade(&self) -> f32 {
+        let w = &self.game.world;
+        self.eye_fade(w.pc, self.pc_position(), self.camera().eye)
     }
 
     /// A body with nothing over its underwear, for the character screen.
@@ -2910,7 +2908,8 @@ impl Stage {
                     {
                         continue;
                     }
-                    if self.in_the_cameras_way(pose.id, pose.position, eye) {
+                    let fade = self.eye_fade(pose.id, pose.position, eye);
+                    if fade >= 1.0 {
                         continue;
                     }
                     let Some(rig) = self.rig_of(pose.id) else {
@@ -2954,6 +2953,7 @@ impl Stage {
                         pose.heading,
                     ) {
                         wear_underwear(&mut scene, start, &underwear);
+                        scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                         continue;
                     }
                     self.add_speaking_creature(
@@ -2966,6 +2966,7 @@ impl Stage {
                         &underwear,
                         self.mouth_of(pose.id),
                     );
+                    scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                 }
                 Kind::Placeable => {
                     let Some(body) = self.chest_body(pose.id) else {

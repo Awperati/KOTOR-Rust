@@ -29,6 +29,7 @@ fn ball() -> SceneMesh {
     }
     SceneMesh {
         shade: 0.0,
+        fade: 0.0,
         name: "ball".into(),
         normals: positions.clone(),
         uvs2: vec![[0.0; 2]; positions.len()],

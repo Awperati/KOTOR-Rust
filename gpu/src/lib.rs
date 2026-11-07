@@ -42,7 +42,23 @@ struct Globals {
 @group(1) @binding(0) var diffuse_tex: texture_2d<f32>;
 @group(1) @binding(1) var lightmap_tex: texture_2d<f32>;
 @group(1) @binding(2) var samp: sampler;
-@group(1) @binding(3) var<uniform> params: vec4<f32>; // x = 1 with a lightmap, y = alpha below this is cut, z = 1 to blend, w = shade or 0
+struct MeshParams {
+    a: vec4<f32>, // x = 1 with a lightmap, y = alpha below this is cut, z = 1 to blend, w = shade or 0
+    fade: vec4<f32>, // x = how far faded out, 0 to 1
+};
+@group(1) @binding(3) var<uniform> params: MeshParams;
+
+// A body fading out, pixel by pixel in a fixed 4 by 4 order: it needs no sorting, and it keeps its own depth, so no limb
+// shows through another as it would when blended.
+fn faded_out(pos: vec4<f32>) -> bool {
+    if (params.fade.x <= 0.0) {
+        return false;
+    }
+    let x = u32(pos.x) % 4u;
+    let y = u32(pos.y) % 4u;
+    let n = ((x ^ y) & 1u) * 8u + (y & 1u) * 4u + (((x ^ y) >> 1u) & 1u) * 2u + ((y >> 1u) & 1u);
+    return (f32(n) + 0.5) / 16.0 < params.fade.x;
+}
 
 struct VsIn {
     @location(0) pos: vec3<f32>,
@@ -102,8 +118,11 @@ fn vs_outline(v: VsIn) -> VsOut {
 
 @fragment
 fn fs_outline(i: VsOut) -> @location(0) vec4<f32> {
+    if (faded_out(i.clip)) {
+        discard;
+    }
     let tex = textureSample(diffuse_tex, samp, i.uv);
-    if (tex.a < max(params.y, 0.02)) {
+    if (tex.a < max(params.a.y, 0.02)) {
         discard;
     }
     return vec4<f32>(0.02, 0.015, 0.03, 1.0);
@@ -122,26 +141,29 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
             discard;
         }
     }
+    if (faded_out(i.clip)) {
+        discard;
+    }
     let tex = textureSample(diffuse_tex, samp, i.uv);
-    if (tex.a < params.y) {
+    if (tex.a < params.a.y) {
         discard;
     }
     let base = tex.rgb;
     var lit = vec3<f32>(0.55 + 0.45 * abs(dot(normalize(i.normal + vec3<f32>(0.0, 0.0, 1e-4)), g.light.xyz)));
-    if (params.x > 0.5) {
+    if (params.a.x > 0.5) {
         lit = textureSample(lightmap_tex, samp, i.uv2).rgb;
     }
-    if (params.w > 0.0) {
-        lit = lit * params.w;
+    if (params.a.w > 0.0) {
+        lit = lit * params.a.w;
     }
     if (g.mode.y > 0.5) {
         // The step is cut from the light's brightness; the texture keeps all its detail. A body lit by the one lamp
         // runs from 0.55 to 1, so its steps divide that, and a level's lightmap runs from 0.
         let lum = max(dot(lit, vec3<f32>(0.299, 0.587, 0.114)), 1e-3);
-        let lo = select(0.55, 0.0, params.x > 0.5);
+        let lo = select(0.55, 0.0, params.a.x > 0.5);
         lit = lit * (cel_steps(lum, lo) / lum);
     }
-    return vec4<f32>(base * lit, mix(1.0, tex.a, params.z));
+    return vec4<f32>(base * lit, mix(1.0, tex.a, params.a.z));
 }
 "#;
 
@@ -812,6 +834,10 @@ impl GpuRenderer {
                 cut,
                 blend,
                 m.shade,
+                m.fade,
+                0.0,
+                0.0,
+                0.0,
             ];
             let params_buf = self
                 .device

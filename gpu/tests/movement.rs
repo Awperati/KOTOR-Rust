@@ -1027,3 +1027,61 @@ fn a_closed_door_stops_the_camera_across_its_whole_width() {
     }
     std::fs::remove_file(&file).ok();
 }
+
+/// In the bunk room at the top of a jump the camera was inside the player's body: dark, with shards of skin.
+#[test]
+fn the_body_fades_out_as_the_camera_comes_into_it() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open("end_m01aa", true).unwrap();
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    let file = std::env::temp_dir().join(format!("kotor_move_bunk_{}.txt", std::process::id()));
+    std::fs::write(&file, "").unwrap();
+    s.use_settings_file(file.clone());
+    s.set_view(SIZE);
+    for _ in 0..4000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.continue_line();
+            s.number_key(1);
+        } else if s.game.steps > 60 {
+            break;
+        }
+    }
+    assert!(!s.game.world.in_dialogue());
+    s.place_player([21.49, 21.356, -1.275], 0.0);
+    run(&mut s, 40);
+    s.jump_key();
+    let mut most = 0.0f32;
+    let mut away = f32::MAX;
+    for _ in 0..50 {
+        s.update(DT);
+        let c = s.camera();
+        let p = pc_at(&s);
+        let up = (c.eye[2] - p[2]).clamp(0.0, 1.8);
+        let off = (c.eye[0] - p[0])
+            .hypot(c.eye[1] - p[1])
+            .hypot(p[2] + up - c.eye[2]);
+        let fade = s.player_fade();
+        away = away.min(off);
+        most = most.max(fade);
+        if off <= 0.25 {
+            assert_eq!(fade, 1.0, "{off} m off");
+        } else if off >= 0.6 {
+            assert_eq!(fade, 0.0, "{off} m off");
+        } else {
+            assert!(fade > 0.0 && fade < 1.0, "{off} m off: {fade}");
+        }
+        let scene = s.dynamic_scene();
+        if fade > 0.0 && fade < 1.0 {
+            assert!(
+                scene.meshes.iter().any(|m| m.fade == fade),
+                "the body takes it"
+            );
+        }
+    }
+    println!("the camera came to {away:.2} m, and the body faded {most:.2}");
+    std::fs::remove_file(&file).ok();
+}

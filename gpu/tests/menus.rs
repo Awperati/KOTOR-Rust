@@ -3523,9 +3523,20 @@ fn a_party_member_at_the_cameras_eye_is_not_drawn() {
     let far = place(&mut s, 3.0);
     let at_eye = place(&mut s, 0.2);
     assert!(at_eye < far, "{at_eye} of {far} triangles");
-    // A little further off they stay gone, so they do not flicker at the edge; then they come back.
-    assert_eq!(place(&mut s, 0.6), at_eye, "still gone");
+    // A little further off they are fading, all of them there and part of each pixel gone; then they are back.
+    assert_eq!(place(&mut s, 0.4), far, "drawn");
+    assert!(
+        s.dynamic_scene()
+            .meshes
+            .iter()
+            .any(|m| m.fade > 0.0 && m.fade < 1.0),
+        "fading"
+    );
     assert_eq!(place(&mut s, 0.8), far, "back");
+    assert!(
+        s.dynamic_scene().meshes.iter().all(|m| m.fade == 0.0),
+        "all there"
+    );
     // Someone who is not in the party is drawn wherever they stand.
     s.game.world.object_mut(friend).unwrap().party_member = false;
     assert_eq!(place(&mut s, 0.2), far);

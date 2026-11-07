@@ -43,6 +43,9 @@ const ARM_RISE_UNDER: f32 = 2.2;
 /// How far above its own tilt it may go, in radians, and in what steps. Assumed.
 const ARM_RISE_MOST: f32 = 0.9;
 const ARM_RISE_STEPS: usize = 3;
+/// How far it tries looking from lower down, in radians, and the lowest it goes. Assumed.
+const ARM_LOWER: [f32; 2] = [-0.3, -0.6];
+const ARM_LOWEST: f32 = -0.15;
 /// A higher look has to win this much more room, in metres, and it goes no steeper than this, in radians. Assumed.
 const ARM_RISE_GAIN: f32 = 0.4;
 const ARM_RISE_TILT: f32 = 1.35;
@@ -465,6 +468,16 @@ impl Stage {
                 }
                 if room >= ARM_RISE_UNDER {
                     break;
+                }
+            }
+        }
+        // Still short of room, as under a low ceiling at the top of a jump: under it, if that is a real gain.
+        if here < ARM_RISE_UNDER {
+            let mut best = here.max(free((self.pitch + want).min(ARM_RISE_TILT))) + ARM_RISE_GAIN;
+            for rise in ARM_LOWER {
+                let room = free((self.pitch + rise).max(ARM_LOWEST));
+                if room > best {
+                    (want, best) = (rise, room);
                 }
             }
         }
