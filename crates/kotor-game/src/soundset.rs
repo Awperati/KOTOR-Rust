@@ -30,8 +30,10 @@ impl World {
                 let off = u32::from_le_bytes([b[8], b[9], b[10], b[11]]) as usize;
                 b.get(off..)
                     .unwrap_or_default()
-                    .chunks_exact(4)
-                    .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| u32::from_le_bytes(*c))
                     .collect()
             })
             .unwrap_or_default();
