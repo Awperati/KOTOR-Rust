@@ -1006,7 +1006,11 @@ fn the_words_for_a_row_name_the_key_it_has_now() {
         .position(|r| r.text.starts_with("Cel shading"))
         .unwrap();
     let words = |s: &mut Stage| -> String {
+        // The row at the top of the list.
         for _ in 0..rows.len() {
+            s.menu_wheel(1.0);
+        }
+        for _ in 0..row {
             s.menu_wheel(-1.0);
         }
         let p = s.menu_pixel("LB_OPTIONS", Some(row), SIZE).unwrap();
@@ -5699,10 +5703,16 @@ fn the_cel_shading_row_goes_round_and_the_key_toggles_it() {
     let start = s.settings().cel_shading;
     s.escape();
     press(&mut s, "BTN_FEEDBACK");
-    for _ in 0..30 {
+    // The wheel brings the row up: it is where the list has it.
+    let cel = s
+        .menu_rows("LB_OPTIONS")
+        .iter()
+        .position(|r| r.text.starts_with("Cel shading"))
+        .unwrap();
+    for _ in 0..cel {
         s.menu_wheel(-1.0);
     }
-    click_row(&mut s, "LB_OPTIONS", 29);
+    click_row(&mut s, "LB_OPTIONS", cel);
     assert_eq!(s.settings().cel_shading, (start + 1) % 3);
     assert!(std::fs::read_to_string(&file)
         .unwrap()
