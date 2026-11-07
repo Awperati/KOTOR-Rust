@@ -2239,6 +2239,9 @@ impl Stage {
         if let Some(screen) = top {
             self.option_hover(screen);
         }
+        if top == Some(Screen::ChargenLook) {
+            self.look_hover(pixel, size);
+        }
         if top == Some(Screen::Equip) {
             self.equip_hover();
         } else if let Some(screen) = top.filter(|t| t.is_level()) {
@@ -2304,6 +2307,8 @@ impl Stage {
                     Some(Screen::Store) => self.store_row(row),
                     Some(Screen::BenchItems | Screen::Bench) => self.bench_row(row),
                     Some(Screen::KeyMap) => self.key_row(row),
+                    // A row's words are a bigger place for a finger than its arrows: they go on to the next.
+                    Some(Screen::ChargenLook) => self.look_step(row, 1),
                     Some(Screen::Equip) => {
                         if self.menus.slot.is_some() {
                             self.menus.chosen = Some(row);
@@ -2857,6 +2862,9 @@ impl Stage {
     pub fn menu_wheel(&mut self, lines: f32) {
         if self.top() == Some(Screen::Messages) {
             self.messages_wheel(lines);
+            return;
+        }
+        if self.look_wheel(lines) {
             return;
         }
         let Some(view) = self.menu_view() else { return };

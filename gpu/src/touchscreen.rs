@@ -42,6 +42,8 @@ enum Holds {
     },
     /// On a screen: the drag not yet given to the list.
     Scroll(f32),
+    /// The figure of the Appearance page, which turns with it.
+    Figure,
     Turret,
     /// Which way it steers.
     Race(f32),
@@ -361,6 +363,9 @@ impl Stage {
             self.turret_fire(true);
             return Holds::Turret;
         }
+        if self.look_figure_under(at, size) {
+            return Holds::Figure;
+        }
         if self.menu_open() || self.choice_view().is_some() {
             self.hover(at, size);
             self.click(at, size);
@@ -438,6 +443,7 @@ impl Stage {
                 self.menus.touch.down[n].holds = Holds::Scroll(all - rows * step);
             }
             Holds::Turret => self.turret_look(dx * look, dy * look),
+            Holds::Figure => self.turn_look_figure(dx, size),
             Holds::Race(right) if right != 0.0 => {
                 let side = size.0 as f32 * RACE_SIDE_SHARE;
                 self.menus.touch.down[n].holds = Holds::Race(if at.0 < side {
@@ -490,8 +496,18 @@ impl Stage {
     }
 
     /// A mouse button came down: if on the stick or a round button, that is what it has hold of. A click anywhere else is
-    /// the mouse's as ever.
+    /// the mouse's as ever. The Appearance page's figure is held by a drag whether the layer is on or not.
     pub fn mouse_down_on_layer(&mut self, at: (f32, f32), size: (u32, u32)) -> bool {
+        if self.look_figure_under(at, size) {
+            self.finger_lost(MOUSE_FINGER);
+            self.menus.touch.down.push(Finger {
+                id: MOUSE_FINGER,
+                holds: Holds::Figure,
+                start: at,
+                last: at,
+            });
+            return true;
+        }
         if !self.touch_on()
             || self.menu_open()
             || self.choice_view().is_some()

@@ -256,6 +256,8 @@ const STEP_WIDTH: i32 = 2 * STEP_ARROW + STEP_NUMBER + 4;
 
 /// How wide what a row picks is, with its arrows, at the right of the row.
 const CHOICE_WIDTH: i32 = 150;
+/// How much further each side than its picture a choice's arrow answers, for a finger. It answers the row's whole height too.
+const CHOICE_REACH: i32 = 9;
 
 /// Where a row's choice goes: less, the words, and more.
 fn choice_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
@@ -1094,6 +1096,7 @@ impl Ui<'_> {
                     if row.stepper.is_some() || row.choice.is_some() {
                         let [less, _, more] = if row.choice.is_some() {
                             choice_rects(r)
+                                .map(|a| [a[0] - CHOICE_REACH, r[1], a[2] + 2 * CHOICE_REACH, r[3]])
                         } else {
                             stepper_rects(r)
                         };

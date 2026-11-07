@@ -52,5 +52,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         s.click(p, size);
     }
     shot(&mut s, "look_large");
+
+    // Stage 1: a drag turns the figure, and the rows give views, poses and lights.
+    let row = |s: &mut Stage, name: &str| {
+        let rows = s.menu_rows("LB_OPTIONS");
+        rows.iter().position(|r| r.text == name).expect("the row")
+    };
+    let step = |s: &mut Stage, row: usize| {
+        if let Some(p) = s.menu_step_pixel("LB_OPTIONS", row, 1, size) {
+            s.hover(p, size);
+            s.click(p, size);
+        }
+    };
+    let middle = (455.0 * width as f32 / 640.0, 240.0 * height as f32 / 480.0);
+    s.mouse_down_on_layer(middle, size);
+    s.mouse_moved_on_layer((middle.0 + width as f32 * 0.06, middle.1), size);
+    s.mouse_up_on_layer();
+    shot(&mut s, "look_turned");
+    let view = row(&mut s, "View");
+    step(&mut s, view);
+    shot(&mut s, "look_upper");
+    step(&mut s, view);
+    shot(&mut s, "look_head");
+    let light = row(&mut s, "Lighting");
+    for name in ["look_head_front", "look_head_side", "look_head_low"] {
+        step(&mut s, light);
+        shot(&mut s, name);
+    }
+    step(&mut s, light);
+    step(&mut s, view);
+    let pose = row(&mut s, "Pose");
+    step(&mut s, pose);
+    step(&mut s, pose);
+    s.update(2.0);
+    shot(&mut s, "look_pose3");
+    println!("{:?}", s.look_preview());
     Ok(())
 }

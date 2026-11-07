@@ -3972,6 +3972,148 @@ fn custom_has_an_appearance_page_with_the_figure_on_the_right_and_quick_keeps_th
     assert_eq!(s.menu_name(), "chargen_portrait");
 }
 
+/// Where every point of a scene falls, from -1 to 1 each way, through the camera the window draws it with.
+fn seen(s: &mut Stage) -> Vec<[f32; 2]> {
+    let (scene, camera, _) = s.frame_scene();
+    scene
+        .meshes
+        .iter()
+        .flat_map(|m| m.positions.iter().copied())
+        .map(|p| s.figure_on_window(&camera, p))
+        .collect()
+}
+
+#[test]
+fn the_appearance_figure_turns_by_a_drag_and_has_views_poses_and_lights() {
+    let Some(mut s) = at_chargen("look_preview") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(s.menu_name(), "chargen_look");
+    s.update(DT);
+    let row_of = |s: &mut Stage, name: &str| {
+        let rows = s.menu_rows("LB_OPTIONS");
+        rows.iter().position(|r| r.text == name).unwrap()
+    };
+    let preview = |s: &Stage| s.look_preview().unwrap();
+    assert_eq!(
+        preview(&s),
+        (0.0, "Full body", "Idle 1", "Standard"),
+        "as the page opens"
+    );
+    let portrait = |s: &Stage| {
+        let w = &s.game.world;
+        w.object(w.pc).unwrap().portrait.clone()
+    };
+    let face = portrait(&s);
+
+    // The whole body stands inside the hole: left, right, bottom and top of it, from -1 to 1.
+    let hole = [
+        330.0 / 320.0 - 1.0,
+        586.0 / 320.0 - 1.0,
+        1.0 - 400.0 / 240.0,
+        1.0 - 80.0 / 240.0,
+    ];
+    let inside =
+        |p: &[f32; 2]| p[0] > hole[0] && p[0] < hole[1] && p[1] > hole[2] && p[1] < hole[3];
+    let whole = seen(&mut s);
+    assert!(!whole.is_empty() && whole.iter().all(inside));
+
+    // A drag across the figure turns it, with the mouse or a finger, and changes nothing else.
+    let middle = (455.0 * SIZE.0 as f32 / 640.0, 240.0 * SIZE.1 as f32 / 480.0);
+    assert!(s.mouse_down_on_layer(middle, SIZE), "the figure is held");
+    s.mouse_moved_on_layer((middle.0 + 60.0, middle.1), SIZE);
+    s.mouse_up_on_layer();
+    let turned = preview(&s).0;
+    assert!(turned > 0.3, "{turned}");
+    assert!(seen(&mut s) != whole, "it shows");
+    s.finger_down(7, middle, SIZE);
+    s.finger_moved(7, (middle.0 - 60.0, middle.1), SIZE);
+    s.finger_up(7, (middle.0 - 60.0, middle.1), SIZE);
+    let back = preview(&s).0;
+    assert!(back.min(std::f32::consts::TAU - back) < 0.01, "{back}");
+    assert_eq!(s.menu_name(), "chargen_look");
+    assert_eq!(portrait(&s), face);
+    // Off the figure, a drag is the list's as before.
+    assert!(!s.mouse_down_on_layer((5.0, 5.0), SIZE));
+
+    // The views come closer, and the top of the head stays in the hole.
+    let view = row_of(&mut s, "View");
+    let tall = |p: &[[f32; 2]]| {
+        let lo = p.iter().map(|q| q[1]).fold(f32::MAX, f32::min);
+        let hi = p.iter().map(|q| q[1]).fold(f32::MIN, f32::max);
+        hi - lo
+    };
+    let mut was = tall(&whole);
+    for name in ["Upper body", "Head"] {
+        look_arrow(&mut s, view, 1);
+        assert_eq!(preview(&s).1, name);
+        let now = seen(&mut s);
+        let top = now.iter().map(|q| q[1]).fold(f32::MIN, f32::max);
+        assert!(top < hole[3] && top > hole[3] - 0.4, "{name}: {top}");
+        assert!(tall(&now) > was, "{name} is closer");
+        was = tall(&now);
+    }
+    look_arrow(&mut s, view, 1);
+    assert_eq!(preview(&s).1, "Full body", "round again");
+
+    // The wheel over the figure goes closer and stops at the ends. Elsewhere it is the list's.
+    s.hover(middle, SIZE);
+    for _ in 0..4 {
+        s.menu_wheel(1.0);
+    }
+    assert_eq!(preview(&s).1, "Head");
+    s.menu_wheel(-1.0);
+    assert_eq!(preview(&s).1, "Upper body");
+    s.hover((5.0, 5.0), SIZE);
+    s.menu_wheel(1.0);
+    assert_eq!(preview(&s).1, "Upper body");
+
+    // Another pose.
+    let pose = row_of(&mut s, "Pose");
+    let before = seen(&mut s);
+    look_arrow(&mut s, pose, 1);
+    assert_eq!(preview(&s).2, "Idle 2");
+    assert!(seen(&mut s) != before);
+    // A tap on the row's words goes on to the next, as a bigger place for a finger than its arrows.
+    click_row(&mut s, "LB_OPTIONS", pose);
+    assert_eq!(preview(&s).2, "Idle 3");
+
+    // A light: the figure is brighter, and stays where it was in the hole. No time passes between, as the idle goes on.
+    let light = row_of(&mut s, "Lighting");
+    let plain = seen(&mut s);
+    let at = s.menu_step_pixel("LB_OPTIONS", light, 1, SIZE).unwrap();
+    s.click(at, SIZE);
+    assert_eq!(preview(&s).3, "Front");
+    let (scene, _, _) = s.frame_scene();
+    assert!(scene.meshes.iter().all(|m| m.shade > 1.0));
+    let lit = seen(&mut s);
+    assert_eq!(lit.len(), plain.len());
+    let off = lit
+        .iter()
+        .zip(&plain)
+        .map(|(a, b)| (a[0] - b[0]).abs().max((a[1] - b[1]).abs()))
+        .fold(0.0f32, f32::max);
+    assert!(off < 1e-3, "{off}");
+
+    // A finger reaches an arrow above and beside its picture.
+    let at = s.menu_step_pixel("LB_OPTIONS", light, -1, SIZE).unwrap();
+    let near = (
+        at.0 - 15.0 * SIZE.0 as f32 / 640.0,
+        at.1 - 17.0 * SIZE.1 as f32 / 480.0,
+    );
+    s.finger_down(8, near, SIZE);
+    s.finger_up(8, near, SIZE);
+    assert_eq!(preview(&s).3, "Standard");
+
+    // None of it is the character: OK keeps the head as it was.
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+    assert_eq!(portrait(&s), face);
+}
+
 #[test]
 fn the_party_screen_shows_whoever_is_chosen_in_3d() {
     let Some((mut s, _)) = in_game("party_figure") else {

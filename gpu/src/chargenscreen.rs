@@ -11,10 +11,10 @@
 use super::{Screen, Stage};
 use crate::effects::{Effects, ParticleBatch};
 use kotor_game::{
-    attribute_cost, BodySize, CharacterLook, CharacterSpec, ATTRIBUTE_BASE, POINT_POOL,
+    attribute_cost, BodySize, CharacterLook, CharacterSpec, Clip, ATTRIBUTE_BASE, POINT_POOL,
 };
 use kotor_render::underwear::{list_underwear_variants, UnderwearVariant};
-use kotor_render::{Camera, Scene};
+use kotor_render::{Camera, Rig, Scene};
 use kotor_ui::{Hit, MenuView, Row};
 
 const SOLDIER: i32 = 0;
@@ -64,12 +64,40 @@ const LOOK_FIGURE: &str = "LOOK_FIGURE";
 const LOOK_HOLE: [f32; 4] = [330.0, 80.0, 256.0, 320.0];
 const STR_OK: u32 = 1580;
 const STR_CANCEL: u32 = 1581;
+/// How far a drag across the figure turns it: radians for each layout unit, so that the hole's width is most of a turn.
+const TURN_PER_UNIT: f32 = 0.02;
+/// What each view shows, down from the top of the head in metres. The whole body has no number.
+const VIEWS: [(&str, Option<f32>); 3] = [
+    ("Full body", None),
+    ("Upper body", Some(0.95)),
+    ("Head", Some(0.38)),
+];
+/// Air above and below what a view shows, as a share of it.
+const VIEW_MARGIN: f32 = 0.06;
+/// The idle poses: their words, and the clip, which every player body has.
+const POSES: [(&str, &str); 4] = [
+    ("Idle 1", "pause1"),
+    ("Idle 2", "pause2"),
+    ("Idle 3", "pause3"),
+    ("Listening", "listen"),
+];
+/// The lights: their words, how far the figure and camera turn together under the one lamp, and how bright, where 0 is as
+/// everywhere else. The lamp lights both faces of a surface alike, so a light from the left is a light from the right.
+const LIGHTS: [(&str, f32, f32); 4] = [
+    ("Standard", 0.0, 0.0),
+    ("Front", 0.54, 1.25),
+    ("Side", -1.03, 1.0),
+    ("Low", 0.0, 0.6),
+];
 /// One row of that page.
 #[derive(Clone, Copy, PartialEq)]
 enum LookRow {
     Head,
     Body,
     Underwear,
+    View,
+    Pose,
+    Light,
 }
 /// The tag each attribute starts with, its place in the scores, and the talk table's words about it.
 const ATTRIBUTES: [(&str, usize, u32); 6] = [
@@ -143,6 +171,23 @@ pub(super) struct Draft {
     about: usize,
     /// The numbers have been settled, and the sheet shows them.
     settled: bool,
+    /// How the Appearance page shows the figure: turned this far, and which view, pose and light. Only for looking.
+    turn: f32,
+    view: usize,
+    pose: usize,
+    light: usize,
+    /// The cursor is over the figure, for the wheel.
+    over_figure: bool,
+    /// How a body stands at rest, so that the view does not breathe with the idle: for its appearance.
+    measured: Option<(i32, Stance)>,
+}
+
+/// How low and high a body stands at rest, facing the camera, and the middle across of what each view shows.
+#[derive(Clone, Copy)]
+struct Stance {
+    low: f32,
+    top: f32,
+    middles: [[f32; 2]; 3],
 }
 
 impl Draft {
@@ -362,6 +407,12 @@ impl Stage {
             page_scores: [ATTRIBUTE_BASE; 6],
             about: 0,
             settled: false,
+            turn: 0.0,
+            view: 0,
+            pose: 0,
+            light: 0,
+            over_figure: false,
+            measured: None,
         });
         self.sync_character();
         self.menus.stack.push(Screen::ChargenMain);
@@ -640,6 +691,7 @@ impl Stage {
         if choice {
             rows.push(LookRow::Underwear);
         }
+        rows.extend([LookRow::View, LookRow::Pose, LookRow::Light]);
         rows
     }
 
@@ -681,6 +733,9 @@ impl Stage {
                             .get(d.underwear_pick)
                             .map_or(String::new(), |u| u.name.clone()),
                     ),
+                    LookRow::View => ("View".to_string(), VIEWS[d.view].0.to_string()),
+                    LookRow::Pose => ("Pose".to_string(), POSES[d.pose].0.to_string()),
+                    LookRow::Light => ("Lighting".to_string(), LIGHTS[d.light].0.to_string()),
                 };
                 Row {
                     text: name,
@@ -706,8 +761,73 @@ impl Stage {
                 }
                 self.sync_character();
             }
+            Some(LookRow::View) => self.look_view_step(by, true),
+            Some(LookRow::Pose) => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    d.pose = cycle(d.pose, by, POSES.len());
+                }
+            }
+            Some(LookRow::Light) => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    d.light = cycle(d.light, by, LIGHTS.len());
+                }
+            }
             None => {}
         }
+    }
+
+    /// The next view, closer for 1. The arrows go round, and the wheel stops at the ends.
+    fn look_view_step(&mut self, by: i32, round: bool) {
+        if let Some(d) = self.menus.chargen.as_mut() {
+            d.view = if round {
+                cycle(d.view, by, VIEWS.len())
+            } else {
+                (d.view as i32 + by).clamp(0, VIEWS.len() as i32 - 1) as usize
+            };
+        }
+    }
+
+    /// Whether a pixel of a window of `size` is on the Appearance page's figure, where a drag turns it.
+    pub(super) fn look_figure_under(&self, at: (f32, f32), size: (u32, u32)) -> bool {
+        if self.top() != Some(Screen::ChargenLook) {
+            return false;
+        }
+        let x = at.0 * 640.0 / size.0.max(1) as f32;
+        let y = at.1 * 480.0 / size.1.max(1) as f32;
+        let [left, top, wide, high] = LOOK_HOLE;
+        x >= left && x < left + wide && y >= top && y < top + high
+    }
+
+    /// The cursor moved on the Appearance page: whether the wheel is for the figure.
+    pub(super) fn look_hover(&mut self, at: (f32, f32), size: (u32, u32)) {
+        let over = self.look_figure_under(at, size);
+        if let Some(d) = self.menus.chargen.as_mut() {
+            d.over_figure = over;
+        }
+    }
+
+    /// A drag across the figure, in pixels of a window of `size`: it turns, the way the drag goes.
+    pub(super) fn turn_look_figure(&mut self, across: f32, size: (u32, u32)) {
+        let units = across * 640.0 / size.0.max(1) as f32;
+        if let Some(d) = self.menus.chargen.as_mut() {
+            d.turn = (d.turn + units * TURN_PER_UNIT).rem_euclid(std::f32::consts::TAU);
+        }
+    }
+
+    /// The wheel over the figure goes closer or further. Elsewhere it is the list's.
+    pub(super) fn look_wheel(&mut self, lines: f32) -> bool {
+        let over = self.top() == Some(Screen::ChargenLook)
+            && self.menus.chargen.as_ref().is_some_and(|d| d.over_figure);
+        if over && lines != 0.0 {
+            self.look_view_step(lines.signum() as i32, false);
+        }
+        over
+    }
+
+    /// How the Appearance page shows the figure, for a test: turned how far, and the words of its view, pose and light.
+    pub fn look_preview(&self) -> Option<(f32, &'static str, &'static str, &'static str)> {
+        let d = self.menus.chargen.as_ref()?;
+        Some((d.turn, VIEWS[d.view].0, POSES[d.pose].0, LIGHTS[d.light].0))
     }
 
     /// The next or last underwear: it goes on the figure at once, and is on the character when the game starts.
@@ -1105,6 +1225,91 @@ impl Stage {
         (scene, camera)
     }
 
+    /// The Appearance page's figure, turned, posed, seen whole or close and lit as its rows say.
+    fn look_scene(&mut self, appearance: i32) -> (Scene, Camera) {
+        let (turn, view, pose, light) = self
+            .menus
+            .chargen
+            .as_ref()
+            .map_or((0.0, 0, 0, 0), |d| (d.turn, d.view, d.pose, d.light));
+        let mut scene = Scene::default();
+        let Some(rig) = self.bare_rig(appearance) else {
+            return (scene, default_camera());
+        };
+        let wear = self.preview_underwear.clone();
+        let stance = self.look_stance(&rig, appearance, &wear);
+        let clip = Some(Clip {
+            name: POSES[pose].1,
+            time: self.idle_clock,
+            fade: None,
+        });
+        let facing = FACING_CAMERA + turn;
+        self.add_creature(&mut scene, &rig, &[], &clip, [0.0; 3], facing, &wear);
+        let from = VIEWS[view].1.map_or(stance.low, |down| stance.top - down);
+        let aspect = self.ui_width as f32 / 480.0;
+        // The middle of what is shown turns with the body.
+        let [x, y] = stance.middles[view];
+        let (sin, cos) = turn.sin_cos();
+        let middle = [cos * x - sin * y, sin * x + cos * y];
+        let camera = camera_on_hole(LOOK_HOLE, (from, stance.top), middle, aspect);
+        let (_, spin, bright) = LIGHTS[light];
+        let mut scene = if spin == 0.0 {
+            scene
+        } else {
+            scene.moved(spin, [0.0; 3])
+        };
+        if bright > 0.0 {
+            for m in &mut scene.meshes {
+                m.shade = bright;
+            }
+        }
+        (scene, spun(camera, spin))
+    }
+
+    /// How a body stands at rest, measured once for each.
+    fn look_stance(&mut self, rig: &Rig, appearance: i32, wear: &str) -> Stance {
+        let known = self.menus.chargen.as_ref().and_then(|d| d.measured);
+        if let Some((_, stance)) = known.filter(|m| m.0 == appearance) {
+            return stance;
+        }
+        let mut scene = Scene::default();
+        self.add_creature(&mut scene, rig, &[], &None, [0.0; 3], FACING_CAMERA, wear);
+        let points: Vec<[f32; 3]> = scene
+            .meshes
+            .iter()
+            .flat_map(|m| m.positions.iter().copied())
+            .collect();
+        let (low, top) = points
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p[2]), b.max(p[2])));
+        if low >= top {
+            return Stance {
+                low: 0.0,
+                top: FIGURE_HEIGHT,
+                middles: [[0.0; 2]; 3],
+            };
+        }
+        // The middle of the box round what each view shows.
+        let middles = VIEWS.map(|(_, down)| {
+            let from = down.map_or(low, |d| top - d);
+            let mut b = [f32::MAX, f32::MIN, f32::MAX, f32::MIN];
+            for p in points.iter().filter(|p| p[2] >= from) {
+                b = [
+                    b[0].min(p[0]),
+                    b[1].max(p[0]),
+                    b[2].min(p[1]),
+                    b[3].max(p[1]),
+                ];
+            }
+            [(b[0] + b[1]) / 2.0, (b[2] + b[3]) / 2.0]
+        });
+        let stance = Stance { low, top, middles };
+        if let Some(d) = self.menus.chargen.as_mut() {
+            d.measured = Some((appearance, stance));
+        }
+        stance
+    }
+
     /// The head on the portrait page, large, in its hole.
     fn head_in_hole(&mut self, appearance: i32) -> (Scene, Camera) {
         let mut scene = Scene::default();
@@ -1161,7 +1366,7 @@ impl Stage {
             Screen::ChargenLook => {
                 let w = &self.game.world;
                 let look = w.object(w.pc)?.appearance;
-                Some(self.body_in_hole(look, LOOK_HOLE))
+                Some(self.look_scene(look))
             }
             _ => None,
         }
@@ -1187,6 +1392,44 @@ fn owned_skills(s: &Stage) -> Vec<(usize, i32)> {
         .enumerate()
         .filter(|(_, r)| *r > 0)
         .collect()
+}
+
+/// One step round a list of `len`, either way.
+fn cycle(now: usize, by: i32, len: usize) -> usize {
+    (now as i32 + by).rem_euclid(len.max(1) as i32) as usize
+}
+
+/// A camera that shows a figure from `low` to `high` in a hole, with air: `middle` is where it is across and deep.
+fn camera_on_hole(
+    hole: [f32; 4],
+    (low, high): (f32, f32),
+    middle: [f32; 2],
+    aspect: f32,
+) -> Camera {
+    let tan = (FIGURE_FOV.to_radians() / 2.0).tan();
+    let span = (high - low) * (1.0 + 2.0 * VIEW_MARGIN);
+    // The hole's height shows `span` at this depth.
+    let depth = span * 240.0 / (hole[3] * tan);
+    let across = ((hole[0] + hole[2] / 2.0) / 320.0 - 1.0) * depth * tan * aspect;
+    let up = (1.0 - (hole[1] + hole[3] / 2.0) / 240.0) * depth * tan;
+    let height = (low + high) / 2.0 - up;
+    let [x, y] = middle;
+    Camera {
+        eye: [x - across, y - depth, height],
+        target: [x - across, y, height],
+        fov: FIGURE_FOV,
+    }
+}
+
+/// A camera turned about the upright line through the middle of the world, as `Scene::moved` turns a scene.
+fn spun(camera: Camera, yaw: f32) -> Camera {
+    let (sin, cos) = yaw.sin_cos();
+    let turn = |p: [f32; 3]| [cos * p[0] - sin * p[1], sin * p[0] + cos * p[1], p[2]];
+    Camera {
+        eye: turn(camera.eye),
+        target: turn(camera.target),
+        fov: camera.fov,
+    }
 }
 
 fn default_camera() -> Camera {

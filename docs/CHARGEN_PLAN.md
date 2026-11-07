@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stage 0 is built; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -54,6 +54,14 @@ That is about 4,700 lines before the hair pieces' art. Stages 0 to 3 are the hea
 ## Built
 
 **Stage 0.** Custom's first step is now Appearance, on the Options frame, with the whole body on the right. Its rows are Head, Body and, for a female body, Underwear. Each has two arrows, and goes on the figure at once. OK keeps it, and Cancel puts back what the page found. Quick Character keeps the game's portrait page. `CharacterLook` holds the sliders by name, in `CharacterSpec` and on the player in saves. No slider exists yet, so it is empty.
+
+**Stage 1.** A drag across the figure turns it, with the mouse or a finger, whether the touch layer is on or not. Three rows only change how the page shows it, and none is kept with the character:
+
+- **View:** Full body, Upper body or Head. The wheel over the figure goes closer or further too. Each view is measured once on the body at rest, so the picture does not breathe with the idle, and its middle turns with the body.
+- **Pose:** Idle 1, 2 and 3 and Listening, the clips `pause1` to `pause3` and `listen`, which every player body has.
+- **Lighting:** Standard, Front, Side and Low. The renderer has one lamp, fixed in the world, that lights both faces of a surface alike. So a light turns the figure and camera together under the lamp, and makes the figure brighter or darker. Left and right are the same light.
+
+For a finger, a choice row's arrows answer over the row's whole height and a little beyond their pictures, and a tap on the row's words goes on to the next choice. **Assumed:** the views' sizes, the turn's speed, the lights' names and strengths, and the poses' names. I have not seen a real touch screen run it.
 
 ## What each stage must not break
 
