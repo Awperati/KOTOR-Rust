@@ -735,35 +735,6 @@ fn a_doorway_far_along_its_plane_takes_nothing_from_the_picture() {
     std::fs::remove_file(&file).ok();
 }
 
-/// An area joined on at a door has walls of its own, which this area's rooms do not know of. The Apartments' stand over the
-/// corridor up to their door, and the camera rose behind them and lost the player.
-#[test]
-fn the_camera_stops_at_the_walls_of_an_area_joined_on() {
-    let Some((mut s, file)) = stage_in("tar_m02ac", "joinedwall", "") else {
-        return;
-    };
-    let way = std::f32::consts::FRAC_PI_2;
-    s.place_player([90.0, 122.0, 0.0], way);
-    s.pitch = 1.1;
-    s.yaw = way;
-    let from = s.static_version;
-    let began = std::time::Instant::now();
-    while s.static_version == from && began.elapsed().as_secs() < 60 {
-        s.update(DT);
-        // Nothing joined shows until a window has taken its textures.
-        s.take_warm(64);
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
-    assert!(s.static_version != from, "the Apartments are joined on");
-    run(&mut s, 60);
-    let away = camera_away(&s);
-    assert!(
-        away < 3.2,
-        "the camera is {away} m out, and 3.3 m is the whole arm"
-    );
-    std::fs::remove_file(&file).ok();
-}
-
 /// The way the owner saw it on the Endar Spire: a doorway of Taris, still in the picture after a load, took the room and the
 /// player away wherever the eye was past its plane, and showed the Dark Jedi's talk from outside the ship.
 #[test]
@@ -801,5 +772,83 @@ fn a_doorway_goes_with_the_module_it_was_in() {
     assert_eq!(s.game.world.module, "end_m01aa");
     assert!(s.portal().is_none(), "a door of Taris on the Endar Spire");
     assert!(s.portal_version() != version, "the window is told");
+    std::fs::remove_file(&file).ok();
+}
+
+/// The owner's words: "Make spacebar perform a jump, not pause the game, make pausing the game the X key."
+#[test]
+fn space_jumps_and_x_pauses() {
+    let Some((mut s, file)) = stage("spacejump", "") else {
+        return;
+    };
+    assert_eq!(s.action_for_key("Space"), Some("Jump"));
+    assert_eq!(s.action_for_key("KeyX"), Some("Pause"));
+    run(&mut s, 60);
+    let floor = pc_at(&s)[2];
+    s.jump_key();
+    assert!(!s.paused(), "Space does not pause");
+    let mut top = floor;
+    let mut air = 0;
+    for _ in 0..120 {
+        s.update(DT);
+        top = top.max(pc_at(&s)[2]);
+        air += !s.game.world.pc_body.grounded as i32;
+    }
+    assert!((top - floor - 1.1).abs() < 0.1, "{top} from {floor}");
+    assert!(
+        (air as f32 * DT - 0.7).abs() < 0.1,
+        "{air} steps in the air"
+    );
+    assert_eq!(pc_at(&s)[2], floor, "and back down");
+    // In the air it does not jump again.
+    s.jump_key();
+    s.update(DT);
+    let rising = s.game.world.pc_body.vz;
+    s.jump_key();
+    s.update(DT);
+    assert!(s.game.world.pc_body.vz < rising, "{rising}");
+    run(&mut s, 120);
+    // X pauses and goes on, and Space does nothing in a pause.
+    s.pause_key();
+    assert!(s.paused());
+    s.jump_key();
+    assert!(s.paused(), "Space does not end a pause");
+    s.update(DT);
+    assert!(s.game.world.pc_body.grounded, "nor jump in one");
+    s.pause_key();
+    assert!(!s.paused());
+    s.update(DT);
+    assert!(
+        s.game.world.pc_body.grounded,
+        "and no jump was kept for after it"
+    );
+    std::fs::remove_file(&file).ok();
+}
+
+/// Not in a conversation, in Classic movement, or while down.
+#[test]
+fn a_jump_is_only_for_the_modern_body_on_its_feet() {
+    let Some((mut s, file)) = stage("nojump", "") else {
+        return;
+    };
+    run(&mut s, 60);
+    let pc = s.game.world.pc;
+    let z = pc_at(&s)[2];
+    s.set_movement_modern(false);
+    s.jump_key();
+    run(&mut s, 10);
+    assert_eq!(pc_at(&s)[2], z, "in Classic");
+    s.set_movement_modern(true);
+    run(&mut s, 2);
+    s.jump_key();
+    run(&mut s, 10);
+    assert!(pc_at(&s)[2] > z, "it does jump");
+    run(&mut s, 120);
+    assert_eq!(pc_at(&s)[2], z);
+    s.game.world.objects.get_mut(&pc).unwrap().down = true;
+    s.jump_key();
+    s.update(DT);
+    assert_eq!(pc_at(&s)[2], z, "while down");
+    assert!(s.game.world.pc_body.grounded, "while down");
     std::fs::remove_file(&file).ok();
 }

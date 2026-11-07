@@ -37,7 +37,7 @@ fn a_race_draws_from_its_camera_and_the_space_key_shifts() {
         "{camera:?}"
     );
     assert!(s.overlay().is_none(), "no HUD over the race's own");
-    s.space_key();
+    s.jump_key();
     for _ in 0..30 {
         s.update(DT);
     }

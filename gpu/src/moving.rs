@@ -2,7 +2,7 @@
 //! pose, and their dust and sound. The body itself is `kotor_game::Body`.
 //!
 //! **Assumed:** every number here is a feel choice. There is no roll or landing clip in the game's supermodels, so the
-//! joints are bent here, by the keys in `roll_pose.txt` and `landing_pose.txt`, which the owner can edit: see
+//! joints are bent here, by the keys in `roll_pose.txt`, `landing_pose.txt` and `jump_pose.txt`, which the owner can edit: see
 //! `docs/MOVEMENT_POSE.md`. A droid has none of these joints and only turns.
 
 use super::bodypose::{self, PoseFile, Side, JOINTS};
@@ -108,6 +108,7 @@ fn turn_over(a: f32) -> Mat {
 pub(super) struct BodyPoses {
     roll: PoseFile,
     landing: PoseFile,
+    jump: PoseFile,
     /// Where the files are. None: the defaults, and nothing is read or written.
     folder: Option<PathBuf>,
     problems: Vec<String>,
@@ -120,6 +121,7 @@ impl Default for BodyPoses {
         BodyPoses {
             roll: default_roll(),
             landing: default_landing(),
+            jump: default_jump(),
             folder: None,
             problems: Vec::new(),
             preview: None,
@@ -133,6 +135,10 @@ fn default_roll() -> PoseFile {
 
 fn default_landing() -> PoseFile {
     PoseFile::parse(bodypose::DEFAULT_LANDING).expect("the landing that comes with the game reads")
+}
+
+fn default_jump() -> PoseFile {
+    PoseFile::parse(bodypose::DEFAULT_JUMP).expect("the jump that comes with the game reads")
 }
 
 /// One of the pose files, what the game has written before, and the default.
@@ -154,6 +160,13 @@ const LANDING_SOURCE: PoseSource = PoseSource {
     default_text: bodypose::DEFAULT_LANDING,
     shipped: &bodypose::SHIPPED_LANDINGS,
     default: default_landing,
+};
+
+const JUMP_SOURCE: PoseSource = PoseSource {
+    name: bodypose::JUMP_FILE,
+    default_text: bodypose::DEFAULT_JUMP,
+    shipped: &bodypose::SHIPPED_JUMPS,
+    default: default_jump,
 };
 
 /// A file's keys. A missing file, or one nobody edited since the game wrote an older default, gets the new default on disk. An
@@ -222,11 +235,12 @@ impl Stage {
         let (mut problems, mut notes) = (Vec::new(), Vec::new());
         self.body_poses.roll = read_pose(&folder, &ROLL_SOURCE, &mut problems, &mut notes);
         self.body_poses.landing = read_pose(&folder, &LANDING_SOURCE, &mut problems, &mut notes);
+        self.body_poses.jump = read_pose(&folder, &JUMP_SOURCE, &mut problems, &mut notes);
         for p in &problems {
             eprintln!("pose: {p}");
         }
         let mut report = if problems.is_empty() {
-            "No problems: the game is using both pose files.\n".to_string()
+            "No problems: the game is using all the pose files.\n".to_string()
         } else {
             let mut text = "The game is using its own pose for each file named here:\n".to_string();
             for p in &problems {
@@ -343,6 +357,21 @@ impl Stage {
         self.game.world.roll_request = true;
     }
 
+    /// The jump key, once the line, the race or the container have had their say. It asks; the world says no as for a roll.
+    pub(super) fn ask_to_jump(&mut self) {
+        let s = self.settings();
+        let held = !s.combat_movement && self.party_blocked();
+        if !s.movement_modern
+            || held
+            || self.menu_open()
+            || self.turret_on()
+            || self.pilot.is_some()
+        {
+            return;
+        }
+        self.game.world.jump_request = true;
+    }
+
     /// The camera's lag and widening, and the sound of what the body did.
     pub(super) fn movement_tick(&mut self, dt: f32) {
         let w = &mut self.game.world;
@@ -369,7 +398,7 @@ impl Stage {
         let wide = ((speed - FOV_FROM) / (tuning.sprint - FOV_FROM)).clamp(0.0, 1.0) * FOV_KICK;
         self.fov_extra += (wide - self.fov_extra) * (1.0 - (-FOV_RATE * dt).exp());
         self.arm_tick(dt);
-        if cues.roll_started || cues.landed.is_some_and(|v| v > LOUD_LANDING) {
+        if cues.roll_started || cues.jumped || cues.landed.is_some_and(|v| v > LOUD_LANDING) {
             self.body_cue();
         }
     }
@@ -479,6 +508,8 @@ impl Stage {
         let body = &w.pc_body;
         if body.rolling() {
             Some(Bend::Roll(body.roll_progress(&w.tuning)))
+        } else if let Some(p) = body.jump_progress(&w.tuning) {
+            Some(Bend::Jump(p))
         } else if body.landing() {
             Some(Bend::Land(1.0 - body.land_dip()))
         } else {
@@ -515,6 +546,7 @@ impl Stage {
         let (file, p, roll) = match bend {
             Bend::Roll(p) => (&self.body_poses.roll, p, true),
             Bend::Land(p) => (&self.body_poses.landing, p, false),
+            Bend::Jump(p) => (&self.body_poses.jump, p, false),
         };
         let keys = file.sample(p);
         // The clip's swing goes as the bend comes, or the legs would scissor in the tuck.
@@ -599,11 +631,12 @@ impl Stage {
     }
 }
 
-/// What the player's body is doing: how far through a roll or a landing, 0 to 1.
+/// What the player's body is doing: how far through a roll, a landing or a jump, 0 to 1.
 #[derive(Clone, Copy)]
 enum Bend {
     Roll(f32),
     Land(f32),
+    Jump(f32),
 }
 
 fn smooth(x: f32) -> f32 {

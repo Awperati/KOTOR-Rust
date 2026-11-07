@@ -4,7 +4,7 @@ The roll and the landing have no animation in the game's files, so they are buil
 
 ## Where the files are
 
-`%LOCALAPPDATA%\kotor-rs\roll_pose.txt` and `%LOCALAPPDATA%\kotor-rs\landing_pose.txt`, beside the settings file. The game writes them the first time it starts from its main menu. Paste the first path into the Windows Run box (Win+R) to open one.
+`%LOCALAPPDATA%\kotor-rs\roll_pose.txt`, `landing_pose.txt` and `jump_pose.txt`, beside the settings file. The game writes them the first time it starts from its main menu. Paste the first path into the Windows Run box (Win+R) to open one.
 
 ## How to change a pose
 

@@ -2,7 +2,7 @@
 //!
 //! The Classic walk puts the player at full speed in one frame, turns it at a fixed rate and sets its height to the
 //! floor's every step. This body accelerates and slows down, carves its turns, snaps to slopes and stairs smoothly,
-//! falls off ledges along an arc and rolls on a key. It is pure: the floor is asked through [`Ground`], so the tests
+//! falls off ledges along an arc, jumps and rolls on a key. It is pure: the floor is asked through [`Ground`], so the tests
 //! need no game files.
 //!
 //! **Numbers measured:** today's run speed is `RUN_SPEED` 5.4 m/s (`runrate` of `creaturespeed.2da`, which is also
@@ -30,6 +30,8 @@ const BARRIER_LOW: f32 = 0.25;
 const BARRIER_HIGH: f32 = 1.2;
 /// A step of a frame is short: a barrier is looked for this far on from it. Assumed.
 const BARRIER_LOOK: f32 = 0.6;
+/// A jump that comes down on its own level is this many metres per second faster than it went up, at most, and lands light.
+const LIGHT_LANDING: f32 = 0.5;
 /// A body going along a wall tries these turns from the way it is pushed, in degrees: the nearest that gets through. Assumed.
 const SLIDE_TURNS: [f32; 2] = [35.0, 70.0];
 /// How much faster a roll goes round when something else is waiting for it: a click to go or attack. Assumed.
@@ -91,6 +93,8 @@ pub struct Tuning {
     pub roll_cooldown: f32,
     /// Speed handed on after a roll, as a share of sprint. Assumed.
     pub roll_exit: f32,
+    /// How high a jump lifts the feet, metres. Assumed: over a crate, under most ceilings.
+    pub jump_height: f32,
 }
 
 impl Default for Tuning {
@@ -120,6 +124,7 @@ impl Default for Tuning {
             roll_time: 0.55,
             roll_cooldown: 0.3,
             roll_exit: 0.7,
+            jump_height: 1.1,
         }
     }
 }
@@ -164,6 +169,7 @@ pub struct Events {
     pub landed: Option<f32>,
     pub roll_started: bool,
     pub roll_ended: bool,
+    pub jumped: bool,
     /// Fell out of the world and was put back where it last stood.
     pub reset: bool,
 }
@@ -175,6 +181,7 @@ impl Events {
         self.landed = o.landed.or(self.landed);
         self.roll_started |= o.roll_started;
         self.roll_ended |= o.roll_ended;
+        self.jumped |= o.jumped;
         self.reset |= o.reset;
     }
 }
@@ -210,6 +217,10 @@ pub struct Body {
     cooldown: f32,
     land_left: f32,
     land_total: f32,
+    /// A jump's own landing: the crouch, with no loss of speed.
+    land_light: bool,
+    /// In the air by its own jump.
+    jumping: bool,
     fall_from: f32,
     last_stood: [f32; 3],
     /// Out over a gap: the spot on the lower floor it set out for, with the floor's height. It always gets there.
@@ -233,6 +244,8 @@ impl Body {
             cooldown: 0.0,
             land_left: 0.0,
             land_total: 0.0,
+            land_light: false,
+            jumping: false,
             fall_from: pos[2],
             last_stood: pos,
             gap_to: None,
@@ -261,6 +274,31 @@ impl Body {
         if let Some(r) = self.roll.as_mut() {
             r.dir = spin(r.dir);
         }
+    }
+
+    /// How fast a jump leaves the floor, for it to reach `jump_height`.
+    fn jump_speed(t: &Tuning) -> f32 {
+        (2.0 * t.gravity * t.jump_height).sqrt()
+    }
+
+    /// Leave the floor, if the body is on it, on its feet and not rolling. Says whether it did.
+    pub fn jump(&mut self, t: &Tuning) -> bool {
+        if !self.grounded || self.roll.is_some() || (self.landing() && !self.land_light) {
+            return false;
+        }
+        self.vz = Self::jump_speed(t);
+        self.grounded = false;
+        self.jumping = true;
+        self.fall_from = self.pos[2];
+        self.land_left = 0.0;
+        true
+    }
+
+    /// 0 to 1 through a jump, by how fast the body rises and falls: 0.5 at the top. None when not jumping.
+    pub fn jump_progress(&self, t: &Tuning) -> Option<f32> {
+        let v = Self::jump_speed(t);
+        self.jumping
+            .then(|| ((v - self.vz) / (2.0 * v)).clamp(0.0, 1.0))
     }
 
     pub fn rolling(&self) -> bool {
@@ -373,7 +411,7 @@ impl Body {
 
     fn accelerate(&mut self, input: Input, t: &Tuning, dt: f32) {
         let top = if input.walk { t.walk } else { t.sprint };
-        let top = if self.land_left > 0.0 {
+        let top = if self.land_left > 0.0 && !self.land_light {
             top * t.land_slow
         } else {
             top
@@ -408,6 +446,29 @@ impl Body {
             let eased = err * (1.0 - (-t.turn_smooth * dt).exp());
             let most = t.turn_max * dt;
             self.heading = wrap(self.heading + eased.clamp(-most, most));
+        }
+    }
+
+    /// Whether a jump may not go on to a spot. What holds a body on the floor holds it in the air, measured from where it
+    /// jumped: it does not go over a rail, or to a floor with no walk back. A jump higher than a rail still stops at it.
+    fn jump_stopped(&self, ground: &dyn Ground, t: &Tuning, to: [f32; 2], u: [f32; 2]) -> bool {
+        let p = self.pos;
+        let from = self.fall_from;
+        let there = [to[0] + u[0] * BARRIER_LOOK, to[1] + u[1] * BARRIER_LOOK];
+        let walled = ground.barrier([p[0], p[1]], there, from + BARRIER_LOW, from + BARRIER_HIGH)
+            || WALL_HEIGHTS
+                .iter()
+                .any(|h| ground.wall([p[0], p[1], from + h], [there[0], there[1], from + h]));
+        let reach = (p[2] + 0.1).max(from + 0.1);
+        match ground.floor(to[0], to[1], reach) {
+            // On its own level.
+            Some(f) if (f - from).abs() <= t.step_down => false,
+            Some(f) => {
+                f < from - t.max_drop
+                    || walled
+                    || !ground.way_back(self.last_stood, [to[0], to[1], f])
+            }
+            None => walled,
         }
     }
 
@@ -501,6 +562,9 @@ impl Body {
             let u = [dx / l, dy / l];
             let here = ground.floor(x, y, reach);
             if !self.grounded {
+                if self.jumping && self.jump_stopped(ground, t, [x, y], u) {
+                    return None;
+                }
                 return (here.is_some() || self.drop_ahead(ground, t, x, y, u).is_some())
                     .then_some([x, y]);
             }
@@ -612,6 +676,17 @@ impl Body {
         // floor it set out for, however far down the body has got.
         let top = self.gap_to.map_or(self.pos[2], |g| self.pos[2].max(g[2]));
         let floor = ground.floor(x, y, top + 0.1);
+        // A jump comes down on no floor higher up that has no walk back: it would be stranded there.
+        let floor = match floor {
+            Some(f)
+                if self.jumping
+                    && f > self.fall_from + t.step_up
+                    && !ground.way_back(self.last_stood, [x, y, f]) =>
+            {
+                ground.floor(x, y, self.fall_from + t.step_up)
+            }
+            f => f,
+        };
         match floor {
             Some(f) if z1 <= f => {
                 let impact = -self.vz;
@@ -621,12 +696,17 @@ impl Body {
                 self.gap_to = None;
                 self.last_stood = self.pos;
                 ev.landed = Some(impact);
+                let light = self.jumping && impact <= Self::jump_speed(t) + LIGHT_LANDING;
+                self.jumping = false;
+                self.land_light = light;
                 if impact > t.land_threshold {
                     self.land_total =
                         ((impact - t.land_threshold) * t.land_per_speed + 0.12).min(t.land_max);
                     self.land_left = self.land_total;
-                    self.vel[0] *= t.land_slow;
-                    self.vel[1] *= t.land_slow;
+                    if !light {
+                        self.vel[0] *= t.land_slow;
+                        self.vel[1] *= t.land_slow;
+                    }
                 }
             }
             _ => {
@@ -634,6 +714,7 @@ impl Body {
                 if self.fall_from - z1 > t.void_depth {
                     self.pos = self.last_stood;
                     self.gap_to = None;
+                    self.jumping = false;
                     self.vel = [0.0; 2];
                     self.vz = 0.0;
                     self.grounded = true;
@@ -1330,6 +1411,170 @@ mod tests {
         }
         assert!(b.grounded && b.pos[2] == 2.0, "fell: {:?}", b.pos);
         assert!(b.pos[0] < 5.2, "{:?}", b.pos);
+    }
+
+    fn jump_from(b: &mut Body, g: &dyn Ground, t: &Tuning, input: Input) -> f32 {
+        assert!(b.jump(t));
+        let start = b.pos[2];
+        let mut top = start;
+        for _ in 0..600 {
+            b.step(input, g, t, 1.0 / 60.0);
+            top = top.max(b.pos[2]);
+            if b.grounded {
+                break;
+            }
+        }
+        assert!(b.grounded, "{:?}", b.pos);
+        top - start
+    }
+
+    #[test]
+    fn a_jump_rises_its_height_and_comes_down_in_an_arc() {
+        let t = Tuning::default();
+        let g = flat();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        assert!(b.jump(&t));
+        let (mut heights, mut steps) = (vec![0.0f32], 0);
+        while !b.grounded && steps < 300 {
+            b.step(Input::default(), &g, &t, 1.0 / 60.0);
+            heights.push(b.pos[2]);
+            steps += 1;
+        }
+        let top = heights.iter().cloned().fold(0.0f32, f32::max);
+        assert!((top - t.jump_height).abs() < 0.06, "{top}");
+        // Up and down take as long, about 0.7 s in all.
+        let time = steps as f32 / 60.0;
+        assert!((time - 0.705).abs() < 0.05, "{time}");
+        let peak = heights.iter().position(|h| *h == top).unwrap() as f32;
+        assert!(
+            (peak / steps as f32 - 0.5).abs() < 0.08,
+            "{peak} of {steps}"
+        );
+        assert_eq!(b.pos[2], 0.0);
+    }
+
+    #[test]
+    fn a_jump_keeps_a_sprint_and_lands_with_a_crouch() {
+        let t = Tuning::default();
+        let g = flat();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        for _ in 0..60 {
+            b.step(input, &g, &t, 1.0 / 60.0);
+        }
+        let before = b.pos[0];
+        jump_from(&mut b, &g, &t, input);
+        assert!(b.pos[0] - before > 4.0, "{}", b.pos[0] - before);
+        assert!(b.landing(), "the crouch");
+        assert!((b.speed() - t.sprint).abs() < 0.01, "{}", b.speed());
+        b.step(input, &g, &t, 1.0 / 60.0);
+        assert!((b.speed() - t.sprint).abs() < 0.01, "{}", b.speed());
+    }
+
+    #[test]
+    fn a_body_jumps_only_from_the_floor_on_its_feet() {
+        let t = Tuning::default();
+        let g = flat();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        assert!(b.jump(&t));
+        assert!(b.jump_progress(&t).is_some());
+        assert!(!b.jump(&t), "not in the air");
+        b.step(Input::default(), &g, &t, 1.0 / 60.0);
+        assert!(!b.jump(&t), "not in the air");
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        let roll = Input {
+            roll: true,
+            ..Input::default()
+        };
+        b.step(roll, &g, &t, 1.0 / 60.0);
+        assert!(b.rolling());
+        assert!(!b.jump(&t), "not in a roll");
+    }
+
+    #[test]
+    fn a_roll_waits_for_the_ground_after_a_jump() {
+        let t = Tuning::default();
+        let g = flat();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        assert!(b.jump(&t));
+        let roll = Input {
+            roll: true,
+            ..Input::default()
+        };
+        b.step(roll, &g, &t, 1.0 / 60.0);
+        assert!(!b.rolling());
+    }
+
+    #[test]
+    fn a_hard_fall_after_a_jump_is_still_a_hard_landing() {
+        let t = Tuning::default();
+        let g = Hills(|x, _| Some(if x < 1.0 { 3.0 } else { 0.0 }));
+        let mut b = Body::new([0.8, 0.0, 3.0], 0.0);
+        b.vel = [3.0, 0.0];
+        jump_from(
+            &mut b,
+            &g,
+            &t,
+            Input {
+                dir: Some([1.0, 0.0]),
+                walk: true,
+                ..Input::default()
+            },
+        );
+        assert_eq!(b.pos[2], 0.0);
+        assert!(b.landing());
+        assert!(!b.land_light);
+    }
+
+    #[test]
+    fn a_jump_does_not_go_over_a_rail_it_clears() {
+        let t = Tuning::default();
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        // Up to the rail, then jumps, and again: 1.1 m would clear a rail 0.9 m high.
+        let mut b = Body::new([3.0, 0.0, 2.0], 0.0);
+        for _ in 0..120 {
+            b.step(input, &Railed, &t, 1.0 / 60.0);
+        }
+        for _ in 0..3 {
+            let up = jump_from(&mut b, &Railed, &t, input);
+            assert!(up > 1.0, "{up}");
+            assert!(b.pos[2] == 2.0 && b.pos[0] < 5.2, "{:?}", b.pos);
+        }
+    }
+
+    /// A low floor and a high one with no walk between: a jump does not strand the body up there.
+    struct Shelf;
+
+    impl Ground for Shelf {
+        fn floor(&self, x: f32, _: f32, max_z: f32) -> Option<f32> {
+            let f = if x < 3.0 { 0.0 } else { 0.8 };
+            let f = if f <= max_z { f } else { 0.0 };
+            Some(f)
+        }
+        fn blocked(&self, _: [f32; 3], _: [f32; 3]) -> bool {
+            false
+        }
+        fn way_back(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+            (a[2] - b[2]).abs() < 0.1
+        }
+    }
+
+    #[test]
+    fn a_jump_lands_nowhere_there_is_no_walk_back_from() {
+        let t = Tuning::default();
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        let mut b = Body::new([2.0, 0.0, 0.0], 0.0);
+        jump_from(&mut b, &Shelf, &t, input);
+        assert_eq!(b.pos[2], 0.0, "{:?}", b.pos);
     }
 
     #[test]

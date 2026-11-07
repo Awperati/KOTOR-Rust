@@ -1,0 +1,109 @@
+# THE JUMP. Edit this file, save it, and press F8 in the game. Then press Space.
+# Anything after a # is a note and is ignored. docs/MOVEMENT_POSE.md explains everything here.
+# A mistake? The game says so, writes it in pose_problems.txt beside this file, and uses its own jump until you fix it.
+# To start again, delete this file: the game writes a fresh one the next time it starts.
+# The game keeps a file you have edited. A file nobody edited is replaced when a new version of the game has a better one.
+#
+# EACH JOINT TAKES UP TO THREE ANGLES IN DEGREES: bend  out  twist
+#   bend    curls the joint in. Knee to the chest, heel to the bottom, chin to the chest, elbow closed.
+#   out     moves the limb away from the body, to the side. A minus brings it across the body.
+#   twist   turns the limb about its own length, its front going outward. A minus turns it inward.
+# Left and right work alike: to keep the body even, give both sides the same numbers.
+#
+#   JOINT                       WHAT IT IS         SAFE BEND    SAFE OUT    SAFE TWIST
+#   lthigh_g  rthigh_g          hip                -30 to 140   -30 to 60   -40 to 40
+#   lshin_g   rshin_g           knee                 0 to 150   do not use  do not use
+#   lfoot_g   rfoot_g           ankle              -50 to 35    -20 to 20   -30 to 30
+#   torso_g   torsoupr_g        lower, upper back  -30 to 50    -30 to 30   -40 to 40
+#   necklwr_g neck_g  head_g    neck and head      -30 to 45    -30 to 30   -60 to 60
+#   lcollar_g rcollar_g         shoulder blade     -20 to 20    -20 to 20   do not use
+#   lbicep_g  rbicep_g          shoulder           -60 to 170   -40 to 120  -70 to 70
+#   lforearm_g rforearm_g       elbow                0 to 145   do not use  -70 to 70
+#   lhand_g   rhand_g           wrist              -60 to 60    -20 to 20   do not use
+#   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
+# The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
+#
+version = 1            # which of the game's own jumps this began as. Leave it alone.
+
+# THE KEYS. Each one is a moment. The game moves from each key to the next.
+#   at     how far through the jump, 0 to 1. 0 is leaving the floor, 0.5 the top, and 1 is the feet touching.
+#          A jump lasts about 0.7 seconds. The landing that comes after it is in landing_pose.txt.
+#   ease   how it moves into this key: smooth, linear, in (starts slow) or out (ends slow).
+#   tuck   0 to 1. At 1 the running animation has gone.
+#   lower  how far the body sinks, in metres. In the air there is no floor to keep the feet on, so it is 0.
+# A joint a key does not name is at 0 in that key: standing as it was.
+
+[key]            # Leaving the floor.
+at = 0
+tuck = 0.5
+lower = 0
+#              bend  out  twist
+lthigh_g   =    15   -3    0
+rthigh_g   =    15   -3    0
+lshin_g    =    25
+rshin_g    =    25
+torso_g    =     5
+
+[key]            # Knees coming up, arms lifting.
+at = 0.3
+tuck = 1
+lower = 0
+lthigh_g   =    60   -6    0
+rthigh_g   =    60   -6    0
+lshin_g    =    85
+rshin_g    =    85
+lfoot_g    =    20
+rfoot_g    =    20
+torso_g    =    10
+lbicep_g   =    30  -28    0
+rbicep_g   =    30  -28    0
+lforearm_g =    40
+rforearm_g =    40
+
+[key]            # The top.
+at = 0.5
+tuck = 1
+lower = 0
+lthigh_g   =    55   -6    0
+rthigh_g   =    55   -6    0
+lshin_g    =    80
+rshin_g    =    80
+lfoot_g    =    15
+rfoot_g    =    15
+torso_g    =     8
+lbicep_g   =    24  -30    0
+rbicep_g   =    24  -30    0
+lforearm_g =    35
+rforearm_g =    35
+
+[key]            # Legs reaching for the floor.
+at = 0.9
+tuck = 1
+lower = 0
+lthigh_g   =    30   -4    0
+rthigh_g   =    30   -4    0
+lshin_g    =    35
+rshin_g    =    35
+lfoot_g    =    -5
+rfoot_g    =    -5
+torso_g    =    12
+lbicep_g   =    15  -35    0
+rbicep_g   =    15  -35    0
+lforearm_g =    25
+rforearm_g =    25
+
+[key]            # The feet touch, and the landing takes over.
+at = 1
+tuck = 1
+lower = 0
+lthigh_g   =    35   -4    0
+rthigh_g   =    35   -4    0
+lshin_g    =    50
+rshin_g    =    50
+lfoot_g    =    15
+rfoot_g    =    15
+torso_g    =    14
+lbicep_g   =    15  -30    0
+rbicep_g   =    15  -30    0
+lforearm_g =    25
+rforearm_g =    25

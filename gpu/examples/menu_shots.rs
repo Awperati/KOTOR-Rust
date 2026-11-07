@@ -610,7 +610,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.game.world.combat.perceived.insert((pc, foe));
     s.update(0.05);
     shot(&mut gpu, &mut s, "enemy_sighted", &out);
-    s.space_key();
+    s.pause_key();
     s.enable_auto_pause(false);
     s.game.world.objects.remove(&foe);
     s.update(0.05);

@@ -14,13 +14,15 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 |---|---|
 | W A S D | run in that direction, relative to the camera; Shift walks. While the look button is held, the keys keep the direction they had |
 | Left Ctrl | roll, in Modern movement (Key Mapping has it, under Roll) |
+| Space | jump, in Modern movement (Key Mapping has it, under Jump); end a line, or close a container |
+| X | pause and go on (Key Mapping has it, under Pause) |
 | F8 | read the roll and landing pose files again: see [MOVEMENT_POSE.md](MOVEMENT_POSE.md) |
 | Right button drag, or the arrow keys | turn the camera round the player |
 | Left click on the floor | run there, unless Click to walk is off in Feedback |
 | Left click on a creature, door or placeable | run up and talk, open or use; an enemy is attacked |
 | E | use the nearest thing within 2.5 m |
 | Left click on a reply, or 1-9 | take that reply, or take an item from a container or a body |
-| Space or Enter | end a line, or close a container |
+| Enter | end a line, or close a container |
 | Wheel | zoom |
 | Esc | back out of a screen, or pause |
 | I | inventory |
@@ -120,7 +122,7 @@ Feats and powers are chains of up to three pictures, each with an arrow to what 
 J, the HUD's button or the tab opens `journal.gui`. It lists the quests in `World::journal` with their names and the words of their state from `global.jrl`, with the planet first as the file has one. One button swaps active and completed quests, and one goes through the four orders. Scripts and conversations both set a state, and a save keeps the order. Quest items are not built, so their button is greyed. Experience for a quest's state, the file's `XP_Percentage`, is not paid here. **Assumed, not compared with the game's code:** see the top of `crates/kotor-game/src/journal.rs`.
 
 ## Pause
-Space or the HUD's hourglass pauses and goes on, outside conversations and with no container open. Space does nothing for half a second after a conversation, so one press too many does not pause. The camera still turns. Things pause the game by themselves as the Auto-Pause page says: a new enemy seen, a party member down, a change of target, the end of a round, the action menu. A box at the top right says why. A conversation lifts a pause. `--no-auto-pause` turns those off for a run, and `--autopilot` has none.
+X or the HUD's hourglass pauses and goes on, outside conversations and with no container open. Space jumps instead, as the owner asked, and shifts in a race and fires a turret as before. Neither does anything for half a second after a conversation, so one press too many does not pause or jump. A settings file from before the jump gives up Space for its pause. The camera still turns. Things pause the game by themselves as the Auto-Pause page says: a new enemy seen, a party member down, a change of target, the end of a round, the action menu. A box at the top right says why. A conversation lifts a pause. `--no-auto-pause` turns those off for a run, and `--autopilot` has none.
 
 
 ## Fights
@@ -211,6 +213,7 @@ In both, a held movement key goes where the camera looks now, read every frame, 
 | Letting go | stops at once | stops in about 0.18 s, over about 0.6 m |
 | Height | on the floor every step | follows slopes and stairs smoothly; off a ledge it falls at 17.7 m/s2 and lands |
 | Roll | none | Left Ctrl: 3.2 m in 0.55 s, not in a conversation, a minigame or a race |
+| Jump | none | Space: 1.1 m up and 0.7 s in the air, on the floor and on its feet, in Modern movement, not in a conversation, a minigame, a race or a roll. It stops at what stops a fall, measured from where it jumped, so a rail it could clear still holds it. Assumed: the height. Pose in `jump_pose.txt` |
 | Camera | fixed to the player; swings round behind a walk | its focus lags a little, and the view is 6 degrees wider at a sprint; only a click's walk swings it |
 | Party | runs at 5.4 m/s | up to 7.4 m/s when behind |
 

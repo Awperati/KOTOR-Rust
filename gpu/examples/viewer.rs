@@ -40,7 +40,7 @@
 //!
 //! W A S D: run, relative to the camera (Shift walks). Left Ctrl: roll, in Modern movement. Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
-//! Tab: the next party member takes over. Space: end a line, or close a container. Wheel: zoom. Esc: back out of a screen,
+//! Tab: the next party member takes over. Space: jump, end a line, or close a container. X: pause. Wheel: zoom. Esc: back out of a screen,
 //! or pause. I: inventory. U: equipment. C: character.
 use kotor_audio::Audio;
 use kotor_audio_out::{decode_any, AudioOut};
@@ -598,7 +598,7 @@ impl App {
             return;
         }
         match self.stage.action_for_key(&name) {
-            Some("Pause") if self.stage.turret_on() => return self.stage.turret_fire(pressed),
+            Some("Jump") if self.stage.turret_on() => return self.stage.turret_fire(pressed),
             Some("MoveForward") => return self.keys[0] = pressed,
             Some("MoveBack") => return self.keys[1] = pressed,
             Some("MoveLeft") => return self.keys[2] = pressed,
@@ -620,7 +620,8 @@ impl App {
                         "Quests" => self.stage.open_journal(),
                         "Map" => self.stage.open_map(),
                         "Options" => self.stage.escape(),
-                        "Pause" => self.stage.space_key(),
+                        "Jump" => self.stage.jump_key(),
+                        "Pause" => self.stage.pause_key(),
                         "CancelCombat" => self.stage.hud_disengage(),
                         "SoloMode" => self.stage.solo_key(),
                         "Roll" => self.stage.roll_key(),

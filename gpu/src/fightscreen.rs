@@ -15,9 +15,7 @@ const STR_ROUND: u32 = 42395;
 const STR_PARTY_DOWN: u32 = 42397;
 const STR_ACTION_MENU: u32 = 48415;
 const STR_TARGET_CHANGED: u32 = 42481;
-/// Words the talk table fills in for the key, as the viewer has it.
-const PAUSE_KEY: &str = "Space";
-/// How long after a conversation Space still does not pause. **Assumed:** long enough for one more press.
+/// How long after a conversation the keys still do not pause or jump. **Assumed:** long enough for one more press.
 const AFTER_TALK_SECONDS: f32 = 0.5;
 const MOST_QUEUED: usize = 4;
 const STR_ATTACK: u32 = 375;
@@ -462,8 +460,6 @@ impl Stage {
         self.menus.paused
     }
 
-    /// Space: goes on with a line or a container, or else pauses. It never pauses in a conversation, nor just after
-    /// one: a player going through its lines presses once more than there are.
     /// For a test driver: an enemy has grenades, and throws them. The fight is the same every run: a fixed seed, a
     /// player with 500 hit points who starts unhurt, and the nearest enemy that is at least `HOLDS_WITHIN` metres off
     /// (the game's own AI keeps its grenades for a foe farther than that and fights close up with its weapon).
@@ -531,14 +527,28 @@ impl Stage {
         }
     }
 
-    pub fn space_key(&mut self) {
+    /// Space: shifts in a race, goes on with a line or a container, or else jumps. Not just after a conversation, and not
+    /// in a pause.
+    pub fn jump_key(&mut self) {
         if !self.menu_open() && self.race_fire() {
             return;
         }
         let w = &self.game.world;
         if self.menu_open() || w.in_dialogue() || w.opened.is_some() {
             self.continue_line();
-        } else if self.menus.paused || w.time - self.menus.fight.talk_ended >= AFTER_TALK_SECONDS {
+        } else if !self.menus.paused && w.time - self.menus.fight.talk_ended >= AFTER_TALK_SECONDS {
+            self.ask_to_jump();
+        }
+    }
+
+    /// X: pauses or goes on. It never pauses with a container open, nor just after a conversation: a player going through its
+    /// lines presses once more than there are.
+    pub fn pause_key(&mut self) {
+        let w = &self.game.world;
+        if w.opened.is_some() {
+            return;
+        }
+        if self.menus.paused || w.time - self.menus.fight.talk_ended >= AFTER_TALK_SECONDS {
             self.toggle_pause();
         }
     }
@@ -558,7 +568,7 @@ impl Stage {
             .lines()
             .nth(1)
             .unwrap_or("")
-            .replace("<Pause>", PAUSE_KEY);
+            .replace("<Pause>", &self.key_words("Pause"));
         let title = if title == STR_ENEMY_SIGHTED {
             line.lines().next().unwrap_or("").to_string()
         } else {

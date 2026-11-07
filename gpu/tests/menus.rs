@@ -2032,13 +2032,13 @@ fn enemies_pause_the_game_and_space_goes_on() {
     };
     let pc = s.game.world.pc;
     s.update(DT);
-    // Space pauses by hand, with no box, and the hourglass does the same.
+    // X pauses by hand, with no box, and the hourglass does the same.
     let time = s.game.world.time;
-    s.space_key();
+    s.pause_key();
     assert!(s.paused());
     let by_hand = frame(&mut s);
     assert_eq!(s.game.world.time, time, "the game waits");
-    s.space_key();
+    s.pause_key();
     assert!(!s.paused());
     s.update(DT);
     assert!(s.game.world.time > time);
@@ -2062,7 +2062,7 @@ fn enemies_pause_the_game_and_space_goes_on() {
     s.update(DT);
     assert!(s.paused());
     assert!(frame(&mut s) != by_hand, "the box says why");
-    s.space_key();
+    s.pause_key();
     assert!(!s.paused());
     s.update(DT);
     assert!(!s.paused(), "the same enemy does not pause again");
@@ -2089,11 +2089,11 @@ fn enemies_pause_the_game_and_space_goes_on() {
     s.game.world.combat.round += 1;
     s.update(DT);
     assert!(s.paused());
-    s.space_key();
+    s.pause_key();
 
     // A conversation lifts a pause.
     s.game.world.combat.target.clear();
-    s.space_key();
+    s.pause_key();
     assert!(s.paused());
     let trask = s.game.world.by_tag("end_trask")[0];
     s.game.world.talk_to(trask);
@@ -2122,22 +2122,22 @@ fn space_never_pauses_in_a_conversation_nor_just_after_one() {
         if !s.game.world.in_dialogue() {
             break;
         }
-        s.space_key();
+        s.jump_key();
         s.number_key(1);
         assert!(!s.paused());
         s.update(DT);
     }
     assert!(!s.game.world.in_dialogue());
     // The press after the last line does nothing.
-    s.space_key();
+    s.pause_key();
     assert!(!s.paused());
-    // A moment later Space pauses again.
+    // A moment later X pauses again.
     for _ in 0..40 {
         s.update(DT);
     }
-    s.space_key();
+    s.pause_key();
     assert!(s.paused());
-    s.space_key();
+    s.pause_key();
     assert!(!s.paused());
 }
 
@@ -2235,7 +2235,8 @@ fn the_keys_can_be_changed_kept_and_put_back() {
         ("KeyI", "Inventory"),
         ("KeyM", "Map"),
         ("Tab", "ChangeLeader"),
-        ("Space", "Pause"),
+        ("KeyX", "Pause"),
+        ("Space", "Jump"),
     ] {
         assert_eq!(s.action_for_key(key), Some(action), "{key}");
     }
@@ -3302,7 +3303,7 @@ fn the_party_screens_ok_asks_first() {
 }
 
 #[test]
-fn space_ends_a_pause_that_began_just_after_a_talk() {
+fn x_ends_a_pause_that_began_just_after_a_talk() {
     let Some((mut s, _)) = in_game("pause_after_talk") else {
         return;
     };
@@ -3310,9 +3311,9 @@ fn space_ends_a_pause_that_began_just_after_a_talk() {
     assert!(s.paused());
     // The game's clock stands still in a pause, so it would never get past the wait after a talk.
     s.game.world.time = 0.0;
-    s.space_key();
+    s.pause_key();
     assert!(!s.paused());
-    s.space_key();
+    s.pause_key();
     assert!(!s.paused(), "and that wait still holds when not paused");
 }
 

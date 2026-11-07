@@ -717,6 +717,10 @@ impl World {
         if modern {
             self.sync_body();
         }
+        let jump = std::mem::take(&mut self.jump_request) && modern && self.may_roll();
+        if jump && self.pc_body.jump(&self.tuning) {
+            self.body_cues.jumped = true;
+        }
         let roll = std::mem::take(&mut self.roll_request) && modern && self.may_roll();
         if roll {
             self.pc_mover.stop();
@@ -822,7 +826,7 @@ impl World {
         self.pc_body.heading = self.pc_mover.heading;
     }
 
-    /// The player may roll: on its feet, out of conversations and minigames.
+    /// The player may roll or jump: on its feet, out of conversations and minigames.
     fn may_roll(&self) -> bool {
         self.conv.is_none()
             && self.minigame.is_none()

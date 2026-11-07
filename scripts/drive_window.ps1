@@ -60,19 +60,20 @@ $b = State
 $moved = Moved $a $b
 Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
 
-# Space pauses out of a conversation: W does nothing until Space again.
-Key $SPACE[0] $SPACE[1]
+# X pauses out of a conversation: W does nothing until X again.
+$X = @(0x58, 0x2D)
+Key $X[0] $X[1]
 [void](State)
 $a = State
 Key $W[0] $W[1] 300
 $b = State
-Report "Space pauses" ((Moved $a $b) -lt 0.05) "$($a.pc) -> $($b.pc)"
-Key $SPACE[0] $SPACE[1]
+Report "X pauses" ((Moved $a $b) -lt 0.05) "$($a.pc) -> $($b.pc)"
+Key $X[0] $X[1]
 [void](State)
 $a = State
 Key $W[0] $W[1] 300
 $b = State
-Report "Space goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
+Report "X goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
 
 # A click on the floor walks there: look for one that lands.
 $ok = $false; $detail = ""

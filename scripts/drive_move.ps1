@@ -153,6 +153,38 @@ if ($Shots) {
   FocusReport
   Close
 }
+# Space jumps and X pauses, in the window.
+$SPACE = @(0x20, 0x39); $X = @(0x58, 0x2D)
+$s = Open "jump" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767")
+$floor = [double]$s.pcz
+$m = Mark
+Key $SPACE[0] $SPACE[1] 30
+WaitSteps 66
+$after = State
+$rows = @(Samples $m); Note "jump" $rows
+$top = ($rows | Measure-Object z -Maximum).Maximum
+# A slow frame can miss the very top, and it is never above 1.1 m.
+Report "Space jumps" ($top - $floor -gt 0.5 -and $top - $floor -lt 1.2) "$([Math]::Round($top - $floor, 2)) m up at most, $(@($rows | Where-Object { $_.air -eq 'true' }).Count) samples in the air"
+Report "Space does not pause" ($after.paused -eq "false") "paused=$($after.paused)"
+Report "It comes down" ([Math]::Abs([double]$after.pcz - $floor) -lt 0.05 -and $after.air -eq "false") "z=$($after.pcz) air=$($after.air)"
+Key $X[0] $X[1]
+$s = WaitFor "paused" "true"
+Report "X pauses" ($s.paused -eq "true") "paused=$($s.paused)"
+Key $X[0] $X[1]
+$s = WaitFor "paused" "false"
+Report "X goes on" ($s.paused -eq "false") "paused=$($s.paused)"
+FocusReport
+Close
+# The jump at a tenth of the speed, for pictures through it.
+if ($Shots) {
+  $s = Open "slowjump" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767", "--speed", "0.1")
+  # Space does nothing in the first half second of the game's clock.
+  WaitSteps 40
+  Key $SPACE[0] $SPACE[1] 30
+  for ($i = 1; $i -le 6; $i++) { Start-Sleep -Milliseconds 1100; [Drv]::Save($h, "$Shots\move_jump_step$($i)_$tag.png"); $s = State; "jump step $i z=$($s.pcz) air=$($s.air)" }
+  FocusReport
+  Close
+}
 # Hold W and drag the camera a quarter turn right, with the look button: the path curves to the new way. Both modes.
 function Off($a, $b) { $d = [Math]::Abs($a - $b) % (2 * [Math]::PI); [Math]::Min($d, 2 * [Math]::PI - $d) }
 foreach ($mode in @("modern", "classic")) {

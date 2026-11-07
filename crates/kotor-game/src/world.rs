@@ -460,6 +460,8 @@ pub struct World {
     pub tuning: crate::movement::Tuning,
     /// The roll key was pressed.
     pub roll_request: bool,
+    /// The jump key was pressed.
+    pub jump_request: bool,
     /// What the body did since the window last asked, for the dust and the sound.
     pub body_cues: crate::movement::Events,
     /// Speed along a click's route in Modern movement.
@@ -706,6 +708,7 @@ impl World {
             body_mark: [0.0; 3],
             tuning: crate::movement::Tuning::default(),
             roll_request: false,
+            jump_request: false,
             body_cues: crate::movement::Events::default(),
             route_speed: 0.0,
             difficulty: 1,

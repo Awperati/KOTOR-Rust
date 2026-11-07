@@ -561,6 +561,7 @@ impl World {
         self.death_clock += dt;
         self.steer = None;
         self.roll_request = false;
+        self.jump_request = false;
         self.pending = None;
         self.pc_mover.stop();
         self.close_container();

@@ -114,9 +114,9 @@ $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ([int]$s.inv -ge $carried -and (Get-Date) -lt $until)
 Report "The right slot throws the grenade" ([int]$s.inv -lt $carried) "inv $carried -> $($s.inv) slot2=$($s.slot2)"
 Shot "fight_thrown"
-Key $SPACE[0] $SPACE[1]
+Key 0x58 0x2D
 $s = WaitFor "paused" "false"
-Report "Space goes on" ($s.paused -eq "false") "paused=$($s.paused)"
+Report "X goes on" ($s.paused -eq "false") "paused=$($s.paused)"
 
 # Blows land, and the words rise.
 $until = (Get-Date).AddSeconds(45)

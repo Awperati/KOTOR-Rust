@@ -59,12 +59,15 @@ pub(super) const JOINTS: [Joint; COUNT] = [
 /// The text of the files as they come. The game writes them out the first time, and the owner's own stay.
 pub(super) const DEFAULT_ROLL: &str = include_str!("roll_pose.txt");
 pub(super) const DEFAULT_LANDING: &str = include_str!("landing_pose.txt");
+pub(super) const DEFAULT_JUMP: &str = include_str!("jump_pose.txt");
 /// What the game has written before, as it came: a file exactly like one of these was never edited, and gets the new default.
 /// When a default changes, its old text goes in `poses_old` and in this list, and its `version` goes up.
 pub(super) const SHIPPED_ROLLS: [&str; 1] = [include_str!("poses_old/roll_pose_v1.txt")];
 pub(super) const SHIPPED_LANDINGS: [&str; 1] = [include_str!("poses_old/landing_pose_v1.txt")];
+pub(super) const SHIPPED_JUMPS: [&str; 0] = [];
 pub(super) const ROLL_FILE: &str = "roll_pose.txt";
 pub(super) const LANDING_FILE: &str = "landing_pose.txt";
+pub(super) const JUMP_FILE: &str = "jump_pose.txt";
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Ease {
@@ -292,6 +295,10 @@ mod tests {
         assert_eq!(landing.turns, 0.0);
         assert!(landing.sample(0.0).lower > 0.3);
         assert_eq!(landing.sample(1.0).lower, 0.0);
+        let jump = PoseFile::parse(DEFAULT_JUMP).unwrap();
+        assert_eq!(jump.turns, 0.0);
+        assert_eq!(jump.sample(0.5).tuck, 1.0);
+        assert!(angle(&jump.sample(0.5), "lshin_g")[0] > 45.0);
     }
 
     #[test]
@@ -311,7 +318,7 @@ mod tests {
 
     #[test]
     fn left_and_right_of_a_default_are_alike() {
-        for text in [DEFAULT_ROLL, DEFAULT_LANDING] {
+        for text in [DEFAULT_ROLL, DEFAULT_LANDING, DEFAULT_JUMP] {
             let f = PoseFile::parse(text).unwrap();
             let s = f.sample(0.5);
             for (l, r) in JOINTS
