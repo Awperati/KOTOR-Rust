@@ -595,3 +595,117 @@ fn a_loading_screen_lets_go_of_the_neighbours_joined_before_it() {
     }
     assert!(checked > 0, "a closed door was tried");
 }
+
+/// Steer the player at the door, closed, for four seconds: the door is a wall, joined or not, and the player stays on
+/// this side of it. Returns how far along the way through the player got, and the module.
+fn walk_into_closed_door(
+    module: &str,
+    tag: &str,
+    join: bool,
+    modern: bool,
+) -> Option<(f32, String)> {
+    let mut w = world(module)?;
+    w.movement = if modern {
+        kotor_game::MovementMode::Modern
+    } else {
+        kotor_game::MovementMode::Classic
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch.sites.iter().find(|s| s.tag == tag)?.clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).ok()?;
+    let out = att.out;
+    let door = w.link_door_at(site.at)?;
+    if join {
+        w.seamless_attach(door, att);
+    }
+    if let Some(o) = w.objects.get_mut(&door) {
+        o.locked = false;
+    }
+    assert!(!w.objects[&door].open, "closed to begin with");
+    let pc = w.pc;
+    w.teleport(
+        pc,
+        [
+            site.at[0] - out.cos() * 1.5,
+            site.at[1] - out.sin() * 1.5,
+            site.at[2],
+        ],
+    );
+    for _ in 0..240 {
+        w.steer = Some(([out.cos(), out.sin()], true));
+        w.step(1.0 / 60.0);
+    }
+    let p = w.pc_mover.pos;
+    let along = (p[0] - site.at[0]) * out.cos() + (p[1] - site.at[1]) * out.sin();
+    Some((along, w.module.clone()))
+}
+
+#[test]
+fn a_closed_door_stops_the_player_whether_its_neighbour_is_joined_or_not() {
+    for (module, tag) in [
+        ("tar_m02ac", "Apartments"),
+        ("tar_m02ac", "UpperNorth"),
+        ("tar_m02aa", "tar02_aprtdoor"),
+    ] {
+        for (join, modern) in [(false, false), (true, false), (false, true), (true, true)] {
+            let Some((along, now)) = walk_into_closed_door(module, tag, join, modern) else {
+                continue;
+            };
+            assert_eq!(
+                now, module,
+                "{tag} (joined {join}, modern {modern}) stays a wall: still in {module}"
+            );
+            assert!(
+                along < 0.3,
+                "{tag} (joined {join}, modern {modern}): the player got {along:.2} m past the door line"
+            );
+        }
+    }
+}
+
+/// Across the whole width of a closed door, from its jamb to its jamb: nowhere does the player get through.
+#[test]
+fn a_closed_door_stops_the_player_across_its_whole_width() {
+    for (module, tag) in [("tar_m02aa", "tar02_aprtdoor"), ("tar_m02ac", "Apartments")] {
+        let Some(mut w) = world(module) else {
+            continue;
+        };
+        let sketch: Sketch = w.sketch();
+        let site = sketch.sites.iter().find(|s| s.tag == tag).unwrap().clone();
+        let out = site.out.unwrap();
+        let id = w.link_door_at(site.at).unwrap();
+        let (half, pos, axis) = {
+            let d = &w.objects[&id];
+            (d.door_half_width, d.position, d.door_axis)
+        };
+        eprintln!("{tag}: half width {half:.2}, axis {axis:?}, out {out:.2}");
+        let mut lat = -half - 0.6;
+        while lat <= half + 0.6 {
+            w.movement = kotor_game::MovementMode::Classic;
+            let (s, c) = out.sin_cos();
+            let start = [
+                site.at[0] - c * 1.5 - s * lat,
+                site.at[1] - s * 1.5 + c * lat,
+                site.at[2],
+            ];
+            let pc = w.pc;
+            w.teleport(pc, start);
+            for _ in 0..120 {
+                w.steer = Some(([c, s], true));
+                w.step(1.0 / 60.0);
+            }
+            let p = w.pc_mover.pos;
+            let along = (p[0] - pos[0]) * c + (p[1] - pos[1]) * s;
+            let across = -(p[0] - pos[0]) * s + (p[1] - pos[1]) * c;
+            // Beside the door, in the wall's own thickness, is not through it.
+            if across.abs() < half {
+                assert!(
+                    along < 0.3,
+                    "{tag}: at {lat:+.2} m across the player got {along:.2} m past the closed door"
+                );
+            }
+            lat += 0.25;
+        }
+    }
+}

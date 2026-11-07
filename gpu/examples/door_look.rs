@@ -37,13 +37,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             site.at[2],
         ],
     );
-    s.yaw = out_angle;
+    s.yaw = out_angle
+        + std::env::var("YAW")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.0);
     let mut gpu = GpuRenderer::new(1280, 720)?;
     for _ in 0..frames {
         s.update(1.0 / 60.0);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     // The door open at once.
+    // The player stands where he was put: the camera turns round him.
     let id = s
         .game
         .world
