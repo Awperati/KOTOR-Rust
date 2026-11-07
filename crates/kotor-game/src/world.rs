@@ -1538,7 +1538,20 @@ impl World {
                     }
                     return;
                 }
-                let _ = self.converse(id, target, &dialogue, &mut crate::FirstReply);
+                // **Assumed:** with no talk named, a caller with none of its own, as a trigger, starts the one of what it
+                // talks to: `k_ptar_sithtalk`'s trigger in `tar_m02aa` and the placeable `trooper1_invis`, whose talk is
+                // the Sith soldier's raid as the player leaves the apartment.
+                let borrowed = dialogue.is_empty()
+                    && self
+                        .objects
+                        .get(&id)
+                        .is_some_and(|o| o.conversation.is_empty())
+                    && self
+                        .objects
+                        .get(&target)
+                        .is_some_and(|o| !o.conversation.is_empty());
+                let (owner, listener) = if borrowed { (target, id) } else { (id, target) };
+                let _ = self.converse(owner, listener, &dialogue, &mut crate::FirstReply);
             }
         }
     }

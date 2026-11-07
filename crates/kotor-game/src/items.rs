@@ -37,7 +37,7 @@ const DROID_RACE: i32 = 5;
 /// What the UTI gives that the object does not keep.
 #[derive(Debug, Default)]
 pub(crate) struct ItemTemplate {
-    description: String,
+    pub(crate) description: String,
     model_variation: i64,
     texture_variation: i64,
     /// The row of `spells.2da` its `CastSpell` property runs.

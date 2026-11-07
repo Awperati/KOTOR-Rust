@@ -1488,15 +1488,17 @@ impl World {
             o.equipped.iter().map(|(s, i)| (*s, *i)).collect(),
         );
         // **Assumption:** the remains hold everything carried, whatever the item's Droppable says (bug 34: the Jedi's
-        // two lightsabers). Only a creature's own claws, bite and hide (`baseitems.2da` rows 81 to 84) go with it.
-        let drops = |w: &World, i: &ObjId| {
-            w.objects
-                .get(i)
-                .is_some_and(|o| o.droppable || !(81..=84).contains(&o.base_item))
-        };
+        // two lightsabers). Only what is part of the creature goes with it, see `part_of_its_body`.
+        let kept: HashSet<ObjId> = carried
+            .iter()
+            .chain(worn.iter().map(|(_, i)| i))
+            .copied()
+            .filter(|i| self.part_of_its_body(*i))
+            .collect();
+        let drops = |i: &ObjId| !kept.contains(i);
         let mut loot = Vec::new();
         for i in carried {
-            if drops(self, &i) {
+            if drops(&i) {
                 loot.push(i);
             } else {
                 self.objects.remove(&i);
@@ -1504,7 +1506,7 @@ impl World {
         }
         let mut stripped = Vec::new();
         for (slot, i) in worn {
-            if drops(self, &i) {
+            if drops(&i) {
                 stripped.push(slot);
                 loot.push(i);
             }
@@ -1523,6 +1525,27 @@ impl World {
                 o.name = name;
             }
         }
+    }
+
+    /// An item a creature has as part of itself, not to be looted: its claws, bite and hide (`baseitems.2da` rows 81 to
+    /// 84), and a gun built into a droid or a turret. Such a gun is marked to stay, has no price and nothing to read, and
+    /// its model has no mesh: `g_w_null001` to `g_w_null007` and `kor37_droidblast`, the "...: Null" weapons, as on the
+    /// battle droids by the apartment in `tar_m02aa` (owner's bug: a "Blaster Pistol: Null" that drew nothing in hand).
+    /// A scan of every creature template found the same three marks on a few props too, kept the same way: Bith band
+    /// instruments, the Endar Spire's one-damage blasters, and the Star Forge's scripted lightsabers.
+    fn part_of_its_body(&mut self, item: ObjId) -> bool {
+        let Some((droppable, base, template)) = self
+            .objects
+            .get(&item)
+            .map(|o| (o.droppable, o.base_item, o.template.clone()))
+        else {
+            return false;
+        };
+        if droppable {
+            return false;
+        }
+        (81..=84).contains(&base)
+            || (self.item_value(item) == 0 && self.item_template(&template).description.is_empty())
     }
 
     /// The items in the open container: id and name, with the count of a stack. All its credits are one row, and so is each

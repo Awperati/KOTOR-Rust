@@ -13,6 +13,11 @@ fn at(module: &str) -> Option<Game> {
     let mut w = World::new(inst).unwrap();
     w.interactive_dialogue = true;
     w.load_module(module).unwrap();
+    // In `tar_m02aa` the player arrives on the trigger of the Sith soldier's raid (`apartment_raid.rs`), and its fight
+    // holds the walkers: these tests are about their walks, so the raid is left out.
+    for t in w.by_tag("SithTalk") {
+        w.objects.get_mut(&t).unwrap().scripts.clear();
+    }
     let spec = w.recommended_character("Player", 0, 1).unwrap();
     w.create_character(&spec).unwrap();
     w.enter_area();
