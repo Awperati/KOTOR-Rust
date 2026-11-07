@@ -466,3 +466,43 @@ fn the_movement_setting_applies_at_once() {
     );
     std::fs::remove_file(&file).ok();
 }
+
+/// The owner on the last one: "Roll animation looks like a frog now". Knees together, hands in front of the shins, and on the
+/// floor all the way round, with the head going over first.
+#[test]
+fn a_roll_has_the_knees_together_and_stays_on_the_floor() {
+    let Some((mut s, file)) = stage("frog", "") else {
+        return;
+    };
+    s.preview_roll(0.5);
+    let j = s.bent_joints().unwrap();
+    let knees = j["rshin_g"][0] - j["lshin_g"][0];
+    assert!(knees < 0.2, "the knees are {knees} m apart");
+    // In front of the hips and up at the chest.
+    assert!(
+        j["lshin_g"][1] > j["lthigh_g"][1] + 0.25,
+        "{:?}",
+        j["lshin_g"]
+    );
+    assert!(
+        j["lshin_g"][2] > j["lthigh_g"][2] + 0.1,
+        "{:?}",
+        j["lshin_g"]
+    );
+    // Hands nearer the middle than the shoulders, and in front of the shins' line back to the hips.
+    assert!(j["rhand_g"][0] - j["lhand_g"][0] < 0.35);
+    assert!(
+        j["lhand_g"][1] > j["lthigh_g"][1] + 0.25,
+        "{:?}",
+        j["lhand_g"]
+    );
+    // Chin down: the head ahead of the chest.
+    assert!(j["headhook"][1] > j["torsoupr_g"][1], "{:?}", j["headhook"]);
+    // Touching the floor all the way round, neither floating nor sinking.
+    for k in 6..=14 {
+        s.preview_roll(k as f32 / 20.0);
+        let sinks = s.bent_body_sinks().unwrap();
+        assert!(sinks.abs() < 0.03, "{sinks} m into the floor at {k}/20");
+    }
+    std::fs::remove_file(&file).ok();
+}

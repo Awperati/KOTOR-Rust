@@ -112,30 +112,74 @@ fn default_landing() -> PoseFile {
     PoseFile::parse(bodypose::DEFAULT_LANDING).expect("the landing that comes with the game reads")
 }
 
-/// A file's keys. A missing one is written out for editing. One that cannot be used gives the default and says why.
+/// One of the pose files, what the game has written before, and the default.
+struct PoseSource {
+    name: &'static str,
+    default_text: &'static str,
+    shipped: &'static [&'static str],
+    default: fn() -> PoseFile,
+}
+
+const ROLL_SOURCE: PoseSource = PoseSource {
+    name: bodypose::ROLL_FILE,
+    default_text: bodypose::DEFAULT_ROLL,
+    shipped: &bodypose::SHIPPED_ROLLS,
+    default: default_roll,
+};
+const LANDING_SOURCE: PoseSource = PoseSource {
+    name: bodypose::LANDING_FILE,
+    default_text: bodypose::DEFAULT_LANDING,
+    shipped: &bodypose::SHIPPED_LANDINGS,
+    default: default_landing,
+};
+
+/// A file's keys. A missing file, or one nobody edited since the game wrote an older default, gets the new default on disk. An
+/// edited one stays, whatever its age, and a note says so. One that cannot be used gives the default and says why.
 fn read_pose(
     folder: &std::path::Path,
-    name: &str,
-    default_text: &str,
-    default: fn() -> PoseFile,
+    from: &PoseSource,
     problems: &mut Vec<String>,
+    notes: &mut Vec<String>,
 ) -> PoseFile {
-    let path = folder.join(name);
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(_) => {
-            let written =
-                std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, default_text));
-            if let Err(e) = written {
-                problems.push(format!("{name}: could not be written: {e}"));
-            }
-            return default();
+    let path = folder.join(from.name);
+    let default = from.default;
+    let write_default = |problems: &mut Vec<String>| {
+        let written =
+            std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, from.default_text));
+        if let Err(e) = written {
+            problems.push(format!("{}: could not be written: {e}", from.name));
         }
     };
-    match PoseFile::parse(&String::from_utf8_lossy(&bytes)) {
-        Ok(f) => f,
+    let Ok(bytes) = std::fs::read(&path) else {
+        write_default(problems);
+        return default();
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    if from
+        .shipped
+        .iter()
+        .any(|old| bodypose::same_text(&text, old))
+    {
+        write_default(problems);
+        notes.push(format!(
+            "{}: was the game's older default, and is now its newest.",
+            from.name
+        ));
+        return default();
+    }
+    match PoseFile::parse(&text) {
+        Ok(f) => {
+            let newest = default().version;
+            if f.version < newest {
+                notes.push(format!(
+                    "{}: is your own edit, and it is kept. It began as version {} and the game's newest is {newest}: delete the file to get that.",
+                    from.name, f.version
+                ));
+            }
+            f
+        }
         Err(e) => {
-            problems.push(format!("{name}: {e}"));
+            problems.push(format!("{}: {e}", from.name));
             default()
         }
     }
@@ -152,25 +196,13 @@ impl Stage {
         let Some(folder) = self.body_poses.folder.clone() else {
             return;
         };
-        let mut problems = Vec::new();
-        self.body_poses.roll = read_pose(
-            &folder,
-            bodypose::ROLL_FILE,
-            bodypose::DEFAULT_ROLL,
-            default_roll,
-            &mut problems,
-        );
-        self.body_poses.landing = read_pose(
-            &folder,
-            bodypose::LANDING_FILE,
-            bodypose::DEFAULT_LANDING,
-            default_landing,
-            &mut problems,
-        );
+        let (mut problems, mut notes) = (Vec::new(), Vec::new());
+        self.body_poses.roll = read_pose(&folder, &ROLL_SOURCE, &mut problems, &mut notes);
+        self.body_poses.landing = read_pose(&folder, &LANDING_SOURCE, &mut problems, &mut notes);
         for p in &problems {
             eprintln!("pose: {p}");
         }
-        let report = if problems.is_empty() {
+        let mut report = if problems.is_empty() {
             "No problems: the game is using both pose files.\n".to_string()
         } else {
             let mut text = "The game is using its own pose for each file named here:\n".to_string();
@@ -180,6 +212,10 @@ impl Stage {
             }
             text
         };
+        for n in &notes {
+            report.push_str(n);
+            report.push('\n');
+        }
         // Only a help to the reader: the game goes on without it.
         let _ = std::fs::write(folder.join("pose_problems.txt"), report);
         self.body_poses.problems = problems;
@@ -220,7 +256,7 @@ impl Stage {
         let pose = self.game.poses().into_iter().find(|p| p.id == pc)?;
         let rig = self.rig_of(pc)?;
         let bend = self.body_bend(pc)?;
-        let (bent, _) = self.bent_pose(&rig, &pose.clip, bend)?;
+        let (bent, ..) = self.bent_pose(&rig, &pose.clip, bend)?;
         Some(
             rig.joint_frames(Some(&bent))
                 .into_iter()
@@ -359,13 +395,8 @@ impl Stage {
         }
     }
 
-    /// The body bent: the joints, and how the whole of it is turned over and how tucked, as `tilt_matrix` takes them.
-    fn bent_pose(
-        &self,
-        rig: &Rig,
-        clip: &Option<Clip>,
-        bend: Bend,
-    ) -> Option<(Pose, (f32, f32, f32))> {
+    /// The body bent: the joints, how far the whole of it is turned over, in radians, and how much it rests on the floor, 0 to 1.
+    fn bent_pose(&self, rig: &Rig, clip: &Option<Clip>, bend: Bend) -> Option<(Pose, f32, f32)> {
         let name = clip.as_ref().map_or("pause1", |c| c.name);
         let t = clip.as_ref().map_or(0.0, |c| c.time);
         let sampled = rig
@@ -387,12 +418,11 @@ impl Stage {
         if let Some(root) = pose.get_mut("rootdummy") {
             root.position[2] -= keys.lower;
         }
-        let tilt = if roll {
-            (smooth(p) * TAU * file.turns, keys.tuck, file.centre_height)
+        Some(if roll {
+            (pose, somersault(p) * TAU * file.turns, keys.tuck.sqrt())
         } else {
-            (0.0, 0.0, TUCK_UP)
-        };
-        Some((pose, tilt))
+            (pose, 0.0, 0.0)
+        })
     }
 
     /// Draw the player tucked or crouching, if it is. Otherwise false, and nothing is drawn.
@@ -410,18 +440,31 @@ impl Stage {
         let Some(bend) = self.body_bend(id) else {
             return false;
         };
-        let Some((pose, (over, tuck, centre))) = self.bent_pose(rig, clip, bend) else {
+        let Some((pose, over, rests)) = self.bent_pose(rig, clip, bend) else {
             return false;
         };
-        let xf = tilt_matrix(at, heading, over, tuck, centre);
         let Ok(mut body) = rig.posed(Some(&pose)) else {
             return false;
         };
+        let angle = heading - std::f32::consts::FRAC_PI_2;
+        let mut xf = times(&tilt_matrix(at, heading, over), &placement(at, angle));
+        // A roll is on the floor all the way round: what is lowest now touches it, whichever part that is. Before the items
+        // in the hands, which do not hold the body up.
+        if rests > 0.0 {
+            let lowest = body
+                .meshes
+                .iter()
+                .flat_map(|m| m.positions.iter())
+                .map(|p| xf[2][0] * p[0] + xf[2][1] * p[1] + xf[2][2] * p[2] + xf[2][3])
+                .fold(f32::MAX, f32::min);
+            if lowest < f32::MAX {
+                xf = times(&shift([0.0, 0.0, (at[2] - lowest) * rests]), &xf);
+            }
+        }
         for (node, item) in hands {
             rig.attach(&mut body, Some(&pose), node, item);
         }
-        let angle = heading - std::f32::consts::FRAC_PI_2;
-        scene.append_transformed(&body, &times(&xf, &placement(at, angle)));
+        scene.append_transformed(&body, &xf);
         true
     }
 
@@ -461,6 +504,11 @@ enum Bend {
 fn smooth(x: f32) -> f32 {
     let x = x.clamp(0.0, 1.0);
     x * x * (3.0 - 2.0 * x)
+}
+
+/// How far round a roll is, 0 to 1, `p` of the way through it: going over from the first moment, or it reads as a squat.
+fn somersault(p: f32) -> f32 {
+    (p + smooth(p)) / 2.0
 }
 
 /// `[w, x, y, z]` of a turn about a line of length 1.
@@ -526,14 +574,11 @@ fn turn_joints(pose: &mut Pose, rig: &Rig, angles: &[[f32; 3]]) {
     }
 }
 
-/// A body at `at` facing `heading`, turned `over` radians over the shoulder around its middle, which comes down from its
-/// standing height to `centre` over the floor as it tucks, so that the head and feet clear the floor as they come round.
-fn tilt_matrix(at: [f32; 3], heading: f32, over: f32, tuck: f32, centre: f32) -> Mat {
+/// A body at `at` facing `heading`, turned `over` radians over the shoulder around its middle.
+fn tilt_matrix(at: [f32; 3], heading: f32, over: f32) -> Mat {
     // Models face +y at rest.
     let angle = heading - std::f32::consts::FRAC_PI_2;
-    // Late, so that the body only comes down once the legs have folded.
-    let height = TUCK_UP + (centre - TUCK_UP) * tuck * tuck;
-    let middle = [at[0], at[1], at[2] + height];
+    let middle = [at[0], at[1], at[2] + TUCK_UP];
     let inner = times(
         &times(&shift([0.0, TUCK_FORWARD, 0.0]), &turn_over(over)),
         &times(&shift([0.0, -TUCK_FORWARD, -TUCK_UP]), &turn_z(-angle)),
@@ -559,7 +604,7 @@ mod tests {
     #[test]
     fn no_tilt_leaves_the_body_where_it_is() {
         let at = [3.0, -2.0, 1.0];
-        let m = tilt_matrix(at, 0.7, 0.0, 0.0, 0.85);
+        let m = tilt_matrix(at, 0.7, 0.0);
         for p in [at, [3.0, -2.0, 2.8], [3.5, -1.5, 1.2]] {
             assert!(near(apply(&m, p), p), "{p:?}");
         }
@@ -569,15 +614,8 @@ mod tests {
     fn a_whole_turn_at_the_end_of_a_roll_is_no_turn() {
         let at = [3.0, -2.0, 1.0];
         let roll = default_roll();
-        let tuck = roll.sample(1.0).tuck;
-        assert_eq!(tuck, 0.0);
-        let m = tilt_matrix(
-            at,
-            0.7,
-            smooth(1.0) * TAU * roll.turns,
-            tuck,
-            roll.centre_height,
-        );
+        assert_eq!(roll.sample(1.0).tuck, 0.0);
+        let m = tilt_matrix(at, 0.7, somersault(1.0) * TAU * roll.turns);
         let p = [3.0, -2.0, 2.8];
         assert!(near(apply(&m, p), p), "{:?}", apply(&m, p));
     }
@@ -585,7 +623,7 @@ mod tests {
     #[test]
     fn a_quarter_turn_puts_the_head_forward_along_the_heading() {
         let heading = 0.7f32;
-        let m = tilt_matrix([0.0; 3], heading, std::f32::consts::FRAC_PI_2, 0.0, 0.85);
+        let m = tilt_matrix([0.0; 3], heading, std::f32::consts::FRAC_PI_2);
         let (c, s) = (heading.cos(), heading.sin());
         let head = apply(&m, [c * TUCK_FORWARD, s * TUCK_FORWARD, TUCK_UP + 1.0]);
         let ahead = 1.0 + TUCK_FORWARD;
@@ -624,38 +662,85 @@ mod tests {
         );
     }
 
+    fn roll_named(name: &'static str) -> PoseSource {
+        PoseSource {
+            name,
+            ..ROLL_SOURCE
+        }
+    }
+
     #[test]
     fn a_file_with_a_mistake_gives_the_default_and_says_why() {
         let dir = std::env::temp_dir().join(format!("kotor_pose_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let (mut problems, mut notes) = (Vec::new(), Vec::new());
         let name = "bad_roll.txt";
         std::fs::write(dir.join(name), "[key]\nat = 0\nlthigh_g = 999\n").unwrap();
-        let mut problems = Vec::new();
-        let f = read_pose(
-            &dir,
-            name,
-            bodypose::DEFAULT_ROLL,
-            default_roll,
-            &mut problems,
-        );
-        assert_eq!(f.turns, 1.0);
+        let f = read_pose(&dir, &roll_named(name), &mut problems, &mut notes);
+        assert_eq!(f.version, default_roll().version);
         assert_eq!(problems.len(), 1, "{problems:?}");
         assert!(problems[0].contains("line 3"), "{problems:?}");
+        assert!(std::fs::read_to_string(dir.join(name))
+            .unwrap()
+            .contains("999"));
+
         // One that is missing is written for editing, and is no mistake.
         problems.clear();
         let fresh = "fresh_roll.txt";
-        read_pose(
-            &dir,
-            fresh,
-            bodypose::DEFAULT_ROLL,
-            default_roll,
-            &mut problems,
+        read_pose(&dir, &roll_named(fresh), &mut problems, &mut notes);
+        assert!(
+            problems.is_empty() && notes.is_empty(),
+            "{problems:?} {notes:?}"
         );
-        assert!(problems.is_empty());
         assert_eq!(
             std::fs::read_to_string(dir.join(fresh)).unwrap(),
             bodypose::DEFAULT_ROLL
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The owner's own file, as the last version wrote it: it must not keep the old roll.
+    #[test]
+    fn a_default_nobody_edited_is_replaced_and_an_edited_one_is_kept() {
+        let dir = std::env::temp_dir().join(format!("kotor_pose_old_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut problems, mut notes) = (Vec::new(), Vec::new());
+        let old = bodypose::SHIPPED_ROLLS[0];
+
+        // Line ends do not make it an edit.
+        for (name, text) in [
+            ("a.txt", old.replace('\r', "")),
+            ("b.txt", old.replace('\r', "").replace('\n', "\r\n")),
+        ] {
+            std::fs::write(dir.join(name), &text).unwrap();
+            let f = read_pose(&dir, &roll_named(name), &mut problems, &mut notes);
+            assert_eq!(f.version, default_roll().version);
+            assert_eq!(
+                std::fs::read_to_string(dir.join(name)).unwrap(),
+                bodypose::DEFAULT_ROLL
+            );
+        }
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(notes.len(), 2, "{notes:?}");
+
+        // One number changed: it is the owner's, and it stays.
+        notes.clear();
+        let name = "edited.txt";
+        let edited = old.replace("120    8    0", "125    8    0");
+        assert_ne!(edited, old);
+        std::fs::write(dir.join(name), &edited).unwrap();
+        let f = read_pose(&dir, &roll_named(name), &mut problems, &mut notes);
+        assert_eq!(f.version, 0);
+        assert_eq!(std::fs::read_to_string(dir.join(name)).unwrap(), edited);
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(notes[0].contains("kept"), "{notes:?}");
+
+        // The new default, read again, is left alone with nothing to say.
+        notes.clear();
+        let name = "newest.txt";
+        std::fs::write(dir.join(name), bodypose::DEFAULT_ROLL).unwrap();
+        read_pose(&dir, &roll_named(name), &mut problems, &mut notes);
+        assert!(notes.is_empty(), "{notes:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

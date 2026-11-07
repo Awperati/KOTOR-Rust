@@ -59,6 +59,10 @@ pub(super) const JOINTS: [Joint; COUNT] = [
 /// The text of the files as they come. The game writes them out the first time, and the owner's own stay.
 pub(super) const DEFAULT_ROLL: &str = include_str!("roll_pose.txt");
 pub(super) const DEFAULT_LANDING: &str = include_str!("landing_pose.txt");
+/// What the game has written before, as it came: a file exactly like one of these was never edited, and gets the new default.
+/// When a default changes, its old text goes in `poses_old` and in this list, and its `version` goes up.
+pub(super) const SHIPPED_ROLLS: [&str; 1] = [include_str!("poses_old/roll_pose_v1.txt")];
+pub(super) const SHIPPED_LANDINGS: [&str; 1] = [include_str!("poses_old/landing_pose_v1.txt")];
 pub(super) const ROLL_FILE: &str = "roll_pose.txt";
 pub(super) const LANDING_FILE: &str = "landing_pose.txt";
 
@@ -93,10 +97,10 @@ struct Key {
 /// One file, read.
 #[derive(Clone, Debug)]
 pub(super) struct PoseFile {
+    /// Which of the game's own defaults this began as. A file from before there were versions is 0.
+    pub version: u32,
     /// Whole somersaults over the length of the move.
     pub turns: f32,
-    /// How high the body's middle is over the floor, metres, when `tuck` is 1.
-    pub centre_height: f32,
     keys: Vec<Key>,
 }
 
@@ -125,12 +129,18 @@ fn within(v: f32, low: f32, high: f32, what: &str, line: usize) -> Result<f32, S
     }
 }
 
+/// The same text, whatever Notepad or git did to its first mark and its line ends.
+pub(super) fn same_text(a: &str, b: &str) -> bool {
+    let plain = |t: &str| t.trim_start_matches('\u{feff}').replace('\r', "");
+    plain(a) == plain(b)
+}
+
 impl PoseFile {
     /// The text of a file, or what is wrong with it, with its line.
     pub fn parse(text: &str) -> Result<PoseFile, String> {
         let mut file = PoseFile {
+            version: 0,
             turns: 0.0,
-            centre_height: 0.85,
             keys: Vec::new(),
         };
         // `at` must be said in each key.
@@ -163,6 +173,10 @@ impl PoseFile {
             let name = name.trim().to_ascii_lowercase();
             let Some(key) = file.keys.last_mut() else {
                 match name.as_str() {
+                    "version" => {
+                        let v = within(number(value, line)?, 0.0, 1000.0, "version", line)?;
+                        file.version = v as u32;
+                    }
                     "turns" => {
                         let v = within(number(value, line)?, -3.0, 3.0, "turns", line)?;
                         if v.fract() != 0.0 {
@@ -172,10 +186,8 @@ impl PoseFile {
                         }
                         file.turns = v;
                     }
-                    "centre_height" => {
-                        let v = number(value, line)?;
-                        file.centre_height = within(v, 0.3, 1.5, "centre_height", line)?;
-                    }
+                    // In a file edited before the body found the floor by itself. It still reads.
+                    "centre_height" => {}
                     _ => return Err(format!("line {line}: \"{name}\" must come after a [key]")),
                 }
                 continue;
@@ -280,6 +292,21 @@ mod tests {
         assert_eq!(landing.turns, 0.0);
         assert!(landing.sample(0.0).lower > 0.3);
         assert_eq!(landing.sample(1.0).lower, 0.0);
+    }
+
+    #[test]
+    fn each_default_has_a_new_version_and_differs_from_what_was_shipped() {
+        for (now, old) in [
+            (DEFAULT_ROLL, &SHIPPED_ROLLS),
+            (DEFAULT_LANDING, &SHIPPED_LANDINGS),
+        ] {
+            let version = PoseFile::parse(now).unwrap().version;
+            assert!(version >= 2);
+            for (n, shipped) in old.iter().enumerate() {
+                assert!(!same_text(now, shipped), "version {version} is shipped {n}");
+                assert!(PoseFile::parse(shipped).unwrap().version < version);
+            }
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
-//! Pictures of the roll and the landing from the pose files, with no window and no screen capture: four moments from the
-//! front and four from the side, for looking at after an edit. See `docs/MOVEMENT_POSE.md`.
+//! Pictures of the roll and the landing from the pose files, with no window and no screen capture: six moments from the
+//! front and six from the side, for looking at after an edit. See `docs/MOVEMENT_POSE.md`.
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example pose_preview -- [out_dir] [--folder pose_folder]
 //!
@@ -11,7 +11,7 @@ use kotor_render::Camera;
 
 const SIZE: (u32, u32) = (1280, 720);
 /// Each moment's middle, cut from a frame.
-const TILE: u32 = 480;
+const TILE: u32 = 400;
 const DT: f32 = 1.0 / 60.0;
 /// Open ground on Dantooine, and the way the player faces: the spot the movement driver runs from.
 const MODULE: &str = "danm14aa";
@@ -21,8 +21,8 @@ const HEADING: f32 = 1.767;
 const AWAY: f32 = 3.0;
 const LOOK_AT: f32 = 0.85;
 const FOV: f32 = 45.0;
-const ROLL_MOMENTS: [f32; 4] = [0.12, 0.3, 0.5, 0.75];
-const LANDING_MOMENTS: [f32; 4] = [0.0, 0.25, 0.5, 0.8];
+const ROLL_MOMENTS: [f32; 6] = [0.08, 0.2, 0.35, 0.5, 0.65, 0.85];
+const LANDING_MOMENTS: [f32; 6] = [0.0, 0.15, 0.3, 0.5, 0.7, 0.9];
 
 #[derive(Clone, Copy)]
 enum Move {
