@@ -65,6 +65,11 @@ thread_local! {
     static CONTENTS: RefCell<HashMap<PictureAt, (u64, u64)>> = RefCell::default();
 }
 
+/// All the pictures have been let go, so an address means nothing now: a new picture at an old one could taste the same.
+pub(crate) fn forget_picture_addresses() {
+    CONTENTS.with_borrow_mut(HashMap::clear);
+}
+
 /// What a picture holds, as a number. By content and not by address, since a picture dropped and another loaded can have the
 /// same one, as the slots' icons did. A large picture is taken in every sixteenth word, a font's once for each letter.
 fn content_of(img: &Image) -> u64 {

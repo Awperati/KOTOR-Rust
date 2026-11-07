@@ -342,6 +342,7 @@ impl<'a> Ui<'a> {
         if was != (self.scale >= HD_FROM_SCALE) && self.hd_dir.is_some() {
             self.textures.clear();
             self.fonts.clear();
+            crate::canvas::forget_picture_addresses();
         }
     }
 
@@ -350,6 +351,7 @@ impl<'a> Ui<'a> {
         self.hd_dir = dir;
         self.textures.clear();
         self.fonts.clear();
+        crate::canvas::forget_picture_addresses();
     }
 
     /// Look in this folder for the owner's own pictures.

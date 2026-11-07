@@ -47,6 +47,32 @@ fn a_picture_in_a_list_row_stays_square_on_a_wide_window() {
 }
 
 #[test]
+fn a_screen_is_the_same_after_going_to_a_size_with_upscaled_pictures_and_back() {
+    let (Some(dir), Some(hd)) = (
+        kotor_core::install_dir(),
+        std::env::var_os("LOCALAPPDATA").map(|l| std::path::Path::new(&l).join("kotor-rs/hd")),
+    ) else {
+        return;
+    };
+    if !hd.is_dir() {
+        return;
+    }
+    let mut inst = Install::open(dir).unwrap();
+    let mut ui = Ui::new(&mut inst);
+    ui.set_hd_dir(Some(hd));
+    ui.set_view((1280, 720));
+    let view = MenuView::new("abilities");
+    let first = ui.menu_overlay(&view).unwrap();
+    for _ in 0..3 {
+        ui.set_view((3840, 2160));
+        ui.menu_overlay(&view).unwrap();
+        ui.set_view((1280, 720));
+        let again = ui.menu_overlay(&view).unwrap();
+        assert!(first.rgba == again.rgba, "the pictures changed places");
+    }
+}
+
+#[test]
 fn a_portrait_stays_square_on_a_wide_window() {
     let Some(dir) = kotor_core::install_dir() else {
         return;

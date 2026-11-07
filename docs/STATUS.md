@@ -247,6 +247,10 @@ Beside the hourglass, in the place `mipc28x6` keeps for stealth, which has no bu
 
 At the end of the Feedback page: a heading and a row for each of `textures`, `anims` and `meshes`. A click opens the folder in Explorer, and makes it if it is not there. **Assumed:** rows of the list, as the file has no room for another section or button. Test: `the_custom_content_rows_open_each_folder`.
 
+## Pictures after a change of size
+
+Going past 960 pixels high drops all the interface pictures and reads others. New ones could land at the addresses of old ones and pass for them, which put the wrong icons on the tabs at the top of a screen. Now the addresses are forgotten with the pictures. Test: `a_screen_is_the_same_after_going_to_a_size_with_upscaled_pictures_and_back`.
+
 ## Square portraits
 
 A picture whose name starts `po_` on a stretched screen stays square, in the middle of its place: the Abilities, Equipment, Inventory and character-making screens, the change buttons and the party screen. Test: `a_portrait_stays_square_on_a_wide_window`.
