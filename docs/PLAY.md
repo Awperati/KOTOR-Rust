@@ -218,4 +218,8 @@ In both, a held movement key goes where the camera looks now, read every frame, 
 
 The supermodels have no roll, dive, jump or landing clip, so `gpu/src/moving.rs` bends the joints itself: knees to the chest, back curled and arms in while the body turns over, and bent knees on a hard landing. Dust is the game's `fx_step_dust`.
 
-A floor can end over a lower one, with a gap where the cliff is. The player falls there when the drop is at most 6 m, no wall face stands at chest height in the first 1.5 m, and the walkmesh joins the two floors, so that there is always a way back (a locked door on that way counts as open). **A railing that is only in the room's model does not stop it.** `cargo run --release -p kotor-render --example ledges` lists the drops it finds.
+A floor can end over a lower one, with a gap where the cliff is. The player falls there when the drop is at most 6 m, no wall of the walkmesh stands at waist or chest height, nothing in the room's models crosses the line from 0.25 m to 1.2 m over the feet, and the walkmesh joins the two floors, so that there is a walk back. Once over the gap it always reaches the floor it set out for. The models' sheet is what stops a low wall, a thin rail or a fence that the walkmesh does not have. `gpu/examples/ledge_walk.rs` runs off the spots that `crates/kotor-render/examples/ledges.rs` finds, and writes frames.
+
+The camera eases in and out in Modern. Through a fall and for a second after, only a solid surface brings it in. With rock or a wall close behind the player, it rises over it, up to about 50 degrees more, instead of coming in on the player's back.
+
+A click, a talk or a target during a roll hurries the roll round at 2.5 times the speed, and then the player acts. It does not stop the roll dead, because the body would be upside down.

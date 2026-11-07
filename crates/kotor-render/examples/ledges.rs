@@ -9,6 +9,8 @@ use kotor_archive::Install;
 const STEP_DOWN: f32 = 0.35;
 const MAX_DROP: f32 = 6.0;
 const STEP_UP: f32 = 0.6;
+/// Metres between spots listed for a module.
+const APART: f32 = 8.0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::var("KOTOR_DIR").unwrap_or_else(|_| r"E:\Games\Star Wars - KotOR".into());
@@ -102,7 +104,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "{module}: {} spots and headings with a drop over 0.5 m",
             found.iter().filter(|f| f.0 > 0.5).count()
         );
-        for (drop, p, a) in found.iter().take(3) {
+        // The deepest, and not the same place twice.
+        let mut kept: Vec<[f32; 3]> = Vec::new();
+        for (drop, p, a) in &found {
+            if kept.len() >= 3 {
+                break;
+            }
+            if kept
+                .iter()
+                .any(|k| (k[0] - p[0]).hypot(k[1] - p[1]) < APART)
+            {
+                continue;
+            }
+            kept.push(*p);
             println!(
                 "{module} {:.2} {:.2} {:.2} heading {a:.3} drop {drop:.2}",
                 p[0], p[1], p[2]

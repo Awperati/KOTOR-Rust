@@ -25,6 +25,29 @@ const LAG_RATE: f32 = 6.0;
 const HEIGHT_RATE: f32 = 10.0;
 /// The most the focus is left behind in height, in metres.
 const HEIGHT_LAG: f32 = 1.0;
+/// A floor up to this far above the player still counts under the camera, in metres: the deepest drop a body falls.
+pub(super) const CAMERA_FLOOR_ABOVE: f32 = 6.0;
+/// The floor is looked for this many times, 0.3 m apart, past a gap in it before it is said to end. Assumed.
+pub(super) const CAMERA_GAP_LOOKS: usize = 5;
+/// How quickly the camera arm comes in to what the room allows, and goes back out, per second. Assumed.
+const ARM_IN: f32 = 12.0;
+const ARM_OUT: f32 = 2.5;
+/// Quickly for a solid surface, over two or three frames, so that an edge going past behind the player is no jolt.
+const ARM_IN_SOLID: f32 = 30.0;
+/// Metres the player moves in a frame that is no walk.
+const ARM_JUMP: f32 = 2.0;
+/// Seconds after a fall that the arm comes in for nothing but a solid surface. Assumed.
+const ARM_HOLD_AFTER_FALL: f32 = 1.0;
+/// A surface this close behind the player: the camera looks for a way over it, rather than come in on the player's back.
+const ARM_RISE_UNDER: f32 = 2.2;
+/// How far above its own tilt it may go, in radians, and in what steps. Assumed.
+const ARM_RISE_MOST: f32 = 0.9;
+const ARM_RISE_STEPS: usize = 3;
+/// A higher look has to win this much more room, in metres, and it goes no steeper than this, in radians. Assumed.
+const ARM_RISE_GAIN: f32 = 0.4;
+const ARM_RISE_TILT: f32 = 1.35;
+/// How quickly it goes up and comes back down, per second. Assumed.
+const ARM_RISE_RATE: f32 = 4.0;
 /// Degrees wider at a sprint.
 const FOV_KICK: f32 = 6.0;
 /// How quickly the field of view moves, per second.
@@ -327,6 +350,8 @@ impl Stage {
         if w.movement != MovementMode::Modern {
             self.camera_lag = [0.0; 3];
             self.fov_extra = 0.0;
+            self.camera_arm = None;
+            self.camera_rise = 0.0;
             return;
         }
         let tuning = w.tuning;
@@ -343,9 +368,75 @@ impl Stage {
         self.camera_lag[2] = high.clamp(-HEIGHT_LAG, HEIGHT_LAG);
         let wide = ((speed - FOV_FROM) / (tuning.sprint - FOV_FROM)).clamp(0.0, 1.0) * FOV_KICK;
         self.fov_extra += (wide - self.fov_extra) * (1.0 - (-FOV_RATE * dt).exp());
+        self.arm_tick(dt);
         if cues.roll_started || cues.landed.is_some_and(|v| v > LOUD_LANDING) {
             self.body_cue();
         }
+    }
+
+    /// The camera's distance eases to what the room allows. Through a fall and just after it, the arm stays out: the room's
+    /// surfaces, which `camera` always keeps it inside, are all that bring it in.
+    pub(super) fn arm_tick(&mut self, dt: f32) {
+        let w = &self.game.world;
+        let falling = !w.pc_body.grounded || w.pc_body.landing();
+        self.since_fall = if falling { 0.0 } else { self.since_fall + dt };
+        let p = self.game.drawn_position(w.pc).unwrap_or([0.0; 3]);
+        let p = self.lagged(p);
+        let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
+        let (up, flat) = (self.pitch + self.camera_rise).sin_cos();
+        let back = [-dx * flat, -dy * flat, up];
+        let room = self.camera_room(p, back);
+        let target = [p[0], p[1], p[2] + super::CAMERA_LOOKS_AT];
+        let solid = self
+            .shell
+            .first_hit(target, back, self.distance)
+            .map_or(self.distance, |hit| {
+                (hit - super::CAMERA_OFF_SURFACE).max(0.1)
+            });
+        let limit = room.min(solid);
+        // Somewhere else all at once: a door, a script, a loaded game.
+        let jumped = (p[0] - self.arm_at[0]).hypot(p[1] - self.arm_at[1]) > ARM_JUMP;
+        self.arm_at = p;
+        let arm = self.camera_arm.filter(|_| !jumped).unwrap_or(limit);
+        let holding = self.since_fall < ARM_HOLD_AFTER_FALL && solid >= arm;
+        let rate = if solid < arm {
+            ARM_IN_SOLID
+        } else if room < arm {
+            ARM_IN
+        } else {
+            ARM_OUT
+        };
+        self.camera_arm = Some(if holding && limit < arm {
+            arm
+        } else {
+            arm + (limit - arm) * (1.0 - (-rate * dt).exp())
+        });
+        // Rock close behind: over it, as long as it lasts. A ceiling keeps the camera where it is.
+        let free = |pitch: f32| {
+            let (up, flat) = pitch.sin_cos();
+            let back = [-dx * flat, -dy * flat, up];
+            let room = self.camera_room(p, back);
+            self.shell
+                .first_hit(target, back, self.distance)
+                .map_or(room, |hit| room.min(hit - super::CAMERA_OFF_SURFACE))
+        };
+        // The least rise that gets clear, or else the one with the most room, if that is a real gain.
+        let here = free(self.pitch);
+        let mut want = 0.0;
+        if here < ARM_RISE_UNDER {
+            let mut best = here + ARM_RISE_GAIN;
+            for k in 1..=ARM_RISE_STEPS {
+                let rise = k as f32 * ARM_RISE_MOST / ARM_RISE_STEPS as f32;
+                let room = free((self.pitch + rise).min(ARM_RISE_TILT));
+                if room > best {
+                    (want, best) = (rise, room);
+                }
+                if room >= ARM_RISE_UNDER {
+                    break;
+                }
+            }
+        }
+        self.camera_rise += (want - self.camera_rise) * (1.0 - (-ARM_RISE_RATE * dt).exp());
     }
 
     /// The game's own dust at the feet, and a footfall from the table the steps use.
@@ -403,6 +494,20 @@ impl Stage {
             .animation_length(name)
             .filter(|l| *l > 0.0)
             .and_then(|l| rig.sample(name, t % l));
+        // The clip this one took over from shows through, as it does on a body that is not bent.
+        let sampled = match (sampled, clip.as_ref().and_then(|c| c.fade)) {
+            (Some(now), Some(f)) => {
+                let old = rig
+                    .animation_length(f.name)
+                    .filter(|l| *l > 0.0)
+                    .and_then(|l| rig.sample(f.name, f.time % l));
+                Some(old.map_or_else(
+                    || now.clone(),
+                    |o| kotor_model::blend(&o, &now, 1.0 - f.weight),
+                ))
+            }
+            (now, _) => now,
+        };
         // The skeleton's own stance, which is even from left to right. The idle clip has one foot forward.
         let stand = rig.bind_pose();
         // A clip that was playing shows through as the bend comes and goes.

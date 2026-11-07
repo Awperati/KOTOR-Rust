@@ -75,6 +75,14 @@ pub use minigame::{Bullet, Follower, GunBank, MiniGame, PlayedAnimation};
 pub use movement::{
     Body, Events, Gait, Ground, Input, MovementMode, Tuning, RUN, SPRINT, SPRINT_RATIO,
 };
+
+/// The models of the rooms and what stands in them, which the game logic does not load: a window that has them answers for
+/// what they stop.
+pub trait Barriers {
+    /// Whether any surface crosses the upright sheet standing on the line from `a` to `b`, between heights `low` and `high`.
+    /// A sheet, not a ray: a thin rail is hard to hit with a ray.
+    fn across(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool;
+}
 pub use party::{BenchedMember, PartyRequest, PARTY_SIZE};
 pub use pazaak::{PazaakCard, PazaakGame, PazaakMove, PazaakSide, PazaakView};
 pub use play::{

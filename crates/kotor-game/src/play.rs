@@ -35,7 +35,7 @@ const STEER_CLEARANCE: f32 = 0.3;
 const STEER_TURN_RATE: f32 = 18.8;
 
 /// The walkmesh, as the Modern body asks it.
-struct NavGround<'a>(&'a NavMesh);
+struct NavGround<'a>(&'a NavMesh, Option<&'a dyn crate::Barriers>);
 
 impl Ground for NavGround<'_> {
     fn floor(&self, x: f32, y: f32, max_z: f32) -> Option<f32> {
@@ -46,6 +46,9 @@ impl Ground for NavGround<'_> {
     }
     fn wall(&self, a: [f32; 3], b: [f32; 3]) -> bool {
         self.0.sight_blocked(a, b)
+    }
+    fn barrier(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool {
+        self.1.is_some_and(|m| m.across(a, b, low, high))
     }
     fn way_back(&self, a: [f32; 3], b: [f32; 3]) -> bool {
         self.0.same_island(a, b)
@@ -741,6 +744,18 @@ impl World {
                 }
                 MoveStatus::Idle
             }
+            // A roll goes round before anything else: a click to walk, a target or a talk hurries it along, and starts after.
+            (Some(_), None) if modern && self.pc_body.rolling() => {
+                let waiting = self.pc_mover.has_route()
+                    || self.pending.is_some()
+                    || self.conv.is_some()
+                    || self.combat.target.contains_key(&self.pc);
+                if waiting {
+                    self.pc_body.hurry_roll();
+                }
+                self.step_body(None, false, false, dt);
+                MoveStatus::Idle
+            }
             (Some(_), None) if modern && self.pc_mover.has_route() && self.conv.is_none() => {
                 self.step_route(dt)
             }
@@ -823,7 +838,8 @@ impl World {
             return;
         };
         let input = Input { dir, walk, roll };
-        let ev = self.pc_body.step(input, &NavGround(nav), &self.tuning, dt);
+        let ground = NavGround(nav, self.barriers.as_deref());
+        let ev = self.pc_body.step(input, &ground, &self.tuning, dt);
         self.body_cues.merge(ev);
         self.pc_mover.pos = self.pc_body.pos;
         self.pc_mover.heading = self.pc_body.heading;
@@ -850,9 +866,10 @@ impl World {
         };
         let status = self.pc_mover.step(nav, &params, dt);
         let p = self.pc_mover.pos;
-        let ev =
-            self.pc_body
-                .carried_to([p[0], p[1]], self.pc_mover.heading, &NavGround(nav), &t, dt);
+        let ground = NavGround(nav, self.barriers.as_deref());
+        let ev = self
+            .pc_body
+            .carried_to([p[0], p[1]], self.pc_mover.heading, &ground, &t, dt);
         self.body_cues.merge(ev);
         self.pc_mover.pos[2] = self.pc_body.pos[2];
         if status == MoveStatus::Arrived {

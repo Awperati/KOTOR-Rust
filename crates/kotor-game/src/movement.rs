@@ -21,10 +21,23 @@ pub const SPRINT: f32 = RUN * SPRINT_RATIO;
 /// A gap in the floor is looked across in steps of this many metres, this many times. Assumed.
 const GAP_PROBE: f32 = 0.3;
 const GAP_PROBES: usize = 5;
-/// Height over the feet that a wall is looked for at, in metres. Assumed: a wall reaches it, a cliff below does not.
-const CHEST: f32 = 1.0;
+/// Heights over the feet that a wall is looked for at in the walkmesh, in metres. Assumed: a wall reaches both, and a cliff
+/// below neither.
+const WALL_HEIGHTS: [f32; 2] = [0.6, 1.0];
+/// Between these heights over the feet, anything a model has stops a fall: a low wall, a rail. Assumed: higher than the
+/// ground's own bumps, and as high as a body's chest.
+const BARRIER_LOW: f32 = 0.25;
+const BARRIER_HIGH: f32 = 1.2;
+/// A step of a frame is short: a barrier is looked for this far on from it. Assumed.
+const BARRIER_LOOK: f32 = 0.6;
+/// A body going along a wall tries these turns from the way it is pushed, in degrees: the nearest that gets through. Assumed.
+const SLIDE_TURNS: [f32; 2] = [35.0, 70.0];
+/// How much faster a roll goes round when something else is waiting for it: a click to go or attack. Assumed.
+const ROLL_HURRY: f32 = 2.5;
 /// The least speed going out over a gap, so that nothing hangs over it. Assumed.
 const GAP_SPEED: f32 = 2.5;
+/// The least a body moves in a step over a gap, on its way to the floor it set out for: that speed at 60 steps a second.
+const GAP_STEP: f32 = GAP_SPEED / 60.0;
 
 /// Which movement the player has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -117,8 +130,13 @@ pub trait Ground {
     fn floor(&self, x: f32, y: f32, max_z: f32) -> Option<f32>;
     /// Whether a straight move from `a` to `b` is stopped (a closed door's line).
     fn blocked(&self, a: [f32; 3], b: [f32; 3]) -> bool;
-    /// Whether a wall stands between two points.
+    /// Whether a wall of the walkmesh stands between two points.
     fn wall(&self, _a: [f32; 3], _b: [f32; 3]) -> bool {
+        false
+    }
+    /// Whether anything that the models have and the walkmesh does not, such as a railing, stands on the line from `a` to
+    /// `b` between two heights.
+    fn barrier(&self, _a: [f32; 2], _b: [f32; 2], _low: f32, _high: f32) -> bool {
         false
     }
     /// Whether a walk joins the floors under two points. Nobody falls where they could never walk back from.
@@ -174,6 +192,7 @@ pub enum Gait {
 struct Roll {
     dir: [f32; 2],
     t: f32,
+    hurry: bool,
 }
 
 /// Where the body is, how it moves, and what it is doing.
@@ -193,6 +212,8 @@ pub struct Body {
     land_total: f32,
     fall_from: f32,
     last_stood: [f32; 3],
+    /// Out over a gap: the spot on the lower floor it set out for, with the floor's height. It always gets there.
+    gap_to: Option<[f32; 3]>,
 }
 
 fn wrap(a: f32) -> f32 {
@@ -214,6 +235,7 @@ impl Body {
             land_total: 0.0,
             fall_from: pos[2],
             last_stood: pos,
+            gap_to: None,
         }
     }
 
@@ -233,6 +255,7 @@ impl Body {
         self.pos = put(self.pos);
         self.last_stood = put(self.last_stood);
         self.vel = spin(self.vel);
+        self.gap_to = self.gap_to.map(put);
         self.heading = wrap(self.heading + yaw);
         self.fall_from += shift[2];
         if let Some(r) = self.roll.as_mut() {
@@ -242,6 +265,13 @@ impl Body {
 
     pub fn rolling(&self) -> bool {
         self.roll.is_some()
+    }
+
+    /// Something is waiting for the roll, so it comes round faster. It does not stop dead: the body would be upside down.
+    pub fn hurry_roll(&mut self) {
+        if let Some(r) = self.roll.as_mut() {
+            r.hurry = true;
+        }
     }
 
     /// 0 to 1 through the roll; 0 when not rolling.
@@ -304,17 +334,22 @@ impl Body {
             let dir = input
                 .dir
                 .unwrap_or([self.heading.cos(), self.heading.sin()]);
-            self.roll = Some(Roll { dir, t: 0.0 });
+            self.roll = Some(Roll {
+                dir,
+                t: 0.0,
+                hurry: false,
+            });
             self.heading = dir[1].atan2(dir[0]);
             ev.roll_started = true;
         }
         if let Some(r) = self.roll {
             let t0 = r.t;
-            let t1 = (t0 + dt).min(t.roll_time);
+            let rate = if r.hurry { ROLL_HURRY } else { 1.0 };
+            let t1 = (t0 + dt * rate).min(t.roll_time);
             let d = Self::roll_distance_at(t, t1) - Self::roll_distance_at(t, t0);
-            self.move_by([r.dir[0] * d, r.dir[1] * d], ground, t);
-            self.vel = [r.dir[0] * d / dt, r.dir[1] * d / dt];
-            self.roll = Some(Roll { dir: r.dir, t: t1 });
+            let moved = self.move_by([r.dir[0] * d, r.dir[1] * d], ground, t, dt);
+            self.vel = [moved[0] / dt, moved[1] / dt];
+            self.roll = Some(Roll { t: t1, ..r });
             if t1 >= t.roll_time {
                 self.roll = None;
                 self.cooldown = t.roll_cooldown;
@@ -325,12 +360,10 @@ impl Body {
         } else {
             self.accelerate(input, t, dt);
             let d = [self.vel[0] * dt, self.vel[1] * dt];
-            let moved = self.move_by(d, ground, t);
-            if !moved.0 {
-                self.vel[0] = 0.0;
-            }
-            if !moved.1 {
-                self.vel[1] = 0.0;
+            let moved = self.move_by(d, ground, t, dt);
+            // Stopped or turned aside by something: what it moves at now is what it did.
+            if moved != d {
+                self.vel = [moved[0] / dt, moved[1] / dt];
             }
             self.face(input, t, dt);
         }
@@ -378,9 +411,26 @@ impl Body {
         }
     }
 
-    /// Whether a lower floor lies this way from `(x, y)`, over a gap, with no wall at chest height in between. A cliff
+    /// Whether a wall or railing stands between the body and a spot, at either height it could stop a body.
+    fn barrier(&self, ground: &dyn Ground, to: [f32; 2]) -> bool {
+        let p = self.pos;
+        ground.barrier([p[0], p[1]], to, p[2] + BARRIER_LOW, p[2] + BARRIER_HIGH)
+            || WALL_HEIGHTS.iter().any(|h| {
+                let z = p[2] + h;
+                ground.wall([p[0], p[1], z], [to[0], to[1], z])
+            })
+    }
+
+    /// The spot on a lower floor that lies this way from `(x, y)`, over a gap, with no wall or railing in between. A cliff
     /// leaves such a gap in the walkable faces.
-    fn drop_ahead(&self, ground: &dyn Ground, t: &Tuning, x: f32, y: f32, u: [f32; 2]) -> bool {
+    fn drop_ahead(
+        &self,
+        ground: &dyn Ground,
+        t: &Tuning,
+        x: f32,
+        y: f32,
+        u: [f32; 2],
+    ) -> Option<[f32; 3]> {
         let z = self.pos[2];
         let top = if self.grounded {
             z - t.step_down
@@ -391,19 +441,50 @@ impl Body {
             let s = k as f32 * GAP_PROBE;
             let (qx, qy) = (x + u[0] * s, y + u[1] * s);
             if let Some(f) = ground.floor(qx, qy, top) {
-                let chest = z + CHEST;
-                return f >= z - t.max_drop
-                    && !ground.wall([self.pos[0], self.pos[1], chest], [qx, qy, chest])
+                let free = f >= z - t.max_drop
+                    && !self.barrier(ground, [qx, qy])
                     && (!self.grounded || ground.way_back(self.pos, [qx, qy, f]));
+                return free.then_some([qx, qy, f]);
             }
         }
-        false
+        None
     }
 
-    /// Move on the floor by `d`, sliding along what stops it. Returns whether x and y got through.
-    fn move_by(&mut self, d: [f32; 2], ground: &dyn Ground, t: &Tuning) -> (bool, bool) {
+    /// On its way over a gap to the floor it set out for: nothing stops it, or it would hang over nothing and fall out of the
+    /// world, and it goes fast enough to be over that floor before it has fallen past it. Returns how far it moved, or none
+    /// once there is a floor under it or it is not over a gap.
+    fn cross_gap(
+        &mut self,
+        d: [f32; 2],
+        ground: &dyn Ground,
+        t: &Tuning,
+        dt: f32,
+    ) -> Option<[f32; 2]> {
+        let to = self.gap_to?;
+        let p = self.pos;
+        if self.grounded || ground.floor(p[0], p[1], p[2] + 0.1).is_some() {
+            self.gap_to = None;
+            return None;
+        }
+        let (dx, dy) = (to[0] - p[0], to[1] - p[1]);
+        let left = dx.hypot(dy).max(1e-6);
+        let high = (p[2] - to[2]).max(0.0);
+        let falling = (self.vz + (self.vz * self.vz + 2.0 * t.gravity * high).sqrt()) / t.gravity;
+        let in_time = left * dt / falling.max(dt);
+        let step = d[0].hypot(d[1]).max(GAP_STEP).max(in_time).min(left);
+        let moved = [dx / left * step, dy / left * step];
+        self.pos[0] += moved[0];
+        self.pos[1] += moved[1];
+        Some(moved)
+    }
+
+    /// Move on the floor by `d`, sliding along what stops it. Returns how far it did move.
+    fn move_by(&mut self, d: [f32; 2], ground: &dyn Ground, t: &Tuning, dt: f32) -> [f32; 2] {
+        if let Some(moved) = self.cross_gap(d, ground, t, dt) {
+            return moved;
+        }
         if d[0] == 0.0 && d[1] == 0.0 {
-            return (true, true);
+            return d;
         }
         let p = self.pos;
         let reach = if self.grounded {
@@ -420,42 +501,61 @@ impl Body {
             let u = [dx / l, dy / l];
             let here = ground.floor(x, y, reach);
             if !self.grounded {
-                return (here.is_some() || self.drop_ahead(ground, t, x, y, u)).then_some([x, y]);
+                return (here.is_some() || self.drop_ahead(ground, t, x, y, u).is_some())
+                    .then_some([x, y]);
             }
             let clear = match here {
                 Some(f) if f < p[2] - t.max_drop => return None,
                 Some(f) if f < p[2] - t.step_down && !ground.way_back(p, [x, y, f]) => return None,
+                Some(f)
+                    if f < p[2] - t.step_down
+                        && self.barrier(
+                            ground,
+                            [x + u[0] * BARRIER_LOOK, y + u[1] * BARRIER_LOOK],
+                        ) =>
+                {
+                    return None
+                }
                 // Keep off the very edge of the floor, as the Classic steering does.
                 Some(_) => ground
                     .floor(x + u[0] * 0.3, y + u[1] * 0.3, reach)
                     .is_some(),
                 None => false,
             };
-            (clear || self.drop_ahead(ground, t, x, y, u)).then_some([x, y])
+            (clear || self.drop_ahead(ground, t, x, y, u).is_some()).then_some([x, y])
         };
-        let (q, through) = if let Some(q) = ok(d[0], d[1]) {
-            (q, (true, true))
-        } else if let Some(q) = ok(d[0], 0.0) {
-            (q, (true, d[1] == 0.0))
-        } else if let Some(q) = ok(0.0, d[1]) {
-            (q, (d[0] == 0.0, true))
-        } else {
-            return (false, false);
+        // Along a wall at any angle: first straight on, then turning aside, and it goes more slowly the further it turns.
+        let turned = |degrees: f32| {
+            let (s, c) = degrees.to_radians().sin_cos();
+            [(d[0] * c - d[1] * s) * c, (d[0] * s + d[1] * c) * c]
         };
+        let Some(q) = ok(d[0], d[1]).or_else(|| {
+            SLIDE_TURNS.iter().find_map(|a| {
+                let (left, right) = (turned(*a), turned(-*a));
+                ok(left[0], left[1]).or_else(|| ok(right[0], right[1]))
+            })
+        }) else {
+            return [0.0; 2];
+        };
+        // Asked from where it stands: a spot over a gap is on no floor, so it has no way back.
+        let (sx, sy) = (q[0] - p[0], q[1] - p[1]);
+        let l = sx.hypot(sy).max(1e-6);
+        let over_gap = self.grounded && ground.floor(q[0], q[1], reach).is_none();
+        if over_gap {
+            self.gap_to = self.drop_ahead(ground, t, q[0], q[1], [sx / l, sy / l]);
+        }
         self.pos[0] = q[0];
         self.pos[1] = q[1];
         // Out over a gap: nothing under it now, so it falls, and it keeps going until it is over the lower floor.
-        if self.grounded && ground.floor(q[0], q[1], reach).is_none() {
+        if over_gap {
             self.grounded = false;
             self.vz = 0.0;
             self.fall_from = p[2];
-            let (sx, sy) = (q[0] - p[0], q[1] - p[1]);
-            let l = sx.hypot(sy).max(1e-6);
             if self.speed() < GAP_SPEED {
                 self.vel = [sx / l * GAP_SPEED, sy / l * GAP_SPEED];
             }
         }
-        through
+        [q[0] - p[0], q[1] - p[1]]
     }
 
     /// The body was moved along a route by someone else: take its place and facing, and keep gravity and the snap.
@@ -508,14 +608,17 @@ impl Body {
         }
         self.vz -= t.gravity * dt;
         let z1 = self.pos[2] + self.vz * dt;
-        // A roll carries on through the air; the floor to land on is the one under the new spot.
-        let floor = ground.floor(x, y, self.pos[2] + 0.1);
+        // A roll carries on through the air; the floor to land on is the one under the new spot. Crossing a gap that is the
+        // floor it set out for, however far down the body has got.
+        let top = self.gap_to.map_or(self.pos[2], |g| self.pos[2].max(g[2]));
+        let floor = ground.floor(x, y, top + 0.1);
         match floor {
             Some(f) if z1 <= f => {
                 let impact = -self.vz;
                 self.pos[2] = f;
                 self.vz = 0.0;
                 self.grounded = true;
+                self.gap_to = None;
                 self.last_stood = self.pos;
                 ev.landed = Some(impact);
                 if impact > t.land_threshold {
@@ -530,6 +633,7 @@ impl Body {
                 self.pos[2] = z1;
                 if self.fall_from - z1 > t.void_depth {
                     self.pos = self.last_stood;
+                    self.gap_to = None;
                     self.vel = [0.0; 2];
                     self.vz = 0.0;
                     self.grounded = true;
@@ -1111,5 +1215,224 @@ mod tests {
         );
         assert!(b.pos[0] < 1.0);
         assert!(b.speed() < 1e-3);
+    }
+
+    /// A floor from x = -50 to a wall along y = x, on the side where y is greater.
+    fn slanted_wall() -> Hills<impl Fn(f32, f32) -> Option<f32>> {
+        Hills(|x, y| (y < x + 2.0 && x.abs() < 50.0 && y.abs() < 50.0).then_some(0.0))
+    }
+
+    #[test]
+    fn a_body_slides_smoothly_along_a_wall_at_an_angle() {
+        let t = Tuning::default();
+        let g = slanted_wall();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        let input = Input {
+            dir: Some([0.0, 1.0]),
+            ..Input::default()
+        };
+        let dt = 1.0 / 60.0;
+        for _ in 0..60 {
+            b.step(input, &g, &t, dt);
+        }
+        let mut last = b.pos;
+        for _ in 0..60 {
+            b.step(input, &g, &t, dt);
+            let (dx, dy) = (b.pos[0] - last[0], b.pos[1] - last[1]);
+            // Along the wall, up and to the right, frame after frame: no steps of x alone and y alone.
+            let along = (dx + dy) / std::f32::consts::SQRT_2;
+            let moved = dx.hypot(dy);
+            assert!(moved > 0.02, "stuck at {:?}", b.pos);
+            assert!(along > moved * 0.5, "{dx} {dy}");
+            assert!(dx > 0.0 && dy > 0.0, "{dx} {dy}");
+            last = b.pos;
+        }
+    }
+
+    #[test]
+    fn a_sprint_straight_into_a_wall_stops_and_says_so() {
+        let t = Tuning::default();
+        let g = Hills(|x, _| (x < 5.0).then_some(0.0));
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        for _ in 0..240 {
+            b.step(input, &g, &t, 1.0 / 60.0);
+        }
+        assert!(b.pos[0] < 5.0);
+        assert!(b.speed() < 0.5, "it runs on the spot at {}", b.speed());
+    }
+
+    #[test]
+    fn a_hurried_roll_comes_round_sooner_and_ends_the_same_way() {
+        let t = Tuning::default();
+        let g = flat();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        let dt = 1.0 / 60.0;
+        let roll = Input {
+            roll: true,
+            ..Input::default()
+        };
+        b.step(roll, &g, &t, dt);
+        for _ in 0..9 {
+            b.step(Input::default(), &g, &t, dt);
+        }
+        let p = b.roll_progress(&t);
+        assert!(p > 0.2 && p < 0.4, "{p}");
+        b.hurry_roll();
+        let mut steps = 0;
+        while b.rolling() {
+            b.step(Input::default(), &g, &t, dt);
+            steps += 1;
+            assert!(steps < 60);
+        }
+        let plain = ((1.0 - p) * t.roll_time / dt) as usize;
+        assert!(steps * 2 < plain + 2, "{steps} steps, against {plain}");
+        // As far as ever: the whole of the roll's distance.
+        assert!((b.pos[0] - t.roll_distance).abs() < 0.05, "{:?}", b.pos);
+    }
+
+    /// A lower floor over a gap, with a railing along the edge that only the room's model has.
+    struct Railed;
+
+    impl Ground for Railed {
+        fn floor(&self, x: f32, _: f32, max_z: f32) -> Option<f32> {
+            let f = if x < 5.0 {
+                Some(2.0)
+            } else if x > 5.4 {
+                Some(0.0)
+            } else {
+                None
+            };
+            f.filter(|f| *f <= max_z)
+        }
+        fn blocked(&self, _: [f32; 3], _: [f32; 3]) -> bool {
+            false
+        }
+        fn barrier(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool {
+            // A thin rail 0.9 m over the upper floor: a ray at a chosen height would go under or over it.
+            a[0].min(b[0]) < 5.2 && a[0].max(b[0]) > 5.2 && low < 2.9 && high > 2.9
+        }
+    }
+
+    #[test]
+    fn a_railing_only_the_model_has_stops_a_fall_at_waist_height() {
+        let t = Tuning::default();
+        let mut b = Body::new([3.0, 0.0, 2.0], 0.0);
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        for _ in 0..240 {
+            b.step(input, &Railed, &t, 1.0 / 60.0);
+        }
+        assert!(b.grounded && b.pos[2] == 2.0, "fell: {:?}", b.pos);
+        assert!(b.pos[0] < 5.2, "{:?}", b.pos);
+    }
+
+    #[test]
+    fn stairs_rise_without_a_jump_or_a_dip() {
+        let t = Tuning::default();
+        // Steps 0.3 m long and 0.18 m high.
+        let g = Hills(|x, _| Some((x / 0.3).floor().max(0.0) * 0.18));
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        let mut last = 0.0f32;
+        for _ in 0..120 {
+            b.step(input, &g, &t, 1.0 / 60.0);
+            let dz = b.pos[2] - last;
+            assert!(b.grounded);
+            assert!(dz > -0.01, "it dipped by {dz} at {:?}", b.pos);
+            // The stair's own slope at a sprint is 0.07 m a step, and the snap never lets it fall further behind than its lag.
+            assert!(dz < t.snap_lag, "it jumped by {dz} at {:?}", b.pos);
+            last = b.pos[2];
+        }
+    }
+
+    /// A wall that is clear at chest height where the body sets out, and in the way lower down.
+    struct LowWall;
+
+    impl Ground for LowWall {
+        fn floor(&self, x: f32, _: f32, max_z: f32) -> Option<f32> {
+            let f = if x < 5.0 {
+                Some(2.0)
+            } else if x > 5.5 {
+                Some(0.0)
+            } else {
+                None
+            };
+            f.filter(|f| *f <= max_z)
+        }
+        fn blocked(&self, _: [f32; 3], _: [f32; 3]) -> bool {
+            false
+        }
+        fn wall(&self, a: [f32; 3], _: [f32; 3]) -> bool {
+            a[2] < 2.5
+        }
+    }
+
+    /// A floor only a little below, across a wide gap: it must not fall past it on the way over.
+    struct WideGap;
+
+    impl Ground for WideGap {
+        fn floor(&self, x: f32, _: f32, max_z: f32) -> Option<f32> {
+            let f = if x < 5.0 {
+                Some(0.6)
+            } else if x > 6.0 {
+                Some(0.0)
+            } else {
+                None
+            };
+            f.filter(|f| *f <= max_z)
+        }
+        fn blocked(&self, _: [f32; 3], _: [f32; 3]) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn a_body_does_not_fall_past_a_near_floor_across_a_wide_gap() {
+        let t = Tuning::default();
+        for speed in [Some(false), Some(true)] {
+            let mut b = Body::new([4.5, 0.0, 0.6], 0.0);
+            let input = Input {
+                dir: Some([1.0, 0.0]),
+                walk: speed == Some(true),
+                ..Input::default()
+            };
+            for _ in 0..240 {
+                b.step(input, &WideGap, &t, 1.0 / 60.0);
+                assert!(b.pos[2] > -0.01, "{:?}", b.pos);
+            }
+            assert!(b.grounded && b.pos[2] == 0.0, "{:?}", b.pos);
+        }
+    }
+
+    /// In the real game this hung over nothing, 20 m down and falling, on Kashyyyk, Korriban and Unknown World.
+    #[test]
+    fn a_body_that_sets_out_over_a_gap_always_reaches_the_floor_beyond() {
+        let t = Tuning::default();
+        let mut b = Body::new([4.0, 0.0, 2.0], 0.0);
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        let mut fell = false;
+        for _ in 0..120 {
+            b.step(input, &LowWall, &t, 1.0 / 60.0);
+            fell |= !b.grounded;
+            assert!(b.pos[2] > -0.01, "it went through the floor: {:?}", b.pos);
+        }
+        assert!(fell, "it went over");
+        assert!(
+            b.grounded && b.pos[2] == 0.0 && b.pos[0] > 5.5,
+            "{:?}",
+            b.pos
+        );
     }
 }

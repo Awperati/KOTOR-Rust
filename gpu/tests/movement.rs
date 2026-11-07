@@ -7,8 +7,12 @@ const DT: f32 = 1.0 / 60.0;
 
 /// A game with no pauses or pop-ups, its settings in a file of its own with these lines.
 fn stage(name: &str, settings: &str) -> Option<(Stage, std::path::PathBuf)> {
+    stage_in("danm14aa", name, settings)
+}
+
+fn stage_in(module: &str, name: &str, settings: &str) -> Option<(Stage, std::path::PathBuf)> {
     kotor_core::install_dir()?;
-    let mut s = Stage::open("danm14aa", true).unwrap();
+    let mut s = Stage::open(module, true).unwrap();
     s.enable_tutorials(false);
     s.enable_auto_pause(false);
     let file = std::env::temp_dir().join(format!("kotor_move_{name}_{}.txt", std::process::id()));
@@ -504,5 +508,145 @@ fn a_roll_has_the_knees_together_and_stays_on_the_floor() {
         let sinks = s.bent_body_sinks().unwrap();
         assert!(sinks.abs() < 0.03, "{sinks} m into the floor at {k}/20");
     }
+    std::fs::remove_file(&file).ok();
+}
+
+fn camera_away(s: &Stage) -> f32 {
+    let c = s.camera();
+    let d = [0, 1, 2].map(|i| c.eye[i] - c.target[i]);
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+/// The owner's report: the camera pulled in very close after a fall. Off the ledge on Taris the driver uses.
+#[test]
+fn the_camera_stays_out_through_a_fall_and_its_landing() {
+    let Some((mut s, file)) = stage_in("tar_m10aa", "fall_cam", "") else {
+        return;
+    };
+    s.place_player([106.01, 129.28, 2.25], 1.963);
+    s.yaw = 1.963;
+    run(&mut s, 180);
+    let start = camera_away(&s);
+    assert!(start > 2.5, "{start}");
+    s.steer = (1.0, 0.0, false);
+    let (mut fell, mut nearest, mut last, mut most) = (false, start, start, 0.0f32);
+    for _ in 0..240 {
+        s.update(DT);
+        fell |= !s.game.world.pc_body.grounded;
+        if s.game.world.pc_body.grounded && fell {
+            s.steer = (0.0, 0.0, false);
+        }
+        let now = camera_away(&s);
+        nearest = nearest.min(now);
+        most = most.max((now - last).abs());
+        last = now;
+    }
+    assert!(fell, "it fell");
+    assert!(s.game.world.pc_body.grounded, "and landed");
+    // At the bottom the cliff stands about 2 m behind the player: the last time, this came in to 0.8 m.
+    assert!(nearest > start * 0.6, "{start} m came in to {nearest} m");
+    println!(
+        "fall camera: start {start:.2} nearest {nearest:.2} end {last:.2} biggest step {most:.3}"
+    );
+    assert!(most < 0.6, "the camera jumped {most} m in a frame");
+    assert!(last > start * 0.6, "{start} m ended at {last} m");
+    std::fs::remove_file(&file).ok();
+}
+
+/// A frame takes as long as it takes at 2160p: what is on screen still goes along evenly.
+#[test]
+fn an_uneven_frame_rate_does_not_shake_a_sprint() {
+    let Some((mut s, file)) = stage("uneven", "") else {
+        return;
+    };
+    s.yaw = clear_way(&mut s);
+    s.steer = (1.0, 0.0, false);
+    run(&mut s, 60);
+    // Between 24 and 60 frames a second, and never the same twice running.
+    let times = [1.0 / 30.0, 1.0 / 41.0, 1.0 / 24.0, 1.0 / 60.0, 1.0 / 37.0];
+    let (mut last, mut speeds) = (s.camera().target, Vec::new());
+    for k in 0..40 {
+        let dt = times[k % times.len()];
+        s.update(dt);
+        let now = s.camera().target;
+        speeds.push((now[0] - last[0]).hypot(now[1] - last[1]) / dt);
+        last = now;
+    }
+    if s.game.world.pc_body.speed() > 6.0 {
+        let mean = speeds.iter().sum::<f32>() / speeds.len() as f32;
+        let worst = speeds.iter().map(|v| (v - mean).abs()).fold(0.0, f32::max);
+        assert!(
+            worst < mean * 0.25,
+            "{mean} m/s, off by {worst}: {speeds:?}"
+        );
+    }
+    std::fs::remove_file(&file).ok();
+}
+
+/// A click during a roll: the roll comes round sooner, and then the player goes there.
+#[test]
+fn a_click_cuts_a_roll_short_and_the_walk_follows() {
+    let Some((mut s, file)) = stage("cancel", "") else {
+        return;
+    };
+    s.yaw = clear_way(&mut s);
+    let frames = |s: &mut Stage| {
+        let mut n = 0;
+        while s.game.world.pc_body.rolling() && n < 200 {
+            s.update(DT);
+            n += 1;
+        }
+        n
+    };
+    s.roll_key();
+    s.update(DT);
+    assert!(s.game.world.pc_body.rolling());
+    let whole = frames(&mut s);
+    run(&mut s, 60);
+    s.roll_key();
+    s.update(DT);
+    let px = floor_pixel(&mut s);
+    s.click(px, SIZE);
+    assert!(s.game.world.pc_walking(), "the click was taken");
+    let cut = frames(&mut s);
+    assert!(cut * 2 < whole + 2, "{cut} frames, against {whole}");
+    let from = pc_at(&s);
+    run(&mut s, 30);
+    let to = pc_at(&s);
+    assert!(
+        (to[0] - from[0]).hypot(to[1] - from[1]) > 0.3,
+        "{from:?} {to:?}"
+    );
+    std::fs::remove_file(&file).ok();
+}
+
+/// The walk clip keeps to the floor: it runs at its own speed at a walk, and faster on the way up to a run.
+#[test]
+fn the_walk_clip_goes_with_the_speed() {
+    let Some((mut s, file)) = stage("walkclip", "") else {
+        return;
+    };
+    s.yaw = clear_way(&mut s);
+    s.steer = (1.0, 0.0, true);
+    run(&mut s, 60);
+    let pc = s.game.world.pc;
+    let clip = |s: &mut Stage| {
+        s.game
+            .poses()
+            .into_iter()
+            .find(|p| p.id == pc)
+            .and_then(|p| p.clip)
+            .unwrap()
+    };
+    let a = clip(&mut s);
+    assert_eq!(a.name, "walk");
+    run(&mut s, 30);
+    let b = clip(&mut s);
+    assert_eq!(b.name, "walk");
+    let rate = (b.time - a.time) / (30.0 * DT);
+    assert!(
+        (rate - 1.0).abs() < 0.1,
+        "at a walk the clip goes at {rate}"
+    );
     std::fs::remove_file(&file).ok();
 }

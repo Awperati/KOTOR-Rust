@@ -102,6 +102,68 @@ impl RoomShell {
     }
 }
 
+/// Whether a triangle crosses the upright sheet on the line from `a` to `b`, between two heights.
+fn crosses_sheet(t: &[V3; 3], a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool {
+    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+    let long = dx.hypot(dy);
+    if long < 1e-4 {
+        return false;
+    }
+    let (ux, uy) = (dx / long, dy / long);
+    // Each corner: how far along the line, how far off it, and how high.
+    let c = t.map(|p| {
+        let (x, y) = (p[0] - a[0], p[1] - a[1]);
+        (x * ux + y * uy, x * -uy + y * ux, p[2])
+    });
+    // Where the triangle's edges go through the sheet's plane.
+    let mut points: Vec<(f32, f32)> = Vec::with_capacity(3);
+    for k in 0..3 {
+        let (p, q) = (c[k], c[(k + 1) % 3]);
+        if (p.1 < 0.0) != (q.1 < 0.0) {
+            let f = p.1 / (p.1 - q.1);
+            points.push((p.0 + (q.0 - p.0) * f, p.2 + (q.2 - p.2) * f));
+        }
+    }
+    let [p, q] = points[..] else {
+        return false;
+    };
+    // That piece of the triangle, cut down to the sheet.
+    let (mut from, mut to) = (0.0f32, 1.0f32);
+    for (start, change, lo, hi) in [(p.0, q.0 - p.0, 0.0, long), (p.1, q.1 - p.1, low, high)] {
+        if change.abs() < 1e-6 {
+            if start < lo || start > hi {
+                return false;
+            }
+            continue;
+        }
+        let (mut near, mut far) = ((lo - start) / change, (hi - start) / change);
+        if near > far {
+            std::mem::swap(&mut near, &mut far);
+        }
+        from = from.max(near);
+        to = to.min(far);
+        if from > to {
+            return false;
+        }
+    }
+    true
+}
+
+impl kotor_game::Barriers for RoomShell {
+    fn across(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool {
+        for x in cell(a[0].min(b[0]))..=cell(a[0].max(b[0])) {
+            for y in cell(a[1].min(b[1]))..=cell(a[1].max(b[1])) {
+                for n in self.cells.get(&(x, y)).into_iter().flatten() {
+                    if crosses_sheet(&self.triangles[*n as usize], a, b, low, high) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +206,44 @@ mod tests {
             None,
             "past its edge"
         );
+    }
+
+    /// A rail 2 cm thick and 0.9 m up, across the line of travel: rays at chosen heights go over and under it.
+    fn rail() -> RoomShell {
+        RoomShell::of(&Scene {
+            meshes: vec![SceneMesh {
+                positions: vec![
+                    [1.0, -5.0, 0.89],
+                    [1.0, 5.0, 0.89],
+                    [1.0, 5.0, 0.91],
+                    [1.0, -5.0, 0.91],
+                ],
+                triangles: vec![[0, 1, 2], [0, 2, 3]],
+                ..SceneMesh::default()
+            }],
+            ..Scene::default()
+        })
+    }
+
+    #[test]
+    fn a_thin_rail_crosses_the_sheet_a_fall_looks_through() {
+        use kotor_game::Barriers;
+        let r = rail();
+        assert!(r.across([0.0, 0.0], [2.0, 0.0], 0.25, 1.2));
+        assert!(r.across([0.0, 0.3], [2.0, -0.2], 0.25, 1.2), "at an angle");
+        assert!(
+            r.across([2.0, 0.0], [0.0, 0.0], 0.25, 1.2),
+            "from either side"
+        );
+        assert!(!r.across([0.0, 0.0], [0.9, 0.0], 0.25, 1.2), "short of it");
+        assert!(
+            !r.across([0.0, 0.0], [2.0, 0.0], 1.0, 1.2),
+            "under the sheet"
+        );
+        assert!(
+            !r.across([0.0, 0.0], [2.0, 0.0], 0.25, 0.8),
+            "over the sheet"
+        );
+        assert!(!r.across([0.0, 6.0], [2.0, 6.0], 0.25, 1.2), "past its end");
     }
 }

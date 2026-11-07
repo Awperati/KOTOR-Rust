@@ -439,6 +439,14 @@ pub struct Stage {
     looking: bool,
     /// How far behind the player the camera's focus is, and the height it was last at.
     camera_lag: [f32; 3],
+    /// How far out the camera stands, easing in Modern. None: as the room says, at once.
+    camera_arm: Option<f32>,
+    /// Where the player was when the arm last looked.
+    arm_at: [f32; 3],
+    /// How far the camera has risen over something close behind the player, radians.
+    camera_rise: f32,
+    /// Seconds since the player was last in the air, or in a landing.
+    since_fall: f32,
     /// The roll's and the landing's poses.
     body_poses: moving::BodyPoses,
     camera_z: Option<f32>,
@@ -600,6 +608,10 @@ impl Stage {
             steer_yaw: 0.0,
             looking: false,
             camera_lag: [0.0; 3],
+            camera_arm: None,
+            arm_at: [0.0; 3],
+            camera_rise: 0.0,
+            since_fall: 0.0,
             body_poses: moving::BodyPoses::default(),
             camera_z: None,
             fov_extra: 0.0,
@@ -722,6 +734,8 @@ impl Stage {
             )
             .map_err(e)?;
         }
+        // What a fall stops at: the rooms, and what stands in them, as fences do.
+        self.game.world.barriers = Some(std::sync::Arc::new(roomshell::RoomShell::of(&scene)));
         self.chests = chests;
         self.chest_bodies.clear();
         self.lids.clear();
@@ -812,6 +826,9 @@ impl Stage {
         if self.pause_tick() {
             self.game.world.roll_request = false;
             self.update_camera(dt);
+            if self.camera_arm.is_some() {
+                self.arm_tick(dt);
+            }
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
         }
@@ -1394,36 +1411,33 @@ impl Stage {
         w.object(w.pc).map_or([0.0; 3], |o| o.position)
     }
 
-    /// The camera behind the player, drawn in where the floor ends so that it stays on this side of the walls.
-    pub fn camera(&self) -> Camera {
-        if let Some(c) = self
-            .beat_camera()
-            .filter(|c| !self.too_close_to_speaker(c))
-            .or_else(|| self.speaker_camera())
-            .or_else(|| self.turret_camera())
-        {
-            return c;
-        }
-        // Where it is drawn, or the player shakes against the room.
-        let p = self
-            .game
-            .drawn_position(self.game.world.pc)
-            .unwrap_or([0.0; 3]);
-        let p = self.lagged(p);
+    /// How far the camera may stand from the player at `p` along `back`, as the walkmesh and the doors have it.
+    pub(super) fn camera_room(&self, p: [f32; 3], back: [f32; 3]) -> f32 {
         let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
-        let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
-        let (flat, up) = (self.pitch.cos(), self.pitch.sin());
-        let back = [-dx * flat, -dy * flat, up];
         let mut d = self.distance;
+        let modern = self.game.world.movement == MovementMode::Modern;
         if let Some(f) = &self.floor {
             // Walls in the walkmesh, and where the floor ends.
             if let Some(hit) = f.ray_distance(target, back, self.distance) {
                 d = d.min(hit - 0.25);
             }
+            // In Modern a floor above is a floor, as a player at the foot of a cliff has one behind them, and the gap that a
+            // cliff leaves in the walkmesh is not the end of it.
+            let top = p[2]
+                + if modern {
+                    moving::CAMERA_FLOOR_ABOVE
+                } else {
+                    1.0
+                };
+            let there = |t: f32| {
+                let q = [p[0] + back[0] * t, p[1] + back[1] * t];
+                f.height(q[0], q[1], top).is_some()
+            };
             let mut t = 0.8;
             while t < d {
-                let q = [p[0] + back[0] * (t + 0.3), p[1] + back[1] * (t + 0.3)];
-                if f.height(q[0], q[1], p[2] + 1.0).is_none() {
+                let beyond = modern
+                    && (1..=moving::CAMERA_GAP_LOOKS).any(|k| there(t + 0.3 + k as f32 * 0.3));
+                if !there(t + 0.3) && !beyond {
                     d = t;
                     break;
                 }
@@ -1442,12 +1456,39 @@ impl Stage {
                 d = (along - 0.4).max(0.8);
             }
         }
-        let d = d.max(0.8);
-        // Inside the room, however it is tilted. It keeps a little off the surface, and comes in to the player if it must.
-        let d = match self.shell.first_hit(target, back, d) {
-            Some(hit) => (hit - CAMERA_OFF_SURFACE).max(0.1),
-            None => d,
-        };
+        d.max(0.8)
+    }
+
+    /// The camera behind the player, drawn in where the floor ends so that it stays on this side of the walls.
+    pub fn camera(&self) -> Camera {
+        if let Some(c) = self
+            .beat_camera()
+            .filter(|c| !self.too_close_to_speaker(c))
+            .or_else(|| self.speaker_camera())
+            .or_else(|| self.turret_camera())
+        {
+            return c;
+        }
+        // Where it is drawn, or the player shakes against the room.
+        let p = self
+            .game
+            .drawn_position(self.game.world.pc)
+            .unwrap_or([0.0; 3]);
+        let p = self.lagged(p);
+        let target = [p[0], p[1], p[2] + CAMERA_LOOKS_AT];
+        let (dx, dy) = (self.yaw.cos(), self.yaw.sin());
+        let (flat, up) = (self.pitch + self.camera_rise).sin_cos();
+        let (flat, up) = (up, flat);
+        let back = [-dx * flat, -dy * flat, up];
+        // In Modern the arm eases, and a fall does not snatch it in: see `arm_tick`, which also keeps it inside the room.
+        let d = self.camera_arm.unwrap_or_else(|| {
+            let d = self.camera_room(p, back);
+            // Inside the room, however it is tilted. It keeps a little off the surface, and comes in to the player if it must.
+            match self.shell.first_hit(target, back, d) {
+                Some(hit) => (hit - CAMERA_OFF_SURFACE).max(0.1),
+                None => d,
+            }
+        });
         Camera {
             eye: [
                 p[0] - dx * flat * d,

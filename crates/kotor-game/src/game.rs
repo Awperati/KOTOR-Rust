@@ -4,6 +4,9 @@
 use crate::world::{DoorState, Kind, ObjId, World};
 use std::collections::HashMap;
 
+/// Metres a second the walk clip shows, `walkrate` of `creaturespeed.2da`.
+const WALK_CLIP_SPEED: f32 = 1.7;
+
 /// The animation an object is playing: a clip name from its supermodel and seconds into it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Clip {
@@ -343,6 +346,9 @@ impl Game {
                 let modern = self.world.movement == crate::movement::MovementMode::Modern;
                 let rate = if modern && id == pc && want == "run" {
                     (self.world.pc_body.speed() / crate::RUN_SPEED).clamp(0.5, 1.3)
+                } else if modern && id == pc && want == "walk" {
+                    // And a walk, going from a stand to a run through it. The clip covers 1.7 m a second.
+                    (self.world.pc_body.speed() / WALK_CLIP_SPEED).clamp(0.6, 1.5)
                 } else {
                     1.0
                 };
