@@ -744,7 +744,11 @@ impl Stage {
                 continue;
             };
             hit = Some(t.position);
-            new.push((t.position, l.damage));
+            new.push((
+                t.position,
+                l.damage,
+                l.outcome == kotor_game::Outcome::Glance,
+            ));
         }
         self.menus.fight.log_seen = log.len();
         let xp = w.object(w.pc).map_or(0, |o| o.xp);
@@ -753,9 +757,14 @@ impl Stage {
         let over_player = w.object(w.pc).map_or([0.0; 3], |o| o.position);
 
         let miss = self.ui.strref(STR_MISS);
-        for (at, damage) in new {
+        for (at, damage, glance) in new {
             let (text, color) = if damage > 0 {
-                (damage.to_string(), DAMAGE_COLOR)
+                let text = if glance {
+                    format!("Glancing {damage}")
+                } else {
+                    damage.to_string()
+                };
+                (text, DAMAGE_COLOR)
             } else {
                 (miss.clone(), MISS_COLOR)
             };

@@ -1547,3 +1547,39 @@ fn the_hurt_cry_out_and_the_dying_say_their_last() {
     assert!(s.game.world.object(foe).unwrap().dead);
     assert!(heard(&cues, &|b| *b == last), "the dying line at death");
 }
+
+/// "No misses": a glancing blow floats over its target as "Glancing" and its damage, and a hit is just the number.
+#[test]
+fn a_glancing_blow_floats_as_glancing_with_its_damage() {
+    let Some(mut s) = stage() else {
+        return;
+    };
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    let pc = s.game.world.pc;
+    let at = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 1.0, at[1], at[2]]);
+    for (outcome, damage) in [
+        (kotor_game::Outcome::Glance, 2),
+        (kotor_game::Outcome::Hit, 7),
+    ] {
+        s.game.world.combat.log.push(kotor_game::AttackLog {
+            round: 1,
+            attacker: pc,
+            target: foe,
+            roll: 3,
+            bonus: 0,
+            defense: 40,
+            outcome,
+            damage,
+            target_hp: 10,
+        });
+    }
+    s.update(DT);
+    let shown = s.floats_shown();
+    assert!(shown.iter().any(|f| f == "Glancing 2"), "{shown:?}");
+    assert!(shown.iter().any(|f| f == "7"), "{shown:?}");
+}

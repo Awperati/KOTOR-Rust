@@ -925,6 +925,8 @@ impl Stage {
         // A scripted player keeps to the game's own scenes, so that its route and digests do not move.
         self.game.world.extended_story =
             self.settings().extended_story && (self.pilot.is_none() || self.pilot_takes_branches);
+        // The same for "No misses": a scripted player's fights keep the game's own rules, so its route does not move.
+        self.game.world.no_misses = self.settings().no_misses && self.pilot.is_none();
         if let Some((who, clip)) = self.game.world.story.cue.take() {
             // The owner's own clip, once he has made it. Till then the game's stock attack has played.
             if kotor_render::custom_clip::get(clip).is_some() {

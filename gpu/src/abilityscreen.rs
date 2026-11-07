@@ -143,7 +143,7 @@ impl Stage {
                 .map(|a| {
                     let (outcome, damage) = match a.outcome {
                         Outcome::Miss => (STR_MISS, false),
-                        Outcome::Hit => (STR_HIT, true),
+                        Outcome::Hit | Outcome::Glance => (STR_HIT, true),
                         Outcome::Critical => (STR_CRITICAL, true),
                     };
                     let words = format!(

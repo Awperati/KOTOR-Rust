@@ -310,6 +310,8 @@ pub struct Settings {
     pub seamless_areas: bool,
     /// The owner's added story branches, as Trask's question on the Endar Spire. Off, the game's own scenes.
     pub extended_story: bool,
+    /// An attack that would miss lands as a glancing blow for the least damage it can do. Off: the original rules.
+    pub no_misses: bool,
     /// A name and health bar over each enemy in sight, and the rest of what the F6 key turns off.
     pub nameplates: bool,
     /// The same all the time for neutral creatures and for friends, and not only when the cursor is on them.
@@ -375,6 +377,7 @@ impl Default for Settings {
             australian_english: true,
             seamless_areas: true,
             extended_story: true,
+            no_misses: true,
             nameplates: true,
             nameplates_neutral: false,
             nameplates_friendly: false,
@@ -402,7 +405,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nno_misses={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -443,6 +446,7 @@ impl Settings {
             self.nameplate_range,
             self.nameplate_size,
             self.extended_story,
+            self.no_misses,
             self.cel_shading,
             self.pickup_radius,
             self.touch_controls,
@@ -495,6 +499,7 @@ impl Settings {
                 "glow_boxes" => s.glow_boxes = v == "true",
                 "seamless_areas" => s.seamless_areas = v == "true",
                 "extended_story" => s.extended_story = v == "true",
+                "no_misses" => s.no_misses = v == "true",
                 "australian_english" => s.australian_english = v == "true",
                 "nameplates" => s.nameplates = v == "true",
                 "nameplates_neutral" => s.nameplates_neutral = v == "true",

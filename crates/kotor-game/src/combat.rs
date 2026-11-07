@@ -48,6 +48,8 @@ pub fn ability_mod(score: i32) -> i32 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     Miss,
+    /// What a miss becomes with `World::no_misses` on: the blow lands for the least it can do (see `glance_damage`).
+    Glance,
     Hit,
     Critical,
 }
@@ -529,6 +531,16 @@ impl World {
             .max(1)
     }
 
+    /// What a blow that would have missed does with "No misses" on: 1, and half of what `flat_damage` adds (Strength in melee,
+    /// feats, gear) and a quarter of the attacker's level, rounded down. A stronger character's glancing blow is larger; a
+    /// weak one does 1. The dice are not rolled: a glance is the least a blow can do.
+    ///
+    /// **Assumption:** the game has no weapon skills, so skills reach this only through the feats and gear in `flat_damage`.
+    fn glance_damage(&self, attacker: ObjId, flat: i32) -> i32 {
+        let level = self.objects.get(&attacker).map_or(1, |o| o.level);
+        1 + (flat.max(0) + level / 4) / 2
+    }
+
     /// `EffectAssuredHit` is on: a blow cannot miss.
     fn has_assured_hit(&self, id: ObjId) -> bool {
         self.objects.get(&id).is_some_and(|o| {
@@ -576,15 +588,23 @@ impl World {
         if outcome == Outcome::Miss && self.has_assured_hit(attacker) {
             outcome = Outcome::Hit;
         }
+        if outcome == Outcome::Miss && self.no_misses {
+            outcome = Outcome::Glance;
+        }
         let mut dealt = 0;
         if outcome != Outcome::Miss {
-            let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
             let mod_ = self.flat_damage(attacker, slot, weapon.ranged);
-            let more = self.roll_gear_damage(attacker, slot, target, outcome == Outcome::Critical);
-            dealt = damage(dice, mod_, outcome, weapon.multiplier)
-                + boost.damage
-                + more
-                + self.story_blow(attacker);
+            if outcome == Outcome::Glance {
+                dealt = self.glance_damage(attacker, mod_) + boost.damage;
+            } else {
+                let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
+                let more =
+                    self.roll_gear_damage(attacker, slot, target, outcome == Outcome::Critical);
+                dealt = damage(dice, mod_, outcome, weapon.multiplier)
+                    + boost.damage
+                    + more
+                    + self.story_blow(attacker);
+            }
             dealt = self.story_soften(attacker, target, dealt);
             // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.
             let kind = self.weapon_damage_type(attacker, slot);
@@ -637,7 +657,7 @@ impl World {
         self.combat.last_result.insert(
             attacker,
             match outcome {
-                Outcome::Hit => 1,
+                Outcome::Hit | Outcome::Glance => 1,
                 Outcome::Critical => 2,
                 Outcome::Miss => 4,
             },
