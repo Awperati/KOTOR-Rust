@@ -786,6 +786,57 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
     assert_eq!(s.game.world.opened, None);
 }
 
+#[test]
+fn a_containers_label_fades_when_it_is_emptied_in_play() {
+    let Some((mut s, _)) = in_game("empty_label") else {
+        return;
+    };
+    // Past the talk that follows the first, for no plates show in one.
+    let mut quiet = 0;
+    for _ in 0..20000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            quiet = 0;
+            s.number_key(1);
+            s.continue_line();
+        } else {
+            quiet += 1;
+            if quiet > 150 {
+                break;
+            }
+        }
+    }
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    assert!(s.stand_near("end_locker01"));
+    // Facing it: a plate behind the camera is not drawn.
+    let at = s.game.world.object(locker).unwrap().position;
+    let here = s.game.world.pc_mover.pos;
+    s.place_player(here, (at[1] - here[1]).atan2(at[0] - here[0]));
+    s.update(DT);
+    s.update(DT);
+    let name = s.game.world.object(locker).unwrap().name.clone();
+    let label = |s: &Stage| {
+        s.plates_drawn()
+            .iter()
+            .find(|p| p.text.starts_with(&name))
+            .cloned()
+            .expect("a label")
+    };
+    assert_eq!(label(&s).opacity, 1.0, "not looked in yet");
+    s.game.world.click(locker);
+    press(&mut s, "BTN_CANCEL");
+    s.update(DT);
+    assert_eq!(
+        label(&s).opacity,
+        1.0,
+        "looked in, and it still holds things"
+    );
+    s.game.world.click(locker);
+    press(&mut s, "BTN_OK");
+    s.update(DT);
+    assert_eq!(label(&s).opacity, 0.33, "{:?}", label(&s));
+}
+
 /// The middle of a slider is at this share of its width, on the window.
 fn slide(s: &mut Stage, tag: &str, along: f32) {
     let (x, y) = s.menu_pixel(tag, None, SIZE).unwrap();

@@ -19,6 +19,12 @@ pub struct Canvas {
     clip: Option<[i32; 4]>,
 }
 
+/// Pixels saved from a canvas, left, top, right and bottom.
+pub struct KeptBox {
+    place: [i32; 4],
+    pixels: Vec<u8>,
+}
+
 /// How a texture is turned the right way up when it is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Orient {
@@ -341,6 +347,49 @@ impl Canvas {
             across(x + w) - across(x),
             down(y + h) - down(y),
         ]
+    }
+
+    /// The pixels of a box of layout units as they are now, to fade what is drawn over them with [`Canvas::fade_to`].
+    pub fn keep_box(&self, x: i32, y: i32, w: i32, h: i32) -> KeptBox {
+        let [x, y, w, h] = self.to_pixels(x, y, w, h);
+        let [left, top, right, bottom] = self.in_clip([x, y, x + w, y + h]);
+        let place = [
+            left.max(0),
+            top.max(0),
+            right.min(self.width as i32),
+            bottom.min(self.height as i32),
+        ];
+        let mut pixels = Vec::new();
+        for row in place[1]..place[3] {
+            let start = (row as usize * self.width as usize + place[0] as usize) * 4;
+            let wide = (place[2] - place[0]).max(0) as usize * 4;
+            pixels.extend_from_slice(&self.rgba[start..start + wide]);
+        }
+        KeptBox { place, pixels }
+    }
+
+    /// What has been drawn in a kept box since shows at this share of its strength.
+    pub fn fade_to(&mut self, kept: &KeptBox, opacity: f32) {
+        let [left, top, right, _] = kept.place;
+        let wide = (right - left).max(0) as usize;
+        if wide == 0 {
+            return;
+        }
+        for (n, was) in kept.pixels.as_chunks::<4>().0.iter().enumerate() {
+            let (x, y) = (left as usize + n % wide, top as usize + n / wide);
+            let i = (y * self.width as usize + x) * 4;
+            let now = &mut self.rgba[i..i + 4];
+            if now == was {
+                continue;
+            }
+            let (from, to) = (was[3] as f32 * (1.0 - opacity), now[3] as f32 * opacity);
+            let alpha = from + to;
+            for k in 0..3 {
+                let c = (was[k] as f32 * from + now[k] as f32 * to) / alpha.max(1.0);
+                now[k] = c.round().min(255.0) as u8;
+            }
+            now[3] = alpha.round().min(255.0) as u8;
+        }
     }
 
     pub fn clear(&mut self, c: [u8; 4]) {

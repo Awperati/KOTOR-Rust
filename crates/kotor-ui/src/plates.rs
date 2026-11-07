@@ -23,6 +23,8 @@ pub struct Plate {
     pub strength: f32,
     /// A small star, bright or dim: there is loot.
     pub sparkle: Option<bool>,
+    /// How solid all of it is, 1 for all the way: remains or a container with nothing left show through.
+    pub opacity: f32,
 }
 
 /// The name's line and the bar under it.
@@ -117,6 +119,23 @@ impl Ui<'_> {
 
     fn draw_plates(&mut self, cv: &mut Canvas) {
         for p in self.plates.clone() {
+            if p.opacity < 1.0 {
+                let kept = cv.keep_box(
+                    p.x - PLATE_BOX_HALF,
+                    p.y - PLATE_BOX_ABOVE,
+                    PLATE_BOX_HALF * 2,
+                    PLATE_BOX_ABOVE + PLATE_BOX_BELOW,
+                );
+                self.draw_plate(cv, &p);
+                cv.fade_to(&kept, p.opacity);
+            } else {
+                self.draw_plate(cv, &p);
+            }
+        }
+    }
+
+    fn draw_plate(&mut self, cv: &mut Canvas, p: &Plate) {
+        {
             let (left, high) = (p.x - p.width / 2, p.high());
             let font = if p.big_text {
                 PLATE_BIG_TEXT_FONT

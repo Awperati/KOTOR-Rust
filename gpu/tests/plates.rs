@@ -134,6 +134,68 @@ fn a_click_on_a_plate_is_a_click_on_the_body() {
     assert_eq!(s.game.world.combat.target.get(&pc), Some(&foe));
 }
 
+/// How solid the most solid pixel of the overlay is, in the middle of a plate.
+fn solid_at(s: &mut Stage, at: (i32, i32)) -> u8 {
+    let o = s.overlay().expect("the HUD");
+    let k = o.height as f32 / 480.0;
+    let (cx, top) = ((at.0 as f32 * k) as i32, (at.1 as f32 * k) as i32);
+    let mut most = 0;
+    for y in top..top + (12.0 * k) as i32 {
+        for x in cx - (20.0 * k) as i32..cx + (20.0 * k) as i32 {
+            if x >= 0 && y >= 0 && (x as u32) < o.width && (y as u32) < o.height {
+                most = most.max(o.rgba[((y as u32 * o.width + x as u32) * 4 + 3) as usize]);
+            }
+        }
+    }
+    most
+}
+
+#[test]
+fn the_label_of_remains_with_nothing_left_shows_at_a_third_of_its_strength() {
+    let Some(mut s) = stage("empty", "") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let foe = ahead(&mut s, 2.0, true);
+    let w = &mut s.game.world;
+    let sword = w.spawn_item("g_w_lngswrd01");
+    w.object_mut(foe).unwrap().inventory.push(sword);
+    let hp = w.object(foe).unwrap().hp;
+    w.hurt(pc, foe, hp + 1);
+    s.update(DT);
+    let label = |s: &Stage| {
+        s.plates_drawn()
+            .iter()
+            .find(|p| p.text.starts_with("Remains"))
+            .cloned()
+            .expect("a label")
+    };
+    let full = label(&s);
+    assert!(
+        full.opacity == 1.0 && !full.text.contains("[empty]"),
+        "{full:?}"
+    );
+    let solid = solid_at(&mut s, (full.x, full.y));
+    assert!(solid > 200, "something on it reads whole: {solid}");
+
+    // Emptied in play, it fades as it goes.
+    let w = &mut s.game.world;
+    w.opened = Some(foe);
+    for (item, _) in w.container_items() {
+        w.take_item(item);
+    }
+    w.close_container();
+    s.update(DT);
+    let faded = label(&s);
+    assert!(faded.text.contains("[empty]"), "{faded:?}");
+    assert_eq!(faded.opacity, 0.33);
+    let thin = solid_at(&mut s, (faded.x, faded.y));
+    assert!(
+        (60..=100).contains(&thin),
+        "33% of what is solid, 255: {thin}"
+    );
+}
+
 #[test]
 fn a_hit_leaves_a_chip_that_goes() {
     let Some(mut s) = stage("chip", "") else {

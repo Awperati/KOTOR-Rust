@@ -25,6 +25,8 @@ const OBJECT_RANGE: f32 = 40.0;
 const OTHERS_WITH_A_TARGET: f32 = 0.85;
 const PLATE_WIDTH: f32 = 62.0;
 const TARGET_WIDTH: i32 = 100;
+/// How solid the label of remains or a container is with nothing left: the owner's 67% off.
+const EMPTY_OPACITY: f32 = 0.33;
 /// From here on a plate gets smaller, until the end of the range, where it is this share of its size.
 const NEAR: f32 = 8.0;
 const FAR_SHARE: f32 = 0.45;
@@ -148,6 +150,7 @@ impl Stage {
             let (hp, max_hp) = (o.hp, o.max_hp);
             let door = o.kind == kotor_game::Kind::Door;
             let friend_of_party = o.party_member;
+            let mut opacity = 1.0;
             let (text, color, health, sparkle, up) = if creature && !dead {
                 if !w.clickable(id) || name.trim().is_empty() {
                     continue;
@@ -183,10 +186,16 @@ impl Stage {
                     Some(((self.game.world.time * SPARKLES_A_SECOND) as i64).rem_euclid(2) == 0);
                 match label {
                     Some(ObjectLabel::Loot) => (name, GOLD, None, sparkle, up),
-                    Some(ObjectLabel::Looted) if !s.hide_empty => (empty, GREY, None, None, up),
+                    Some(ObjectLabel::Looted) if !s.hide_empty => {
+                        opacity = EMPTY_OPACITY;
+                        (empty, GREY, None, None, up)
+                    }
                     Some(ObjectLabel::Usable) => (name, CYAN, None, None, up),
                     Some(ObjectLabel::Door) if s.door_labels => (name, CYAN, None, None, up),
-                    None if body_emptied && !s.hide_empty => (empty, GREY, None, None, up),
+                    None if body_emptied && !s.hide_empty => {
+                        opacity = EMPTY_OPACITY;
+                        (empty, GREY, None, None, up)
+                    }
                     _ if is_target => (name, CYAN, None, None, up),
                     _ => continue,
                 }
@@ -210,6 +219,7 @@ impl Stage {
                     big_text,
                     strength: 1.0,
                     sparkle,
+                    opacity,
                 }
             } else {
                 let Some((x, foot)) = self.project(at, up) else {
@@ -229,6 +239,7 @@ impl Stage {
                     big_text,
                     strength,
                     sparkle,
+                    opacity,
                 }
             };
             out.push((id, plate));
