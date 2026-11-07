@@ -40,6 +40,8 @@
 //!                     gives a level (`level`), for a test driver
 //!     --monitor NAME  suffix of the monitor name to use (default DISPLAY2; DISPLAY1 is refused)
 //!     --frame-log F   write where each frame's time went to this file, as comma-separated lines
+//!     --touch-script F with --state-log: lines added to this file are fingers, `down ID X Y`, `move ID X Y`, `up ID X Y`, in the
+//!                     window's pixels. They go where a touch screen's do: a driver cannot post real touch messages
 //!
 //! W A S D: run, relative to the camera (Shift walks). Left Ctrl: roll, in Modern movement. Right button drag or the arrow keys: turn the camera.
 //! Left click: walk, use what is under the cursor, or pick a reply. E: use the nearest thing. 1-9: take a reply.
@@ -54,7 +56,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
@@ -196,6 +198,10 @@ struct App {
     turning: f32,
     keys: [bool; 5],
     looking: bool,
+    /// Windows can follow a finger with a mouse message of its own: for a moment after one, the mouse is not listened to.
+    last_finger: Option<std::time::Instant>,
+    /// A driver's file of fingers, and how much of it has been read.
+    touch_script: Option<(PathBuf, usize)>,
     state: Option<State>,
     failed: Option<String>,
 }
@@ -269,6 +275,7 @@ impl App {
     }
 
     fn frame(&mut self, el: &ActiveEventLoop) {
+        self.read_touch_script();
         let Some(st) = &mut self.state else { return };
         let now = std::time::Instant::now();
         let dt = (now - self.last).as_secs_f32();
@@ -401,18 +408,19 @@ impl App {
             }
         }
         self.stage.turn = self.turning;
-        self.stage.set_looking(self.looking);
+        self.stage
+            .set_looking(self.looking || self.stage.touch_looking());
         if self.turret_cursor != self.stage.turret_on() {
             self.turret_cursor = !self.turret_cursor;
             self.turret_cursor_known = false;
             st.window.set_cursor_visible(!self.turret_cursor);
         }
         let axis = |a: bool, b: bool| a as i32 as f32 - b as i32 as f32;
-        self.stage.steer = (
+        self.stage.steer = self.stage.touch_steer().unwrap_or((
             axis(self.keys[0], self.keys[1]),
             axis(self.keys[3], self.keys[2]),
             self.keys[4],
-        );
+        ));
         let updating = std::time::Instant::now();
         let cues = self.stage.update(dt);
         let update_ms = ms(updating);
@@ -552,6 +560,64 @@ impl App {
         }
     }
 
+    /// How big the window is, in pixels.
+    fn window_size(&self) -> (u32, u32) {
+        self.state.as_ref().map_or(self.size, |st| {
+            let z = st.window.inner_size();
+            (z.width, z.height)
+        })
+    }
+
+    /// A finger on the window, from a touch screen or a driver's file.
+    fn finger(&mut self, phase: TouchPhase, id: u64, at: (f32, f32)) {
+        self.last_finger = Some(std::time::Instant::now());
+        let size = self.window_size();
+        match phase {
+            TouchPhase::Started => self.stage.finger_down(id, at, size),
+            TouchPhase::Moved => self.stage.finger_moved(id, at, size),
+            TouchPhase::Ended => self.stage.finger_up(id, at, size),
+            TouchPhase::Cancelled => self.stage.finger_lost(id),
+        }
+    }
+
+    /// The mouse messages a finger brings with it are not the mouse.
+    fn finger_lately(&self) -> bool {
+        self.last_finger
+            .is_some_and(|t| t.elapsed().as_secs_f32() < AFTER_FINGER_SECONDS)
+    }
+
+    /// What a driver has added to its file of fingers.
+    fn read_touch_script(&mut self) {
+        let Some((path, seen)) = &mut self.touch_script else {
+            return;
+        };
+        let Ok(text) = std::fs::read_to_string(path.as_path()) else {
+            return;
+        };
+        // A line goes in once it is whole.
+        let whole = text.rfind('\n').map_or(0, |n| n + 1);
+        if whole <= *seen {
+            return;
+        }
+        let new = text[*seen..whole].to_string();
+        *seen = whole;
+        for line in new.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let [phase, id, x, y] = parts[..] else {
+                continue;
+            };
+            let phase = match phase {
+                "down" => TouchPhase::Started,
+                "move" => TouchPhase::Moved,
+                "up" => TouchPhase::Ended,
+                _ => continue,
+            };
+            if let (Ok(id), Ok(x), Ok(y)) = (id.parse(), x.parse(), y.parse()) {
+                self.finger(phase, id, (x, y));
+            }
+        }
+    }
+
     /// The buttons, as the Mouse Settings page has them.
     fn look_button(&self) -> MouseButton {
         if self.stage.settings().reverse_buttons {
@@ -649,6 +715,8 @@ impl App {
     }
 }
 
+/// How long after a finger the mouse is not listened to.
+const AFTER_FINGER_SECONDS: f32 = 0.7;
 /// What the player and the enemy of `--foe` have.
 const FOE_HIT_POINTS: i32 = 5000;
 
@@ -676,8 +744,16 @@ impl ApplicationHandler for App {
                 }
                 self.stage.set_view((s.width, s.height));
             }
+            WindowEvent::Touch(t) => {
+                let at = (t.location.x as f32, t.location.y as f32);
+                self.finger(t.phase, t.id, at);
+            }
+            WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
+                if self.finger_lately() => {}
             WindowEvent::CursorMoved { position, .. } => {
                 let now = (position.x as f32, position.y as f32);
+                let size = self.window_size();
+                self.stage.mouse_moved_on_layer(now, size);
                 if self.stage.turret_on() {
                     if self.turret_cursor_known {
                         self.stage
@@ -707,6 +783,7 @@ impl ApplicationHandler for App {
                 self.keys = [false; 5];
                 self.looking = false;
                 self.turning = 0.0;
+                self.stage.fingers_gone();
             }
             WindowEvent::MouseInput { state, button, .. }
                 if button == self.click_button() && self.stage.turret_on() =>
@@ -714,13 +791,18 @@ impl ApplicationHandler for App {
                 self.stage.turret_fire(state == ElementState::Pressed);
             }
             WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button,
+                ..
+            } if button == self.click_button() => self.stage.mouse_up_on_layer(),
+            WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button,
                 ..
             } if button == self.click_button() => {
-                if let Some(st) = &self.state {
-                    let z = st.window.inner_size();
-                    self.stage.click(self.cursor, (z.width, z.height));
+                let size = self.window_size();
+                if !self.stage.mouse_down_on_layer(self.cursor, size) {
+                    self.stage.click(self.cursor, size);
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -968,6 +1050,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         turning: 0.0,
         keys: [false; 5],
         looking: false,
+        last_finger: None,
+        touch_script: opt("--touch-script")
+            .filter(|_| flag("--state-log"))
+            .map(|f| (PathBuf::from(f), 0)),
         state: None,
         failed: None,
     };

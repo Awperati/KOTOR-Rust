@@ -262,5 +262,9 @@ A picture whose name starts `po_` on a stretched screen stays square, in the mid
 
 The Abilities screen's Feats tab has no numbers, so its list takes their room and the portrait's, six rows where it had four. The Feats page's words keep off the edges of their box. The three saves on the character-making and level-up panels stand 16 apart, not 14. A colour covers the dark shapes behind the Inventory and Equipment lists, which did not line up with the rows. The map's two thin buttons use a smaller font. `menu_shots` says what does not fit, at three sizes.
 
+## On-screen controls
+
+The owner: "Can you add a top right blue button with a gamepad icon for on-screen controls playable on mobile". `gpu/src/touchscreen.rs` says what each finger has hold of, and `crates/kotor-ui/src/touch.rs` places and draws the layer. See `docs/PLAY.md`. The HUD in a window narrower than 4:3 used to run off the right side, and now is squeezed in, as a click already took it to be. Tests: `gpu/tests/touch.rs`. Driver: `scripts/drive_touch.ps1`, with fingers through `--touch-script` because a driver cannot post real touch messages. Frames: `gpu/examples/touch_shots.rs`. **Not checked:** a real touch screen, so `WindowEvent::Touch` itself has not run. No mobile build exists.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

@@ -9,6 +9,7 @@ mod menus;
 mod plates;
 mod screens;
 mod spelling;
+mod touch;
 mod ttf;
 
 pub use canvas::{Canvas, Orient};
@@ -21,4 +22,5 @@ pub use screens::{
 };
 pub use screens::{ATTACK_MODE_BUTTON, TARGET_BAR_AND_SLOTS_HIGH, TARGET_BAR_HIGH, TITLE_CARD};
 pub use spelling::{set_australian, shown};
+pub use touch::{TouchBoxes, TouchKey, TouchPart, TouchView, TOUCH_BUTTON, TOUCH_KEYS};
 pub use ttf::{Face, Sized};

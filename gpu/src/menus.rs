@@ -42,6 +42,7 @@ mod partyscreen;
 mod pazaakscreen;
 #[path = "storescreen.rs"]
 mod storescreen;
+mod touchscreen;
 #[path = "workbenchscreen.rs"]
 mod workbenchscreen;
 
@@ -327,6 +328,8 @@ pub struct Settings {
     pub cel_last: i32,
     /// How far the Pickup button reaches, in metres.
     pub pickup_radius: i32,
+    /// The stick and round buttons on the HUD: the blue button turns them on and off.
+    pub touch_controls: bool,
     /// The install's `Override` folder is read first. Takes hold at the next start, as all of these do.
     pub override_folder: bool,
     /// And of it: compiled scripts, tables, and a talk table in place of the game's.
@@ -383,6 +386,7 @@ impl Default for Settings {
             cel_shading: 1,
             cel_last: 1,
             pickup_radius: 3,
+            touch_controls: false,
             override_folder: false,
             override_scripts: false,
             override_tables: false,
@@ -398,7 +402,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\ncel_shading={}\npickup_radius={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -441,6 +445,7 @@ impl Settings {
             self.extended_story,
             self.cel_shading,
             self.pickup_radius,
+            self.touch_controls,
             self.override_folder,
             self.override_scripts,
             self.override_tables,
@@ -504,6 +509,7 @@ impl Settings {
                     s.cel_last = s.cel_shading.max(1);
                 }
                 "pickup_radius" => s.pickup_radius = v.parse().unwrap_or(s.pickup_radius),
+                "touch_controls" => s.touch_controls = v == "true",
                 "override_folder" => s.override_folder = v == "true",
                 "override_scripts" => s.override_scripts = v == "true",
                 "override_tables" => s.override_tables = v == "true",
@@ -688,6 +694,7 @@ pub(super) struct Menus {
     stack_seen: Option<usize>,
     /// The fight's slots and rising words.
     fight: fightscreen::Fight,
+    touch: touchscreen::Fingers,
     /// A shop, while one is open.
     shop: storescreen::Shop,
     /// Pazaak, while it is up.
@@ -1500,6 +1507,7 @@ impl Stage {
         // The file's own name for this box is "Mouse Look", and all it does is flip the mouse up and down.
         v.text("CB_INVERTCAM", "Invert Camera".to_string());
         v.value("CB_AUTOSAVE", s.autosave as i32, 1);
+        v.text("BTN_MOUSE", "Controls".to_string());
         let name = self.ui.strref(STR_DIFFICULTY + s.difficulty as u32);
         v.text("BTN_DIFFICULTY", name);
         v
@@ -1861,6 +1869,7 @@ impl Stage {
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "TB_PAUSE" => self.toggle_pause(),
             kotor_ui::ATTACK_MODE_BUTTON => self.attack_mode_key(),
+            kotor_ui::TOUCH_BUTTON => self.toggle_touch(),
             "TB_SOLO" if self.game.world.solo_mode => self.solo_key(),
             "BTN_TARGETUP0" | "BTN_TARGETDOWN0" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1"
             | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => self.turn_slot(tag),

@@ -69,6 +69,12 @@ const ORIGINAL_LABEL: &str = "Original";
 const MINI_GAMES_PAGE: usize = 2;
 const FILTERS: [&str; 3] = ["BTN_Filter_Move", "BTN_Filter_Game", "BTN_Filter_Mini"];
 const STR_REVERSE_WORDS: u32 = 48450;
+/// The page is about more than the mouse now, and the box for the on-screen controls goes under the file's.
+const CONTROLS_TITLE: &str = "Controls";
+const TOUCH_BOX: &str = "CB_TOUCH";
+const TOUCH_BOX_AT: [i32; 4] = [60, 232, 240, 40];
+const TOUCH_BOX_WORDS: &str = "On-screen Controls";
+const TOUCH_BOX_ABOUT: &str = "A stick, round buttons and bigger menu keys on the HUD, for a touch screen or the mouse. The blue button at the top right turns them on and off too.";
 const LIST: &str = "LST_EventList";
 /// Keys that always mean the same, whatever the page says.
 const FIXED_KEYS: [&str; 15] = [
@@ -326,15 +332,21 @@ impl Stage {
     pub(super) fn mouse_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optmouse");
         let s = self.menus.settings;
+        v.text("LBL_TITLE", CONTROLS_TITLE.to_string());
         v.value("SLI_MOUSESEN", (s.mouse_sensitivity * 100.0) as i32, 100);
         v.value("CB_REVBUTTONS", s.reverse_buttons as i32, 1);
-        let hovering = matches!(&self.menus.hover,
-            Some(kotor_ui::Hit::Button(t)) if t == "CB_REVBUTTONS");
-        if hovering {
-            let words = self.ui.strref(STR_REVERSE_WORDS);
-            v.text("LB_DESC", words);
-        } else {
-            v.hide(&["LB_DESC"]);
+        v.copy_control("CB_REVBUTTONS", TOUCH_BOX, TOUCH_BOX_AT);
+        v.value(TOUCH_BOX, s.touch_controls as i32, 1);
+        v.text(TOUCH_BOX, TOUCH_BOX_WORDS.to_string());
+        match &self.menus.hover {
+            Some(kotor_ui::Hit::Button(t)) if t == "CB_REVBUTTONS" => {
+                let words = self.ui.strref(STR_REVERSE_WORDS);
+                v.text("LB_DESC", words);
+            }
+            Some(kotor_ui::Hit::Button(t)) if t == TOUCH_BOX => {
+                v.text("LB_DESC", TOUCH_BOX_ABOUT.to_string());
+            }
+            _ => v.hide(&["LB_DESC"]),
         }
         v
     }
@@ -349,8 +361,10 @@ impl Stage {
             "BTN_DEFAULT" => {
                 let d = super::Settings::default();
                 (s.mouse_sensitivity, s.reverse_buttons) = (d.mouse_sensitivity, d.reverse_buttons);
+                s.touch_controls = d.touch_controls;
             }
             "CB_REVBUTTONS" => s.reverse_buttons = !s.reverse_buttons,
+            TOUCH_BOX => s.touch_controls = !s.touch_controls,
             _ => return,
         }
         self.settings_changed();

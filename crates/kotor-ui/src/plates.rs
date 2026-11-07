@@ -68,21 +68,22 @@ fn rgba(c: [f32; 3], strength: f32, a: u8) -> [u8; 4] {
 impl Ui<'_> {
     /// The plates on a copy of the HUD.
     pub fn plates_over(&mut self, hud: &Image) -> Image {
-        let mut cv = Canvas::over(hud.clone(), self.scale);
+        let mut cv = self.hud_canvas_over(hud.clone());
         self.draw_plates(&mut cv);
         cv.into_image()
     }
 
     /// The picture of a window this size in pixels that holds all the plates now given.
     pub fn plates_box(&self) -> Option<[u32; 4]> {
-        let k = self.scale;
+        let (across, down) = (self.hud_across(), self.scale);
         let boxes = self.plates.iter().map(|p| {
-            let at = |v: i32| (v as f32 * k).max(0.0) as u32;
+            let x = |v: i32| (v as f32 * across).max(0.0) as u32;
+            let y = |v: i32| (v as f32 * down).max(0.0) as u32;
             let (right, bottom) = (
-                at(p.x + PLATE_BOX_HALF).min(self.pixels.0),
-                at(p.y + PLATE_BOX_BELOW).min(self.pixels.1),
+                x(p.x + PLATE_BOX_HALF).min(self.pixels.0),
+                y(p.y + PLATE_BOX_BELOW).min(self.pixels.1),
             );
-            let (left, top) = (at(p.x - PLATE_BOX_HALF), at(p.y - PLATE_BOX_ABOVE));
+            let (left, top) = (x(p.x - PLATE_BOX_HALF), y(p.y - PLATE_BOX_ABOVE));
             [left, top, right, bottom]
         });
         let all = boxes.reduce(|a, b| {
@@ -112,7 +113,7 @@ impl Ui<'_> {
             let end = (start + wide as usize * 4).min((y as usize + 1) * row);
             picture.rgba[start..end].copy_from_slice(&hud.rgba[start..end]);
         }
-        let mut cv = Canvas::over(picture, self.scale);
+        let mut cv = self.hud_canvas_over(picture);
         self.draw_plates(&mut cv);
         cv.into_image()
     }

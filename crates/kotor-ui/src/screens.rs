@@ -8,6 +8,7 @@
 use crate::canvas::{Canvas, Orient};
 use crate::font::Font;
 use crate::gui::{Border, Control, Gui};
+use crate::touch::TouchView;
 use kotor_archive::Install;
 use kotor_image::Image;
 use std::collections::HashMap;
@@ -101,6 +102,8 @@ pub struct Ui<'a> {
     /// Words drawn since last asked, and the ones that did not fit their box.
     words_drawn: usize,
     words_too_big: Vec<String>,
+    /// What the on-screen controls show: `touch.rs`.
+    pub(crate) touch: TouchView,
 }
 
 /// What a slot under an enemy's bar shows now.
@@ -160,6 +163,7 @@ struct HudDrawn {
     hover: Option<(usize, String)>,
     paused: bool,
     pause_note: String,
+    touch: TouchView,
 }
 
 /// The lines rising words can wrap to.
@@ -316,6 +320,7 @@ impl<'a> Ui<'a> {
             floats: Vec::new(),
             plates: Vec::new(),
             slots_above_bar: false,
+            touch: TouchView::default(),
             slots_percent: 100,
             hud_party: 1,
             paused: false,
@@ -578,7 +583,8 @@ impl<'a> Ui<'a> {
                 .hd_picture(&key)
                 .or_else(|| load_texture(self.inst, &key))
                 .or_else(|| self.second_game_icon(&key))
-                .or_else(|| (key == PICKUP_PICTURE).then(pickup_picture));
+                .or_else(|| (key == PICKUP_PICTURE).then(pickup_picture))
+                .or_else(|| crate::touch::touch_picture(&key));
             if let (Some(i), true) = (img.as_mut(), additive(self.inst, &key)) {
                 brightness_to_alpha(i);
             }
@@ -650,9 +656,42 @@ impl<'a> Ui<'a> {
 
     /// Text is about to be laid out on a canvas with the same scale both ways.
     pub(crate) fn measure_for_hud(&mut self) {
+        let ratio = self.scale / self.hud_across();
+        if let Some(f) = self.noto_face() {
+            f.set_across(ratio);
+        }
+    }
+
+    /// Text is about to be laid out at one scale both ways, whatever the HUD's is.
+    pub(crate) fn measure_evenly(&mut self) {
         if let Some(f) = self.noto_face() {
             f.set_across(1.0);
         }
+    }
+
+    /// Pixels to a layout unit across the HUD. The same as down it, unless the window is too narrow for the 640 wide layout: it
+    /// is squeezed in, as a click takes it to be.
+    pub(crate) fn hud_across(&self) -> f32 {
+        let least = SCREEN.0 as f32 * self.scale;
+        if (self.pixels.0 as f32) < least {
+            self.pixels.0 as f32 / SCREEN.0 as f32
+        } else {
+            self.scale
+        }
+    }
+
+    /// An empty picture of the window, to draw the HUD on.
+    fn hud_canvas(&self) -> Canvas {
+        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        cv.scale_x = self.hud_across();
+        cv
+    }
+
+    /// More of the HUD on a picture of the window.
+    pub(crate) fn hud_canvas_over(&self, picture: Image) -> Canvas {
+        let mut cv = Canvas::over(picture, self.scale);
+        cv.scale_x = self.hud_across();
+        cv
     }
 
     pub fn font(&mut self, name: &str) -> Option<&Font> {
@@ -906,7 +945,7 @@ impl<'a> Ui<'a> {
 
     /// The black bars of a conversation, with nothing on them.
     pub fn letterbox_overlay(&mut self) -> Option<Image> {
-        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        let mut cv = self.hud_canvas();
         self.letterbox(&mut cv);
         Some(cv.into_image())
     }
@@ -930,7 +969,7 @@ impl<'a> Ui<'a> {
     ) -> Option<Image> {
         self.measure_for_hud();
         let gui = self.gui("dialog")?;
-        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        let mut cv = self.hud_canvas();
         let extra = (self.width - SCREEN.0) as i32;
         // A new canvas is clear already, and its untouched pages cost nothing until they are.
         if clear != [0; 4] {
@@ -1100,7 +1139,7 @@ impl<'a> Ui<'a> {
         let gui = self.hud_layout(self.target_at)?;
         self.measure_for_hud();
         let patches = self.hud_patches(&gui, party, target, action, icon);
-        let mut cv = Canvas::scaled_layout(self.pixels, self.scale);
+        let mut cv = self.hud_canvas();
         self.hud_pass(&mut cv, &gui, &patches);
         self.hud_drawn = Some(self.hud_as_drawn(&gui, &patches));
         Some(cv.into_image())
@@ -1129,6 +1168,7 @@ impl<'a> Ui<'a> {
                 && (was.target_at != self.target_at || was.slots_percent != self.slots_percent))
             || was.paused != self.paused
             || was.pause_note != self.pause_note
+            || was.touch.on != self.touch.on
         {
             return None;
         }
@@ -1158,7 +1198,10 @@ impl<'a> Ui<'a> {
                 boxes.extend(self.pixel_box([f.x - 70, f.y - high, 140, high * 2 + 20], 0));
             }
         }
-        let mut cv = Canvas::over(picture, self.scale);
+        if was.touch != now.touch {
+            boxes.extend(self.touch_changes(&gui.panel, &was.touch, &now.touch));
+        }
+        let mut cv = self.hud_canvas_over(picture);
         let mut changed = None;
         for b in merged_boxes(boxes) {
             cv.redraw_only(b);
@@ -1185,6 +1228,7 @@ impl<'a> Ui<'a> {
             hover: self.combat.hover.clone(),
             paused: self.paused,
             pause_note: self.pause_note.clone(),
+            touch: self.touch.clone(),
         }
     }
 
@@ -1208,24 +1252,28 @@ impl<'a> Ui<'a> {
         self.pixel_box(c.place, CONTROL_BOX_PAD + past)
     }
 
-    fn hud_layout(&mut self, target_at: Option<(i32, i32)>) -> Option<Gui> {
+    pub(crate) fn hud_layout(&mut self, target_at: Option<(i32, i32)>) -> Option<Gui> {
         let mut gui = self.gui(HUD_GUI)?;
         let slots = (self.slots_above_bar, self.slots_percent);
         place_hud(&mut gui.panel, self.width, target_at, slots);
+        self.place_for_touch(&mut gui.panel);
         Some(gui)
     }
 
     /// The pixels of a box of layout units, with room round it for rounding and `pad` more units.
-    fn pixel_box(&self, [x, y, w, h]: [i32; 4], pad: i32) -> Option<[u32; 4]> {
-        let k = self.scale;
-        let low = |v: i32| (((v - pad) as f32 * k).floor() as i32 - 1).max(0) as u32;
-        let high = |v: i32, most: u32| {
+    pub(crate) fn pixel_box(&self, [x, y, w, h]: [i32; 4], pad: i32) -> Option<[u32; 4]> {
+        let low = |v: i32, k: f32| (((v - pad) as f32 * k).floor() as i32 - 1).max(0) as u32;
+        let high = |v: i32, most: u32, k: f32| {
             (((v + pad) as f32 * k).ceil() as i32 + 1)
                 .max(0)
                 .min(most as i32) as u32
         };
-        let (left, top) = (low(x), low(y));
-        let (right, bottom) = (high(x + w, self.pixels.0), high(y + h, self.pixels.1));
+        let (across, down) = (self.hud_across(), self.scale);
+        let (left, top) = (low(x, across), low(y, down));
+        let (right, bottom) = (
+            high(x + w, self.pixels.0, across),
+            high(y + h, self.pixels.1, down),
+        );
         (right > left && bottom > top).then(|| [left, top, right - left, bottom - top])
     }
 
@@ -1306,6 +1354,11 @@ impl<'a> Ui<'a> {
             hide(&mut patches, "LBL_ARROW".to_string());
         }
         self.patch_combat(&mut patches);
+        let blue = patches
+            .entry(crate::touch::TOUCH_BUTTON.to_string())
+            .or_default();
+        blue.fill = Some(crate::touch::GAMEPAD_PICTURE.to_string());
+        blue.line = self.touch.on.then_some(POWER_ON_LINE);
         if self.minimap_off {
             for tag in ["LBL_MAPBORDER", "LBL_MAPVIEW", "LBL_ARROW"] {
                 hide(&mut patches, tag.to_string());
@@ -1351,6 +1404,7 @@ impl<'a> Ui<'a> {
             let r = [f.x - 60, f.y, 120, 20];
             self.draw_text(cv, FLOAT_FONT, &f.text, r, 18, f.color);
         }
+        self.draw_touch(cv, &gui.panel);
     }
 
     /// The part of the map round the player, with an arrow that turns. The file gives the map 120 units of its 800,
@@ -1521,7 +1575,13 @@ impl<'a> Ui<'a> {
         let lines: Vec<String> = self.pause_note.lines().map(str::to_string).collect();
         let step = 16;
         let (w, h) = (PAUSE_NOTE_WIDTH, lines.len() as i32 * step + 8);
-        let (x, y) = (self.width as i32 - w - 6, 32);
+        let top = if self.touch.on {
+            self.touch_row_bottom() + 3
+        } else {
+            32
+        };
+        // Left of the blue button.
+        let (x, y) = (self.width as i32 - w - 6 - self.blue_button_wide(), top);
         if self.glow_on {
             crate::glow::boxed(cv, [x, y, w, h]);
         } else {
@@ -1863,7 +1923,8 @@ const HUD_HIDDEN: [&str; 26] = [
 /// Which of the file's three places each member has, in the party's order. The file's second place is the far one: the video
 /// has one companion right beside the leader at 7:30.
 const HUD_MEMBER_SLOTS: [usize; 3] = [1, 3, 2];
-const HUD_BUTTONS: [&str; 37] = [
+const HUD_BUTTONS: [&str; 38] = [
+    crate::touch::TOUCH_BUTTON,
     "BTN_CHAR1",
     "BTN_ACTION1",
     "BTN_ACTIONUP1",
