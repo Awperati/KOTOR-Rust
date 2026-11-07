@@ -35,7 +35,7 @@ function Answer($start, $key, $name) {
   do {
     $s = State
     if ([int]$s.replies -eq 3) { break }
-    Key $ONE[0] $ONE[1]
+    [void](Advance)
   } while ((Get-Date) -lt $until)
   Report "The conversation gets to the answers" ([int]$s.replies -eq 3) "dlg=$($s.dlg) replies=$($s.replies)"
   Shot "alignment_${name}_answers"
@@ -45,7 +45,7 @@ function Answer($start, $key, $name) {
   Shot "alignment_${name}_flash"
   # Whatever is left of what they say.
   $until = (Get-Date).AddSeconds(30)
-  while ($s.dlg -eq "true" -and (Get-Date) -lt $until) { Key $ONE[0] $ONE[1]; $s = State }
+  while ($s.dlg -eq "true" -and (Get-Date) -lt $until) { $s = Advance }
   $moved = [int]$s.align
   Sheet "alignment_${name}_after"
   FocusReport

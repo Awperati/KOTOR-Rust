@@ -993,6 +993,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{played:.1} game seconds, {:.1} game seconds per wall second",
         played / secs
     );
+    if let Some(p) = app.stage.pilot.as_ref() {
+        println!(
+            "pilot: {} lines moved on by a click, {} not: {:?}",
+            p.lines_clicked,
+            p.lines_not_clicked.len(),
+            p.lines_not_clicked
+        );
+    }
     if let (Some(path), Some(p)) = (digest_file, app.stage.pilot.as_ref()) {
         let lines: Vec<String> = p
             .digests

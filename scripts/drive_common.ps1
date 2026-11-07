@@ -114,6 +114,17 @@ function PostClick([int]$x, [int]$y) {
 }
 function Hover([int]$x, [int]$y) { PostHover ([int]($x * $script:ClickScale)) ([int]($y * $script:ClickScale)) }
 function Click([int]$x, [int]$y) { PostClick ([int]($x * $script:ClickScale)) ([int]($y * $script:ClickScale)) }
+# Move a conversation on as a player does: a click on the first reply, or anywhere on a line with nothing to answer. The state
+# log says where, in the 480-high layout. It gives back the state it read. Keys are for the drivers that test the keys.
+function Advance {
+  $s = State
+  if ($s.dlg -eq "true" -and $s.lineat -and $s.lineat -ne "-") {
+    $k = [double]($script:windowSize -split 'x')[1] / 480
+    $p = $s.lineat -split ','
+    PostClick ([int]([double]$p[0] * $k)) ([int]([double]$p[1] * $k))
+  }
+  $s
+}
 $script:failed = 0
 function Press([int]$x, [int]$y, [int]$w, [int]$h2) {
   # A 640x480 screen fills the window, so in a 1280x720 one a control at layout (x, y) is at (2x, 1.5y).

@@ -38,7 +38,7 @@ foreach ($case in @(@($true, $false), @($true, $true), @($false, $false), @($fal
     $h = WaitWindow $v; [Drv]::NeverActive($h)
     WaitLog
     $until = (Get-Date).AddSeconds(30)
-    do { Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]; $s = State } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
+    do { $s = Advance } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
     # A scripted camera moves by itself. Measure once this one has stopped.
     $until = (Get-Date).AddSeconds(30)
     do { $was = (State).lookdown; Start-Sleep -Milliseconds 300; $s = State } while (($s.lookdown -ne $was -or $s.dlg -eq "true" -or [double]$s.speed -gt 0.05) -and (Get-Date) -lt $until)

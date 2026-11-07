@@ -908,12 +908,21 @@ impl Stage {
             MovementMode::Classic
         };
         let speed = self.speed;
-        if let Some(p) = self.pilot.as_mut() {
+        if let Some(mut p) = self.pilot.take() {
             // A scripted player opens no screens: levels and forced party members come straight away.
             self.game.world.hold_levels = false;
             self.game.world.party_screen = false;
+            p.by_clicks = true;
             let n = self.game.steps_due(dt, speed);
-            p.run_steps(&mut self.game, n);
+            let step = self.game.dt;
+            for _ in 0..n {
+                p.step(&mut self.game, step);
+                if let Some(reply) = p.wanted_reply.take() {
+                    self.pilot_clicks_a_line(&mut p, reply);
+                }
+                p.end_step(&mut self.game);
+            }
+            self.pilot = Some(p);
         } else {
             self.game.advance_at(dt, speed);
         }
@@ -1638,6 +1647,44 @@ impl Stage {
         })
     }
 
+    /// How wide the 480-high layout is.
+    pub fn ui_layout_width(&self) -> u32 {
+        self.ui_width
+    }
+
+    /// Where in layout units a click takes this reply. A line with nothing to answer goes on with a click anywhere.
+    pub fn line_point(&mut self, reply: usize) -> Option<(f32, f32)> {
+        let view = self.choice_view()?;
+        if reply == 0 && view.replies.iter().all(|r| r.trim().is_empty()) {
+            return Some((self.ui_width as f32 / 2.0, 240.0));
+        }
+        let rows = self.ui.reply_rows(&view)?;
+        let r = rows.get(reply)?;
+        Some(((r[0] + r[2] / 2) as f32, (r[1] + r[3] / 2) as f32))
+    }
+
+    /// The pilot takes a reply as a player does: the cursor goes there, and it clicks. A line the mouse cannot move on is
+    /// written down and moved on all the same, so that a run does not stall on it.
+    fn pilot_clicks_a_line(&mut self, p: &mut kotor_game::Autopilot, reply: usize) {
+        let size = (self.ui_width, 480);
+        let before = self.game.world.dialogue_serial();
+        if let Some(at) = self.line_point(reply) {
+            self.hover(at, size);
+            self.click(at, size);
+        }
+        if self.game.world.dialogue_serial() != before {
+            p.lines_clicked += 1;
+            return;
+        }
+        let name = self
+            .game
+            .world
+            .dialogue_conversation()
+            .map_or(String::new(), |c| c.name);
+        p.lines_not_clicked.push(name);
+        self.game.world.dialogue_choose(reply);
+    }
+
     /// The cursor moved: light the reply under it, or name what is under it.
     pub fn hover(&mut self, pixel: (f32, f32), size: (u32, u32)) {
         if self.menu_open() {
@@ -1829,11 +1876,12 @@ impl Stage {
             self.game.world.close_container();
             return;
         }
+        // A cutscene's node has a reply that says nothing: it goes on just the same.
         let waiting = self
             .game
             .world
             .dialogue_view()
-            .is_some_and(|(_, _, _, r)| r.is_empty());
+            .is_some_and(|(_, _, _, r)| r.iter().all(|x| x.trim().is_empty()));
         if waiting {
             self.line_left = None;
             self.game.world.dialogue_choose(0);
@@ -3505,6 +3553,8 @@ impl Stage {
             .map_or("-".to_string(), |p| format!("{},{}", p.0, p.1));
         let chosen = self.container_chosen();
         let slotsize = self.ui.slots_percent();
+        // Where a click takes the first reply or moves the line on, for a driver.
+        let line_at = at(self.line_point(0));
         let w = &self.game.world;
         // What the open container holds: each row's template and how many.
         let loot = w
@@ -3522,7 +3572,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} armed={armed} thrower={thrower} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} armed={armed} thrower={thrower} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} lineat={line_at} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

@@ -12,7 +12,7 @@ $ENTER = @(0x0D, 0x1C); $ONE = @(0x31, 0x02)
 WaitLog
 # The opening's lines come first: the game opens when they end.
 $until = (Get-Date).AddSeconds(60)
-do { Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]; $s = State } while ($s.menu -ne "pazaak" -and (Get-Date) -lt $until)
+do { $s = Advance } while ($s.menu -ne "pazaak" -and (Get-Date) -lt $until)
 Report "The game opens" ($s.menu -eq "pazaak") "menu=$($s.menu) gold=$($s.gold) dlg=$($s.dlg)"
 $gold = [int]$s.gold
 Shot "pazaak_wager"

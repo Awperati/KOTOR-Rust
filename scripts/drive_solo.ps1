@@ -17,7 +17,7 @@ $quiet = (Get-Date)
 do {
   $s = State
   if ($s.dlg -eq "true") {
-    Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]
+    [void](Advance)
     $quiet = (Get-Date)
   }
 } while (((Get-Date) - $quiet).TotalSeconds -lt 3 -and (Get-Date) -lt $until)

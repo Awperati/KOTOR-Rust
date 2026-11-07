@@ -13,7 +13,7 @@ $ENTER = @(0x0D, 0x1C); $ONE = @(0x31, 0x02); $E = @(0x45, 0x12)
 WaitLog
 # Whatever the ship says on arrival.
 $until = (Get-Date).AddSeconds(30)
-do { Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]; $s = State } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
+do { $s = Advance } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
 $attack = [int]$s.attack
 Report "On the Ebon Hawk with the blaster worn" ($s.module -eq "ebo_m12aa" -and $s.dlg -eq "false" -and [int]$s.worn -ge 1) "module=$($s.module) dlg=$($s.dlg) worn=$($s.worn) attack=$attack"
 

@@ -21,7 +21,7 @@ function Open($name, $module, $extra) {
   WaitLog
   # Whatever is said on arrival.
   $until = (Get-Date).AddSeconds(20)
-  do { Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]; $s = State } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
+  do { $s = Advance } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
   # Whatever the fall to the spot was.
   $until = (Get-Date).AddSeconds(5)
   do { $s = State } while ([double]$s.speed -gt 0.05 -and (Get-Date) -lt $until)

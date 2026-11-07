@@ -229,6 +229,12 @@ pub struct Autopilot {
     doors_opened: usize,
     items_taken: usize,
     lines_at_start: usize,
+    /// With a window to click in: a reply is not taken here, but asked for in `wanted_reply`, for the mouse to take.
+    pub by_clicks: bool,
+    pub wanted_reply: Option<usize>,
+    /// How many lines the mouse moved on, and what it could not, by the conversation's name.
+    pub lines_clicked: usize,
+    pub lines_not_clicked: Vec<String>,
 }
 
 impl Default for Autopilot {
@@ -345,6 +351,10 @@ impl Autopilot {
             doors_opened: 0,
             items_taken: 0,
             lines_at_start: 0,
+            by_clicks: false,
+            wanted_reply: None,
+            lines_clicked: 0,
+            lines_not_clicked: Vec::new(),
         }
     }
 
@@ -368,10 +378,15 @@ impl Autopilot {
         let dt = g.dt;
         for _ in 0..n {
             self.step(g, dt);
-            g.step_once();
-            if g.steps.is_multiple_of(DIGEST_STEPS) {
-                self.digests.push((g.steps, state_digest(&g.world)));
-            }
+            self.end_step(g);
+        }
+    }
+
+    /// The game's part of a step, after `step` has decided and acted.
+    pub fn end_step(&mut self, g: &mut Game) {
+        g.step_once();
+        if g.steps.is_multiple_of(DIGEST_STEPS) {
+            self.digests.push((g.steps, state_digest(&g.world)));
         }
     }
 
@@ -962,6 +977,10 @@ impl Autopilot {
             .unwrap_or(0);
         if let Some(r) = replies.get(pick) {
             self.replies.insert(format!("{owner} {r}"));
+        }
+        if self.by_clicks {
+            self.wanted_reply = Some(pick);
+            return;
         }
         w.dialogue_choose(pick);
     }

@@ -25,7 +25,7 @@ $s = WaitFor "module" "end_m01aa"
 Report "New Game starts it" ($s.module -eq "end_m01aa" -and $s.menu -eq "-") "menu=$($s.menu) module=$($s.module)"
 $quiet = 0
 for ($i = 0; $i -lt 400 -and $quiet -lt 6; $i++) {
-  Key $ENTER[0] $ENTER[1]; Key $ONE[0] $ONE[1]; $s = State
+  $s = Advance
   if ($s.dlg -eq "false" -and [int]$s.said -gt 3) { $quiet++ } else { $quiet = 0 }
 }
 Report "Through the opening" ($quiet -ge 6) "dlg=$($s.dlg) said=$($s.said)"

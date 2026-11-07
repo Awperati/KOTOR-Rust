@@ -30,7 +30,7 @@ do { $s = State } while ([int]$s.said -le $said -and (Get-Date) -lt $until)
 Report "Reply click" ([int]$s.said -gt $said) "said $said -> $($s.said)"
 
 # Through the rest of the talk with the 1 key and Space.
-for ($i = 0; $i -lt 200 -and $s.dlg -eq "true"; $i++) { Key $ONE[0] $ONE[1]; Key $RETURN[0] $RETURN[1]; $s = State }
+for ($i = 0; $i -lt 200 -and $s.dlg -eq "true"; $i++) { $s = Advance }
 Report "Keys finish the talk" ($s.dlg -eq "false") "dlg=$($s.dlg) said=$($s.said)"
 
 # The footlocker beside the player: E opens it, a click chooses the first item, Take Selected takes it, Space closes it.
@@ -82,7 +82,7 @@ $ok = $false; $detail = ""
 foreach ($y in 600, 560, 520, 480, 640) {
   foreach ($x in 640, 400, 880) {
     $a = State
-    for ($k = 0; $k -lt 80 -and $a.dlg -eq "true"; $k++) { Key $ONE[0] $ONE[1]; Key $RETURN[0] $RETURN[1]; $a = State }
+    for ($k = 0; $k -lt 80 -and $a.dlg -eq "true"; $k++) { $a = Advance }
     Click $x $y
     Start-Sleep -Milliseconds 250
     $b = State
@@ -131,7 +131,7 @@ Report "New Game starts it" ($s.module -eq "end_m01aa" -and $s.menu -eq "-") "me
 # Past the opening and the first talk, to where a save is allowed.
 $quiet = 0
 for ($i = 0; $i -lt 400 -and $quiet -lt 6; $i++) {
-  Key $RETURN[0] $RETURN[1]; Key $ONE[0] $ONE[1]; $s = State
+  $s = Advance
   if ($s.dlg -eq "false" -and [int]$s.said -gt 3) { $quiet++ } else { $quiet = 0 }
 }
 Report "Through the opening" ($quiet -ge 6) "dlg=$($s.dlg) said=$($s.said)"

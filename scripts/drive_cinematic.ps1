@@ -17,7 +17,7 @@ for ($n = 0; $n -lt $Lines; $n++) {
   # Let the camera settle on the line.
   Start-Sleep -Milliseconds 700
   Shot ("line{0}" -f $n)
-  Key $SPACE[0] $SPACE[1]
+  [void](Advance)
 }
 FocusReport
 Stop-Process -Id $v.Id -Force

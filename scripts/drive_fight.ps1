@@ -124,7 +124,7 @@ do {
   $s = State
   if ([int]$s.floats -gt 0 -and -not $floated) { $floated = $true; Shot "fight_float" }
   # A party that joins in may have finished this one, and the next is still there.
-  if ($s.dlg -eq "true") { Key $ENTER[0] $ENTER[1] }
+  if ($s.dlg -eq "true") { [void](Advance) }
   elseif ($s.engaged -ne "true" -and $s.foe -ne "-") {
     HoverLayout $s $s.foe
     $s = State
@@ -137,7 +137,7 @@ Shot "fight_engaged"
 
 # The fight's lines are on the Messages tab, and the game waits under it.
 $until = (Get-Date).AddSeconds(30)
-do { $s = State; if ($s.dlg -eq "true") { Key $ENTER[0] $ENTER[1] } } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
+do { $s = Advance } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
 Key 0x4C 0x26
 $s = WaitFor "menu" "messages"
 Report "L opens Messages" ($s.menu -eq "messages") "menu=$($s.menu) dlg=$($s.dlg) hp=$($s.hp)"
