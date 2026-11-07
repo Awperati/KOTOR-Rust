@@ -1689,3 +1689,37 @@ fn armour_on_the_hero_is_drawn_in_its_own_model() {
         );
     }
 }
+
+#[test]
+fn the_sith_armour_draws_its_wearer_as_a_sith_soldier() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    for appearance in [92, 137] {
+        s.game.world.object_mut(pc).unwrap().appearance = appearance;
+        let it = s.game.world.spawn_item("ptar_sitharmor");
+        s.game.world.equip(pc, it, None).unwrap();
+        for _ in 0..4 {
+            s.update(DT);
+        }
+        let worn: Vec<String> = s
+            .dynamic_scene()
+            .meshes
+            .iter()
+            .filter_map(|m| m.texture.clone())
+            .filter(|t| t.to_ascii_lowercase().starts_with("n_sithsoldier"))
+            .collect();
+        assert!(
+            !worn.is_empty(),
+            "appearance {appearance}: no Sith soldier on the hero"
+        );
+        let clothes = s.dynamic_scene().meshes.iter().any(|m| {
+            m.texture.as_deref().is_some_and(|t| {
+                t.eq_ignore_ascii_case("PFBBM01") || t.eq_ignore_ascii_case("PMBBM01")
+            })
+        });
+        assert!(
+            !clothes,
+            "appearance {appearance}: the hero is still in plain clothes"
+        );
+    }
+}

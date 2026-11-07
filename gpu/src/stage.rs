@@ -81,6 +81,9 @@ const DOOR_SLAB: f32 = 0.35;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
 /// combat reads.
 const ARMOUR_SLOT: i32 = 1;
+/// `baseitems.2da` row of the disguise item, and the `appearance.2da` row (Sith soldier) its wearer is drawn as.
+const DISGUISE_BASE_ITEM: i32 = 90;
+const DISGUISE_APPEARANCE: i32 = 28;
 /// A fixed conversation camera nearer than this to the speaker is not used.
 const TOO_CLOSE_METRES: f32 = 1.2;
 const CLOTHES_LETTER: char = 'B';
@@ -2927,6 +2930,14 @@ impl Stage {
         };
         let mut var = number(&mut self.inst, template, ResType(2027), "TextureVar").unwrap_or(1);
         let mut letter = None;
+        // A disguise (the Taris "Sith Armor") has no body of its own for the hero: the wearer is drawn as a Sith soldier.
+        let (appearance, armour) = match armour {
+            Some((DISGUISE_BASE_ITEM, _)) => {
+                var = 1;
+                (DISGUISE_APPEARANCE, None)
+            }
+            other => (appearance, other),
+        };
         if let Some((base, item)) = armour {
             letter = self
                 .baseitem(base as usize, "bodyvar")
