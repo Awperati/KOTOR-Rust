@@ -47,8 +47,8 @@ const FIRST_STUNT_ANIMATION: u32 = 1200;
 const CAMERA_FOV: f32 = 55.0;
 /// How far the camera keeps from a wall or ceiling (metres): its near plane is 0.05, and a frame needs some way past that.
 const CAMERA_OFF_SURFACE: f32 = 0.2;
-/// How near the camera's line may pass a closed door (metres): about half a door.
-const DOOR_CAMERA_MARGIN: f32 = 1.2;
+/// How high a closed door stops the camera, over the door's foot, in metres. A door's frame and wall go on above it.
+const DOOR_CAMERA_HEIGHT: f32 = 4.0;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
 /// combat reads.
 const ARMOUR_SLOT: i32 = 1;
@@ -1475,19 +1475,39 @@ impl Stage {
                 t += 0.1;
             }
         }
-        // Closed doors are not in the walkmesh.
+        // Closed doors are not in the walkmesh, and a player beside one may have less room than usual.
+        let d = d.max(0.8);
+        self.door_limit(target, back)
+            .map_or(d, |limit| d.min(limit))
+    }
+
+    /// How far the camera may stand from `target` along `back` for a closed door, across the door's whole width.
+    pub(super) fn door_limit(&self, target: [f32; 3], back: [f32; 3]) -> Option<f32> {
+        let mut nearest: Option<f32> = None;
         for o in self.game.world.objects.values() {
             if o.kind != Kind::Door || o.open {
                 continue;
             }
-            let (ox, oy) = (o.position[0] - p[0], o.position[1] - p[1]);
-            let along = ox * back[0] + oy * back[1];
-            let across = (ox - back[0] * along).hypot(oy - back[1] * along);
-            if along > 0.0 && along < d && across < DOOR_CAMERA_MARGIN {
-                d = (along - 0.4).max(0.8);
+            let [ax, ay] = o.door_axis;
+            // Where the line of sight meets the door's plane, and how far along the door that is.
+            let (ox, oy) = (o.position[0] - target[0], o.position[1] - target[1]);
+            let (nx, ny) = (ay, -ax);
+            let towards = back[0] * nx + back[1] * ny;
+            if towards.abs() < 1e-4 {
+                continue;
+            }
+            let t = (ox * nx + oy * ny) / towards;
+            let along = (back[0] * t - ox) * ax + (back[1] * t - oy) * ay;
+            let high = target[2] + back[2] * t - o.position[2];
+            if t > 0.0
+                && along.abs() <= o.door_half_width
+                && high < DOOR_CAMERA_HEIGHT
+                && nearest.is_none_or(|n| t < n)
+            {
+                nearest = Some(t);
             }
         }
-        d.max(0.8)
+        nearest.map(|t| (t - CAMERA_OFF_SURFACE).max(0.1))
     }
 
     /// The camera behind the player, drawn in where the floor ends so that it stays on this side of the walls.

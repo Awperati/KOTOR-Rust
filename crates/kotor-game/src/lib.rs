@@ -87,6 +87,8 @@ pub trait Barriers {
     /// Whether any surface crosses the upright sheet standing on the line from `a` to `b`, between heights `low` and `high`.
     /// A sheet, not a ray: a thin rail is hard to hit with a ray.
     fn across(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool;
+    /// How far over `at` the first surface is, within `reach` metres.
+    fn above(&self, at: [f32; 3], reach: f32) -> Option<f32>;
 }
 pub use law::{KillKind, LawState, LawTable};
 pub use party::{BenchedMember, PartyRequest, PARTY_SIZE};

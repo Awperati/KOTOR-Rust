@@ -57,6 +57,9 @@ impl Ground for NavGround<'_> {
     fn barrier(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool {
         self.1.is_some_and(|m| m.across(a, b, low, high))
     }
+    fn ceiling(&self, at: [f32; 3], reach: f32) -> Option<f32> {
+        self.1.and_then(|m| m.above(at, reach))
+    }
     fn way_back(&self, a: [f32; 3], b: [f32; 3]) -> bool {
         self.0.same_island(a, b)
     }

@@ -167,6 +167,10 @@ fn crosses_sheet(t: &[V3; 3], a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> 
 }
 
 impl kotor_game::Barriers for RoomShell {
+    fn above(&self, at: [f32; 3], reach: f32) -> Option<f32> {
+        self.first_hit(at, [0.0, 0.0, 1.0], reach)
+    }
+
     fn across(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool {
         for x in cell(a[0].min(b[0]))..=cell(a[0].max(b[0])) {
             for y in cell(a[1].min(b[1]))..=cell(a[1].max(b[1])) {

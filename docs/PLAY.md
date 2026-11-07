@@ -214,7 +214,7 @@ In both, a held movement key goes where the camera looks now, read every frame, 
 | Letting go | stops at once | stops in about 0.18 s, over about 0.6 m |
 | Height | on the floor every step | follows slopes and stairs smoothly; off a ledge it falls at 17.7 m/s2 and lands |
 | Roll | none | Left Ctrl: 3.2 m in 0.55 s, not in a conversation, a minigame or a race |
-| Jump | none | Space: 1.1 m up and 0.7 s in the air, on the floor and on its feet, in Modern movement, not in a conversation, a minigame, a race or a roll. It stops at what stops a fall, measured from where it jumped, so a rail it could clear still holds it. Assumed: the height. Pose in `jump_pose.txt` |
+| Jump | none | Space: 1.1 m up and 0.7 s in the air, on the floor and on its feet, in Modern movement, not in a conversation, a minigame, a race or a roll. It stops at what stops a fall, measured from where it jumped, so a rail it could clear still holds it. The head stops at a low ceiling, and it falls from there. Assumed: the height. Pose in `jump_pose.txt` |
 | Camera | fixed to the player; swings round behind a walk | its focus lags a little, and the view is 6 degrees wider at a sprint; only a click's walk swings it |
 | Party | runs at 5.4 m/s | up to 7.4 m/s when behind |
 
@@ -224,6 +224,6 @@ The supermodels have no roll, dive, jump or landing clip, so `gpu/src/moving.rs`
 
 A floor can end over a lower one, with a gap where the cliff is. The player falls there when the drop is at most 6 m, no wall of the walkmesh stands at waist or chest height, nothing in the room's models crosses the line from 0.25 m to 1.2 m over the feet, and the walkmesh joins the two floors, so that there is a walk back. Once over the gap it always reaches the floor it set out for. The models' sheet is what stops a low wall, a thin rail or a fence that the walkmesh does not have. `gpu/examples/ledge_walk.rs` runs off the spots that `crates/kotor-render/examples/ledges.rs` finds, and writes frames.
 
-The camera eases in and out in Modern. Through a fall and for a second after, only a solid surface brings it in. With rock or a wall close behind the player, it rises over it, up to about 50 degrees more, instead of coming in on the player's back.
+A closed door stops the camera across its whole width. The camera eases in and out in Modern. Through a fall and for a second after, only a solid surface brings it in. With rock or a wall close behind the player, it rises over it, up to about 50 degrees more, instead of coming in on the player's back.
 
 A click, a talk or a target during a roll hurries the roll round at 2.5 times the speed, and then the player acts. It does not stop the roll dead, because the body would be upside down.

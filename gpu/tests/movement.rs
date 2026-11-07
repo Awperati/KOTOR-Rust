@@ -929,3 +929,101 @@ fn bending_the_neck_in_the_file_moves_the_head() {
     std::fs::remove_dir_all(&dir).ok();
     std::fs::remove_file(&file).ok();
 }
+
+/// The owner's complaint: the player went through a closed Taris door. Slid along its line it came to lie on it, and was past.
+#[test]
+fn a_closed_taris_door_stops_the_player_however_it_comes() {
+    let Some((mut s, file)) = stage_in("tar_m02aa", "doorshut", "") else {
+        return;
+    };
+    for tag in ["tar02_aprtdoor", "ptar_stnddr"] {
+        let (id, at, axis, half) = {
+            let w = &s.game.world;
+            let d = w.by_tag(tag)[0];
+            let o = w.object(d).unwrap();
+            (d, o.position, o.door_axis, o.door_half_width)
+        };
+        let out = [axis[1], -axis[0]];
+        for facing in [1.0f32, -1.0] {
+            let way = [out[0] * facing, out[1] * facing];
+            for k in [-0.85f32, 0.0, 0.85] {
+                for how in ["sprint", "roll", "jump", "classic"] {
+                    let start = [
+                        at[0] - way[0] * 2.5 + axis[0] * half * k,
+                        at[1] - way[1] * 2.5 + axis[1] * half * k,
+                        at[2],
+                    ];
+                    let yaw = way[1].atan2(way[0]);
+                    s.set_movement_modern(how != "classic");
+                    s.place_player(start, yaw);
+                    s.steer = (0.0, 0.0, false);
+                    s.update(DT);
+                    s.yaw = yaw;
+                    s.steer = (1.0, 0.0, false);
+                    for f in 0..90 {
+                        if how == "jump" && f % 45 == 5 {
+                            s.jump_key();
+                        }
+                        if how == "roll" && f % 45 == 5 {
+                            s.roll_key();
+                        }
+                        s.update(DT);
+                        let p = pc_at(&s);
+                        let side = (p[0] - at[0]) * way[0] + (p[1] - at[1]) * way[1];
+                        let along = ((p[0] - at[0]) * axis[0] + (p[1] - at[1]) * axis[1]).abs();
+                        let shut = s.game.world.object(id).is_some_and(|o| !o.open);
+                        assert!(
+                            !(shut && side > 0.0 && along < half),
+                            "{tag} at {k}, facing {facing}, by {how}: {p:?} at frame {f}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    std::fs::remove_file(&file).ok();
+}
+
+/// The camera stops at a closed door off its middle too, and not only within a metre of it.
+#[test]
+fn a_closed_door_stops_the_camera_across_its_whole_width() {
+    let Some((mut s, file)) = stage_in("tar_m02ac", "doorcamera", "") else {
+        return;
+    };
+    let site = s
+        .game
+        .world
+        .sketch()
+        .sites
+        .iter()
+        .find(|x| x.tag == "UpperNorth")
+        .unwrap()
+        .clone();
+    let way = site.out.unwrap();
+    let (c, n) = (way.cos(), way.sin());
+    let half = s
+        .game
+        .world
+        .object(s.game.world.by_tag("UpperNorth")[0])
+        .unwrap()
+        .door_half_width;
+    for k in [-0.8f32, -0.4, 0.0, 0.4, 0.8] {
+        // Backed up to the door, with the camera behind it.
+        let at = [
+            site.at[0] - c * 1.0 - n * half * k,
+            site.at[1] - n * 1.0 + c * half * k,
+            site.at[2],
+        ];
+        s.place_player(at, way + std::f32::consts::PI);
+        s.pitch = 0.3;
+        s.yaw = way + std::f32::consts::PI;
+        run(&mut s, 30);
+        let eye = s.camera().eye;
+        let past = (eye[0] - site.at[0]) * c + (eye[1] - site.at[1]) * n;
+        assert!(
+            past < 0.0,
+            "{k} of the way along: the eye is {past} past the door"
+        );
+    }
+    std::fs::remove_file(&file).ok();
+}

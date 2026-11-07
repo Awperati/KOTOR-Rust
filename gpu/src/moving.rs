@@ -422,6 +422,9 @@ impl Stage {
             .map_or(self.distance, |hit| {
                 (hit - super::CAMERA_OFF_SURFACE).max(0.1)
             });
+        let solid = self
+            .door_limit(target, back)
+            .map_or(solid, |d| solid.min(d));
         let limit = room.min(solid);
         // Somewhere else all at once: a door, a script, a loaded game.
         let jumped = (p[0] - self.arm_at[0]).hypot(p[1] - self.arm_at[1]) > ARM_JUMP;

@@ -32,6 +32,9 @@ const BARRIER_HIGH: f32 = 1.2;
 const BARRIER_LOOK: f32 = 0.6;
 /// A jump that comes down on its own level is this many metres per second faster than it went up, at most, and lands light.
 const LIGHT_LANDING: f32 = 0.5;
+/// A body's head over its feet, and where under it a ceiling is looked for, metres. Assumed.
+const HEAD_HEIGHT: f32 = 1.85;
+const CEILING_FROM: f32 = 1.0;
 /// A body going along a wall tries these turns from the way it is pushed, in degrees: the nearest that gets through. Assumed.
 const SLIDE_TURNS: [f32; 2] = [35.0, 70.0];
 /// How much faster a roll goes round when something else is waiting for it: a click to go or attack. Assumed.
@@ -143,6 +146,10 @@ pub trait Ground {
     /// `b` between two heights.
     fn barrier(&self, _a: [f32; 2], _b: [f32; 2], _low: f32, _high: f32) -> bool {
         false
+    }
+    /// How far over `at` a ceiling is, within `reach` metres.
+    fn ceiling(&self, _at: [f32; 3], _reach: f32) -> Option<f32> {
+        None
     }
     /// Whether a walk joins the floors under two points. Nobody falls where they could never walk back from.
     fn way_back(&self, _a: [f32; 3], _b: [f32; 3]) -> bool {
@@ -674,7 +681,16 @@ impl Body {
             return;
         }
         self.vz -= t.gravity * dt;
-        let z1 = self.pos[2] + self.vz * dt;
+        let mut z1 = self.pos[2] + self.vz * dt;
+        if self.vz > 0.0 {
+            // The head stops at a ceiling, and the body falls from there.
+            let from = self.pos[2] + CEILING_FROM;
+            let reach = z1 - from + HEAD_HEIGHT;
+            if let Some(h) = ground.ceiling([x, y, from], reach) {
+                z1 = z1.min(from + h - HEAD_HEIGHT).max(self.pos[2]);
+                self.vz = 0.0;
+            }
+        }
         // A roll carries on through the air; the floor to land on is the one under the new spot. Crossing a gap that is the
         // floor it set out for, however far down the body has got.
         let top = self.gap_to.map_or(self.pos[2], |g| self.pos[2].max(g[2]));
@@ -1578,6 +1594,85 @@ mod tests {
         let mut b = Body::new([2.0, 0.0, 0.0], 0.0);
         jump_from(&mut b, &Shelf, &t, input);
         assert_eq!(b.pos[2], 0.0, "{:?}", b.pos);
+    }
+
+    /// A closed door's line, from y = -2 to 2 at x = 5, in the middle of a floor.
+    struct Shut;
+
+    impl Ground for Shut {
+        fn floor(&self, _: f32, _: f32, max_z: f32) -> Option<f32> {
+            (max_z >= 0.0).then_some(0.0)
+        }
+        fn blocked(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+            if (a[0] - 5.0) * (b[0] - 5.0) >= 0.0 {
+                return false;
+            }
+            let y = a[1] + (b[1] - a[1]) * (5.0 - a[0]) / (b[0] - a[0]);
+            y.abs() < 2.0
+        }
+    }
+
+    #[test]
+    fn a_body_does_not_get_past_a_closed_door_at_any_angle() {
+        let t = Tuning::default();
+        // Head on, and at every angle up to nearly along it, which is how a slide came to lie on the line.
+        for degrees in [0.0f32, 5.0, 20.0, 35.0, 50.0, 70.0, 85.0] {
+            for side in [1.0f32, -1.0] {
+                for how in 0..3 {
+                    let turn = (degrees * side).to_radians();
+                    let dir = [turn.cos(), turn.sin()];
+                    let start = -side * 0.5;
+                    let mut b = Body::new([3.0, start, 0.0], 0.0);
+                    let input = Input {
+                        dir: Some(dir),
+                        ..Input::default()
+                    };
+                    for f in 0..600 {
+                        // It stays on the door's own width: past its ends is a way round.
+                        if b.pos[1].abs() > 1.5 {
+                            break;
+                        }
+                        if how == 1 && f % 60 == 0 {
+                            b.jump(&t);
+                        }
+                        let i = Input {
+                            roll: how == 2 && f % 60 == 0,
+                            ..input
+                        };
+                        b.step(i, &Shut, &t, 1.0 / 60.0);
+                        assert!(
+                            b.pos[0] < 5.0,
+                            "{degrees} degrees, {how}: {:?} after {f}",
+                            b.pos
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A ceiling 2.5 m over the floor.
+    struct Low;
+
+    impl Ground for Low {
+        fn floor(&self, _: f32, _: f32, max_z: f32) -> Option<f32> {
+            (max_z >= 0.0).then_some(0.0)
+        }
+        fn blocked(&self, _: [f32; 3], _: [f32; 3]) -> bool {
+            false
+        }
+        fn ceiling(&self, at: [f32; 3], reach: f32) -> Option<f32> {
+            (2.5 - at[2] <= reach && at[2] < 2.5).then_some(2.5 - at[2])
+        }
+    }
+
+    #[test]
+    fn a_jump_stops_at_a_low_ceiling_and_falls_from_there() {
+        let t = Tuning::default();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        let up = jump_from(&mut b, &Low, &t, Input::default());
+        assert!((up - (2.5 - HEAD_HEIGHT)).abs() < 0.02, "{up}");
+        assert_eq!(b.pos[2], 0.0);
     }
 
     #[test]
