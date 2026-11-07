@@ -947,6 +947,7 @@ impl Stage {
         // The same for "No misses": a scripted player's fights keep the game's own rules, so its route does not move.
         self.game.world.no_misses = self.pilot.is_none();
         self.game.world.ground_finishers = self.settings().ground_finishers && self.pilot.is_none();
+        self.game.world.respawn.enabled = self.settings().respawn && self.pilot.is_none();
         // A finisher swings the owner's clip, once he has made one. Till then the game's stock swing has played.
         for (attacker, _) in std::mem::take(&mut self.game.world.finishers) {
             if let Some(c) = kotor_render::custom_clip::get("finisher") {

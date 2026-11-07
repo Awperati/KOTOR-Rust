@@ -788,6 +788,7 @@ impl World {
             self.note_kill(source, target);
             self.note_blow(source, target, true);
             self.leave_loot(target);
+            self.queue_respawn(target, source);
             self.run_event(target, "ScriptDeath");
             if source == self.pc || self.party.contains(&source) {
                 self.award_kill(target);
@@ -815,7 +816,9 @@ impl World {
             .partition::<Vec<_>, _>(|s| s.0 <= now);
         self.combat.swings = later;
         for (_, attacker, target, amount) in due {
+            self.scripted_blow = true;
             self.hurt(attacker, target, amount);
+            self.scripted_blow = false;
         }
         // Each creature and placeable beats every `HEARTBEAT_SECONDS`, each at its own moment within them. All at once, in one
         // frame, cost 11 ms (the opening module's two dozen scripts) and showed as a stutter.

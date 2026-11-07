@@ -511,7 +511,12 @@ impl World {
     /// Pay a kill's experience to each of the standing party. The reference video's total on the Endar Spire is only
     /// reached with whole payments, see `docs/REFERENCE.md`.
     pub(crate) fn award_kill(&mut self, victim: ObjId) {
-        let xp = self.kill_xp(victim);
+        let mut xp = self.kill_xp(victim);
+        // Whatever comes back pays a share: no farming one spawn point for experience.
+        if self.objects.get(&victim).is_some_and(|o| o.respawned) {
+            let share = crate::respawn::RespawnTable::get().setting("xp_share", 0.5);
+            xp = (xp as f32 * share).round() as i32;
+        }
         if xp <= 0 {
             return;
         }

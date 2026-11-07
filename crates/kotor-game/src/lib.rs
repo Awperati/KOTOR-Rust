@@ -23,6 +23,7 @@ mod journal;
 mod k2feats;
 mod labels;
 mod law;
+mod respawn;
 mod soundset;
 mod story_branches;
 pub use story_branches::{
@@ -104,6 +105,7 @@ pub use pazaak::{PazaakCard, PazaakGame, PazaakMove, PazaakSide, PazaakView};
 pub use play::{
     pixel_ray, DOOR_ANIM_SECONDS, DOOR_BLOCK_RADIUS, DOOR_RANGE, RUN_SPEED, TALK_RANGE, USE_RANGE,
 };
+pub use respawn::{Pending, RespawnState, RespawnTable, SpawnPoint};
 pub use rules::{
     save_passes, skill_passes, Check, DeathPhase, LevelUp, Save, DEATH_FADE_SECONDS,
     DEATH_FALL_SECONDS,

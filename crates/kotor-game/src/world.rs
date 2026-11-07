@@ -112,6 +112,8 @@ pub struct Object {
     pub min_one_hp: bool,
     /// Its spawn script has run.
     pub spawned: bool,
+    /// A creature that came back after a kill: it pays a share of the experience.
+    pub respawned: bool,
     pub locked: bool,
     pub level: i32,
     /// Event scripts by field name (`ScriptDialogue`, `OnEnter`, `OnUsed`, ...).
@@ -230,6 +232,7 @@ impl Object {
             party_member: false,
             min_one_hp: false,
             spawned: false,
+            respawned: false,
             locked: false,
             level: 1,
             scripts: BTreeMap::new(),
@@ -523,6 +526,10 @@ pub struct World {
     pub lost_quests: Vec<(String, String)>,
     /// Dark side points from kills, in parts of a point, not yet taken off the player's alignment (see `kill_alignment_scale`).
     pub kill_alignment_owed: f32,
+    /// Creatures that come back after a kill (`respawn.rs`).
+    pub respawn: crate::respawn::RespawnState,
+    /// A scripted swing is landing: a cutscene's blow, which never lets a creature come back.
+    pub(crate) scripted_blow: bool,
     /// Voice lines to be played where the creature is: who and the name of the wave file. A screen takes them.
     pub sound_cues: Vec<(ObjId, String)>,
     pub(crate) ssf_cache: BTreeMap<i32, Vec<u32>>,
@@ -695,6 +702,8 @@ impl World {
             law: Default::default(),
             lost_quests: Vec::new(),
             kill_alignment_owed: 0.0,
+            respawn: Default::default(),
+            scripted_blow: false,
             sound_cues: Vec::new(),
             ssf_cache: BTreeMap::new(),
             sound_turn: 0,
@@ -1209,6 +1218,24 @@ impl World {
         self.traps.retain(|id, _| self.objects.contains_key(id));
         // A new area has its own law: no one there has seen anything.
         self.law = Default::default();
+        self.respawn = crate::respawn::RespawnState::for_new_area(self.respawn.enabled);
+        let points: Vec<_> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Creature && o.id != pc)
+            .map(|o| {
+                (
+                    o.id,
+                    crate::respawn::SpawnPoint {
+                        area: area_name.clone(),
+                        template: o.template.clone(),
+                        tag: o.tag.clone(),
+                        position: o.position,
+                    },
+                )
+            })
+            .collect();
+        self.respawn.spawn_points = points.into_iter().collect();
         self.load_encounters(&git);
         self.build_nav(&area_name)?;
         let pos = self.objects.get(&pc).map_or([0.0; 3], |p| p.position);

@@ -1,0 +1,48 @@
+# Respawning creatures: what comes back, how long it takes, and where. The owner edits this file; the game reads it when it is built.
+# Columns are separated by tabs. Lines starting with # are notes.
+#
+# setting <name> <value>
+#   range_metres               the player must be farther than this from the spawn point
+#   timer_seconds              how long after the death before it may come back
+#   require_no_line_of_sight   1: and the player must not see the spawn point; 0: distance alone
+#   per_minute                 at most this many come back in any minute
+#   per_module                 at most this many come back in one visit to an area
+#   xp_share                   the share of a kill's experience a creature that came back pays: 0.5 is half
+setting	range_metres	60
+setting	timer_seconds	300
+setting	require_no_line_of_sight	1
+setting	per_minute	3
+setting	per_module	40
+setting	xp_share	0.5
+#
+# By default only an enemy killed in a fight comes back: one with no conversation of its own, no plot flag, not a party member, no
+# script of its own for its death, and not one a script or a cutscene killed. The rows below change that, by module prefix and tag
+# prefix (a * is any module; an empty tag prefix is every creature there). `exclude` wins over `include`.
+#
+# include <module prefix> <tag prefix>     also a creature that is not an enemy (a bystander, a guard), by tag
+# exclude <module prefix> <tag prefix>     never
+# The scripted openings: the Endar Spire and the Leviathan.
+exclude	end_	
+exclude	lev_	
+exclude	*	tar04_alpha
+exclude	*	darth
+exclude	*	bastila
+exclude	*	carth
+exclude	*	malak
+exclude	*	saul
+exclude	*	calo
+exclude	*	trask
+exclude	*	t3m4
+exclude	*	mission
+exclude	*	zaalbar
+exclude	*	canderous
+exclude	*	juhani
+exclude	*	jolee
+exclude	*	hk
+exclude	*	rakata_boss
+exclude	*	sith_lord
+exclude	*	boss
+exclude	*	vandar
+exclude	*	dorak
+exclude	*	genoharadan
+exclude	*	sharina

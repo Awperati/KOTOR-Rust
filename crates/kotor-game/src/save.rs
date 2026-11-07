@@ -376,6 +376,20 @@ impl World {
                         st(vec![("Tag", s(tag)), ("Name", s(name))])
                     }),
                 ),
+                (
+                    "Respawns",
+                    list_of(self.respawn.pending.iter(), |p| {
+                        st(vec![
+                            ("Area", s(&p.at.area)),
+                            ("Template", s(&p.at.template)),
+                            ("Tag", s(&p.at.tag)),
+                            ("X", Value::Float(p.at.position[0])),
+                            ("Y", Value::Float(p.at.position[1])),
+                            ("Z", Value::Float(p.at.position[2])),
+                            ("Left", Value::Float((p.due - self.time).max(0.0))),
+                        ])
+                    }),
+                ),
                 ("RestrictMode", Value::Byte(self.restrict_mode as u8)),
                 (
                     "Unselectable",
@@ -1057,6 +1071,24 @@ impl World {
             .unwrap_or_default()
             .iter()
             .filter_map(|x| Some((x.str("Tag")?.to_string(), x.str("Name")?.to_string())))
+            .collect();
+        self.respawn.pending = globals
+            .root
+            .list("Respawns")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| {
+                let f = |n: &str| x.float(n).map(|v| v as f32);
+                Some(crate::respawn::Pending {
+                    at: crate::respawn::SpawnPoint {
+                        area: x.str("Area")?.to_string(),
+                        template: x.str("Template")?.to_string(),
+                        tag: x.str("Tag")?.to_string(),
+                        position: [f("X")?, f("Y")?, f("Z")?],
+                    },
+                    due: self.time + f("Left")?,
+                })
+            })
             .collect();
         self.restrict_mode = globals.root.int("RestrictMode").unwrap_or(0) != 0;
         self.unselectable = globals

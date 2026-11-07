@@ -312,6 +312,8 @@ pub struct Settings {
     pub extended_story: bool,
     /// A melee blow on someone knocked down is an automatic critical, with the owner's `finisher` clip. Off: no such blow.
     pub ground_finishers: bool,
+    /// Enemies killed in a fight come back after a while, when the player is far and out of sight. Off: they stay dead.
+    pub respawn: bool,
     /// A name and health bar over each enemy in sight, and the rest of what the F6 key turns off.
     pub nameplates: bool,
     /// The same all the time for neutral creatures and for friends, and not only when the cursor is on them.
@@ -378,6 +380,7 @@ impl Default for Settings {
             seamless_areas: true,
             extended_story: true,
             ground_finishers: true,
+            respawn: true,
             nameplates: true,
             nameplates_neutral: false,
             nameplates_friendly: false,
@@ -405,7 +408,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -447,6 +450,7 @@ impl Settings {
             self.nameplate_size,
             self.extended_story,
             self.ground_finishers,
+            self.respawn,
             self.cel_shading,
             self.pickup_radius,
             self.touch_controls,
@@ -500,6 +504,7 @@ impl Settings {
                 "seamless_areas" => s.seamless_areas = v == "true",
                 "extended_story" => s.extended_story = v == "true",
                 "ground_finishers" => s.ground_finishers = v == "true",
+                "respawn" => s.respawn = v == "true",
                 "australian_english" => s.australian_english = v == "true",
                 "nameplates" => s.nameplates = v == "true",
                 "nameplates_neutral" => s.nameplates_neutral = v == "true",
