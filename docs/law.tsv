@@ -1,6 +1,6 @@
 # The law of the game: who counts as the authority where, and what killing costs. The owner edits this file; the game reads it
-# when it is built. Columns are separated by tabs. Lines starting with # are notes. Every value here is a PLACEHOLDER until the owner
-# has said, except where a line says it was asked for (7 Nov 2026).
+# when it is built. Columns are separated by tabs. Lines starting with # are notes. Every value here is FINAL: the owner said "use the recommended values"
+# (7 Nov 2026). Change a value here and the game uses it after the next build.
 #
 # setting <name> <value>
 #   hear_metres      how far a crime is heard, through walls

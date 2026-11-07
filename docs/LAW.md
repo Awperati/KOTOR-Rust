@@ -2,7 +2,7 @@
 
 All of it is in one file, [`docs/law.tsv`](law.tsv). Open it in any text editor. Each line is one setting, with its parts separated by
 a tab. A line starting with `#` is a note. The game reads the file when it is built, so a change shows after the next build.
-Everything in it today is a first guess (7 Nov 2026) until you say otherwise.
+Everything in it today is final (7 Nov 2026, "use the recommended values"). Change a value and rebuild to change the game.
 
 ## What happens
 
@@ -37,4 +37,15 @@ The game's factions are only Neutral, Friendly and Hostile, so the table goes by
 every creature in every module are listed by `cargo run --release -p kotor-game --example law_survey`. The first guesses are by
 planet: Taris Sith patrols and guards, Tatooine Czerka and the Sandral guard, Dantooine Jedi and militia, Manaan Selkath and
 security, Kashyyyk Wookiee defenders, Korriban Sith students and port authority, the Endar Spire Republic soldiers, the Leviathan Sith.
-Say which creatures should be on the list and I will put them in.
+The list is final too. To add a creature, add one `authority` line.
+
+## Extended: how the law reaches shops, talk and quests
+
+- **Shops.** `open_store` checks the wanted level first. At the level in `shut_from` (2) or more the shop stays closed and the
+  event log says "The shop is shut: the law is after you". At level 1 it still trades.
+- **Talk.** A click on a creature that is not on your team says "<name> will not talk to you" at the same level. Attack mode
+  skips this check, because a click then attacks.
+- **Quest givers.** Killing a creature with a conversation of its own that was not your enemy writes "Lost: name" in the journal as a
+  finished line. A party member who is alive says it disapproves when the kill costs 5 or more.
+- **Saves.** `attack_mode`, the wanted state and `lost_quests` are the menus builder's to save. `lost_quests` was asked for on 7 Nov.
+- **Tests.** [`tests/law.rs`](../crates/kotor-game/tests/law.rs) covers each case in the Taris Upper City, with the real install.

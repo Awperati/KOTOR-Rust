@@ -237,3 +237,64 @@ fn a_civilian_who_sees_a_crime_calls_the_nearest_authority() {
         w.law.witnessed
     );
 }
+
+/// A store of the Upper City, if the area has one.
+fn a_store(w: &World) -> Option<ObjId> {
+    w.objects
+        .values()
+        .find(|o| o.kind == kotor_game::Kind::Store)
+        .map(|o| o.id)
+}
+
+#[test]
+fn a_shop_is_shut_and_a_giver_will_not_talk_while_the_player_is_wanted_and_both_open_again_when_it_dies_down(
+) {
+    let Some((mut w, pc, _, civilian)) = upper_city() else {
+        return;
+    };
+    let giver = w
+        .objects
+        .values()
+        .find(|o| {
+            o.kind == kotor_game::Kind::Creature
+                && !o.conversation.is_empty()
+                && !o.plot
+                && o.id != civilian
+                && !o.template.contains("sithpat")
+        })
+        .map(|o| o.id)
+        .expect("a creature with a conversation");
+    let shop = a_store(&w);
+    assert!(shop.is_some(), "the Upper City has a shop");
+    // Wanted at level 2: the shop does not open and the giver says no.
+    w.law.wanted = 2;
+    if let Some(shop) = shop {
+        w.open_store(shop, 0, 0);
+        assert!(w.store.is_none(), "a shut shop does not open");
+        assert!(w.events.iter().any(|e| e.contains("shop is shut")));
+    }
+    near(&mut w, giver, pc, 1.0);
+    w.click(giver);
+    for _ in 0..80 {
+        w.step(0.05);
+    }
+    assert!(
+        w.events.iter().any(|e| e.contains("will not talk to you")),
+        "{:?}",
+        w.events.iter().rev().take(5).collect::<Vec<_>>()
+    );
+    // Level 1 is not enough to shut a shop: the file says from 2.
+    w.law.wanted = 1;
+    if let Some(shop) = shop {
+        w.open_store(shop, 0, 0);
+        assert!(w.store.is_some(), "a level-1 wanted still trades");
+    }
+    // Calm: the level is 0 and the same click is a conversation.
+    w.law.wanted = 0;
+    w.events.clear();
+    w.click(giver);
+    for _ in 0..80 {
+        w.step(0.05);
+    }
+    assert!(!w.events.iter().any(|e| e.contains("will not talk to you")));
+}
