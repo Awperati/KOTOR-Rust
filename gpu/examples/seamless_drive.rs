@@ -428,12 +428,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
     }
+    let start_module = s.game.world.module.clone();
     while dist(
         s.game.world.pc_mover.pos,
         if routed { pre } else { site.at },
     ) > 0.7
         && walked < 1500
     {
+        // No floor to route to before the doorway (a trigger whose floor is cut short of its line): walk at it by the keys.
+        if !routed {
+            s.yaw = out_angle;
+            s.steer = (1.0, 0.0, false);
+        }
         step(&mut s);
         sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         let d = track(&mut s, &mut last, &mut module_now);
@@ -453,7 +459,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.steer = (0.0, 0.0, false);
     r.check(
         "the player walks up to the door",
-        dist(s.game.world.pc_mover.pos, pre) <= 1.0,
+        dist(s.game.world.pc_mover.pos, if routed { pre } else { site.at }) <= 1.0
+            // A trigger with no floor short of its line is crossed on the walk up to it.
+            || (!routed && is_trigger && s.game.world.module != start_module),
         format!("{walked} frames"),
     );
     // Some doors start locked (the Cantina's). The test is about the crossing, not the lock, so it is taken off.
@@ -501,7 +509,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &out.join(format!("2_open_{name}.png")),
     );
     // `DRIVE_WATCH=<seconds>`: stand at the open door and take a picture every half second, for watching the neighbour.
-    if let Some(secs) = std::env::var("DRIVE_WATCH").ok().and_then(|v| v.parse::<u32>().ok()) {
+    if let Some(secs) = std::env::var("DRIVE_WATCH")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+    {
         for n in 0..secs * 2 {
             for _ in 0..30 {
                 step(&mut s);

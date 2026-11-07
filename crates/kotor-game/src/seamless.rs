@@ -22,6 +22,9 @@ pub const JAMB: f32 = 1.5;
 /// When two modules overlap, each is walkable only this far (metres) from the door that joins them, and the other is
 /// drawn through the doorway alone. See `Attached::portal`.
 pub const PORTAL_REACH: f32 = 20.0;
+/// How far short of a trigger's line (metres) the floor of ours is kept, where the trigger is cut: a face that straddles
+/// the line is judged by its middle, so the cut stands back far enough that none reaches over.
+pub const CUT_SHORT: f32 = 3.0;
 /// The most floor that may be missing across a doorway, in metres, before a link falls back.
 pub const MAX_GAP: f32 = 25.0;
 /// Tried in turn, widest first: a crowded street takes a portal only close to the door. The party keeps within a few
@@ -38,6 +41,9 @@ pub struct Site {
     pub half: f32,
     /// The angle (radians) from our side through the site, when that can be told.
     pub out: Option<f32>,
+    /// A door's normal, one of the two ways square to its axis (the other is this plus half a turn): for telling the
+    /// way through from the arrival waypoint when the floor does not say.
+    pub normal: Option<f32>,
     /// Faces (indices into `Sketch::tris`) that only this site's doorway leads to, when it is a closed door.
     pub stub: Vec<usize>,
     pub to_module: String,
@@ -115,6 +121,9 @@ pub struct Placed {
     /// With `portal`, the faces of ours and of the neighbour's that lie beyond `PORTAL_REACH` of the door.
     pub far_ours: Vec<usize>,
     pub far_theirs: Vec<usize>,
+    /// The faces of ours given up: the pocket behind a closed door, and for a trigger in the open that no placement
+    /// fits otherwise, all of ours past the trigger's line (the neighbour's floor stands there instead).
+    pub cut_ours: Vec<usize>,
 }
 
 impl World {
@@ -208,6 +217,7 @@ impl World {
                             2.0
                         },
                         out,
+                        normal: candidates.first().copied().filter(|_| o.kind == Kind::Door),
                         stub,
                         to_module: o.link_module.to_ascii_lowercase(),
                         to_waypoint: o.link_to.to_ascii_lowercase(),
@@ -295,12 +305,18 @@ pub fn plan_link(
     cut: &BTreeSet<usize>,
     placed: &[(String, Vec<Tri>)],
 ) -> Result<Placed, Fallback> {
-    let mut r = plan_with(from, site, neighbour, cut, placed, None);
+    let mut r = plan_with(from, site, neighbour, cut, placed, None, false);
     for reach in PORTAL_REACHES {
         if !matches!(r, Err(Fallback::Overlaps(_))) {
             break;
         }
-        r = plan_with(from, site, neighbour, cut, placed, Some(reach));
+        r = plan_with(from, site, neighbour, cut, placed, Some(reach), false);
+    }
+    // A trigger standing in the open between two areas: both floors run on across it. Of ours only what lies short of its
+    // line is kept, with the smallest portal: the neighbour's floor is what lies past it.
+    if site.kind == Kind::Trigger && matches!(r, Err(Fallback::Overlaps(_))) {
+        let last = *PORTAL_REACHES.last().expect("reaches");
+        r = plan_with(from, site, neighbour, cut, placed, Some(last), true);
     }
     r
 }
@@ -312,6 +328,7 @@ fn plan_with(
     cut: &BTreeSet<usize>,
     placed: &[(String, Vec<Tri>)],
     reach: Option<f32>,
+    cut_ahead: bool,
 ) -> Result<Placed, Fallback> {
     let portal = reach.is_some();
     let reach = reach.unwrap_or(f32::MAX);
@@ -339,10 +356,31 @@ fn plan_with(
     let out = match (site.out, site.kind) {
         (Some(o), _) => o,
         (None, Kind::Trigger) => toward,
+        // A door that both sides of reach the same, as an open arch does: the way through is the one of its two normals
+        // that the module's own arrival waypoint is behind, when it is within `MAX_TURN` of it.
+        (None, Kind::Door) => {
+            let n = site.normal.ok_or(Fallback::NoDirection)?;
+            let near = |a: f32| wrap(a - toward).abs();
+            let pick = if near(n) <= near(n + pi) { n } else { n + pi };
+            if near(pick) > MAX_TURN {
+                return Err(Fallback::NoDirection);
+            }
+            wrap(pick)
+        }
         _ => return Err(Fallback::NoDirection),
     };
     let back_out = back.out.unwrap_or(wrap(facing + pi));
     let forward = join(site.at, out, back.at, back_out);
+    // Our faces given up: the closed door's pocket, and past the line of a trigger that is cut there.
+    let mut stub_ours = site.stub.clone();
+    if cut_ahead {
+        for (i, t) in from.tris.iter().enumerate() {
+            let c = [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
+            if beyond(site.at, out, c).0 > -CUT_SHORT && !stub_ours.contains(&i) {
+                stub_ours.push(i);
+            }
+        }
+    }
     // Both arrivals, seen from the other side.
     let (a_along, a_across) = beyond(site.at, out, forward.apply(wp));
     let a_turn = wrap(facing + forward.yaw - out).abs();
@@ -445,7 +483,7 @@ fn plan_with(
         .tris
         .iter()
         .enumerate()
-        .filter(|(i, _)| !cut.contains(i) && !site.stub.contains(i))
+        .filter(|(i, _)| !cut.contains(i) && !stub_ours.contains(i))
         .map(|(_, t)| *t)
         .collect();
     let (gap_before, gap_after) = (nearest(&ours_floor, true), nearest(&moved_all, false));
@@ -465,7 +503,7 @@ fn plan_with(
         from.tris
             .iter()
             .enumerate()
-            .filter(|(i, _)| !cut.contains(i) && !site.stub.contains(i))
+            .filter(|(i, _)| !cut.contains(i) && !stub_ours.contains(i))
             .filter(|(i, _)| keep_far || !far_ours.contains(i))
             .map(|(_, t)| *t)
             .filter(|t| clear(t))
@@ -517,6 +555,7 @@ fn plan_with(
         far_theirs,
         gap_before,
         gap_after,
+        cut_ours: stub_ours,
     })
 }
 
@@ -536,7 +575,7 @@ pub fn plan_module(
                 let r = plan_link(from, site, &n, &cut, &placed);
                 if let Ok(p) = &r {
                     placed.push((n.module.clone(), p.tris.clone()));
-                    cut.extend(site.stub.iter().copied());
+                    cut.extend(p.cut_ours.iter().copied());
                 }
                 r
             }
@@ -570,7 +609,7 @@ pub fn prepare(
             half: site.half,
             out: p.out,
             bwms,
-            cut_ours: site.stub.clone(),
+            cut_ours: p.cut_ours,
             cut_theirs: p.back_stub,
             behind: false,
             scenery,
@@ -601,6 +640,7 @@ mod tests {
             at,
             half: 1.0,
             out: Some(out),
+            normal: Some(out),
             stub: Vec::new(),
             to_module: to.into(),
             to_waypoint: wp.into(),
@@ -645,6 +685,36 @@ mod tests {
     }
 
     #[test]
+    fn a_trigger_in_the_open_gives_up_the_floor_past_its_line_instead_of_falling_back() {
+        // Our ground runs on past the trigger where the neighbour would be. A door cannot give that up, a trigger's
+        // line can: ours past it goes, and the neighbour stands there.
+        let mut ground = Vec::new();
+        for x in 0..15 {
+            for y in 0..5 {
+                ground.extend(room(
+                    x as f32 * 2.0,
+                    y as f32 * 2.0,
+                    x as f32 * 2.0 + 2.0,
+                    y as f32 * 2.0 + 2.0,
+                ));
+            }
+        }
+        let (mut a, b) = pair(PI, 0.0, ground);
+        a.sites[0].kind = Kind::Trigger;
+        a.sites[0].out = None;
+        a.sites[0].at = [10.0, 5.0, 0.0];
+        let p = plan_link(&a, &a.sites[0], &b, &BTreeSet::new(), &[]).expect("fits");
+        assert!(p.portal && !p.cut_ours.is_empty(), "{p:?}");
+        // The floor past the line, past `CUT_SHORT` short of it, is no longer ours; behind it stays.
+        for &i in &p.cut_ours {
+            let t = a.tris[i];
+            let x = (t[0][0] + t[1][0] + t[2][0]) / 3.0;
+            assert!(x > 10.0 - CUT_SHORT, "cut at {x}");
+        }
+        assert!(p.cut_ours.len() < a.tris.len());
+    }
+
+    #[test]
     fn a_neighbour_that_overlaps_only_far_from_the_door_becomes_a_portal() {
         // Our room runs on far past the door, where the neighbour would stand, but the part in the way is 40 m off.
         let mut tris = room(0.0, 0.0, 10.0, 10.0);
@@ -657,6 +727,29 @@ mod tests {
         assert!(!p.far_theirs.is_empty() && !p.far_ours.is_empty());
         // Moved by 10 m, the far room of the neighbour lies on ours at 50 to 60.
         assert!(p.tris.iter().all(|t| t[0][0] < 40.0));
+    }
+
+    #[test]
+    fn a_door_that_both_sides_reach_alike_takes_its_way_from_the_arrival_waypoint() {
+        // An open arch: the floor does not say which side is out, the arrival waypoint 1 m inside does.
+        let (mut a, b) = pair(PI, 0.0, room(0.0, 0.0, 10.0, 10.0));
+        a.sites[0].out = None;
+        let p = plan_link(&a, &a.sites[0], &b, &BTreeSet::new(), &[]).unwrap();
+        assert!((p.rigid.shift[0] - 10.0).abs() < 1e-3, "{:?}", p.rigid);
+        // Its normal is one of two: the one the waypoint is behind, when that is the other way round, too.
+        a.sites[0].normal = Some(PI);
+        let p = plan_link(&a, &a.sites[0], &b, &BTreeSet::new(), &[]).unwrap();
+        assert!((p.rigid.shift[0] - 10.0).abs() < 1e-3, "{:?}", p.rigid);
+    }
+
+    #[test]
+    fn a_door_with_no_side_and_a_waypoint_square_to_it_falls_back() {
+        let (mut a, b) = pair(PI, 0.0, room(0.0, 0.0, 10.0, 10.0));
+        a.sites[0].out = None;
+        // The arrival point lies along the wall, not inside the room.
+        a.waypoints.insert("a_arr".into(), ([10.0, 8.0, 0.0], PI));
+        let r = plan_link(&a, &a.sites[0], &b, &BTreeSet::new(), &[]);
+        assert!(matches!(r, Err(Fallback::NoDirection)), "{r:?}");
     }
 
     #[test]
