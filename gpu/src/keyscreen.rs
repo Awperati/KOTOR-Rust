@@ -136,7 +136,7 @@ impl KeyMap {
 
     /// A file from before the two keys changed places: what still has its old key goes to its new one, if nothing else has
     /// that. What the player moved stays where they put it.
-    fn to_new_defaults(&mut self) {
+    fn move_to_new_defaults(&mut self) {
         let unmoved = |k: &KeyMap, (action, old, _): (&str, &str, &str)| {
             k.0.get(action).is_some_and(|key| key == old)
         };
@@ -172,7 +172,7 @@ impl KeyMap {
             }
         }
         if !text.lines().any(|l| l == KEY_DEFAULTS_LINE) {
-            self.to_new_defaults();
+            self.move_to_new_defaults();
         }
     }
 
