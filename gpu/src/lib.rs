@@ -264,6 +264,8 @@ pub struct GpuRenderer {
     color: wgpu::Texture,
     depth: wgpu::TextureView,
     white: Tex,
+    /// Drawn in place of a picture that is not ready, for a frame or two.
+    grey: Tex,
     tex_cache: HashMap<String, Option<Tex>>,
     static_draws: Vec<Draw>,
     /// Another area seen through a doorway.
@@ -496,6 +498,15 @@ impl GpuRenderer {
             alpha: wgpu::BlendComponent::OVER,
         });
         let smoke_pipeline = particle_pipeline(wgpu::BlendState::ALPHA_BLENDING);
+        let grey = upload_image(
+            &device,
+            &queue,
+            &Image {
+                width: 1,
+                height: 1,
+                rgba: vec![128, 128, 128, 255],
+            },
+        );
         let white = upload_image(
             &device,
             &queue,
@@ -516,6 +527,7 @@ impl GpuRenderer {
             blend_pipeline,
             transparency: true,
             white,
+            grey,
             tex_cache: HashMap::new(),
             static_draws: Vec::new(),
             portal: None,
@@ -633,7 +645,13 @@ impl GpuRenderer {
         }
     }
 
-    /// The view of a named texture, decoding and uploading it the first time.
+    /// Ask again for this picture the next time it is drawn: a better one has come.
+    pub fn forget_texture(&mut self, name: &str) {
+        self.tex_cache.remove(&name.to_ascii_lowercase());
+    }
+
+    /// The view of a named texture, decoding and uploading it the first time. A picture with no pixels is not ready: it is
+    /// grey for now, and asked for again next time.
     fn texture_view(
         &mut self,
         name: &Option<String>,
@@ -642,7 +660,11 @@ impl GpuRenderer {
         let key = name.as_ref()?.to_ascii_lowercase();
         if !self.tex_cache.contains_key(&key) {
             let began = std::time::Instant::now();
-            let t = textures(&key).map(|img| upload_image(&self.device, &self.queue, &img));
+            let img = textures(&key);
+            if img.as_ref().is_some_and(|i| i.width == 0) {
+                return Some(self.grey.view.clone());
+            }
+            let t = img.map(|img| upload_image(&self.device, &self.queue, &img));
             self.tex_cache.insert(key.clone(), t);
             self.frame_times.new_textures += 1;
             self.frame_times.textures_ms += began.elapsed().as_secs_f32() * 1000.0;
@@ -672,8 +694,10 @@ impl GpuRenderer {
             let diffuse = self.texture_view(&m.texture, textures);
             let lightmap = self.texture_view(&m.lightmap, textures);
             let look = match m.texture.as_ref().map(|n| n.to_ascii_lowercase()) {
-                Some(n) if self.transparency => self.tex_cache[&n]
-                    .as_ref()
+                Some(n) if self.transparency => self
+                    .tex_cache
+                    .get(&n)
+                    .and_then(Option::as_ref)
                     .map_or(AlphaLook::Opaque, |t| t.look),
                 _ => AlphaLook::Opaque,
             };

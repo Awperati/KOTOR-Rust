@@ -4333,6 +4333,36 @@ fn the_font_and_box_rows_change_the_picture_and_the_file_keeps_them() {
     assert!(frame(&mut s) != back, "the list starts from the top again");
 }
 
+/// Paced, what comes into view comes over a few frames, and a frame reads only a few pictures.
+#[test]
+fn a_frame_does_not_pay_for_all_that_comes_into_view() {
+    let Some((mut s, _)) = in_game("paced") else {
+        return;
+    };
+    s.pace_loading = true;
+    s.update(DT);
+    // Stock pictures, none read yet: past the frame's few, one with no pixels says to try again.
+    let names = ["n_commm03", "n_commm04", "n_commm05", "n_walrusman01"];
+    let widths: Vec<u32> = names
+        .iter()
+        .map(|n| s.texture_soon(n).map_or(0, |i| i.width))
+        .collect();
+    assert!(widths[0] > 0, "{widths:?}");
+    assert_eq!(widths[3], 0, "the fourth waits: {widths:?}");
+    s.update(DT);
+    assert!(s.texture_soon(names[3]).is_some_and(|i| i.width > 0));
+    let creatures = |s: &mut Stage| s.dynamic_scene().meshes.len();
+    let first = creatures(&mut s);
+    for _ in 0..240 {
+        s.update(DT);
+        creatures(&mut s);
+    }
+    let settled = creatures(&mut s);
+    s.pace_loading = false;
+    assert_eq!(settled, creatures(&mut s), "all of them come in the end");
+    assert!(first <= settled);
+}
+
 /// Item 3 of the owner's list of 6 Nov: figures shown on screens with no game running stood in the rest pose.
 /// However the leader was moving when the screen opened, the sheet's figure stands idle with nothing in the hands.
 #[test]

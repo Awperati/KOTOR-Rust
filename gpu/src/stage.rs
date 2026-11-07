@@ -11,7 +11,7 @@ use kotor_model::{parse_model, Model};
 use kotor_render::{Camera, Floor, Rig, Scene};
 use kotor_tables::TwoDa;
 use kotor_ui::{DialogueView, HudMember, Ui};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -270,6 +270,17 @@ pub fn default_hd_dir() -> Option<PathBuf> {
     )
 }
 
+/// A stock picture takes 2 or 3 ms to read.
+const PICTURES_A_FRAME: u32 = 3;
+const RIGS_A_FRAME: u32 = 1;
+
+/// The thread that reads upscaled pictures.
+struct HdReader {
+    ask: std::sync::mpsc::Sender<String>,
+    given: std::sync::mpsc::Receiver<(String, Option<Image>)>,
+    asked: HashSet<String>,
+}
+
 /// An upscaled 3D texture: `<name>.png`, with its alpha from `<name>__a.png` when there is one.
 fn upscaled(dir: &std::path::Path, name: &str) -> Option<Image> {
     let key = name.to_ascii_lowercase();
@@ -387,6 +398,19 @@ pub struct Stage {
     step_turn: usize,
     /// Upscaled 3D textures, when `scripts/upscale_area.ps1` has made them.
     hd3d: Option<PathBuf>,
+    /// A thread that reads upscaled pictures: a 1024 square one takes 50 to 100 ms, which no frame can pay.
+    hd_reader: Option<HdReader>,
+    /// Pictures standing in, by the stock one, for an upscaled one the thread is reading.
+    stand_ins: HashSet<String>,
+    /// Upscaled pictures that have come, for the renderer to ask for again.
+    hd_come: Vec<String>,
+    /// Stock pictures that may still be read this frame, when `pace_loading`.
+    pictures_left: u32,
+    /// Bodies that may still be read this frame, when set.
+    rigs_left: Option<u32>,
+    /// A window is drawing, and a frame must not pay for all that comes into view at once. A test or a driver that wants
+    /// everything at once leaves this off.
+    pub pace_loading: bool,
     /// "Underwear style: Conventional". See `kotor_render::underwear`.
     conventional_underwear: bool,
     /// The underwear the character creation screen's figures wear: a variant's id, empty for the standard paint.
@@ -549,6 +573,12 @@ impl Stage {
             door_seen: HashMap::new(),
             step_due: 0.0,
             step_turn: 0,
+            hd_reader: None,
+            stand_ins: HashSet::new(),
+            hd_come: Vec::new(),
+            pictures_left: 0,
+            rigs_left: None,
+            pace_loading: false,
             hd3d: default_hd_dir()
                 .and_then(|d| d.parent().map(|p| p.join("hd3d")))
                 .filter(|d| d.is_dir()),
@@ -755,6 +785,8 @@ impl Stage {
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.idle_clock += dt;
+        self.pictures_left = PICTURES_A_FRAME;
+        self.take_upscaled();
         self.main_scene_tick(dt);
         self.chargen_mist_tick(dt);
         self.figure_mist_tick(dt);
@@ -1752,6 +1784,91 @@ impl Stage {
             .clone()
     }
 
+    /// A picture for the frame, without making it wait. An upscaled one is read on a thread and the stock one stands in; a few
+    /// stock ones are read in a frame, and past that one with no pixels says to try again. The paint on a hero's body and
+    /// head is not put off: they come with a load or a change of clothes, behind a screen, and the wrong paint must not show.
+    pub fn texture_soon(&mut self, name: &str) -> Option<Image> {
+        let (plain, variant) = kotor_render::underwear::split_variant(name);
+        let painted = !variant.is_empty()
+            || kotor_render::underwear::body_of_texture(plain).is_some()
+            || kotor_render::underwear::is_hero_head(plain);
+        if painted || self.textures.contains_key(name) {
+            return self.texture(name);
+        }
+        let later = Image {
+            width: 0,
+            height: 0,
+            rgba: Vec::new(),
+        };
+        let upscaled_here = self.hd3d.as_ref().is_some_and(|d| {
+            d.join(format!("{}.png", plain.to_ascii_lowercase()))
+                .is_file()
+        });
+        if self.pictures_left == 0 {
+            return Some(later);
+        }
+        self.pictures_left -= 1;
+        if !upscaled_here {
+            return self.texture(name);
+        }
+        self.read_upscaled(name);
+        match kotor_render::load_texture(&mut self.inst, plain) {
+            Some(stock) => {
+                self.stand_ins.insert(name.to_string());
+                Some(stock)
+            }
+            None => Some(later),
+        }
+    }
+
+    fn read_upscaled(&mut self, name: &str) {
+        let Some(dir) = self.hd3d.clone() else {
+            return;
+        };
+        let reader = self.hd_reader.get_or_insert_with(|| {
+            let (ask, asked) = std::sync::mpsc::channel::<String>();
+            let (give, given) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                for name in asked {
+                    let img = upscaled(&dir, &name);
+                    if give.send((name, img)).is_err() {
+                        break;
+                    }
+                }
+            });
+            HdReader {
+                ask,
+                given,
+                asked: HashSet::new(),
+            }
+        });
+        if reader.asked.insert(name.to_string()) {
+            let _ = reader.ask.send(name.to_string());
+        }
+    }
+
+    /// What the thread has read since last asked, one a frame: each has to be sent to the card.
+    fn take_upscaled(&mut self) {
+        let Some(reader) = self.hd_reader.as_ref() else {
+            return;
+        };
+        if let Ok((name, Some(img))) = reader.given.try_recv() {
+            self.stand_ins.remove(&name);
+            self.textures.insert(name.clone(), Some(img));
+            self.hd_come.push(name);
+        }
+    }
+
+    /// The pictures the renderer should ask for again. With `everything`, those standing in as well: what is drawn from now
+    /// on for good must not keep a stand-in.
+    pub fn textures_changed(&mut self, everything: bool) -> Vec<String> {
+        let mut names = std::mem::take(&mut self.hd_come);
+        if everything {
+            names.extend(self.stand_ins.drain());
+        }
+        names
+    }
+
     /// The particles to draw this frame.
     pub fn particles(&self) -> Vec<crate::effects::ParticleBatch> {
         self.effects.batches(&self.camera())
@@ -2024,6 +2141,14 @@ impl Stage {
             }
         }
         let key = (appearance, var as u32, letter);
+        // A body is tens of milliseconds to read. The rest stand out of the picture for a frame or two.
+        if !self.rigs.contains_key(&key) {
+            match self.rigs_left.as_mut() {
+                Some(0) => return None,
+                Some(left) => *left -= 1,
+                None => {}
+            }
+        }
         let inst = &mut self.inst;
         let conventional = self.conventional_underwear;
         self.rigs
@@ -2209,6 +2334,13 @@ impl Stage {
 
     /// Everything that moves, posed for this frame: creatures near the player and every door.
     pub fn dynamic_scene(&mut self) -> Scene {
+        self.rigs_left = self.pace_loading.then_some(RIGS_A_FRAME);
+        let scene = self.dynamic_scene_now();
+        self.rigs_left = None;
+        scene
+    }
+
+    fn dynamic_scene_now(&mut self) -> Scene {
         let mut scene = Scene::default();
         if !self.started {
             return scene;
@@ -2988,6 +3120,7 @@ impl Stage {
         self.ui.set_hd_dir(None);
         self.hd3d = None;
         self.textures.clear();
+        self.stand_ins.clear();
         self.overlay_key.clear();
         self.refresh_overlay();
     }

@@ -440,7 +440,7 @@ impl App {
         // What has joined has its textures put on the GPU a few a frame, so that it goes into the picture without a stall.
         let warm = stage.take_warm(3);
         if !warm.is_empty() {
-            st.gpu.warm_textures(&warm, &mut |n| stage.texture(n));
+            st.gpu.warm_textures(&warm, &mut |n| stage.texture_soon(n));
         }
         if st.static_seen != stage.static_version {
             // What the launcher has to say, then what the viewer always says.
@@ -453,10 +453,19 @@ impl App {
             });
             st.static_seen = stage.static_version;
             let scene = stage.static_scene().clone();
+            for name in stage.textures_changed(true) {
+                st.gpu.forget_texture(&name);
+            }
             st.gpu.set_static_scene(&scene, &mut |n| stage.texture(n));
+        }
+        for name in stage.textures_changed(false) {
+            st.gpu.forget_texture(&name);
         }
         if st.portal_seen != stage.portal_version() {
             st.portal_seen = stage.portal_version();
+            for name in stage.textures_changed(true) {
+                st.gpu.forget_texture(&name);
+            }
             let other = stage.portal().map(|(sc, a)| (sc.clone(), a));
             st.gpu
                 .set_portal(other.as_ref().map(|(sc, a)| (sc, *a)), &mut |n| {
@@ -489,9 +498,9 @@ impl App {
                 .set_sky_at_infinity(stage.game.world.minigame.is_none());
             st.gpu.set_particles(stage.frame_particles());
             scene_ms = ms(building);
-            if let Err(e) = st
-                .gpu
-                .render_to(&st.presenter, &scene, &mut |n| stage.texture(n), &cam)
+            if let Err(e) =
+                st.gpu
+                    .render_to(&st.presenter, &scene, &mut |n| stage.texture_soon(n), &cam)
             {
                 self.failed = Some(e);
                 el.exit();
@@ -812,6 +821,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.enable_early_force(!flag("--no-early-force") && !flag("--autopilot"));
     stage.turret_assist = flag("--auto-aim");
     stage.combat_autosave = !flag("--state-log") && !flag("--autopilot");
+    stage.pace_loading = true;
     if flag("--original-underwear") {
         stage.set_conventional_underwear(false);
     }
