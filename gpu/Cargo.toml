@@ -29,6 +29,7 @@ kotor-model = { path = "../crates/kotor-model" }
 kotor-tables = { path = "../crates/kotor-tables" }
 kotor-walkmesh = { path = "../crates/kotor-walkmesh" }
 kotor-audio = { path = "../crates/kotor-audio" }
+kotor-script = { path = "../crates/kotor-script" }
 kotor-audio-out = { path = "audio" }
 wgpu = "24"
 pollster = "0.4"
