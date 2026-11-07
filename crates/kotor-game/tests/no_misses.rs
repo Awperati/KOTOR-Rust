@@ -135,24 +135,98 @@ fn a_stronger_character_glances_harder() {
 }
 
 #[test]
-fn an_enemy_glances_at_the_player_too() {
+fn an_enemys_miss_on_the_player_or_a_companion_is_a_narrow_miss_with_no_damage() {
+    for target_is_companion in [false, true] {
+        let Some((mut w, pc, foe)) = world(true) else {
+            return;
+        };
+        let victim = if target_is_companion {
+            let mate = w.spawn_creature("n_calonord", [0.0, 0.0, -300.0]);
+            let at = w.object(pc).unwrap().position;
+            w.teleport(mate, [at[0] + 0.5, at[1], at[2]]);
+            let o = w.object_mut(mate).unwrap();
+            (o.party_member, o.faction, o.hp, o.max_hp) = (true, 0, 9000, 9000);
+            w.party.push(mate);
+            mate
+        } else {
+            pc
+        };
+        // The foe has the sword and a hand that cannot find its mark.
+        let mut dull = kotor_game::EffectRec::new("EffectAttackDecrease");
+        dull.nums = vec![60.0];
+        w.effects.push(dull);
+        let handle = w.effects.len() as u32;
+        w.apply_effect(foe, foe, handle, kotor_game::DURATION_PERMANENT, 0.0);
+        let sword = w.spawn_item("g_w_lngswrd01");
+        w.object_mut(foe).unwrap().equipped.insert(4, sword);
+        let hp = w.object(victim).unwrap().hp;
+        w.combat.log.clear();
+        w.attack(foe, victim);
+        for _ in 0..(40.0 / 0.05) as usize {
+            w.step(0.05);
+        }
+        w.stop_attacking(foe);
+        let theirs: Vec<_> = w.combat.log.iter().filter(|l| l.attacker == foe).collect();
+        assert!(theirs.len() >= 5);
+        assert!(
+            !theirs.iter().any(|l| l.outcome == Outcome::Glance),
+            "no glance on the player's side"
+        );
+        let misses: Vec<_> = theirs
+            .iter()
+            .filter(|l| l.outcome == Outcome::Miss)
+            .collect();
+        assert!(
+            misses.len() >= 4,
+            "nearly all of them narrowly miss: {theirs:?}"
+        );
+        assert!(misses.iter().all(|l| l.damage == 0));
+        // Only the rare real hit or critical took anything.
+        let taken: i32 = theirs.iter().map(|l| l.damage).sum();
+        assert!(hp - w.object(victim).unwrap().hp <= taken);
+    }
+}
+
+#[test]
+fn a_companions_miss_on_an_enemy_is_a_glance() {
     let Some((mut w, pc, foe)) = world(true) else {
         return;
     };
-    // The foe has the sword; the player is hard to hit.
+    let mate = w.spawn_creature("n_calonord", [0.0, 0.0, -300.0]);
+    let at = w.object(pc).unwrap().position;
+    w.teleport(mate, [at[0] + 0.5, at[1], at[2]]);
+    let o = w.object_mut(mate).unwrap();
+    (o.party_member, o.faction, o.hp, o.max_hp) = (true, 0, 9000, 9000);
+    w.party.push(mate);
     let sword = w.spawn_item("g_w_lngswrd01");
-    w.object_mut(foe).unwrap().equipped.insert(4, sword);
-    w.object_mut(pc).unwrap().natural_ac = 100;
+    w.object_mut(mate).unwrap().equipped.insert(4, sword);
     w.combat.log.clear();
-    w.attack(foe, pc);
-    for _ in 0..(40.0 / 0.05) as usize {
+    w.attack(mate, foe);
+    for _ in 0..(30.0 / 0.05) as usize {
         w.step(0.05);
     }
-    w.stop_attacking(foe);
-    let theirs: Vec<_> = w.combat.log.iter().filter(|l| l.attacker == foe).collect();
-    assert!(theirs.len() >= 5);
-    assert!(!theirs.iter().any(|l| l.outcome == Outcome::Miss));
-    assert!(theirs
+    w.stop_attacking(mate);
+    let mine: Vec<_> = w.combat.log.iter().filter(|l| l.attacker == mate).collect();
+    assert!(mine.len() >= 4);
+    assert!(!mine.iter().any(|l| l.outcome == Outcome::Miss));
+    assert!(mine
         .iter()
         .any(|l| l.outcome == Outcome::Glance && l.damage >= 1));
+}
+
+#[test]
+fn an_aimed_shot_never_misses_and_its_graze_is_half_a_hit_whatever_the_switch_says() {
+    let Some((mut w, pc, foe)) = world(false) else {
+        return;
+    };
+    wield(&mut w, pc, Some("g_w_blstrpstl001"));
+    w.combat.log.clear();
+    for _ in 0..30 {
+        w.resolve_aimed(pc, foe, 4);
+    }
+    let mine: Vec<_> = w.combat.log.iter().filter(|l| l.attacker == pc).collect();
+    assert_eq!(mine.len(), 30);
+    assert!(!mine.iter().any(|l| l.outcome == Outcome::Miss));
+    assert!(mine.iter().filter(|l| l.outcome == Outcome::Glance).count() >= 20);
+    assert!(mine.iter().all(|l| l.damage >= 1));
 }

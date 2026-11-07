@@ -1,44 +1,45 @@
 # No misses: what a miss does now
 
-Options > Feedback has a row, **No misses: On** (default). It is in the list with "Extended story branches", because the
-Gameplay page has no free row. Off, the game's own rules apply and attacks miss as before.
+This is a rule of the game, with no switch. (The owner, 7 Nov 2026: "Don't make it a setting either but a hard rule of how the
+in-game balancing feels".) A scripted player (the autopilot and the drivers' pilot) keeps the original rules, so its routes and
+digests do not move.
 
 ## What happens
 
-1. An attack that would have missed, by the roll or by a natural 1, **lands as a glancing blow**.
-2. A glancing blow does `1 + (flat + level / 4) / 2` damage, rounded down. `flat` is what a hit adds whatever the dice say:
-   Strength in melee, Precise Shot in ranged, Weapon Specialization and the gear's own bonus. It is never under 1.
-3. The dice are not rolled and a glance cannot be a critical. **Real hits and criticals are exactly as before.**
-4. It is a hit in every other way. The target flinches instead of dodging, the weapon's impact sound plays, a bolt lands on the
-   target, resistances and the difficulty setting apply, and scripts see a hit (result 1).
-5. The float over the target reads "Glancing 2". The Messages tab lists it as a hit.
-6. It is the same for the player, the party and every enemy, with every weapon: blasters, blades, lightsabers, fists.
+1. **The player's or a companion's would-be miss on an enemy is a glancing blow.** It lands for the least damage it can do:
+   `1 + (flat + level / 4) / 2`, rounded down. `flat` is what a hit adds whatever the dice say: Strength in melee, Precise Shot at
+   range, Weapon Specialization and the gear's bonus. The dice are not rolled and a glance is never a critical. It is a hit in every
+   other way: the impact sound, the flinch, resistances and the float "Glancing 2". The same goes for anyone's would-be miss that is
+   not against the player's side at all (an enemy on a neutral).
+2. **An enemy's would-be miss on the player or a companion is a near miss, with no damage.** It stays `Outcome::Miss`. A blaster bolt
+   passes 0.3 to 0.6 m from the body and flies on, with a ricochet sound (the game's bolt on metal, `cb_bu_metalmed`: the archives have no
+   whizz). A blow plays the parry sound of its weapon (`cb_pa_unarm1`, `cb_pa_saber1`, `cb_pa_blade1`, `cb_pa_bldlrg1`) and the
+   target plays its dodge clip, not a hit flinch. The 0.3 to 0.6 m and the sounds are assumed.
+3. **Real hits and criticals are as they were.**
+4. **An aimed shot** (for the movement system's `aim_hit`, [combat.rs](../crates/kotor-game/src/combat.rs) `resolve_aimed`) never
+   misses: what would miss is a graze, `Outcome::Glance` of half the rolled damage, at least 1.
 
 ## Where the code is
 
 | What | Where |
 |---|---|
-| the switch, `World::no_misses` | [world.rs](../crates/kotor-game/src/world.rs) |
-| `Outcome::Glance`, `glance_damage` | [combat.rs](../crates/kotor-game/src/combat.rs) |
-| the options row and the saved `no_misses=` | [optionpages.rs](../gpu/src/optionpages.rs), [menus.rs](../gpu/src/menus.rs) |
+| `World::no_misses`, `Outcome::Glance`, `glance_damage`, `resolve_aimed` | [combat.rs](../crates/kotor-game/src/combat.rs) |
+| near-miss bolts and sounds | [stage.rs](../gpu/src/stage.rs) (`NEAR_MISS_*`, `fire_on_frames`, `attack_effects`) |
 | the float text | [fightscreen.rs](../gpu/src/fightscreen.rs) |
 | tests | [no_misses.rs](../crates/kotor-game/tests/no_misses.rs) |
 
-A scripted player (the autopilot and the drivers' pilot) keeps the original rules, as it does for extended story, so that its
-routes and digests do not move. A scripted attack in a cutscene keeps its scripted result.
-
 ## Does it change the balance?
 
-`cargo run --release -p kotor-game --example no_miss_balance -- 60` fights the level-1 starting character against Sith
-soldiers, 60 seeds each, with and without the rule. Measured on 7 Nov 2026:
+`cargo run --release -p kotor-game --example no_miss_balance -- 60` fights the level-1 starting character against Sith soldiers,
+60 seeds each, with the original rules (off) and these (on). Measured on 7 Nov 2026.
 
 | Fight | Wins off | Wins on | Seconds off | Seconds on |
 |---|---|---|---|---|
-| 1 soldier, level 1 | 83% | 87% | 13.0 | 11.2 |
-| 2 soldiers, level 1 | 32% | 15% | 16.8 | 13.4 |
-| 1 soldier, level 5 | 88% | 90% | 10.4 | 10.1 |
-| 2 soldiers, level 5 | 58% | 32% | 17.4 | 13.2 |
+| 1 soldier, level 1 | 83% | 88% | 13.0 | 11.3 |
+| 2 soldiers, level 1 | 32% | 37% | 16.8 | 16.8 |
+| 1 soldier, level 5 | 88% | 92% | 10.4 | 10.0 |
+| 2 soldiers, level 5 | 58% | 60% | 17.4 | 17.1 |
 
-One on one it barely moves. Two on one gets harder, because the soldiers miss the player 76% of the time with the starting
-armour, and each of those misses is now 1 damage against about 12 hit points. A glance cannot do less than 1, so a lower
-formula would not remove this. To make it softer, raise the player's side of the formula or lower the difficulty setting.
+Enemy misses cost the player nothing, so crowd fights are as they were. The player's own glances add a little: a few points of
+win rate and a second or two off a fight. (The first version had enemies glance on the player too. Two soldiers then fell from
+32% to 15% at level 1, and from 58% to 32% at level 5.)

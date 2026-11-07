@@ -5606,7 +5606,7 @@ fn the_cel_shading_row_goes_round_and_the_key_toggles_it() {
     for _ in 0..30 {
         s.menu_wheel(-1.0);
     }
-    click_row(&mut s, "LB_OPTIONS", 29);
+    click_row(&mut s, "LB_OPTIONS", 28);
     assert_eq!(s.settings().cel_shading, (start + 1) % 3);
     assert!(std::fs::read_to_string(&file)
         .unwrap()

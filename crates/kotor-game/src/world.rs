@@ -421,10 +421,13 @@ pub struct World {
     pub extended_story: bool,
     /// Who a script holds still in a conversation (`SetLockOrientationInDialog`).
     pub orientation_locked: std::collections::HashSet<ObjId>,
-    /// "No misses": an attack that would miss lands as a glancing blow for the least damage it can do. Off: the original rules.
+    /// "No misses", a rule of the game: an attack that would miss lands as a glancing blow for the least damage it can do, except an
+    /// enemy's against the player's side, which narrowly misses. Off only for a scripted player, which keeps the original rules.
     pub no_misses: bool,
     /// "Ground finishers": a melee blow on someone knocked down is an automatic critical, and the attacker is listed in `finishers`.
     pub ground_finishers: bool,
+    /// Set while `resolve_aimed` runs: an aimed shot's would-be miss is a graze of half the rolled damage.
+    pub(crate) aimed: bool,
     /// Melee blows struck as ground finishers since the window last looked: attacker and victim. For the attacker's clip.
     pub finishers: Vec<(ObjId, ObjId)>,
     pub story: crate::story_branches::StoryState,
@@ -733,6 +736,7 @@ impl World {
             orientation_locked: Default::default(),
             no_misses: false,
             ground_finishers: false,
+            aimed: false,
             finishers: Vec::new(),
             story: Default::default(),
             hold_levels: false,

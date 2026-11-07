@@ -78,7 +78,7 @@ fn a_blade_on_someone_knocked_down_is_a_critical_and_is_listed_for_the_clip() {
             log.iter().all(|l| l.outcome == Outcome::Critical),
             "{item}: {log:?}"
         );
-        assert!(w.finishers.iter().any(|f| *f == (pc, foe)), "{item}");
+        assert!(w.finishers.contains(&(pc, foe)), "{item}");
         // The critical doubled (or more) what the dice and bonuses gave.
         assert!(log.iter().all(|l| l.damage >= 2), "{item}");
     }

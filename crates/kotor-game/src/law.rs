@@ -142,7 +142,8 @@ impl World {
         })
     }
 
-    pub(crate) fn on_player_team(&self, id: ObjId) -> bool {
+    /// The player, the party, or one who is a party member.
+    pub fn on_player_team(&self, id: ObjId) -> bool {
         id == self.pc
             || self.party.contains(&id)
             || self.objects.get(&id).is_some_and(|o| o.party_member)

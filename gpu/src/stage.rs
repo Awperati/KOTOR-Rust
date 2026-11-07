@@ -41,13 +41,25 @@ pub use overridescan::{scan_override_folder, scan_override_in_background};
 
 type Mat = [[f32; 4]; 4];
 
-/// A sound from a place is heard whole this near the player, and not at all this far (metres). **Assumed:** a duel 43 m from
-/// where a new game starts played at full strength for good. The video has none of it there.
+/// How near a shot that misses the player's side passes the body, in metres: from and to. **Assumed**, from the owner's words.
+const NEAR_MISS_LEAST: f32 = 0.3;
+const NEAR_MISS_MOST: f32 = 0.6;
+/// The sound of a bolt that passes close: the game's bolt on metal, as a ricochet. **Assumed**: no whizz exists in the archives.
+const NEAR_MISS_BOLT: &str = "cb_bu_metalmed";
+/// The sound of a blow that passes close, by the weapon's `weaponmattype` (unarmed, lightsaber, blade, large blade): the parries.
+const NEAR_MISS_BLOW: [&str; 4] = [
+    "cb_pa_unarm1",
+    "cb_pa_saber1",
+    "cb_pa_blade1",
+    "cb_pa_bldlrg1",
+];
 /// How high above the floor a bolt hits someone lying on it, in metres. **Assumed:** a body on its back is about this thick.
 const PRONE_AIM: f32 = 0.3;
 /// How far the weapon arm and spine pitch down, in degrees, at someone on the floor. **Assumed**, from how far a person leans to look
 /// at their feet while holding a pistol out.
 const AIM_DOWN_DEGREES: f32 = 35.0;
+/// A sound from a place is heard whole this near the player, and not at all this far (metres). **Assumed:** a duel 43 m from
+/// where a new game starts played at full strength for good. The video has none of it there.
 const HEARD_WHOLE: f32 = 8.0;
 const HEARD_AT_MOST: f32 = 32.0;
 /// Creatures farther than this from the player are not drawn (metres).
@@ -105,6 +117,8 @@ struct Volley {
     seen: bool,
     last: f32,
     age: f32,
+    /// The shots miss, narrowly: they pass the target's body instead of reaching it.
+    near: bool,
 }
 
 /// Z rotation by `angle` radians, then translation.
@@ -931,7 +945,7 @@ impl Stage {
         self.game.world.extended_story =
             self.settings().extended_story && (self.pilot.is_none() || self.pilot_takes_branches);
         // The same for "No misses": a scripted player's fights keep the game's own rules, so its route does not move.
-        self.game.world.no_misses = self.settings().no_misses && self.pilot.is_none();
+        self.game.world.no_misses = self.pilot.is_none();
         self.game.world.ground_finishers = self.settings().ground_finishers && self.pilot.is_none();
         // A finisher swings the owner's clip, once he has made one. Till then the game's stock swing has played.
         for (attacker, _) in std::mem::take(&mut self.game.world.finishers) {
@@ -2539,8 +2553,25 @@ impl Stage {
                     } else {
                         1.15
                     };
-                    self.effects
-                        .fire(muzzle, [to[0], to[1], to[2] + up], &v.bolt, v.color);
+                    let mut end = [to[0], to[1], to[2] + up];
+                    if v.near {
+                        // A shot that misses the player's side passes 0.3 to 0.6 m from the body and flies on.
+                        let spin = (id as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                            ^ ((time * 1000.0) as u64).wrapping_mul(0xD1B5_4A32_D192_ED03);
+                        let unit = (spin >> 40) as f32 / (1u64 << 24) as f32;
+                        let away = NEAR_MISS_LEAST + unit * (NEAR_MISS_MOST - NEAR_MISS_LEAST);
+                        let side = if spin & 1 == 0 { 1.0 } else { -1.0 };
+                        let lift = (((spin >> 8) & 0xff) as f32 / 255.0 - 0.5) * 0.3;
+                        end = [
+                            to[0] - dy / len * away * side + dx / len * 4.0,
+                            to[1] + dx / len * away * side + dy / len * 4.0,
+                            end[2] + lift,
+                        ];
+                    }
+                    self.effects.fire(muzzle, end, &v.bolt, v.color);
+                    if v.near {
+                        self.effect_from(NEAR_MISS_BOLT, to);
+                    }
                     if let Some(s) = v.shot.clone() {
                         self.effect_from(&s, from);
                     }
@@ -2645,6 +2676,7 @@ impl Stage {
                     seen: false,
                     last: -1.0,
                     age: 0.0,
+                    near: !hit && self.game.world.on_player_team(target),
                 },
             );
             if hit {
@@ -2678,6 +2710,9 @@ impl Stage {
         let blow = get(if armoured { "armor0" } else { "leather0" });
         if let Some(s) = swing {
             self.effect_from(&s, from);
+        }
+        if !hit && self.game.world.on_player_team(target) {
+            self.effect_from(NEAR_MISS_BLOW[row.min(3)], to);
         }
         if hit {
             if let Some(s) = blow {

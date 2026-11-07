@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 22] = [
+const STYLE_ROWS: [(&str, &str, &str); 21] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -114,11 +114,6 @@ const STYLE_ROWS: [(&str, &str, &str); 22] = [
         "Extended story branches: On",
         "Extended story branches: Off",
         "Scenes added to the game's story, as Trask's question when he meets the Dark Jedi on the Endar Spire. Off: the game's own scenes, as they were.",
-    ),
-    (
-        "No misses: On",
-        "No misses: Off",
-        "An attack that would miss lands as a glancing blow for the least damage it can do: 1, and more with the attacker's level, abilities and feats. Hits and criticals stay as they are. Off: the game's own rules, with misses.",
     ),
     (
         "Ground finishers: On",
@@ -244,8 +239,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         22 => &mut s.override_screens,
         23 => &mut s.override_talk,
         24 => &mut s.extended_story,
-        25 => &mut s.no_misses,
-        26 => &mut s.ground_finishers,
+        25 => &mut s.ground_finishers,
         _ => return None,
     })
 }

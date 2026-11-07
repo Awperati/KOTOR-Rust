@@ -48,7 +48,8 @@ pub fn ability_mod(score: i32) -> i32 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     Miss,
-    /// What a miss becomes with `World::no_misses` on: the blow lands for the least it can do (see `glance_damage`).
+    /// What a miss becomes with `World::no_misses` on, when it is the player's or a companion's, or is not at the player's side at all:
+    /// the blow lands for the least it can do (see `glance_damage`). An enemy's miss against the player's side stays a miss.
     Glance,
     Hit,
     Critical,
@@ -572,6 +573,14 @@ impl World {
         self.resolve_hand(attacker, target, boost, 4, penalty);
     }
 
+    /// The player's aimed shot with the weapon in `slot`: as an ordinary attack with no feat and no penalty, except that what would
+    /// have missed is a graze (`Outcome::Glance`) of half the rolled damage, at least 1, whatever `no_misses` says.
+    pub fn resolve_aimed(&mut self, attacker: ObjId, target: ObjId, slot: i32) {
+        self.aimed = true;
+        self.resolve_hand(attacker, target, Default::default(), slot, 0);
+        self.aimed = false;
+    }
+
     /// One attack with the weapon in `slot` (4 right hand, 5 left), with `penalty` added to the roll.
     fn resolve_hand(
         &mut self,
@@ -593,9 +602,16 @@ impl World {
         if outcome == Outcome::Miss && self.has_assured_hit(attacker) {
             outcome = Outcome::Hit;
         }
-        if outcome == Outcome::Miss && self.no_misses {
+        // A blow that would have missed: against the player's side it still misses, narrowly (the window shows a near miss), and
+        // anyone else's glances for the least damage it can do.
+        if outcome == Outcome::Miss
+            && (self.aimed
+                || (self.no_misses
+                    && !(self.on_player_team(target) && !self.on_player_team(attacker))))
+        {
             outcome = Outcome::Glance;
         }
+        let grazing = self.aimed && outcome == Outcome::Glance;
         // Someone on the floor is finished off: a melee blow on a creature knocked down is a critical, whatever the roll.
         if self.ground_finishers && !weapon.ranged && self.is_knocked_down(target) {
             outcome = Outcome::Critical;
@@ -606,7 +622,11 @@ impl World {
         let mut dealt = 0;
         if outcome != Outcome::Miss {
             let mod_ = self.flat_damage(attacker, slot, weapon.ranged);
-            if outcome == Outcome::Glance {
+            if grazing {
+                // An aimed shot that would have missed grazes: half of what a hit rolls, and at least 1.
+                let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
+                dealt = (damage(dice, mod_, Outcome::Hit, 1) / 2).max(1) + boost.damage;
+            } else if outcome == Outcome::Glance {
                 dealt = self.glance_damage(attacker, mod_) + boost.damage;
             } else {
                 let dice: i32 = (0..weapon.dice).map(|_| self.roll(weapon.sides)).sum();
