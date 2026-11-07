@@ -172,14 +172,20 @@ fn a_headless_fight_follows_the_rules_and_the_games_own_ai_runs_it() {
     let log = &w.combat.log;
     assert!(!log.is_empty());
     log.iter().for_each(consistent);
-    // One attack per attacker per round, and rounds are 3 s apart.
-    let mut seen = std::collections::HashSet::new();
+    // One attack per hand per attacker per round (at most two: main hand and off hand), and rounds are 3 s apart.
+    let mut seen = std::collections::HashMap::new();
     for l in log {
         assert!(l.round >= 1);
-        assert!(
-            seen.insert((l.round, l.attacker)),
-            "two attacks in one round: {l:?}"
-        );
+        let n = seen.entry((l.round, l.attacker)).or_insert(0);
+        *n += 1;
+        assert!(*n <= 2, "three attacks in one round: {l:?}");
+        if *n == 2 {
+            assert!(
+                w.object(l.attacker).unwrap().equipped.contains_key(&5)
+                    || w.object(l.attacker).unwrap().equipped.contains_key(&4),
+                "a second attack needs a second hand: {l:?}"
+            );
+        }
     }
     assert!(w.combat.round as f32 * ROUND_SECONDS <= w.time + ROUND_SECONDS);
     // Hit points only go down by what the log says, and a dead creature stops attacking.
