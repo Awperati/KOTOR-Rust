@@ -1318,6 +1318,9 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
             fov,
         };
         let mut gpu = GpuRenderer::new(w, h).unwrap();
+        if let Some(level) = std::env::var("FRAME_CEL").ok().and_then(|v| v.parse().ok()) {
+            gpu.set_cel_shading(level);
+        }
         let still = s.static_scene().clone();
         gpu.set_static_scene(&still, &mut |n| s.texture(n));
         let moving = s.dynamic_scene();
