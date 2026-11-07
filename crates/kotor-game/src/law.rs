@@ -358,10 +358,17 @@ impl World {
             .unwrap_or_else(|| self.kill_kind(victim, killer));
         let cost = LawTable::get().kill_cost(kind.name());
         if cost > 0 {
+            // Only what the law adds is scaled: the game's own scripted shifts keep their size. A part of a point is kept.
+            let share = cost as f32 * LawTable::get().setting("kill_alignment_scale", 1.0);
+            self.kill_alignment_owed += share;
+            let whole = self.kill_alignment_owed.floor();
+            self.kill_alignment_owed -= whole;
             let pc = self.pc;
-            self.adjust_alignment(pc, 3, cost);
+            if whole >= 1.0 {
+                self.adjust_alignment(pc, 3, whole as i32);
+            }
             self.events.push(format!(
-                "{} is a {} kill: {cost} dark side points",
+                "{} is a {} kill: {share:.1} dark side points",
                 self.describe(victim),
                 kind.name()
             ));

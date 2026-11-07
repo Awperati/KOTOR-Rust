@@ -118,7 +118,12 @@ fn an_authority_that_sees_a_killing_turns_on_the_player_and_the_kill_costs_dark_
     assert!(w.object(civilian).unwrap().dead);
     assert_eq!(w.wanted_level(), 2, "a kill is another level");
     let after = w.object(pc).unwrap().alignment;
-    assert_eq!(before - after, 10, "an unarmed civilian costs ten");
+    // The table says ten, and `kill_alignment_scale` makes a tenth of that count: one point.
+    assert_eq!(
+        before - after,
+        1,
+        "an unarmed civilian costs a tenth of ten"
+    );
     // At level 2 the law shuts shops and refuses ordinary talk.
     let other = w
         .objects
@@ -297,4 +302,74 @@ fn a_shop_is_shut_and_a_giver_will_not_talk_while_the_player_is_wanted_and_both_
         w.step(0.05);
     }
     assert!(!w.events.iter().any(|e| e.contains("will not talk to you")));
+}
+
+/// Another civilian of the Upper City, of the same template as `like`, within reach of the player.
+fn another(w: &mut World, pc: ObjId, like: ObjId) -> ObjId {
+    let template = w.object(like).unwrap().template.clone();
+    let p = w.object(pc).unwrap().position;
+    let id = w.spawn_creature(&template, [p[0] + 1.0, p[1], p[2]]);
+    let o = w.object_mut(id).unwrap();
+    (o.hp, o.max_hp, o.plot) = (5, 5, false);
+    id
+}
+
+#[test]
+fn ten_civilians_move_alignment_as_one_did_and_the_games_own_shifts_keep_their_size() {
+    let Some((mut w, pc, _, civilian)) = upper_city() else {
+        return;
+    };
+    send_others_away(&mut w, 0);
+    w.object_mut(pc).unwrap().alignment = 100;
+    let alignment = |w: &World| w.object(pc).unwrap().alignment;
+    // A scripted shift (a dialogue choice, a quest) is exactly the size the script gives.
+    w.adjust_alignment(pc, 3, 10);
+    assert_eq!(alignment(&w), 90, "scripted: ten is ten");
+    w.adjust_alignment(pc, 2, 10);
+    assert_eq!(alignment(&w), 100);
+    // Ten civilians killed: about what one civilian used to cost (10).
+    for _ in 0..10 {
+        let victim = another(&mut w, pc, civilian);
+        assert_eq!(w.kill_kind(victim, pc).name(), "innocent");
+        w.hurt(pc, victim, 100);
+        assert!(w.object(victim).unwrap().dead);
+    }
+    assert_eq!(
+        100 - alignment(&w),
+        10,
+        "ten kills, ten points: one used to cost that"
+    );
+    // Hostile kills cost nothing, before and after.
+    let before = alignment(&w);
+    let foe = w.spawn_creature("n_sithsoldier003", w.object(pc).unwrap().position);
+    let o = w.object_mut(foe).unwrap();
+    (o.faction, o.hp, o.max_hp) = (1, 3, 3);
+    w.hurt(pc, foe, 100);
+    assert_eq!(alignment(&w), before);
+}
+
+#[test]
+fn a_part_of_a_point_is_kept_until_it_makes_a_whole_one() {
+    let Some((mut w, pc, _, civilian)) = upper_city() else {
+        return;
+    };
+    send_others_away(&mut w, 0);
+    w.object_mut(pc).unwrap().alignment = 100;
+    // Armed civilians are neutral kills: five points in the table, half a point in effect.
+    let mut left = Vec::new();
+    for _ in 0..2 {
+        let victim = another(&mut w, pc, civilian);
+        let gun = w.spawn_item("g_w_blstrpstl001");
+        w.object_mut(victim).unwrap().equipped.insert(4, gun);
+        assert_eq!(w.kill_kind(victim, pc).name(), "neutral");
+        left.push(victim);
+    }
+    w.hurt(pc, left[0], 100);
+    assert_eq!(
+        w.object(pc).unwrap().alignment,
+        100,
+        "half a point is not yet a point"
+    );
+    w.hurt(pc, left[1], 100);
+    assert_eq!(w.object(pc).unwrap().alignment, 99, "two halves are one");
 }

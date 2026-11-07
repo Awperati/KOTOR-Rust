@@ -9,12 +9,15 @@
 #   call_far_metres  how far a civilian's call for the nearest authority reaches
 #   flee_seconds     how long a civilian who saw a crime runs
 #   shut_from        the wanted level (1 to 3) from which shops close and ordinary talk is refused
+#   kill_alignment_scale  what share of a kill's dark side points (the `kill` lines below) the player's alignment takes. 0.1 is a tenth:
+#                    alignment moves slowly, and small shares are kept and added up. The game's own scripted shifts are never scaled.
 setting	hear_metres	15
 setting	call_metres	10
 setting	calm_seconds	60
 setting	call_far_metres	40
 setting	flee_seconds	10
 setting	shut_from	2
+setting	kill_alignment_scale	0.1
 #
 # kill <kind> <dark side points>
 #   innocent        unarmed, not hostile (a civilian)

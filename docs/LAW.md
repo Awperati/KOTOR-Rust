@@ -13,8 +13,10 @@ Everything in it today is final (7 Nov 2026, "use the recommended values"). Chan
 4. **It dies down.** An authority who has not seen you for 60 s since the crime stands down. When none are left, the level is 0.
    An authority who is killed is gone from the list at once.
 5. **While you are wanted at level 2 or more**, shops are shut and creatures refuse ordinary talk. A new area starts clean.
-6. **What a kill costs** in dark side points: an unarmed civilian 10, an armed or authority creature that was not your enemy 5,
-   a fleeing enemy 2, an enemy 0. A creature a plot needs cannot be hurt at all.
+6. **What a kill costs** in dark side points, as the `kill` lines say: an unarmed civilian 10, an armed or authority creature that was not
+   your enemy 5, a fleeing enemy 2, an enemy 0. A creature a plot needs cannot be hurt at all. **Only a tenth of that counts**
+   (`setting kill_alignment_scale 0.1`): alignment is slow to move, so ten civilians cost what one used to. A part of a point is kept
+   and added to the next. The game's own shifts (a dialogue choice, a quest, the Trask question) are never scaled.
 7. **Someone with a conversation of their own** who is killed (and was not your enemy) leaves a finished line in the journal,
    "Lost: name", and your party members who are alive say they disapprove of a kill that costs 5 or more.
 
@@ -28,6 +30,7 @@ Everything in it today is final (7 Nov 2026, "use the recommended values"). Chan
 | `setting calm_seconds 60` | how long until they stand down |
 | `setting flee_seconds 10` | how long a civilian who saw a crime runs |
 | `setting shut_from 2` | the wanted level from which shops shut and talk is refused |
+| `setting kill_alignment_scale 0.1` | the share of a kill's dark side points that count; 1 is the whole of them |
 | `kill innocent 10` and the like | the dark side points of each kind of kill |
 | `authority tar_ sithpat` | in a module whose name starts `tar_`, a creature whose template name contains `sithpat` is an authority |
 
@@ -49,3 +52,15 @@ The list is final too. To add a creature, add one `authority` line.
   finished line. A party member who is alive says it disapproves when the kill costs 5 or more.
 - **Saves.** `attack_mode`, the wanted state and `lost_quests` are the menus builder's to save. `lost_quests` was asked for on 7 Nov.
 - **Tests.** [`tests/law.rs`](../crates/kotor-game/tests/law.rs) covers each case in the Taris Upper City, with the real install.
+
+## What it does to a run
+
+| A run with | Before the scale | Now |
+|---|---|---|
+| 20 enemies killed | 0 points | 0 points |
+| 5 civilians killed | 50 points: light to dark in five kills | 5 points |
+| 10 armed bystanders killed | 50 points | 5 points |
+| a scripted shift of 10 | 10 points | 10 points |
+
+The scripted shifts decide the story's gates (Bastila, the Jedi class, the endings, item limits), and they are as the game gives them,
+so those gates are reached as before.

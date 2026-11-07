@@ -521,6 +521,8 @@ pub struct World {
     pub law: crate::law::LawState,
     /// Who the player killed that had a conversation, not hostile: (tag, name). Each is a line in the journal, kept across areas.
     pub lost_quests: Vec<(String, String)>,
+    /// Dark side points from kills, in parts of a point, not yet taken off the player's alignment (see `kill_alignment_scale`).
+    pub kill_alignment_owed: f32,
     /// Voice lines to be played where the creature is: who and the name of the wave file. A screen takes them.
     pub sound_cues: Vec<(ObjId, String)>,
     pub(crate) ssf_cache: BTreeMap<i32, Vec<u32>>,
@@ -692,6 +694,7 @@ impl World {
             hold_in_place: None,
             law: Default::default(),
             lost_quests: Vec::new(),
+            kill_alignment_owed: 0.0,
             sound_cues: Vec::new(),
             ssf_cache: BTreeMap::new(),
             sound_turn: 0,
