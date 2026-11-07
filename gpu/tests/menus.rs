@@ -1423,7 +1423,7 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
         !s.game.world.container_items().is_empty(),
         "bug 12: this footlocker has its own things"
     );
-    // Rows 0 to 3: 50 credits, a sword, 3 medpacs and a sword. What the locker had comes after them.
+    // Rows 0 to 3: 50 credits, a sword, 3 grenades and a sword. What the locker had comes after them.
     let w = &mut s.game.world;
     let stack = |w: &mut kotor_game::World, n: usize, template: &str, count: i32| {
         let item = w.spawn_item(template);
@@ -1433,7 +1433,7 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
     };
     let credits = stack(w, 0, "g_i_credits001", 50);
     let sword = stack(w, 1, "g_w_lngswrd01", 1);
-    let medpacs = stack(w, 2, "g_i_medeqpmnt01", 3);
+    let grenades = stack(w, 2, "g_w_fraggren01", 3);
     let other = stack(w, 3, "g_a_class4001", 1);
     let everything = s.game.world.container_items().len();
     let gold = s.game.world.gold;
@@ -1505,20 +1505,20 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
     assert_eq!(w.container_items()[0].0, credits);
     assert!(w.carried(pc).contains(&sword));
     assert!(w.container_items().iter().any(|i| i.0 == other));
-    assert!(w.container_items().iter().any(|i| i.0 == medpacs));
+    assert!(w.container_items().iter().any(|i| i.0 == grenades));
     assert_eq!(s.menu_name(), "container");
     let rows = s.menu_rows("LB_ITEMS");
     assert!(rows.iter().all(|r| !r.selected), "nothing stays chosen");
     assert_eq!(rows[0].stepper, Some(1), "and the stepper starts again");
     assert_eq!(rows[0].count, 30);
 
-    // An arrow on a row not chosen chooses it too. Two of the 3 medpacs come, and the last has no stepper.
+    // An arrow on a row not chosen chooses it too. Two of the 3 grenades come, and the last has no stepper.
     let carried = |s: &Stage| -> i32 {
         let w = &s.game.world;
         w.carried(pc)
             .iter()
             .filter_map(|i| w.object(*i))
-            .filter(|o| o.template == "g_i_medeqpmnt01")
+            .filter(|o| o.template == "g_w_fraggren01")
             .map(|o| o.stack)
             .sum()
     };
@@ -1527,7 +1527,7 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
     assert!(s.menu_rows("LB_ITEMS")[1].selected);
     press(&mut s, "BTN_GIVEITEMS");
     assert_eq!(carried(&s), before + 2);
-    assert_eq!(s.game.world.object(medpacs).unwrap().stack, 1);
+    assert_eq!(s.game.world.object(grenades).unwrap().stack, 1);
     assert_eq!(s.menu_rows("LB_ITEMS")[1].stepper, None);
     assert!(s.game.world.errors.is_empty(), "{:?}", s.game.world.errors);
 
