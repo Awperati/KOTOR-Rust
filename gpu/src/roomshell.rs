@@ -3,6 +3,7 @@
 
 use kotor_render::Scene;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Metres across a cell of the grid the triangles are filed in.
 const CELL: f32 = 4.0;
@@ -15,6 +16,8 @@ type V3 = [f32; 3];
 pub(super) struct RoomShell {
     triangles: Vec<[V3; 3]>,
     cells: HashMap<(i32, i32), Vec<u32>>,
+    /// Areas joined on to this one: their walls stop a camera too, though they are not in this area's walkmesh.
+    joined: Vec<Arc<RoomShell>>,
 }
 
 fn cell(v: f32) -> i32 {
@@ -83,10 +86,24 @@ impl RoomShell {
         shell
     }
 
+    /// Forget the areas joined on, for a new list of them.
+    pub(super) fn unjoin(&mut self) {
+        self.joined.clear();
+    }
+
+    /// An area joined on to this one, built on the thread that loaded it: the frame it joins pays nothing for it.
+    pub(super) fn join(&mut self, other: Arc<RoomShell>) {
+        self.joined.push(other);
+    }
+
     /// How far along `dir`, a unit vector, the first surface is within `reach` metres of `from`.
     pub(super) fn first_hit(&self, from: V3, dir: V3, reach: f32) -> Option<f32> {
         let to = [0, 1].map(|k| from[k] + dir[k] * reach);
-        let mut nearest: Option<f32> = None;
+        let mut nearest = self
+            .joined
+            .iter()
+            .filter_map(|o| o.first_hit(from, dir, reach))
+            .min_by(f32::total_cmp);
         for x in cell(from[0].min(to[0]))..=cell(from[0].max(to[0])) {
             for y in cell(from[1].min(to[1]))..=cell(from[1].max(to[1])) {
                 for n in self.cells.get(&(x, y)).into_iter().flatten() {
@@ -206,6 +223,31 @@ mod tests {
             None,
             "past its edge"
         );
+    }
+
+    #[test]
+    fn a_camera_stops_at_an_area_joined_on_until_it_is_let_go() {
+        let up = [0.0, 0.0, 1.0];
+        let mut shell = RoomShell::default();
+        let other = Scene {
+            meshes: vec![SceneMesh {
+                positions: vec![
+                    [-10.0, -10.0, 2.0],
+                    [10.0, -10.0, 2.0],
+                    [10.0, 10.0, 2.0],
+                    [-10.0, 10.0, 2.0],
+                ],
+                triangles: vec![[0, 1, 2], [0, 2, 3]],
+                ..SceneMesh::default()
+            }],
+            ..Scene::default()
+        };
+        assert_eq!(shell.first_hit([0.0, 1.0, 0.0], up, 5.0), None);
+        shell.join(Arc::new(RoomShell::of(&other)));
+        let d = shell.first_hit([0.0, 1.0, 0.0], up, 5.0).unwrap();
+        assert!((d - 2.0).abs() < 1e-3, "{d}");
+        shell.unjoin();
+        assert_eq!(shell.first_hit([0.0, 1.0, 0.0], up, 5.0), None);
     }
 
     /// A rail 2 cm thick and 0.9 m up, across the line of travel: rays at chosen heights go over and under it.

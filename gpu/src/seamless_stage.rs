@@ -2,6 +2,7 @@
 //! and carrying the camera over when the party walks through. The rules are in `kotor_game::seamless`; see
 //! `docs/SEAMLESS.md`.
 
+use super::roomshell::RoomShell;
 use super::{chest_templates, Stage};
 use crate::Aperture;
 use kotor_archive::Install;
@@ -16,6 +17,7 @@ use kotor_tables::TwoDa;
 use kotor_walkmesh::seamless::{wrap, Rigid};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
 
 /// How near the player must come to a door, in metres, before the area behind it is loaded.
 const PRELOAD_RANGE: f32 = 24.0;
@@ -56,6 +58,8 @@ pub(super) struct Loaded {
     /// Its picture and its doors' already moved to where they stand beside the loaded module, so that joining costs no
     /// move on the main thread.
     placed: Scene,
+    /// That picture as walls for the camera, for the same reason.
+    shell: Arc<RoomShell>,
 }
 
 /// A number out of a GFF file, as `rig_for` reads one.
@@ -176,7 +180,7 @@ pub(super) struct Seam {
     /// The still creatures and doors of each module that is joined, in its own space, by module name.
     figures: HashMap<String, Still>,
     /// A joined neighbour's picture and doors moved into place, by module, with the move they were made with.
-    placed: HashMap<String, (Rigid, Scene)>,
+    placed: HashMap<String, (Rigid, Scene, Arc<RoomShell>)>,
     /// Textures of what has joined, not yet on the GPU: handed over a few a frame by `take_warm`, and nothing joined is
     /// put into the picture until they all are.
     warm: Vec<String>,
@@ -279,9 +283,10 @@ impl Stage {
                                 .or_insert_with(|| Some(super::styled(rig, conventional)));
                         }
                         self.seam.warm.extend(names);
-                        self.seam
-                            .placed
-                            .insert(l.attached.module.clone(), (l.attached.rigid, l.placed));
+                        self.seam.placed.insert(
+                            l.attached.module.clone(),
+                            (l.attached.rigid, l.placed, l.shell),
+                        );
                         let scenery = &l.attached.scenery;
                         self.seam.figures.insert(
                             l.attached.module.clone(),
@@ -402,6 +407,7 @@ impl Stage {
                     let r = attached.rigid;
                     let mut placed = scene.moved(r.yaw, r.shift);
                     placed.append(doors.moved(r.yaw, r.shift));
+                    let shell = Arc::new(RoomShell::of(&placed));
                     Ok(Loaded {
                         attached,
                         scene,
@@ -410,6 +416,7 @@ impl Stage {
                         rigs,
                         doors,
                         placed,
+                        shell,
                     })
                 };
                 let _ = tx.send(load());
@@ -425,7 +432,7 @@ impl Stage {
     /// The picture of module `m` placed by `r`: the one the thread moved if it was moved by the same, else moved now.
     fn placed_picture(&self, m: &str, r: &Rigid) -> Option<Scene> {
         match self.seam.placed.get(m) {
-            Some((was, s)) if was == r => Some(s.clone()),
+            Some((was, s, _)) if was == r => Some(s.clone()),
             _ => Some(self.seam.cache.get(m)?.0.moved(r.yaw, r.shift)),
         }
     }
@@ -639,8 +646,13 @@ impl Stage {
             return;
         }
         let mut scene = self.seam.base.clone();
+        self.shell.unjoin();
         for (m, r) in &want {
             if let Some(s) = self.placed_picture(m, r) {
+                self.shell.join(match self.seam.placed.get(m) {
+                    Some((was, _, shell)) if was == r => shell.clone(),
+                    _ => Arc::new(RoomShell::of(&s)),
+                });
                 scene.append(s);
                 if let Some(f) = self
                     .seam
@@ -670,7 +682,14 @@ impl Stage {
                     .cache
                     .insert(self.module.clone(), (old, self.chests.clone()));
             }
-            None => self.seam.cache.clear(),
+            None => {
+                self.seam.cache.clear();
+                // A door of the module left is no door of this one. Its picture stayed on, and on the Endar Spire a door of
+                // Taris took the room and the player away.
+                if self.seam.portal.take().is_some() {
+                    self.seam.portal_version += 1;
+                }
+            }
         }
         // The doors of the module just left are in hand: they are the picture of its doors from here on, and no model has
         // to be loaded for them.

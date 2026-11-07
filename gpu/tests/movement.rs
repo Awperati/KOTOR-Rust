@@ -650,3 +650,156 @@ fn the_walk_clip_goes_with_the_speed() {
     );
     std::fs::remove_file(&file).ok();
 }
+
+/// The door's plane runs on past the door. On Upper City South's plaza, 97 m along the plane of the door to the north, an eye
+/// past it lost the floor and the player and showed the area behind that door. It flipped as the camera swung.
+#[test]
+fn a_doorway_far_along_its_plane_takes_nothing_from_the_picture() {
+    let Some((mut s, file)) = stage_in("tar_m02ac", "doorplane", "") else {
+        return;
+    };
+    let Ok(mut gpu) = kotor_gpu::GpuRenderer::new(SIZE.0, SIZE.1) else {
+        return;
+    };
+    let tag = "UpperNorth";
+    let site = s
+        .game
+        .world
+        .sketch()
+        .sites
+        .iter()
+        .find(|x| x.tag == tag)
+        .unwrap()
+        .clone();
+    let way = site.out.unwrap();
+    let before = [
+        site.at[0] - way.cos() * 7.0,
+        site.at[1] - way.sin() * 7.0,
+        site.at[2],
+    ];
+    s.place_player(before, way);
+    let began = std::time::Instant::now();
+    while s.portal().is_none() && began.elapsed().as_secs() < 60 {
+        s.update(DT);
+        // Nothing joined shows until a window has taken its textures.
+        s.take_warm(64);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let (other, door) = s
+        .portal()
+        .map(|(sc, a)| (sc.clone(), a))
+        .expect("the door's view");
+    let scene = s.static_scene().clone();
+    gpu.set_static_scene(&scene, &mut |t| s.texture(t));
+    let frame = |s: &mut Stage, gpu: &mut kotor_gpu::GpuRenderer, with: bool| {
+        gpu.set_portal(with.then_some((&other, door)), &mut |t| s.texture(t));
+        let body = s.dynamic_scene();
+        let cam = s.camera();
+        (gpu.render(&body, &mut |n| s.texture(n), &cam).unwrap(), cam)
+    };
+    // Where the owner saw it: the corridor to the Apartments, with the camera at every turn and on either side of the plane.
+    let spot = [90.0, 118.5, 0.0];
+    assert!((spot[1] - door.at[1]) * way.sin() > 0.0, "past the plane");
+    let mut past = 0;
+    for turn in 0..8 {
+        s.place_player(spot, way);
+        s.pitch = 1.1;
+        s.yaw = way + turn as f32 * std::f32::consts::FRAC_PI_4;
+        run(&mut s, 10);
+        let (with, cam) = frame(&mut s, &mut gpu, true);
+        let (without, _) = frame(&mut s, &mut gpu, false);
+        past += ((cam.eye[1] - door.at[1]) * way.sin() > 0.0) as i32;
+        assert!(
+            with.rgba == without.rgba,
+            "turn {turn}, eye at {:?}",
+            cam.eye
+        );
+    }
+    assert!(
+        past > 0 && past < 8,
+        "{past} of 8 turns had the eye past the plane"
+    );
+    // And it is still there from in front of the door: the open door shows the other area.
+    let door_id = s.game.world.link_door_at(site.at).unwrap();
+    if let Some(o) = s.game.world.objects.get_mut(&door_id) {
+        o.locked = false;
+    }
+    s.game.world.use_door(door_id);
+    s.place_player(before, way);
+    s.pitch = 0.3;
+    s.yaw = way;
+    run(&mut s, 120);
+    let (with, _) = frame(&mut s, &mut gpu, true);
+    let (without, _) = frame(&mut s, &mut gpu, false);
+    assert!(with.rgba != without.rgba, "the doorway shows nothing");
+    std::fs::remove_file(&file).ok();
+}
+
+/// An area joined on at a door has walls of its own, which this area's rooms do not know of. The Apartments' stand over the
+/// corridor up to their door, and the camera rose behind them and lost the player.
+#[test]
+fn the_camera_stops_at_the_walls_of_an_area_joined_on() {
+    let Some((mut s, file)) = stage_in("tar_m02ac", "joinedwall", "") else {
+        return;
+    };
+    let way = std::f32::consts::FRAC_PI_2;
+    s.place_player([90.0, 122.0, 0.0], way);
+    s.pitch = 1.1;
+    s.yaw = way;
+    let from = s.static_version;
+    let began = std::time::Instant::now();
+    while s.static_version == from && began.elapsed().as_secs() < 60 {
+        s.update(DT);
+        // Nothing joined shows until a window has taken its textures.
+        s.take_warm(64);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert!(s.static_version != from, "the Apartments are joined on");
+    run(&mut s, 60);
+    let away = camera_away(&s);
+    assert!(
+        away < 3.2,
+        "the camera is {away} m out, and 3.3 m is the whole arm"
+    );
+    std::fs::remove_file(&file).ok();
+}
+
+/// The way the owner saw it on the Endar Spire: a doorway of Taris, still in the picture after a load, took the room and the
+/// player away wherever the eye was past its plane, and showed the Dark Jedi's talk from outside the ship.
+#[test]
+fn a_doorway_goes_with_the_module_it_was_in() {
+    let Some((mut s, file)) = stage_in("tar_m02ac", "doorgoes", "") else {
+        return;
+    };
+    let site = s
+        .game
+        .world
+        .sketch()
+        .sites
+        .iter()
+        .find(|x| x.tag == "UpperNorth")
+        .unwrap()
+        .clone();
+    let way = site.out.unwrap();
+    let before = [
+        site.at[0] - way.cos() * 7.0,
+        site.at[1] - way.sin() * 7.0,
+        site.at[2],
+    ];
+    s.place_player(before, way);
+    let began = std::time::Instant::now();
+    while s.portal().is_none() && began.elapsed().as_secs() < 60 {
+        s.update(DT);
+        // Nothing joined shows until a window has taken its textures.
+        s.take_warm(64);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert!(s.portal().is_some(), "the door's view");
+    let version = s.portal_version();
+    s.game.world.transition_request = Some(("end_m01aa".to_string(), String::new()));
+    run(&mut s, 5);
+    assert_eq!(s.game.world.module, "end_m01aa");
+    assert!(s.portal().is_none(), "a door of Taris on the Endar Spire");
+    assert!(s.portal_version() != version, "the window is told");
+    std::fs::remove_file(&file).ok();
+}

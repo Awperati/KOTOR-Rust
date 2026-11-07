@@ -2,6 +2,7 @@
 //!
 //! `cargo run --release -p kotor-render --example ledges [module ...]`, with KOTOR_DIR set. Prints each module's deepest
 //! drops within reach of Modern movement: `module x y z heading drop`.
+//! Three of them, or as many as LEDGES_KEPT says.
 
 use kotor_archive::Install;
 
@@ -105,9 +106,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             found.iter().filter(|f| f.0 > 0.5).count()
         );
         // The deepest, and not the same place twice.
+        let keep = std::env::var("LEDGES_KEPT").map_or(3, |v| v.parse().unwrap_or(3));
         let mut kept: Vec<[f32; 3]> = Vec::new();
         for (drop, p, a) in &found {
-            if kept.len() >= 3 {
+            if kept.len() >= keep {
                 break;
             }
             if kept

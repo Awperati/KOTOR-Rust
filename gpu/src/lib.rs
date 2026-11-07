@@ -204,6 +204,10 @@ pub struct Aperture {
 
 /// How high a doorway is drawn, in metres.
 const APERTURE_HEIGHT: f32 = 3.6;
+/// How far past a doorway the player can still be on the way through it, in metres. The world takes them over at 0.4 m.
+const APERTURE_WAY_THROUGH: f32 = 1.0;
+/// How far beside the opening still counts as going through it, in metres, as the crossing has it.
+const APERTURE_EDGE: f32 = 0.5;
 
 struct Portal {
     draws: Vec<Draw>,
@@ -213,6 +217,32 @@ struct Portal {
 }
 
 impl Aperture {
+    /// Whether the other area has any part in the picture from `eye`, which looks at `target`, the player as a rule. The
+    /// door's plane runs on for ever and the doorway does not. An eye past that plane by any other way than the opening is
+    /// still in this area, however far from the door: on Upper City South's plaza, 97 m along the plane of the door to the
+    /// north, it took the floor and the player away and showed the area behind that door.
+    fn in_the_picture(&self, eye: Vec3, target: Vec3) -> bool {
+        let (s, c) = self.out.sin_cos();
+        let into = Vec3::new(c, s, 0.0);
+        let at = Vec3::from(self.at);
+        let (past_eye, past_target) = ((eye - at).dot(into), (target - at).dot(into));
+        if past_eye <= 0.0 {
+            return true;
+        }
+        // Where the way from the target to the eye meets the door's plane, or the target itself if it is on its way through.
+        let on = if past_target < 0.0 {
+            target + (eye - target) * (-past_target / (past_eye - past_target))
+        } else if past_target <= APERTURE_WAY_THROUGH {
+            target
+        } else {
+            return false;
+        };
+        let across = (on - at).dot(Vec3::new(-s, c, 0.0));
+        let up = on.z - at.z;
+        across.abs() <= self.half + APERTURE_EDGE
+            && (-APERTURE_EDGE..=APERTURE_HEIGHT + APERTURE_EDGE).contains(&up)
+    }
+
     /// The five planes that bound the view through the doorway from `eye`, and whether `eye` is on the world side.
     /// Inside all five is the view through the doorway onto the far side.
     fn planes(&self, eye: Vec3) -> ([[f32; 4]; 5], bool) {
@@ -892,7 +922,7 @@ impl GpuRenderer {
         // Binds 1 and 2 cut a doorway view out of one picture and keep nothing else of the other.
         let (portal_binds, on_world_side): (Option<[wgpu::BindGroup; 2]>, bool) =
             match (&self.portal, self.figure_only) {
-                (Some(p), false) => {
+                (Some(p), false) if p.aperture.in_the_picture(eye, Vec3::from(cam.target)) => {
                     let (planes, on_world_side) = p.aperture.planes(eye);
                     let make = |mode: f32| {
                         let g = Globals {
@@ -1690,6 +1720,51 @@ impl Presenter {
         gpu.queue.submit([enc.finish()]);
         frame.present();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod aperture_tests {
+    use super::{Aperture, Vec3};
+
+    /// A door 8 m wide at the origin that leads along +y.
+    fn door() -> Aperture {
+        Aperture {
+            at: [0.0, 0.0, 0.0],
+            out: std::f32::consts::FRAC_PI_2,
+            half: 4.0,
+        }
+    }
+
+    #[test]
+    fn an_eye_on_the_near_side_of_a_door_can_see_through_it() {
+        let target = Vec3::new(0.0, -5.0, 1.2);
+        assert!(door().in_the_picture(Vec3::new(0.0, -8.0, 3.0), target));
+        assert!(door().in_the_picture(Vec3::new(97.0, -1.0, 3.0), target));
+    }
+
+    #[test]
+    fn an_eye_that_went_through_the_opening_is_in_the_other_area() {
+        let eye = Vec3::new(1.0, 2.0, 2.0);
+        assert!(door().in_the_picture(eye, Vec3::new(0.0, -1.0, 1.2)));
+        // The player between the door's plane and the crossing, on the way through it.
+        assert!(door().in_the_picture(eye, Vec3::new(0.0, 0.3, 1.2)));
+    }
+
+    #[test]
+    fn an_eye_past_the_plane_of_a_door_it_did_not_go_through_is_still_here() {
+        // Far along the plane, as on Upper City South's plaza, with the player past it or not.
+        let eye = Vec3::new(97.0, 6.0, 3.0);
+        assert!(!door().in_the_picture(eye, Vec3::new(97.0, 4.0, 1.2)));
+        assert!(!door().in_the_picture(eye, Vec3::new(97.0, -1.0, 1.2)));
+        // Beside the opening and over the top of it.
+        let target = Vec3::new(6.0, -1.0, 1.2);
+        assert!(!door().in_the_picture(Vec3::new(6.0, 2.0, 2.0), target));
+        let target = Vec3::new(0.0, -0.5, 1.2);
+        assert!(!door().in_the_picture(Vec3::new(0.0, 0.5, 9.0), target));
+        // Past the door by more than a crossing takes, in line with the opening.
+        let target = Vec3::new(0.0, 3.0, 1.2);
+        assert!(!door().in_the_picture(Vec3::new(0.0, 6.0, 3.0), target));
     }
 }
 

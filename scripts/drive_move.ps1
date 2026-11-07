@@ -165,8 +165,9 @@ foreach ($mode in @("modern", "classic")) {
   $start = State
   Hover 300 300
   [void][Drv]::PostMessage($h, 0x204, [IntPtr]2, [IntPtr]((300 -shl 16) -bor 300))
-  foreach ($x in 378, 456, 534, 614) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]2, [IntPtr]((300 -shl 16) -bor $x)); WaitSteps 2 }
-  WaitSteps 30
+  # All in a go. Dragged a step at a time, at 2160p the turn took 1.8 s of game time and the player was at the wall 8 m on before it ended.
+  foreach ($x in 378, 456, 534, 614) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]2, [IntPtr]((300 -shl 16) -bor $x)) }
+  WaitSteps 45
   Shot "move_turn_after_${mode}_$tag"
   $end = State
   $rows = @(Samples $m); Note "camera turn, $mode" $rows
@@ -174,8 +175,8 @@ foreach ($mode in @("modern", "classic")) {
   Report "$mode`: the player faces the new way" ((Off ([double]$end.yaw) ([double]$end.heading)) -lt 0.15) "yaw $($end.yaw), heading $($end.heading)"
   # Measured over the ground: the stretches at a run, as the state's speed is the Modern body's. One stretch is a frame or two, and a slow
   # frame at 2160p throws it out, so the middle value of the later half says the way, and the middle of all of them the speed.
-  # Only once the camera has finished turning.
-  $legs = @(for ($i = 1; $i -lt $rows.Count; $i++) { if ((Measured $rows[$i-1] $rows[$i]) -gt 3 -and (Off $rows[$i-1].yaw ([double]$end.yaw)) -lt 0.02) { $i } })
+  # Only once the camera has finished turning and the body has come round.
+  $legs = @(for ($i = 1; $i -lt $rows.Count; $i++) { if ((Measured $rows[$i-1] $rows[$i]) -gt 3 -and (Off $rows[$i-1].yaw ([double]$end.yaw)) -lt 0.02 -and (Off $rows[$i-1].heading ([double]$end.yaw)) -lt 0.15) { $i } })
   if ($legs.Count -ge 1) {
     $later = @($legs | Select-Object -Last ([Math]::Max([int]($legs.Count / 2), 1)))
     $ways = @(foreach ($i in $later) { [Math]::Atan2($rows[$i].y - $rows[$i-1].y, $rows[$i].x - $rows[$i-1].x) } ) | Sort-Object
@@ -195,8 +196,10 @@ foreach ($mode in @("modern", "classic")) {
   Up $W
   [void][Drv]::PostMessage($h, 0x205, [IntPtr]0, [IntPtr]((300 -shl 16) -bor 614))
   WaitSteps 20
-  Down $W; WaitSteps 20; Up $W
+  # Read with the key held: let go, the body faces the way it still slides, along a wall if it is at one.
+  Down $W; WaitSteps 30
   $again = State
+  Up $W
   Report "$mode`: pressed again, the same way" ((Off ([double]$again.yaw) ([double]$again.heading)) -lt 0.15) "yaw $($again.yaw), heading $($again.heading)"
   if ($mode -eq "classic") {
     Report "classic: the run is today's" ([Math]::Abs($fastest - 5.4) -lt 0.6) "$([Math]::Round($fastest, 2)) m/s over the ground, want 5.4"
@@ -206,6 +209,21 @@ foreach ($mode in @("modern", "classic")) {
   FocusReport
   Close
 }
+
+# Upper City South: the camera swung to both sides of the plane of a door 97 m away. Pictures to look at: floor and player in both.
+$s = Open "doorplane" "tar_m02ac" @("--place", "90,118.5,0,1.571")
+WaitSteps 120
+Hover 300 300
+[void][Drv]::PostMessage($h, 0x204, [IntPtr]2, [IntPtr]((300 -shl 16) -bor 300))
+foreach ($y in 380, 460, 540) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]2, [IntPtr](($y -shl 16) -bor 300)); WaitSteps 2 }
+WaitSteps 30
+Shot "move_doorplane_north_$tag"
+foreach ($x in 500, 700, 900, 1085) { [void][Drv]::PostMessage($h, 0x200, [IntPtr]2, [IntPtr]((540 -shl 16) -bor $x)); WaitSteps 2 }
+WaitSteps 30
+Shot "move_doorplane_south_$tag"
+[void][Drv]::PostMessage($h, 0x205, [IntPtr]0, [IntPtr]((540 -shl 16) -bor 1085))
+FocusReport
+Close
 
 # F8 reads the pose files again, and a mistake is written down. In a folder of its own: never the player's.
 $poses = "$scratch\kotor_move_poses"
