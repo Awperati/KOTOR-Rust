@@ -177,6 +177,9 @@ const MAX_CATCH_UP: f32 = 0.25;
 /// Most fixed steps one call may run: about a fifth of a second of simulation at its slowest.
 pub const MAX_STEPS_PER_CALL: usize = 4096;
 
+/// Under this speed in m/s an aimed shot plays its clip. Assumed.
+const AIMED_CLIP_BELOW: f32 = 0.5;
+
 impl Game {
     pub fn new(world: World) -> Game {
         Game {
@@ -391,6 +394,13 @@ impl Game {
         // A swing waits for a flinch or dodge in progress, so that being hit is always seen to the end.
         for l in &new {
             let swing = self.style_clip(l.attacker, Move::Attack);
+            // An aimed shot starts its clip over, standing. On the move the legs go on, and the shot is only the bolt.
+            if l.attacker == self.world.pc && self.world.pc_aim.is_some() {
+                if self.world.pc_body.speed() < AIMED_CLIP_BELOW {
+                    self.play_once(l.attacker, swing, COMBAT_CLIP_SECONDS);
+                }
+                continue;
+            }
             self.queue_once(l.attacker, swing, COMBAT_CLIP_SECONDS);
         }
     }

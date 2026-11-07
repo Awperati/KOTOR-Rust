@@ -25,6 +25,10 @@ pub(super) const AIM_MOUSE: f32 = 0.6;
 const PLAIN_LOWEST: f32 = -0.2;
 const PITCH_BACK_RATE: f32 = 6.0;
 const LAYOUT_HIGH: i32 = 480;
+/// The least time between aimed shots, in seconds. `kotor_game::fire_times` has the clips' shots about this far apart.
+const SHOT_SECONDS: f32 = 0.5;
+/// Where a bolt goes from over the player's middle, and how far short of where the ray ends, in metres.
+const BOLT_SHORT: f32 = 0.05;
 
 impl Stage {
     /// The aim button, down or up. It is the look button: holding it does nothing new until aiming may begin.
@@ -66,6 +70,7 @@ impl Stage {
             self.game.world.pc_mover.stop();
         }
         self.aim_on = on;
+        self.aim_hot = false;
         let want = if on { 1.0 } else { 0.0 };
         self.aim_share += (want - self.aim_share) * (1.0 - (-AIM_RATE * dt).exp());
         if self.aim_share < 0.001 {
@@ -75,8 +80,69 @@ impl Stage {
         if on {
             let pc = self.game.world.pc;
             self.game.hold_stance(pc);
+            // Rounds are not for the player while aiming: each shot is a click.
+            self.game.world.stop_attacking(pc);
+            let (eye, dir) = self.aim_ray();
+            let reach = self.aim_reach(eye, dir);
+            let who = self.game.world.aim_hit(eye, dir, reach).who;
+            self.hover_target = who;
+            self.aim_hot = who.is_some();
         } else if self.pitch < PLAIN_LOWEST {
             self.pitch += (PLAIN_LOWEST - self.pitch) * (1.0 - (-PITCH_BACK_RATE * dt).exp());
+        }
+    }
+
+    /// The ray through the crosshair: where it starts, and its unit direction.
+    pub fn aim_ray(&self) -> ([f32; 3], [f32; 3]) {
+        let c = self.camera();
+        let d = [
+            c.target[0] - c.eye[0],
+            c.target[1] - c.eye[1],
+            c.target[2] - c.eye[2],
+        ];
+        let long = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-4);
+        (c.eye, [d[0] / long, d[1] / long, d[2] / long])
+    }
+
+    /// Whether the crosshair lies on what a shot would hit.
+    pub fn aim_hot(&self) -> bool {
+        self.aim_hot
+    }
+
+    /// How far the ray goes before the room stops it.
+    pub fn aim_reach(&self, eye: [f32; 3], dir: [f32; 3]) -> f32 {
+        self.shell
+            .first_hit(eye, dir, kotor_game::AIM_REACH)
+            .unwrap_or(kotor_game::AIM_REACH)
+    }
+
+    /// A click while aiming fires, at the pace of the weapon. A blade or a bare hand does nothing yet. Not in a pause: there is
+    /// no queue in Modern combat.
+    pub(super) fn aim_click(&mut self) {
+        let now = self.game.world.time;
+        // A save from earlier in the game puts the clock back: a wait longer than one shot's is left from before it.
+        let waiting = now < self.aim_next_shot && self.aim_next_shot - now <= SHOT_SECONDS;
+        if self.paused() || waiting {
+            return;
+        }
+        let (eye, dir) = self.aim_ray();
+        let reach = self.aim_reach(eye, dir);
+        let Some(hit) = self.game.world.fire_aimed(eye, dir, reach) else {
+            return;
+        };
+        self.aim_next_shot = now + SHOT_SECONDS;
+        let w = &self.game.world;
+        let (gun, pc) = (w.pc_gun(), w.pc);
+        let to = [
+            hit.point[0] - dir[0] * BOLT_SHORT,
+            hit.point[1] - dir[1] * BOLT_SHORT,
+            hit.point[2] - dir[2] * BOLT_SHORT,
+        ];
+        if let Some((bolt, color, shot)) = self.gun_look(pc) {
+            self.effects.fire(gun, to, &bolt, color);
+            if let Some(s) = shot {
+                self.effect_from(&s, gun);
+            }
         }
     }
 
@@ -100,7 +166,7 @@ impl Stage {
         self.aim_on.then_some(Crosshair {
             x: self.ui_width as i32 / 2,
             y: LAYOUT_HIGH / 2,
-            hot: false,
+            hot: self.aim_hot,
         })
     }
 }

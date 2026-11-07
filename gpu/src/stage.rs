@@ -521,6 +521,9 @@ pub struct Stage {
     aim_held: bool,
     aim_on: bool,
     aim_share: f32,
+    /// The crosshair lies on what a shot would hit, and when the next shot may leave.
+    aim_hot: bool,
+    aim_next_shot: f32,
     /// Seconds since the player was last in the air, or in a landing.
     since_fall: f32,
     /// The roll's and the landing's poses.
@@ -709,6 +712,8 @@ impl Stage {
             aim_held: false,
             aim_on: false,
             aim_share: 0.0,
+            aim_hot: false,
+            aim_next_shot: 0.0,
             since_fall: 0.0,
             body_poses: moving::BodyPoses::default(),
             camera_z: None,
@@ -1848,6 +1853,7 @@ impl Stage {
             return;
         }
         if self.aiming() {
+            self.aim_click();
             return;
         }
         // The first action slot (`LBH_BORDER1` in `maininterface.gui`) uses the target it shows.
@@ -2477,7 +2483,8 @@ impl Stage {
         let new: Vec<_> = self.game.world.combat.log[self.log_seen.min(n)..].to_vec();
         self.log_seen = n;
         for l in new {
-            self.attack_effects(l.attacker, l.target, l.outcome != kotor_game::Outcome::Miss);
+            let hit = l.outcome != kotor_game::Outcome::Miss;
+            self.attack_effects(l.attacker, l.target, hit);
         }
         // A thrown creature comes down: against a wall first (a hard blunt blow on metal), then the floor.
         for t in std::mem::take(&mut self.game.world.thuds) {
@@ -2622,6 +2629,39 @@ impl Stage {
             .map(str::to_string)
     }
 
+    /// What a shooter's bolts look like and sound like: the bolt's picture, its colour, and the sound. None for a blade.
+    fn gun_look(&mut self, id: ObjId) -> Option<(String, [f32; 3], Option<String>)> {
+        let base = self
+            .game
+            .world
+            .object(id)?
+            .equipped
+            .get(&RIGHT_HAND_SLOT)
+            .and_then(|i| self.game.world.object(*i))
+            .map(|i| i.base_item as usize)?;
+        let row = self
+            .baseitem(base, "ammunitiontype")
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|a| *a > 0)?;
+        let table = self
+            .inst
+            .read("ammunitiontypes", ResType::TWODA)
+            .ok()
+            .and_then(|b| TwoDa::parse(&b).ok())?;
+        let get = |c: &str, r: usize| {
+            table
+                .get(r, c)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+        };
+        let shot = self.sound_that_exists(get("shotsound0", row), get("shotsound0", 1));
+        let (bolt, color) = get("model", row)
+            .and_then(|m| self.model(&m))
+            .and_then(|m| crate::effects::bolt_look(&m))
+            .unwrap_or_else(|| ("fx_laser_01".to_string(), [1.0, 0.25, 0.2]));
+        Some((bolt, color, shot))
+    }
+
     /// `name` if the install has a sound of that name, else `fallback`.
     fn sound_that_exists(
         &mut self,
@@ -2691,20 +2731,24 @@ impl Stage {
                 from[2] + 1.15,
             ];
             let _ = muzzle;
+            // An aimed shot has had its bolt, from `aim_click`, and only the impact is left.
+            let aimed = attacker == self.game.world.pc && self.aim_on;
             // The shots leave at their moments of the attack clip, each with its flash and its sound.
-            self.volleys.insert(
-                attacker,
-                Volley {
-                    target,
-                    bolt,
-                    color,
-                    shot,
-                    seen: false,
-                    last: -1.0,
-                    age: 0.0,
-                    near: !hit && self.game.world.on_player_team(target),
-                },
-            );
+            if !aimed {
+                self.volleys.insert(
+                    attacker,
+                    Volley {
+                        target,
+                        bolt,
+                        color,
+                        shot,
+                        seen: false,
+                        last: -1.0,
+                        age: 0.0,
+                        near: !hit && self.game.world.on_player_team(target),
+                    },
+                );
+            }
             if hit {
                 if let Some(s) = impact {
                     self.effect_from(&s, to);

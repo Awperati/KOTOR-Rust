@@ -1,6 +1,7 @@
 //! The game world without graphics: objects, a clock, per-object action queues, delayed commands,
 //! the routines scripts call, and the dialogue runner. It reads the installed game and never writes it.
 
+mod aim;
 mod alignment;
 mod area_map;
 mod autopilot;
@@ -55,6 +56,7 @@ mod weapon_focus;
 mod workbench;
 mod world;
 
+pub use aim::{AimHit, AIM_REACH};
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
 pub use autopilot::{lead_with_the_best_at, state_digest, Autopilot, FightResult, Stall};
 pub use chargen::{
