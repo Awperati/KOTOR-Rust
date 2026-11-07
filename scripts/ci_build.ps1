@@ -45,5 +45,7 @@ try {
     Remove-Item -Recurse -Force $home2 -ErrorAction SilentlyContinue
 }
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\publish_build.ps1" -GameExe $game -LauncherExe $launcher -Sha $sha -Subject $subject -Root $Root
+# Windows PowerShell does not escape a double quote in an argument to a program: a subject with one came apart into several.
+$quoted = $subject.Replace('"', '\"')
+powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\publish_build.ps1" -GameExe $game -LauncherExe $launcher -Sha $sha -Subject $quoted -Root $Root
 if ($LASTEXITCODE) { throw 'publishing failed' }
