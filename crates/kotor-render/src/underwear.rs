@@ -84,6 +84,8 @@ const NECK_RING_METRES: f32 = 0.012;
 /// How far down the neck reaches, and how much of it stretches to do that.
 const NECK_REACH_METRES: f32 = 0.04;
 const NECK_STRETCH_METRES: f32 = 0.02;
+/// How much stronger than measured the borrowed belly is laid on the others.
+const BELLY_GAIN: f32 = 2.0;
 const RELIEF_WIDE: usize = 64;
 const RELIEF_TALL: usize = 48;
 const RELIEF_ACROSS: i32 = 8;
@@ -941,7 +943,9 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
         islands[n] = torso_islands[face];
         let h = p[2] / top;
         if let Some(belly) = &belly {
-            relief[n] = relief_at(belly, p[0], p[1], h, half);
+            // The large body's belly, as its light and dark against what is round each cell, made stronger: on a body whose
+            // belly was never painted the muscles and the navel must read as plainly as on the one whose was.
+            relief[n] = 1.0 + BELLY_GAIN * (relief_at(belly, p[0], p[1], h, half) - 1.0);
         }
         neck[n] = h >= NECK_RING;
         if p[1] > 0.0 && (WAIST..BAND_LOW).contains(&h) && p[0].abs() < half * BELLY_ACROSS {
