@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         s.escape();
         press(&mut s, "BTN_SAVEGAME");
         press(&mut s, "BTN_SAVELOAD");
-        let mut shot = |s: &mut Stage, name: &str| {
+        let shot = |s: &mut Stage, name: &str| {
             s.update(DT);
             let p = out.join(format!("{name}_{}.png", size.1));
             let img = s.overlay().expect("the screen");
