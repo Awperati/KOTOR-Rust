@@ -1343,7 +1343,7 @@ impl Stage {
         Some((open * edge, self.beat_time))
     }
 
-    /// Whether a fixed camera stands closer to whoever owns the conversation than `TOO_CLOSE_METRES`. Carth's on the
+    /// Whether a fixed camera stands closer to whoever says the line than `TOO_CLOSE_METRES`. Carth's on the
     /// Endar Spire (camera 2 of `end_m01ab`, 1.03 m away, 0.3 m from the console he stands behind) shows a ceiling and
     /// the top of his head: the shot is replaced by `speaker_camera`.
     ///
@@ -1351,7 +1351,8 @@ impl Stage {
     /// is not known). The video has no frame of this talk to compare.
     fn too_close_to_speaker(&self, c: &Camera) -> bool {
         let w = &self.game.world;
-        w.dialogue_owner()
+        w.dialogue_pair()
+            .map(|(speaker, _)| speaker)
             .filter(|o| *o != w.pc)
             .and_then(|o| w.object(o))
             .is_some_and(|o| {
@@ -1360,21 +1361,24 @@ impl Stage {
             })
     }
 
-    /// A close shot of whoever owns the conversation while the line is said, then of the player while the replies wait.
-    /// The reference video cuts like this, see `docs/REFERENCE.md`.
+    /// A close shot of whoever says the line, from the side of whoever it is said to, so that the face shows. Then of the
+    /// player while the replies wait. The reference video cuts like this, see `docs/REFERENCE.md`.
     ///
     /// **Assumption:** this stands in for the game's dialogue camera angles, whose codes are not modelled. A script may
     /// start a talk from metres away (Trask's first talk is from 7.5 m), and this keeps the speaker in shot.
     pub fn speaker_camera(&self) -> Option<Camera> {
         let w = &self.game.world;
-        let o = w.object(w.dialogue_owner()?)?;
-        if o.kind != Kind::Creature || o.id == w.pc {
+        let (speaker, listener) = w.dialogue_pair()?;
+        let o = w.object(speaker)?;
+        if o.kind != Kind::Creature || speaker == listener {
             return None;
         }
-        let (mut at, mut here) = (o.position, self.pc_position());
-        if self.answering() {
-            std::mem::swap(&mut at, &mut here);
-        }
+        let spoken_to = w.object(listener)?.position;
+        let (at, here) = if self.answering() && speaker != w.pc {
+            (self.pc_position(), o.position)
+        } else {
+            (o.position, spoken_to)
+        };
         let (dx, dy) = (here[0] - at[0], here[1] - at[1]);
         let len = dx.hypot(dy).max(0.01);
         let (dx, dy) = (dx / len, dy / len);
@@ -1399,7 +1403,7 @@ impl Stage {
     }
 
     /// The clip a creature plays in a conversation: what its node's `AnimList` names (`dialoganimations.2da`, ids from
-    /// 10000), and else the owner talking and the player listening. `None` outside a conversation, and for a body
+    /// 10000), and else the speaker talking and the player listening. `None` outside a conversation, and for a body
     /// that a cutscene's stunt animates.
     ///
     /// **Assumed:** the clip each `dialoganimations.2da` label stands for (`dialogue_clip_name`), and that everyone else
@@ -1421,7 +1425,8 @@ impl Stage {
             })
         });
         let name = named.or_else(|| {
-            if Some(id) == w.dialogue_owner() && id != w.pc && !self.answering() {
+            let says = w.dialogue_pair().is_some_and(|(speaker, _)| speaker == id);
+            if says && id != w.pc && !self.answering() {
                 Some("tlknorm")
             } else if id == w.pc {
                 Some("listen")
@@ -1482,7 +1487,7 @@ impl Stage {
         }
         // In a conversation look past the player at the speaker; on a walk swing slowly round behind the player.
         let here = self.pc_position();
-        let wanted = match w.dialogue_owner().and_then(|id| w.object(id)) {
+        let wanted = match w.dialogue_pair().and_then(|(id, _)| w.object(id)) {
             Some(o) if o.id != w.pc => {
                 Some((o.position[1] - here[1]).atan2(o.position[0] - here[0]))
             }
@@ -3001,7 +3006,7 @@ impl Stage {
         let here = self.pc_position();
         // A shot of someone far from the player (Carth on the comm) is a view from beside them.
         let eye = self.camera().eye;
-        let speaker = self.game.world.dialogue_owner();
+        let talking = self.game.world.dialogue_pair();
         // The area seen through a doorway stands where some of this one's doors and creatures stand: they are not drawn
         // there, or a door shows in the other area with none of its wall.
         let doorways: Vec<Aperture> = self
@@ -3037,8 +3042,8 @@ impl Stage {
                         let (dx, dy) = (pose.position[0] - at[0], pose.position[1] - at[1]);
                         (dx * dx + dy * dy).sqrt()
                     };
-                    if from(here) > DRAW_RANGE && from(eye) > DRAW_RANGE && speaker != Some(pose.id)
-                    {
+                    let in_the_talk = talking.is_some_and(|(a, b)| a == pose.id || b == pose.id);
+                    if from(here) > DRAW_RANGE && from(eye) > DRAW_RANGE && !in_the_talk {
                         continue;
                     }
                     let fade = self.eye_fade(pose.id, pose.position, eye);

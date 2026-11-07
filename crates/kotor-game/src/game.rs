@@ -507,28 +507,44 @@ impl Game {
         (stance as i32, ranged)
     }
 
-    /// Speaker and player turn to each other at each new line. This is here and not in the window's loop because the
-    /// player's heading steers its next walk: it has to fall on the same step at any speed.
+    /// Whoever says a line and whoever it is said to turn to each other, as the line's Speaker and Listener have it, and not
+    /// always to the player. A script can hold someone still (`SetLockOrientationInDialog`), and what is not a creature does not
+    /// turn. This is here and not in the window's loop because the player's heading steers its next walk: it has to fall on the
+    /// same step at any speed.
     fn face_speaker(&mut self) {
         let serial = self.world.dialogue_serial();
         if serial == self.line_seen {
             return;
         }
         self.line_seen = serial;
-        let pc = self.world.pc;
-        let Some(owner) = self.world.dialogue_owner().filter(|o| *o != pc) else {
+        let Some((speaker, listener)) = self
+            .world
+            .dialogue_pair()
+            .filter(|(speaker, listener)| speaker != listener)
+        else {
             return;
         };
-        let (Some(at), Some(here)) = (self.world.object(owner), self.world.object(pc)) else {
+        let (Some(from), Some(to)) = (self.world.object(speaker), self.world.object(listener))
+        else {
             return;
         };
-        let is_creature = at.kind == Kind::Creature;
-        let to_speaker =
-            (at.position[1] - here.position[1]).atan2(at.position[0] - here.position[0]);
-        self.face(pc, to_speaker);
-        if is_creature {
-            self.face(owner, to_speaker + std::f32::consts::PI);
+        let turns = |o: &crate::world::Object| {
+            o.kind == Kind::Creature && !self.world.orientation_locked.contains(&o.id)
+        };
+        let (speaker_turns, listener_turns) = (turns(from), turns(to));
+        let to_listener =
+            (to.position[1] - from.position[1]).atan2(to.position[0] - from.position[0]);
+        if speaker_turns {
+            self.face(speaker, to_listener);
         }
+        if listener_turns {
+            self.face(listener, to_listener + std::f32::consts::PI);
+        }
+    }
+
+    /// Which way a creature faces now, as last turned: in radians.
+    pub fn facing_of(&self, id: ObjId) -> Option<f32> {
+        self.headings.get(&id).copied()
     }
 
     /// Turn a creature to face an angle in radians; it keeps it until it moves.

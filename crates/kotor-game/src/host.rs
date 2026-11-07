@@ -33,7 +33,6 @@ const PRESENTATION: &[&str] = &[
     "MusicBackgroundChangeNight",
     "SetAreaUnescapable",
     "SetCameraFacing",
-    "SetLockOrientationInDialog",
     "SetLockHeadFollowInDialog",
     "SetTutorialWindowsEnabled",
     "SetFacingPoint",
@@ -1702,6 +1701,16 @@ impl Host for Adapter<'_> {
                 let t = self.obj(caller, args, 0);
                 self.world.queue(caller, Action::Attack(t));
                 self.record(name, args);
+                None
+            }
+            "SetLockOrientationInDialog" => {
+                self.record(name, args);
+                let (id, on) = (self.obj(caller, args, 0), int(args, 1)? != 0);
+                if on {
+                    self.world.orientation_locked.insert(id);
+                } else {
+                    self.world.orientation_locked.remove(&id);
+                }
                 None
             }
             "SetMinOneHP" => {

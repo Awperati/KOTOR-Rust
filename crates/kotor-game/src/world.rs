@@ -419,6 +419,8 @@ pub struct World {
     pub interactive_dialogue: bool,
     /// The owner's added story branches (`story_branches.rs`). Off, the game's scenes play as the files have them.
     pub extended_story: bool,
+    /// Who a script holds still in a conversation (`SetLockOrientationInDialog`).
+    pub orientation_locked: std::collections::HashSet<ObjId>,
     pub story: crate::story_branches::StoryState,
     /// The player takes each level on a screen, instead of when the experience comes in.
     pub hold_levels: bool,
@@ -722,6 +724,7 @@ impl World {
             hero: 1,
             interactive_dialogue: false,
             extended_story: false,
+            orientation_locked: Default::default(),
             story: Default::default(),
             hold_levels: false,
             party_screen: false,
@@ -1121,6 +1124,7 @@ impl World {
         // in `end_m01ab` it does not.
         self.programs.clear();
         self.item_templates.clear();
+        self.orientation_locked.clear();
         self.remember_items();
         let ifo = Gff::parse(&self.inst.read("module", ResType::IFO)?)?;
         let area_name = ifo

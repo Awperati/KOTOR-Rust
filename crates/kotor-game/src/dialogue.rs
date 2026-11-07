@@ -59,6 +59,37 @@ impl World {
         }
     }
 
+    /// Who says the line on now, and to whom: the node's Speaker, or else the conversation's owner, and its Listener, or else
+    /// the player. `PLAYER` is the player either way. With no line held, the owner and the player.
+    ///
+    /// **Assumed:** that an empty Listener means the player. The data has it so on lines plainly said to the player, and the
+    /// original's own rule has not been read.
+    pub fn dialogue_pair(&self) -> Option<(ObjId, ObjId)> {
+        let run = self.conv.as_ref()?;
+        let Some(held) = run.held.as_ref() else {
+            return Some((run.owner, self.pc));
+        };
+        let who = |tag: &str| -> Option<ObjId> {
+            // The player's own tag is empty: an empty field is not the player by that road.
+            if tag.is_empty() {
+                return None;
+            }
+            if tag.eq_ignore_ascii_case("player") {
+                return Some(self.pc);
+            }
+            self.by_tag(tag).first().copied()
+        };
+        let speaker = who(&held.speaker_tag).unwrap_or(run.owner);
+        let spoken_to = who(&held.listener_tag).unwrap_or(self.pc);
+        // The player, spoken for: to whoever the conversation is with.
+        let listener = if spoken_to == speaker {
+            run.owner
+        } else {
+            spoken_to
+        };
+        Some((speaker, listener))
+    }
+
     fn describe_short(&self, id: ObjId) -> String {
         match self.object(id) {
             Some(o) if !o.name.is_empty() => o.name.clone(),
@@ -468,6 +499,8 @@ impl World {
                         }
                         None => {
                             run.held = Some(Held {
+                                speaker_tag: entry.speaker.clone().unwrap_or_default(),
+                                listener_tag: entry.listener.clone().unwrap_or_default(),
                                 speaker,
                                 text,
                                 vo,
@@ -570,6 +603,8 @@ pub struct ConvRun {
 
 /// A spoken line waiting for the player.
 struct Held {
+    speaker_tag: String,
+    listener_tag: String,
     speaker: String,
     text: String,
     vo: String,
