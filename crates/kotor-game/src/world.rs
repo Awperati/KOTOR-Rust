@@ -419,13 +419,10 @@ pub struct World {
     pub interactive_dialogue: bool,
     /// The owner's added story branches (`story_branches.rs`). Off, the game's scenes play as the files have them.
     pub extended_story: bool,
-<<<<<<< HEAD
     /// Who a script holds still in a conversation (`SetLockOrientationInDialog`).
     pub orientation_locked: std::collections::HashSet<ObjId>,
-=======
     /// "No misses": an attack that would miss lands as a glancing blow for the least damage it can do. Off: the original rules.
     pub no_misses: bool,
->>>>>>> 55f10f8 (No misses: an attack that would miss lands as a glancing blow for the least damage it can do (Options > Feedback, default on))
     pub story: crate::story_branches::StoryState,
     /// The player takes each level on a screen, instead of when the experience comes in.
     pub hold_levels: bool,
@@ -729,11 +726,8 @@ impl World {
             hero: 1,
             interactive_dialogue: false,
             extended_story: false,
-<<<<<<< HEAD
             orientation_locked: Default::default(),
-=======
             no_misses: false,
->>>>>>> 55f10f8 (No misses: an attack that would miss lands as a glancing blow for the least damage it can do (Options > Feedback, default on))
             story: Default::default(),
             hold_levels: false,
             party_screen: false,
