@@ -85,11 +85,14 @@ const NECK_RING_METRES: f32 = 0.012;
 const NECK_REACH_METRES: f32 = 0.04;
 const NECK_STRETCH_METRES: f32 = 0.02;
 /// How much stronger than measured the borrowed belly is laid on the others.
-const BELLY_GAIN: f32 = 2.0;
+const BELLY_GAIN: f32 = 1.8;
+/// How far up the bare body's light and dark is borrowed: the belly, and the upper back and chest above it, to the shoulders'
+/// roots. The skin there was a smooth fill beside arms and legs with their painted shading.
+const RELIEF_TOP: f32 = 0.95;
 const RELIEF_WIDE: usize = 64;
-const RELIEF_TALL: usize = 48;
+const RELIEF_TALL: usize = 96;
 const RELIEF_ACROSS: i32 = 8;
-const RELIEF_UP: i32 = 15;
+const RELIEF_UP: i32 = 30;
 const RELIEF_TRIM: usize = 2;
 const RELIEF_FADE: f32 = 16.0;
 /// Not a part of any piece of the sheet.
@@ -418,7 +421,7 @@ const CUP_TOP: f32 = 0.897;
 const STRAP_TOP: f32 = 1.0;
 /// How far out the straps lean by the top, as a share of the half width, and how far past the neck's own height they go: the
 /// shoulder's top is lower than the neck's, but the arm's cap reaches round it.
-const STRAP_OUT: f32 = 0.34;
+const STRAP_OUT: f32 = 0.15;
 const STRAP_OVER: f32 = 0.04;
 const CUP_INNER: f32 = 0.03;
 const CUP_OUTER: f32 = 0.57;
@@ -819,11 +822,11 @@ fn forearm_skin(m: &Model, world: &[(String, [[f32; 4]; 4])], pixels: &[[f32; 3]
 
 /// The cell of a place on a body at rest, if it is on a belly.
 fn relief_cell(x: f32, y: f32, h: f32, half: f32) -> Option<usize> {
-    if !(WAIST..BAND_LOW).contains(&h) {
+    if !(WAIST..RELIEF_TOP).contains(&h) {
         return None;
     }
     let across = ((x / half * 0.5 + 0.5) * RELIEF_WIDE as f32) as usize;
-    let up = ((h - WAIST) / (BAND_LOW - WAIST) * RELIEF_TALL as f32) as usize;
+    let up = ((h - WAIST) / (RELIEF_TOP - WAIST) * RELIEF_TALL as f32) as usize;
     let side = usize::from(y > 0.0);
     (across < RELIEF_WIDE && up < RELIEF_TALL)
         .then_some((side * RELIEF_TALL + up) * RELIEF_WIDE + across)
@@ -831,12 +834,12 @@ fn relief_cell(x: f32, y: f32, h: f32, half: f32) -> Option<usize> {
 
 /// The bare belly's light and dark at a place on another body at rest, between cells.
 fn relief_at(belly: &[f32], x: f32, y: f32, h: f32, half: f32) -> f32 {
-    if !(WAIST..BAND_LOW).contains(&h) {
+    if !(WAIST..RELIEF_TOP).contains(&h) {
         return 1.0;
     }
     let across =
         ((x / half * 0.5 + 0.5) * RELIEF_WIDE as f32 - 0.5).clamp(0.0, RELIEF_WIDE as f32 - 1.0);
-    let up = ((h - WAIST) / (BAND_LOW - WAIST) * RELIEF_TALL as f32 - 0.5)
+    let up = ((h - WAIST) / (RELIEF_TOP - WAIST) * RELIEF_TALL as f32 - 0.5)
         .clamp(0.0, RELIEF_TALL as f32 - 1.0);
     let side = usize::from(y > 0.0);
     let (a0, u0) = (across as usize, up as usize);
@@ -2404,7 +2407,7 @@ mod strap_tests {
         let half = 0.228;
         let (front, back) = (strap_at(STRAP_TOP, true), strap_at(STRAP_TOP, false));
         assert!((front - back).abs() < 1e-4, "{front} and {back}");
-        assert!(front > STRAP_AT + 0.3, "{front}");
+        assert!(front > STRAP_AT + 0.1, "{front}");
         // On the torso, up the front and the back, at the strap's own place, it is a strap; beside it, it is not.
         for (y, h) in [(0.1, 0.95), (-0.1, 0.95), (0.1, 1.02), (-0.1, 1.02)] {
             let x = strap_at(h, y > 0.0) * half;
