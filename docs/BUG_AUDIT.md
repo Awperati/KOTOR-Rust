@@ -37,7 +37,7 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 | 19 | Trask's "for the Republic" scene | partly | `a_scripts_animation_plays`; commit `c27c045` calls itself part of this item. Not compared with the video | Anim/audio |
 | 20 | Enemy highlight over the head | fixed | Nameplates: `gpu/tests/plates.rs`, `drive_plates` at 720p and 2160p | |
 | 21 | Trask shoots the player | fixed, run with the real Trask | `trask_fights_the_foes_and_never_the_player_or_the_party` (the pilot plays the Endar Spire, Trask attacks foes and never the player or the party), `teammates_do_not_attack_one_another_or_the_player`, `sweep_shots` | |
-| 22 | Stutter in combat | partly | `Stage::update` in fights fell from 21.3 to 4.6 ms at 2160p (`docs/STATUS.md` 33). Frame times on the owner's screen never measured | Engine |
+| 22 | Stutter in combat | measured, still slow at 2160p | `--frame-log`, scripted player 413 s at 3840x2160, 7,361 frames, 242 in fights: median 29.6 ms, p95 66.0, p99 94.6, worst 107.9; 100 of 242 over 33 ms. The mean fight frame is 9.3 update + 6.5 HUD + 5.3 upload + 7.1 scene + 8.8 draw + 1.4 show, about 38 ms, no one part more than a quarter. Outside fights the pilot runs several steps a frame, so those frames mean nothing (the 5.8 s worst frame is a module load) | Engine |
 | 23 | Click to walk can be turned off | fixed | `click_to_walk_works_in_both_modes_and_can_be_turned_off` | |
 | 24 | Force Push wrong animation, loops | fixed, not watched | `a_power_plays_its_cast_once_and_a_grenade_its_throw` | |
 | 25 | Enemies cannot see over a table | fixed | `crates/kotor-game/tests/sight.rs`, `sweep_shots`: fired over a short obstacle | |
@@ -48,7 +48,7 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 | 30 | Trask's icon not beside the player's | fixed | Frame `plates_seen_1280`: side by side; `the_hud_shows_portraits_and_bars_proportionally` | |
 | 31 | Right drag moves the character | fixed | `looking_round_moves_nobody_by_itself`, `a_held_key_follows_the_camera_in_both_modes`, `drive_move` | |
 | 32 | Dark Jedi fight never ends | fixed | Commit `be1154b`, 22.8 s, `a_cutscene_advances_by_itself_when_its_clip_ends` | |
-| 33 | Blaster sounds mismatched | partly | Melee is right: `a_stun_baton_sounds_unarmed_and_a_long_sword_sounds_like_a_large_blade`. What the owner meant for blasters is not known, and nothing here hears it | Engine: ask the owner |
+| 33 | Blaster sounds mismatched | data checked | Every ranged item's shot and impact come from `ammunitiontypes.2da` by its `baseitems` `ammunitiontype`, as the code reads them. Findings: the sonic impact `cb_ht_sonblclth1` is in no archive (sonic weapons hit silent, row 4); the Bowcaster and the Ion weapons share one shot and hit sound; the Heavy Repeating Blaster (baseitems 24) is listed with Disruptor ammo; the code always plays `shotsound0` and never the `shotsound1` power blast. What the owner heard is still not known | Engine: ask the owner |
 | 34 | Remains hold what was carried | fixed | `the_remains_of_the_dark_jedi_hold_both_lightsabers`, `sweep_shots`: carried 9, remains hold 9 | |
 | 35 | Autosave before every fight | fixed | `gpu/tests/menus.rs`, the one with `combat_autosave`: one file, overwritten | |
 | 36 | Force Push does nothing | fixed | `a_pushed_creature_slides_away_and_cannot_act_for_a_while`, `sweep_shots`: 3.00 m | |
