@@ -147,27 +147,114 @@ fn every_row_of_the_hand_table_reads_and_points_at_something_there() {
     let rows = parse_routes(include_str!("../../../docs/quest_routes.tsv")).unwrap();
     assert!(parse_routes("end_attack\tx\tend_m01aa\ttalk\tend_trask\t").is_err());
     assert!(parse_routes("end_attack\t1\tend_m01aa\twave\tend_trask\t").is_err());
-    let Some(dir) = kotor_core::install_dir() else {
+    let mut modules: Vec<&str> = rows
+        .iter()
+        .filter(|r| !r.tag.is_empty())
+        .map(|r| r.module.as_str())
+        .collect();
+    modules.sort();
+    modules.dedup();
+    for module in modules {
+        let Some(mut w) = at(module) else {
+            return;
+        };
+        for RouteRow {
+            quest,
+            state,
+            kind,
+            tag,
+            label,
+            ..
+        } in rows
+            .iter()
+            .filter(|r| r.module == module && !r.tag.is_empty())
+        {
+            assert!(
+                w.objects
+                    .values()
+                    .any(|o| o.kind != Kind::Module && o.tag.eq_ignore_ascii_case(tag)),
+                "{quest}: {module} has no {tag}"
+            );
+            // There, the row is the step: its own tag, kind and words.
+            in_state(&mut w, quest, *state);
+            let step = w.next_step(quest).expect("a step");
+            let id = format!(
+                "{quest}/{state}/{}/{}",
+                kind.name(),
+                tag.to_ascii_lowercase()
+            );
+            assert_eq!(step.id, id, "{step:?}");
+            assert_eq!(&step.label, label);
+            is_at(&w, &step, tag);
+        }
+    }
+}
+
+/// From where the ship sets down, a main quest of each planet points at a way out towards its row's module.
+#[test]
+fn from_each_landing_the_main_quests_lead_on_towards_their_row() {
+    let rows = parse_routes(include_str!("../../../docs/quest_routes.tsv")).unwrap();
+    let cases = [
+        ("danm13", "dan_ruins", 10),
+        ("danm13", "dan_trials", 30),
+        ("tat_m17ab", "tat17_starmap", 10),
+        ("tat_m17ab", "tat17_starmap", 60),
+        ("kas_m22aa", "kas22_starmap", 10),
+        ("kas_m22aa", "kas23_mainwookplot", 25),
+        ("manm26ad", "man26_starmap", 10),
+        ("manm26ad", "man26_starmap", 30),
+        ("korr_m33aa", "kor33_findstarmap", 20),
+        ("korr_m33aa", "kor33_findstarmap", 30),
+    ];
+    for (landing, quest, state) in cases {
+        let row = rows
+            .iter()
+            .find(|r| r.quest == quest && r.state == state)
+            .expect("a row");
+        let Some(mut w) = at(landing) else {
+            return;
+        };
+        in_state(&mut w, quest, state);
+        let step = w
+            .next_step(quest)
+            .unwrap_or_else(|| panic!("{quest} {state}: nothing from {landing}"));
+        assert_eq!(step.final_module, row.module, "{step:?}");
+        let exit = w
+            .objects
+            .values()
+            .find(|o| step.id.ends_with(&o.tag.to_ascii_lowercase()));
+        assert!(exit.is_some(), "{quest} {state}: {step:?}");
+    }
+}
+
+/// On the ship, a quest on another planet is the galaxy map; on the planet the ship stands on, the way out.
+#[test]
+fn on_the_ship_another_planet_is_the_galaxy_map() {
+    let Some(mut w) = at("ebo_m12aa") else {
         return;
     };
-    for RouteRow {
-        quest, module, tag, ..
-    } in &rows
-    {
-        if tag.is_empty() {
-            continue;
-        }
-        let mut inst = Install::open(&dir).unwrap();
-        inst.set_prefer_rim(true);
-        let mut w = World::new(inst).unwrap();
-        w.load_module(module).unwrap();
-        assert!(
-            w.objects
-                .values()
-                .any(|o| o.kind != Kind::Module && o.tag.eq_ignore_ascii_case(tag)),
-            "{quest}: {module} has no {tag}"
-        );
-    }
+    in_state(&mut w, "tat17_starmap", 10);
+    let step = w.next_step("tat17_starmap").expect("a step");
+    assert_eq!(step.kind, StepKind::GalaxyMap, "{step:?}");
+    assert_eq!(step.id, "tat17_starmap/10/galaxy_map/galaxymap");
+    assert_eq!(step.final_module, "tat_m17aa");
+    assert!(step.label.contains("Tatooine"), "{step:?}");
+    is_at(&w, &step, "GalaxyMap");
+
+    // Tatooine is row 4 of the planets.
+    w.selected_planet = 4;
+    let step = w.next_step("tat17_starmap").expect("a step");
+    assert_eq!(step.kind, StepKind::Area, "{step:?}");
+    assert!(step.id.ends_with("/areatransition"), "{step:?}");
+
+    // Off the ship, another planet is still the way back to it.
+    let Some(mut w) = at("danm13") else {
+        return;
+    };
+    in_state(&mut w, "tat17_starmap", 10);
+    let step = w.next_step("tat17_starmap").expect("a step");
+    assert_eq!(step.final_module, "tat_m17aa");
+    assert_ne!(step.kind, StepKind::GalaxyMap, "{step:?}");
 }
 
 #[test]

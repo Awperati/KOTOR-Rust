@@ -31,7 +31,29 @@ const ARGUMENTS_WITHIN: usize = 10;
 const INDEX_VERSION: u32 = 1;
 /// Where another planet is reached from.
 const THE_SHIP: &str = "ebo_m12aa";
+/// On the ship: the galaxy map, and the way out onto the planet it stands on.
+const GALAXY_MAP: &str = "GalaxyMap";
+const SHIP_EXIT: &str = "AreaTransition";
 const CUT_SCENE_MODULES: &str = "stunt_";
+/// Planets by the start of their modules' names: the row of `planetary.2da`, and our name for the label.
+const PLANETS: [(&str, i32, &str); 9] = [
+    ("end_", 0, "the Endar Spire"),
+    ("tar_", 1, "Taris"),
+    ("dan", 3, "Dantooine"),
+    ("tat_", 4, "Tatooine"),
+    ("kas_", 5, "Kashyyyk"),
+    ("man", 6, "Manaan"),
+    ("korr_", 7, "Korriban"),
+    ("unk_", 9, "the Unknown World"),
+    ("sta_", 10, "the Star Forge"),
+];
+
+fn planet_of(module: &str) -> Option<(i32, &'static str)> {
+    PLANETS
+        .iter()
+        .find(|(start, ..)| module.starts_with(start))
+        .map(|(_, row, name)| (*row, *name))
+}
 
 /// What the player does at a step.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -42,6 +64,8 @@ pub enum StepKind {
     Item,
     Area,
     Kill,
+    /// On the ship, for a quest on another planet: fly there.
+    GalaxyMap,
 }
 
 impl StepKind {
@@ -53,6 +77,7 @@ impl StepKind {
             StepKind::Item => "item",
             StepKind::Area => "area",
             StepKind::Kill => "kill",
+            StepKind::GalaxyMap => "galaxy_map",
         }
     }
 
@@ -64,6 +89,7 @@ impl StepKind {
             StepKind::Item,
             StepKind::Area,
             StepKind::Kill,
+            StepKind::GalaxyMap,
         ]
         .into_iter()
         .find(|k| k.name().eq_ignore_ascii_case(s))
@@ -716,8 +742,13 @@ impl World {
                 &t.module,
             ));
         }
-        // Another planet: back to the ship.
+        // Another planet: back to the ship, and on it the galaxy map.
         let t = targets.iter().find(|t| t.module != here)?;
+        if here == THE_SHIP {
+            return self.leave_the_ship(t, |kind, tag, o, label| {
+                step(kind, tag, o, label, &t.module)
+            });
+        }
         let (exit, _) = index.first_exit(&here, THE_SHIP)?;
         let o = self.exit_object(exit)?;
         Some(step(
@@ -727,6 +758,33 @@ impl World {
             exit_label(exit, o),
             &t.module,
         ))
+    }
+
+    /// On the ship, for `t` elsewhere: out of the hatch if the ship stands on `t`'s planet, else to the galaxy map.
+    ///
+    /// **Assumed:** the ship stands on the planet last chosen on the map. With none chosen, as after a load, it is the map.
+    fn leave_the_ship(
+        &self,
+        t: &Target,
+        step: impl Fn(StepKind, &str, &Object, String) -> NextStep,
+    ) -> Option<NextStep> {
+        let planet = planet_of(&t.module);
+        if planet.is_some_and(|(row, _)| row == self.selected_planet) {
+            if let Some(o) = self.route_object(SHIP_EXIT) {
+                return Some(step(
+                    StepKind::Area,
+                    SHIP_EXIT,
+                    o,
+                    "Leave the ship".to_string(),
+                ));
+            }
+        }
+        let o = self.route_object(GALAXY_MAP)?;
+        let label = match planet {
+            Some((_, name)) => format!("Fly to {name} on the galaxy map"),
+            None => "Use the galaxy map".to_string(),
+        };
+        Some(step(StepKind::GalaxyMap, GALAXY_MAP, o, label))
     }
 
     /// The object of an exit: of its tag, and the one that leads there if several have that tag.
@@ -751,6 +809,7 @@ fn target_label(t: &Target, o: &Object) -> String {
         StepKind::Door => format!("Go to {name}"),
         StepKind::Elevator => "Take the elevator".to_string(),
         StepKind::Area => "Go here".to_string(),
+        StepKind::GalaxyMap => "Use the galaxy map".to_string(),
     }
 }
 

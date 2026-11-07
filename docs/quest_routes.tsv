@@ -11,3 +11,43 @@ tar_bastsearch	55	tar_m03af	talk	RaceAnnoun031	Enter the swoop race
 tar_escape	10	tar_m03ae	area		Meet Canderous in the cantina
 tar_escape	20	tar_m09ab	kill	DarkJediap091	Recover the departure codes
 tar_escape	25	tar_m03ae	area		Bring the codes to Canderous
+dan_trials	30	danm14ac	talk	dan14_juhani	Find the fallen student in the grove
+dan_trials	45	danm13	talk	dan13_zhar	Tell the Council what happened in the grove
+dan_ruins	10	danm15	talk	dan15_ancientdrd	Explore the ruins
+dan_ruins	15	danm15	item	dan15_starmap	Open the way to the Star Map
+tat17_starmap	10	tat_m17aa	talk	tat17_11iziz_01	Ask the Jawa elder in Anchorhead
+tat17_starmap	20	tat_m20aa	talk	tat20_09chief_01	Free the Jawas from the Sand People
+tat17_starmap	30	tat_m18ac	talk	tat18_11komad_01	Search the Eastern Dune Sea
+tat17_starmap	40	tat_m18ac	talk	tat18_11komad_01	Search the Eastern Dune Sea
+tat17_starmap	50	tat_m18ac	talk	tat18_11komad_01	Search the Eastern Dune Sea
+tat17_starmap	60	tat_m18ac	talk	tat18_11komad_01	Ask the hunter about the dragon
+tat17_starmap	80	tat_m18ac	item	K_TAT_STAR_MAP	Search the dragon's lair
+kas22_starmap	10	kas_m23ad	talk	kas23_chuunda_01	See the chieftain in Rwookrrorro
+kas22_starmap	20	kas_m24aa	talk	Jolee	Find a way past the force field
+kas22_starmap	30	kas_m24aa	talk	Jolee	Find a way past the force field
+kas22_starmap	40	kas_m24aa	talk	Jolee	Do Jolee's task
+kas22_starmap	50	kas_m25aa	talk	kas25_freyyr_01	Go down to the Lower Shadowlands
+kas22_starmap	55	kas_m25aa	item	kas25_starmap	Look for the computer northwest of Freyyr
+kas22_starmap	60	kas_m25aa	item	kas25_starmap	Use the ancient computer
+kas23_mainwookplot	10	kas_m24aa	talk	kas24_gorwook_01	Meet the guide in the Shadowlands
+kas23_mainwookplot	25	kas_m25aa	talk	kas25_freyyr_01	Find the Wookiee in the Shadowlands
+kas23_mainwookplot	92	kas_m25aa	talk	kas25_freyyr_01	Bring the blade to Freyyr
+kas23_mainwookplot	95	kas_m23ad	talk	kas23_chuunda_01	Go to the chieftain's hall
+kas23_mainwookplot	100	kas_m23ad	talk	kas23_chuunda_01	Go back to the chieftain
+man26_starmap	10	manm26ae	talk	man26_repdip	Ask at the Republic embassy
+man26_starmap	15	manm26ae	talk	man26_repdip	Ask at the Republic embassy
+man26_starmap	17	manm27aa	area		Get the data module from the Sith base
+man26_starmap	20	manm27aa	area		Get the data module from the Sith base
+man26_starmap	30	manm28ad	item	man28_starmap	Find the Star Map at the bottom of the rift
+man_planet	20	manm26ae	talk	man26_repdip	Bring the data module to the embassy
+man_planet	30	manm28aa	area		Go down to the station in the rift
+man_planet	40	manm28ac	talk	man28_sur3	Find the survivors
+man_planet	50	manm28ad	item	man28_inject	Deal with the kolto harvester
+man_planet	60	manm26ae	talk	man26_repdip	Report to the embassy
+man_planet	65	manm26ae	talk	man26_repdip	Report to the embassy
+kor33_enteracademy	10	korr_m33aa	talk	k33_prospective1	Talk to the Sith hopefuls
+kor33_enteracademy	20	korr_m33aa	talk	k33_prospective1	Talk to the Sith hopefuls
+kor33_enteracademy	45	korr_m33aa	area	k33_way_yuthura	Show the medallion to the Sith Master
+kor33_enteracademy	46	korr_m33aa	area	k33_way_yuthura	Show the medallion to the Sith Master
+kor33_findstarmap	20	korr_m33ab	talk	k33_academyguard	Get into the Sith academy
+kor33_findstarmap	30	korr_m39aa	door	k39_door_starmap	Enter the tomb in the valley
