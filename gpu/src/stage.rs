@@ -878,7 +878,9 @@ impl Stage {
                 for d in ["streamsounds", "streamwaves"] {
                     let mut todo = vec![self.dir.join(d)];
                     while let Some(dir) = todo.pop() {
-                        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+                        let Ok(entries) = std::fs::read_dir(&dir) else {
+                            continue;
+                        };
                         for e in entries.flatten() {
                             let p = e.path();
                             if p.is_dir() {

@@ -2407,7 +2407,10 @@ mod strap_tests {
         let half = 0.228;
         let (front, back) = (strap_at(STRAP_TOP, true), strap_at(STRAP_TOP, false));
         assert!((front - back).abs() < 1e-4, "{front} and {back}");
-        assert!((front - STRAP_AT).abs() < 1e-4, "a strap runs straight up, not on a slant: {front}");
+        assert!(
+            (front - STRAP_AT).abs() < 1e-4,
+            "a strap runs straight up, not on a slant: {front}"
+        );
         // On the torso, up the front and the back, at the strap's own place, it is a strap; beside it, it is not.
         for (y, h) in [(0.1, 0.95), (-0.1, 0.95), (0.1, 1.02), (-0.1, 1.02)] {
             let x = strap_at(h, y > 0.0) * half;

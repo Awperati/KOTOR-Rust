@@ -82,8 +82,14 @@ fn a_voice_line_is_found_in_the_folder_of_its_module() {
     let Some(p) = s.sound_file("nm02abboun01004_") else {
         return; // an install without that module
     };
-    assert!(p.is_file() && p.to_string_lossy().to_lowercase().contains("m02ab"), "{p:?}");
-    assert!(s.sound_file("NM02ABBOUN01004_").is_some(), "the case does not matter");
+    assert!(
+        p.is_file() && p.to_string_lossy().to_lowercase().contains("m02ab"),
+        "{p:?}"
+    );
+    assert!(
+        s.sound_file("NM02ABBOUN01004_").is_some(),
+        "the case does not matter"
+    );
     assert!(s.sound_file("no_such_line_").is_none());
 }
 
