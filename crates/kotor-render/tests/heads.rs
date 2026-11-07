@@ -293,3 +293,41 @@ fn a_borrowed_face_moves_a_heros_head_by_centimetres_only() {
         }
     }
 }
+
+/// The owner's frame of a fist stance: a shoulder crumpled into a spike at the collar. The stance's keys were placed against the
+/// supermodel's rest, where the collars sit at the middle, and not against the body's, where they sit 7.8 cm out, so the
+/// shoulders were drawn in to the neck. In every stance and stand the collars stay about as far apart as at rest, on all
+/// three women's bodies.
+#[test]
+fn a_stance_keeps_the_shoulders_apart() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let gap = |frames: &[kotor_model::JointFrame]| {
+        let at = |name: &str| {
+            let m = frames.iter().find(|f| f.0 == name).unwrap().1;
+            [m[0][3], m[1][3], m[2][3]]
+        };
+        let (l, r) = (at("lcollar_g"), at("rcollar_g"));
+        ((l[0] - r[0]).powi(2) + (l[1] - r[1]).powi(2) + (l[2] - r[2]).powi(2)).sqrt()
+    };
+    for row in [91, 92, 93] {
+        let rig = rig_for_outfit(&mut inst, row, 1, None).unwrap();
+        let rest = gap(&rig.joint_frames(None));
+        for clip in ["g8r1", "g1r1", "pause1", "walk", "run", "g8a1"] {
+            let Some(len) = rig.animation_length(clip).filter(|l| *l > 0.0) else {
+                continue;
+            };
+            for k in 0..4 {
+                let pose = rig.sample(clip, len * k as f32 / 4.0).unwrap();
+                let g = gap(&rig.joint_frames(Some(&pose)));
+                assert!(
+                    (g - rest).abs() < rest * 0.25,
+                    "row {row} {clip}: the collars are {g:.3} m apart, {rest:.3} at rest"
+                );
+            }
+        }
+    }
+}

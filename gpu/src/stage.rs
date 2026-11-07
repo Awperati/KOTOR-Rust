@@ -448,6 +448,8 @@ pub struct Stage {
     /// How loud the voice of the line on now is, in 50ths of a second from 0 to 1: what opens the speaker's mouth. Empty for a
     /// line with no voice, which is then spoken by its length alone.
     voice_energy: Vec<f32>,
+    /// A creature held in one clip for a look at it (`force_clip`), and the clip's name.
+    forced_clip: Option<(ObjId, &'static str)>,
     camera_model: String,
     stunts: Vec<(String, String)>,
     /// Seconds of real time: what bodies shown on screens with no game running (the character picker, the party screen)
@@ -586,6 +588,7 @@ impl Stage {
             beat: None,
             beat_time: 0.0,
             voice_energy: Vec::new(),
+            forced_clip: None,
             camera_model: String::new(),
             stunts: Vec::new(),
             idle_clock: 0.0,
@@ -1153,6 +1156,11 @@ impl Stage {
             .dialogue_view()
             .is_some_and(|(_, _, _, replies)| !replies.is_empty())
             && self.beat_time >= said
+    }
+
+    /// Hold creature `id` in the clip `name` (or let go, with `None`): for looking at a stance or a gesture, as the viewer's drivers do.
+    pub fn force_clip(&mut self, id: ObjId, name: Option<&str>) {
+        self.forced_clip = name.map(|n| (id, &*Box::leak(n.to_string().into_boxed_str())));
     }
 
     /// How far the mouth of creature `id` is open while it says the line on now, from 0 to 1, with the clock of its talking
@@ -2248,7 +2256,14 @@ impl Stage {
                         }
                         continue;
                     }
-                    let clip = self.dialogue_clip(pose.id).or_else(|| pose.clip.clone());
+                    let clip = match self.forced_clip {
+                        Some((id, name)) if id == pose.id => Some(Clip {
+                            name,
+                            time: self.idle_clock,
+                            fade: None,
+                        }),
+                        _ => self.dialogue_clip(pose.id).or_else(|| pose.clip.clone()),
+                    };
                     let start = scene.meshes.len();
                     if self.add_bent_body(
                         &mut scene,

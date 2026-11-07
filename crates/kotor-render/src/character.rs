@@ -230,8 +230,36 @@ impl Rig {
     /// A named animation sampled at `t`, from the nearest supermodel that has it.
     pub fn sample(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
         let name = self.clip_name(name)?;
-        self.models()
-            .find_map(|m| m.animation(name).map(|a| a.sample(m, t)))
+        self.models().find_map(|m| {
+            m.animation(name)
+                .map(|a| self.to_body_rest(m, a.sample(m, t)))
+        })
+    }
+
+    /// A pose sampled against the rest of the supermodel `m` that holds the clip, as the body's own rest has it: each node takes
+    /// what the clip moves it by from `m`'s rest, added to the body's. The collars of a woman's body rest 7.8 cm out from the
+    /// middle, and the supermodel's rest them at the middle, so taking the keys as they stand drew the shoulders in to the neck
+    /// and creased the skin there in a fist stance.
+    fn to_body_rest(&self, m: &Model, pose: kotor_model::Pose) -> kotor_model::Pose {
+        if std::ptr::eq(m, &self.body) {
+            return pose;
+        }
+        let (from, own) = (m.bind_pose(), self.body.bind_pose());
+        pose.into_iter()
+            .map(|(node, key)| {
+                let (Some(f), Some(o)) = (from.get(&node), own.get(&node)) else {
+                    return (node, key);
+                };
+                let position = [0, 1, 2].map(|k| o.position[k] + key.position[k] - f.position[k]);
+                let turn = quat_mul(quat_inverse(f.orientation), key.orientation);
+                let moved = kotor_model::NodePose {
+                    position,
+                    orientation: quat_mul(o.orientation, turn),
+                    alpha: key.alpha,
+                };
+                (node, moved)
+            })
+            .collect()
     }
 
     /// The body standing as its model has it, with no animation.

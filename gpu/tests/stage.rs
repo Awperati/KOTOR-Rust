@@ -1222,6 +1222,12 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         }
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
+        if let Ok(clip) = std::env::var("FRAME_CLIP") {
+            s.force_clip(pc, Some(&clip));
+        }
+        for _ in 0..5 {
+            s.update(DT);
+        }
         let heading = s.game.world.pc_mover.heading;
         // FRAME_BACK stands the camera behind the hero; FRAME_CLOSE fills the frame with the shoulders and back.
         let side = if std::env::var("FRAME_BACK").is_ok() {
