@@ -19,11 +19,18 @@ function Sweep([int]$from, [int]$to, [int]$buttons) {
 }
 function Reading { $s = State; @{ pitch = [double]$s.pitch; down = [double]$s.lookdown } }
 
-foreach ($modern in @($true, $false)) {
-  foreach ($invert in @($false, $true)) {
-    $name = "movement " + $(if ($modern) { "Modern" } else { "Classic" }) + ", Invert Camera " + $(if ($invert) { "On" } else { "Off" })
+# The last has no settings file at all, as a new player has: the box must be off and the mouse the right way up.
+foreach ($case in @(@($true, $false), @($true, $true), @($false, $false), @($false, $true), @($null, $false))) {
+  & {
+    $modern = $case[0]; $invert = $case[1]
     $file = "$scratch\kotor_look_settings.txt"
-    "movement_modern=$($modern.ToString().ToLower())`ninvert_y=$($invert.ToString().ToLower())`n" | Set-Content $file -Encoding ascii
+    if ($null -eq $modern) {
+      $name = "no settings file"
+      Remove-Item $file -ErrorAction SilentlyContinue
+    } else {
+      $name = "movement " + $(if ($modern) { "Modern" } else { "Classic" }) + ", Invert Camera " + $(if ($invert) { "On" } else { "Off" })
+      "movement_modern=$($modern.ToString().ToLower())`ninvert_y=$($invert.ToString().ToLower())`n" | Set-Content $file -Encoding ascii
+    }
     $script:stateFile = "$scratch\kotor_look.out"
     Remove-Item $script:stateFile -ErrorAction SilentlyContinue
     $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module","danm14aa","--place","165.17,136.66,1.85,1.767","--skip-menu","--state-log","--settings",$file,"--size",$Size,"--frames","100000")
@@ -55,6 +62,10 @@ foreach ($modern in @($true, $false)) {
     } else {
       Report "$name, mouse down looks down" ($b.down -gt $a.down + 0.02) "lookdown $($a.down) then $($b.down)"
       Report "$name, mouse up looks up" ($c.down -lt $b.down - 0.02) "lookdown $($b.down) then $($c.down)"
+    }
+    if ($null -eq $modern) {
+      $kept = Get-Content $file -Raw
+      Report "$name, the file it writes has the box off" ($kept -match 'invert_y=false') "$(($kept -split "`n" | Where-Object { $_ -match 'invert|mouse_look' }) -join ' ')"
     }
     FocusReport
     Stop-Process -Id $v.Id -Force -ErrorAction SilentlyContinue

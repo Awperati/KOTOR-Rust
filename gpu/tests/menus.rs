@@ -2674,6 +2674,118 @@ fn underwear_is_chosen_on_the_portrait_page_and_goes_with_the_character() {
 }
 
 #[test]
+fn the_underwear_chosen_comes_back_with_a_save_from_the_screens() {
+    let on_offer: Vec<_> = kotor_render::underwear::list_underwear_variants()
+        .into_iter()
+        .filter(|v| v.fits)
+        .collect();
+    if on_offer.len() < 2 {
+        return;
+    }
+    let Some(mut s) = at_chargen("chargen_underwear_save") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL6");
+    press(&mut s, "QUICK_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    press(&mut s, "BTN_UNDERWEAR_RIGHT");
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME2");
+    s.type_text("Mira");
+    press(&mut s, "END_BTN");
+    press(&mut s, "BTN_STEPNAME3");
+    for _ in 0..12000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.number_key(1);
+            s.continue_line();
+        } else if s.game.world.transcript.len() > 3 && s.game.world.delayed.is_empty() {
+            break;
+        }
+    }
+    assert!(!s.game.world.in_dialogue(), "past the opening");
+    let wears = |s: &Stage| {
+        let pc = s.game.world.pc;
+        s.game.world.object(pc).unwrap().underwear.clone()
+    };
+    assert_eq!(wears(&s), on_offer[1].id);
+    // Written and read back by the buttons, in a world that has been wearing something else.
+    s.escape();
+    press(&mut s, "BTN_SAVEGAME");
+    assert_eq!(s.menu_name(), "save");
+    press(&mut s, "BTN_SAVELOAD");
+    assert_eq!(s.menu_name(), "name");
+    s.type_text("Blue");
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.saves_listed(), 1, "{}", s.menu_message());
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_EXIT");
+    s.game.world.set_player_underwear("");
+    assert_eq!(wears(&s), "");
+    s.escape();
+    press(&mut s, "BTN_LOADGAME");
+    assert_eq!(s.menu_name(), "load");
+    click_row(&mut s, "LB_GAMES", 0);
+    press(&mut s, "BTN_SAVELOAD");
+    assert_eq!(s.menu_name(), "-", "{}", s.menu_message());
+    assert_eq!(wears(&s), on_offer[1].id, "{}", s.menu_message());
+}
+
+#[test]
+fn a_party_member_at_the_cameras_eye_is_not_drawn() {
+    let Some((mut s, _)) = in_game("at_the_eye") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let p = s.game.world.object(pc).unwrap().position;
+    let friend = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [p[0] + 30.0, p[1], p[2]]);
+    s.game.world.object_mut(friend).unwrap().party_member = true;
+    let eye = s.camera().eye;
+    let foot = eye[2] - 1.7;
+    let place = |s: &mut Stage, away: f32| {
+        let o = s.game.world.object_mut(friend).unwrap();
+        o.position = [eye[0] + away, eye[1], foot];
+        s.update(DT);
+        s.dynamic_scene().triangle_count()
+    };
+    let far = place(&mut s, 3.0);
+    let at_eye = place(&mut s, 0.2);
+    assert!(at_eye < far, "{at_eye} of {far} triangles");
+    // A little further off they stay gone, so they do not flicker at the edge; then they come back.
+    assert_eq!(place(&mut s, 0.6), at_eye, "still gone");
+    assert_eq!(place(&mut s, 0.8), far, "back");
+    // Someone who is not in the party is drawn wherever they stand.
+    s.game.world.object_mut(friend).unwrap().party_member = false;
+    assert_eq!(place(&mut s, 0.2), far);
+}
+
+#[test]
+fn a_fresh_settings_file_has_invert_camera_off_and_the_mouse_going_down_looks_down() {
+    let Some((mut s, dir)) = in_game("invert_fresh") else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("no_such_settings.txt");
+    let _ = std::fs::remove_file(&file);
+    s.use_settings_file(file.clone());
+    assert!(!s.settings().invert_y);
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains("invert_y=false"), "{written}");
+    assert!(!written.contains("invert_camera"), "{written}");
+    assert!(!written.contains("mouse_look"), "{written}");
+    let before = s.looks_down();
+    s.look(0.0, 10.0);
+    assert!(s.looks_down() > before);
+    // The file read again says the same.
+    let mut again = at_menu().unwrap();
+    again.use_settings_file(file);
+    assert!(!again.settings().invert_y);
+}
+
+#[test]
 fn the_ways_back_from_the_characters_screens() {
     let Some(mut s) = at_chargen("chargen_back") else {
         return;

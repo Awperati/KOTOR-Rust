@@ -272,6 +272,10 @@ fn union_box(a: Option<[u32; 4]>, b: Option<[u32; 4]>) -> Option<[u32; 4]> {
     }
 }
 
+/// How near the line from a body's feet to its head the camera is when that body goes, and when it comes back, in metres.
+const HIDE_WITHIN: f32 = 0.5;
+const SHOW_PAST: f32 = 0.65;
+const BODY_TALL: f32 = 1.8;
 const SLOTS_AND_GAP: i32 = kotor_ui::TARGET_BAR_AND_SLOTS_HIGH - kotor_ui::TARGET_BAR_HIGH;
 
 /// The stock icon for a target's action, read from the texture names in `swpc_tex_gui.erf`.
@@ -316,6 +320,8 @@ pub struct Stage {
     /// The rooms, for the camera to stay inside.
     shell: roomshell::RoomShell,
     plates: nameplates::PlateState,
+    /// Party members the camera is too close to draw.
+    at_the_eye: std::collections::HashSet<ObjId>,
     hud_under_plates: Option<Image>,
     plate_key: String,
     plate_box: Option<[u32; 4]>,
@@ -468,6 +474,7 @@ impl Stage {
             floor: None,
             shell: Default::default(),
             plates: Default::default(),
+            at_the_eye: Default::default(),
             hud_under_plates: None,
             plate_key: String::new(),
             plate_box: None,
@@ -1818,6 +1825,28 @@ impl Stage {
             .clone()
     }
 
+    /// A party member following the leader can stand where the camera is, and the view is then the inside of their head.
+    /// The camera stops for walls and not for people, so they are not drawn while it is that close. It takes a step further
+    /// off to come back, or they would flicker at the edge. The renderer has no way to fade one body, so they go at once.
+    /// Not in a conversation or a cutscene, where the shot is chosen and may be of them.
+    fn in_the_cameras_way(&mut self, id: ObjId, at: [f32; 3], eye: [f32; 3]) -> bool {
+        let w = &self.game.world;
+        let follower = id != w.pc && w.object(id).is_some_and(|o| o.party_member);
+        if !follower || w.in_dialogue() || self.beat_camera().is_some() {
+            self.at_the_eye.remove(&id);
+            return false;
+        }
+        let across = (at[0] - eye[0]).hypot(at[1] - eye[1]);
+        let up = (eye[2] - at[2]).clamp(0.0, BODY_TALL);
+        let off = across.hypot(at[2] + up - eye[2]);
+        if off < HIDE_WITHIN {
+            self.at_the_eye.insert(id);
+        } else if off > SHOW_PAST {
+            self.at_the_eye.remove(&id);
+        }
+        self.at_the_eye.contains(&id)
+    }
+
     /// A body with nothing over its underwear, for the character screen.
     fn bare_rig(&mut self, appearance: i32) -> Option<Rc<Rig>> {
         let key = (appearance, 1, None);
@@ -2046,6 +2075,9 @@ impl Stage {
                     };
                     if from(here) > DRAW_RANGE && from(eye) > DRAW_RANGE && speaker != Some(pose.id)
                     {
+                        continue;
+                    }
+                    if self.in_the_cameras_way(pose.id, pose.position, eye) {
                         continue;
                     }
                     let Some(rig) = self.rig_of(pose.id) else {
