@@ -47,6 +47,32 @@ fn an_item_the_talk_table_names_with_a_tag_goes_by_its_kind_through_a_save_too()
 }
 
 #[test]
+fn a_save_keeps_attack_mode_and_what_the_law_knows() {
+    let Some(mut w) = world() else { return };
+    let someone = w.pc;
+    w.set_attack_mode(true);
+    w.law.wanted = 2;
+    w.law.crime_seen = true;
+    w.law.hostile.insert(someone);
+    let bytes = w.save_bytes("law").unwrap();
+    w.set_attack_mode(false);
+    w.law = Default::default();
+    w.load_save(&bytes).unwrap();
+    assert!(w.attack_mode());
+    assert_eq!(w.law.wanted, 2);
+    assert!(w.law.crime_seen);
+    assert_eq!(w.law.hostile.len(), 1);
+    // A save from before it has none of this.
+    let mut older = fresh();
+    older.set_attack_mode(true);
+    older.law.wanted = 3;
+    let clean = fresh().save_bytes("clean").unwrap();
+    older.load_save(&clean).unwrap();
+    assert!(!older.attack_mode());
+    assert_eq!(older.law.wanted, 0);
+}
+
+#[test]
 fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
     let Some(mut w) = world() else { return };
     let hero = w.pc;

@@ -35,6 +35,9 @@ const HUD_TEXT_BOXES: [&str; 1] = ["LBL_ACTIONDESCBG"];
 /// The main menu's title card by the name the interface draws it under, and its file in the owner's own pictures.
 pub const TITLE_CARD: &str = "kotorrs_title";
 const TITLE_CARD_FILE: &str = "title-card.png";
+/// Attack mode's button beside the hourglass: the place the file keeps for stealth, which has no button here.
+pub const ATTACK_MODE_BUTTON: &str = "TB_STEALTH";
+const ATTACK_MODE_PICTURE: &str = "i_attack";
 /// The Pickup button's picture: see [`pickup_picture`].
 const PICKUP_PICTURE: &str = "kotorrs_pickup";
 /// How many words that do not fit are kept for whoever asks.
@@ -133,6 +136,8 @@ pub struct CombatHud {
     pub quick_hover: Option<String>,
     /// The first of the four slots is the Pickup button.
     pub pickup: bool,
+    /// Attack mode is on: its button has a line round it.
+    pub attack_mode: bool,
 }
 
 /// One control as the HUD last drew it.
@@ -1425,6 +1430,10 @@ impl<'a> Ui<'a> {
                 patches.entry(format!("LBL_QUEUE{n}")).or_default().fill = Some(icon.clone());
             }
         }
+        let button = patches.entry(ATTACK_MODE_BUTTON.to_string()).or_default();
+        button.hidden = false;
+        button.fill = Some(ATTACK_MODE_PICTURE.to_string());
+        button.line = combat.attack_mode.then_some(POWER_ON_LINE);
         if combat.pickup {
             let picture = patches.entry("LBL_ACTION0".to_string()).or_default();
             picture.hidden = false;
@@ -1850,7 +1859,7 @@ const HUD_HIDDEN: [&str; 26] = [
 /// Which of the file's three places each member has, in the party's order. The file's second place is the far one: the video
 /// has one companion right beside the leader at 7:30.
 const HUD_MEMBER_SLOTS: [usize; 3] = [1, 3, 2];
-const HUD_BUTTONS: [&str; 36] = [
+const HUD_BUTTONS: [&str; 37] = [
     "BTN_CHAR1",
     "BTN_ACTION1",
     "BTN_ACTIONUP1",
@@ -1874,6 +1883,7 @@ const HUD_BUTTONS: [&str; 36] = [
     "BTN_CLEARONE2",
     "TB_PAUSE",
     "TB_SOLO",
+    ATTACK_MODE_BUTTON,
     "BTN_CHAR2",
     "BTN_CHAR3",
     "BTN_TARGET0",

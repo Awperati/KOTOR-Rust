@@ -227,5 +227,9 @@ The fourth slot at the bottom right lists the powers `spells.2da` calls friendly
 
 The main menu draws the owner's `title-card.png` from the assets folder (see `docs/SOURCES.md`) in place of the logo, above the buttons. It has no alpha, so black is seen through. From 960 pixels high it uses an upscaled copy. With no card the game's own logo stays. Test: `the_title_card_comes_from_the_assets_folder_and_black_is_seen_through`. Frames from `title_shots`.
 
+## Attack mode's button
+
+Beside the hourglass, in the place `mipc28x6` keeps for stealth, which has no button here, with `i_attack` and a yellow line when on. B too. A save keeps it, the wanted level, whether a crime was seen and who is hostile. Tests: `the_attack_mode_button_beside_the_hourglass_turns_it_on_and_off`, `a_save_keeps_attack_mode_and_what_the_law_knows`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

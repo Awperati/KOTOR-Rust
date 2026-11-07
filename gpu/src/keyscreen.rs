@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 /// The roll and the jump are not in the game, so they have no words in the talk table.
 const NOT_IN_TALK_TABLE: u32 = 0;
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 22] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 23] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
@@ -36,6 +36,7 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 22] = [
     ("Pause", 48019, 1, "KeyX"),
     ("CancelCombat", 48315, 1, "KeyF"),
     ("Pickup", NOT_IN_TALK_TABLE, 1, "KeyF"),
+    ("AttackMode", NOT_IN_TALK_TABLE, 1, "KeyB"),
     ("SoloMode", 48035, 1, "KeyV"),
 ];
 /// Each action's name in `keymap.2da`. Not Pause: the table's key for it is Space, which jumps here, as the owner asked.
@@ -208,7 +209,9 @@ impl Stage {
         let capture = self.menus.key_capture;
         let mut rows = Vec::new();
         for (action, words) in self.page_actions() {
-            let name = if words == NOT_IN_TALK_TABLE {
+            let name = if action == "AttackMode" {
+                "Attack Mode".to_string()
+            } else if words == NOT_IN_TALK_TABLE {
                 action.to_string()
             } else {
                 self.ui.strref(words)

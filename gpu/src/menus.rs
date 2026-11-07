@@ -55,6 +55,8 @@ const TITLE_BELOW: i32 = 218;
 /// talk table: the button is not in the game.
 const PICKUP_WORDS: &str = "Pickup";
 const NOTHING_NEARBY: &str = "Nothing nearby";
+/// What the Attack mode button says, off and on. Not in the talk table either.
+const ATTACK_MODE_WORDS: [&str; 2] = ["Attack mode: Off", "Attack mode: On"];
 
 /// The first action slot is the Pickup button, unless the target has something else to do: attack, talk, a door.
 pub(super) fn slot_is_pickup(action: Option<&str>) -> bool {
@@ -1619,6 +1621,13 @@ impl Stage {
         }
     }
 
+    /// The Attack mode button and its key.
+    pub fn attack_mode_key(&mut self) {
+        if !self.menu_open() {
+            self.game.world.toggle_attack_mode();
+        }
+    }
+
     /// The Pickup button and its key: what is near opens as one container, or the player says there is nothing.
     pub fn pickup(&mut self) {
         if self.menu_open() || self.choice_view().is_some() {
@@ -1791,6 +1800,7 @@ impl Stage {
             | "BTN_ACTIONDOWN2" | "BTN_ACTIONDOWN3" => self.turn_quick_slot(tag),
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "TB_PAUSE" => self.toggle_pause(),
+            kotor_ui::ATTACK_MODE_BUTTON => self.attack_mode_key(),
             "TB_SOLO" if self.game.world.solo_mode => self.solo_key(),
             "BTN_TARGETUP0" | "BTN_TARGETDOWN0" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1"
             | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => self.turn_slot(tag),
@@ -1835,11 +1845,17 @@ impl Stage {
         let (quick, quick_hover) = self.quick_view();
         let pickup = slot_is_pickup(action);
         let on_pickup = pickup && self.over_first_action_slot();
+        let attack_mode = self.game.world.attack_mode();
+        let on_attack_mode = self.over_attack_mode();
+        let quick_hover = on_attack_mode
+            .then(|| ATTACK_MODE_WORDS[attack_mode as usize].to_string())
+            .or(quick_hover);
         CombatHud {
             locked,
             quick,
             quick_hover: on_pickup.then(|| PICKUP_WORDS.to_string()).or(quick_hover),
             pickup,
+            attack_mode,
             engaged: self.party_blocked(),
             message: self.ui.strref(STR_COMBAT_MODE),
             queue,

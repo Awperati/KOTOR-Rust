@@ -624,6 +624,7 @@ impl App {
                         "Pause" => self.stage.pause_key(),
                         "CancelCombat" => self.stage.hud_disengage(),
                         "Pickup" => self.stage.pickup(),
+                        "AttackMode" => self.stage.attack_mode_key(),
                         "SoloMode" => self.stage.solo_key(),
                         "Roll" => self.stage.roll_key(),
                         _ => {}

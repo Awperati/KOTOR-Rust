@@ -6,7 +6,8 @@
 //! **Placeholder, to be said by the owner:** every number and every list in `docs/law.tsv`. **Assumed:** a hit on someone who is not
 //! hostile is a crime once per victim; the first crime is wanted level 1 and each kill adds one, up to 3; an authority sees when
 //! the player is in its perception range and in clear sight, and hears within `hear_metres` of a crime that kills.
-//! **Not built yet:** saving the state, the button (the menus builder's) and a journal line for a quest giver's death.
+//! **Not built yet:** a journal line for a quest giver's death. A save keeps attack mode, the wanted level, whether a crime was seen
+//! and who is hostile for it; who witnessed what and who is running start again.
 
 use crate::follow::dist2d;
 use crate::world::{Action, Kind, ObjId, World};

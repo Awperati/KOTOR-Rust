@@ -338,6 +338,11 @@ impl Stage {
         self.menus.fight.hover.as_deref() == Some("BTN_ACTION0")
     }
 
+    /// The cursor is on the Attack mode button.
+    pub(super) fn over_attack_mode(&self) -> bool {
+        self.menus.fight.hover.as_deref() == Some(kotor_ui::ATTACK_MODE_BUTTON)
+    }
+
     /// The cursor is on one of the slots under an enemy's bar.
     pub(in crate::stage) fn over_target_slots(&self) -> bool {
         let tag = self.menus.fight.hover.as_deref().unwrap_or("");

@@ -738,6 +738,39 @@ fn the_title_card_comes_from_the_assets_folder_and_black_is_seen_through() {
 }
 
 #[test]
+fn the_attack_mode_button_beside_the_hourglass_turns_it_on_and_off() {
+    let Some((mut s, _)) = in_game("attack_mode") else {
+        return;
+    };
+    assert_eq!(s.action_for_key("KeyB"), Some("AttackMode"));
+    s.update(DT);
+    assert!(!s.game.world.attack_mode());
+    let button = s.hud_pixel(kotor_ui::ATTACK_MODE_BUTTON, SIZE).unwrap();
+    s.hover(button, SIZE);
+    assert_eq!(s.combat_words().as_deref(), Some("Attack mode: Off"));
+    // How much of the button's line shows.
+    let line = |s: &mut Stage| -> usize {
+        s.update(DT);
+        let o = s.overlay().unwrap();
+        o.rgba
+            .chunks(4)
+            .filter(|p| p[0] > 240 && p[1] > 240 && (60..100).contains(&p[2]))
+            .count()
+    };
+    let without = line(&mut s);
+    s.click(button, SIZE);
+    assert!(s.game.world.attack_mode());
+    assert_eq!(s.combat_words().as_deref(), Some("Attack mode: On"));
+    assert!(line(&mut s) > without + 100, "the line round it");
+    s.attack_mode_key();
+    assert!(!s.game.world.attack_mode());
+    // Not from behind a screen.
+    s.open_inventory();
+    s.attack_mode_key();
+    assert!(!s.game.world.attack_mode());
+}
+
+#[test]
 fn a_rounded_button_has_no_square_plate_behind_it() {
     let Some((mut s, _)) = in_game("rounded") else {
         return;

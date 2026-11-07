@@ -361,6 +361,15 @@ impl World {
                     }),
                 ),
                 ("SoloMode", Value::Byte(self.solo_mode as u8)),
+                ("AttackMode", Value::Byte(self.attack_mode as u8)),
+                ("LawWanted", Value::Byte(self.law.wanted)),
+                ("LawCrimeSeen", Value::Byte(self.law.crime_seen as u8)),
+                (
+                    "LawHostile",
+                    list_of(self.law.hostile.iter(), |id| {
+                        st(vec![("Id", Value::Int(*id as i32))])
+                    }),
+                ),
                 ("RestrictMode", Value::Byte(self.restrict_mode as u8)),
                 (
                     "Unselectable",
@@ -1025,6 +1034,17 @@ impl World {
 
         // Globals, journal, party.
         self.solo_mode = globals.root.int("SoloMode").unwrap_or(0) != 0;
+        self.attack_mode = globals.root.int("AttackMode").unwrap_or(0) != 0;
+        self.law = Default::default();
+        self.law.wanted = globals.root.int("LawWanted").unwrap_or(0) as u8;
+        self.law.crime_seen = globals.root.int("LawCrimeSeen").unwrap_or(0) != 0;
+        self.law.hostile = globals
+            .root
+            .list("LawHostile")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|x| Some(x.int("Id")? as ObjId))
+            .collect();
         self.restrict_mode = globals.root.int("RestrictMode").unwrap_or(0) != 0;
         self.unselectable = globals
             .root

@@ -105,6 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let slot = s.hud_pixel("BTN_ACTION3", size).expect("the slot");
     s.click(slot, size);
     s.hover(slot, size);
+    s.attack_mode_key();
     shot(&mut s, "power_on");
     s.hover((width as f32 / 2.0, height as f32 / 2.0), size);
 
