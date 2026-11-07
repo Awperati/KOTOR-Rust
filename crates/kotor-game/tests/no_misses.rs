@@ -129,7 +129,7 @@ fn a_stronger_character_glances_harder() {
     w.object_mut(pc).unwrap().level = 12;
     let veteran = least(&mut w);
     assert!(
-        veteran >= strong + 1,
+        veteran > strong,
         "level 12 against 1: {strong} then {veteran}"
     );
 }
