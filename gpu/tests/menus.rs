@@ -6213,14 +6213,14 @@ fn auto_attack_mode_has_a_switch_and_an_automatic_mode_goes_off_after_the_fight(
     s.escape();
     press(&mut s, "BTN_FEEDBACK");
     for _ in 0..40 {
-        if s.menu_pixel("LB_OPTIONS", Some(27), SIZE)
+        if s.menu_pixel("LB_OPTIONS", Some(29), SIZE)
             .is_some_and(|p| p.1 < 300.0)
         {
             break;
         }
         s.menu_wheel(-1.0);
     }
-    click_row(&mut s, "LB_OPTIONS", 27);
+    click_row(&mut s, "LB_OPTIONS", 29);
     assert!(!s.settings().auto_attack_mode);
     assert!(std::fs::read_to_string(dir.join("settings.txt"))
         .unwrap()
