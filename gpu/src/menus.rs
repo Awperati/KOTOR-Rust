@@ -335,6 +335,10 @@ pub struct Settings {
     pub cel_shading: i32,
     /// The level the F7 key brings back after it turned the shading off. Not kept in the settings file.
     pub cel_last: i32,
+    /// Anti-aliasing: 0 off, 1 4x, 2 8x, 3 16x.
+    pub anti_aliasing: i32,
+    /// Motion blur: 0 off, 1 subtle, 2 moderate, 3 intense.
+    pub motion_blur: i32,
     /// How far the Pickup button reaches, in metres.
     pub pickup_radius: i32,
     /// The stick and round buttons on the HUD: the blue button turns them on and off.
@@ -399,6 +403,8 @@ impl Default for Settings {
             nameplate_size: 100,
             cel_shading: 1,
             cel_last: 1,
+            anti_aliasing: 1,
+            motion_blur: 1,
             pickup_radius: 3,
             touch_controls: false,
             look_stick_speed: 0.5,
@@ -417,7 +423,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -462,6 +468,8 @@ impl Settings {
             self.ground_finishers,
             self.respawn,
             self.cel_shading,
+            self.anti_aliasing,
+            self.motion_blur,
             self.pickup_radius,
             self.touch_controls,
             self.look_stick_speed,
@@ -526,6 +534,10 @@ impl Settings {
                 "hide_empty" => s.hide_empty = v == "true",
                 "nameplate_range" => s.nameplate_range = v.parse().unwrap_or(s.nameplate_range),
                 "nameplate_size" => s.nameplate_size = v.parse().unwrap_or(s.nameplate_size),
+                "anti_aliasing" => {
+                    s.anti_aliasing = v.parse().unwrap_or(s.anti_aliasing).clamp(0, 3)
+                }
+                "motion_blur" => s.motion_blur = v.parse().unwrap_or(s.motion_blur).clamp(0, 3),
                 "cel_shading" => {
                     s.cel_shading = v.parse().unwrap_or(s.cel_shading).clamp(0, 2);
                     s.cel_last = s.cel_shading.max(1);

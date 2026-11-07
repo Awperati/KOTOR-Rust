@@ -129,7 +129,7 @@ const STYLE_ROWS: [(&str, &str, &str); 22] = [
 /// What the Pickup radius goes round, in metres.
 const PICKUP_RADII: [i32; 5] = [2, 3, 4, 5, 8];
 /// The rows after those that go round a list of values.
-const VALUE_ROWS: [(&str, &str); 4] = [
+const VALUE_ROWS: [(&str, &str); 6] = [
     (
         "Nameplate range",
         "How far away an enemy gets a plate, in metres.",
@@ -142,6 +142,14 @@ const VALUE_ROWS: [(&str, &str); 4] = [
     (
         "Pickup radius",
         "How far the Pickup button and its key reach, in metres.",
+    ),
+    (
+        "Anti-aliasing",
+        "Smooths jagged edges. Off: none. 4x and 8x: that many samples a pixel, where the graphics card has them (a lesser count where it does not). 16x: 8x samples and a smoothing pass on the finished picture, which also catches thin cut-out edges. Higher costs more speed.",
+    ),
+    (
+        "Motion blur",
+        "Smears the picture along the way the camera moved. Off, Subtle, Moderate or Intense. It follows the camera only, not the menus, and stops on loading screens and while the game is paused.",
     ),
 ];
 /// The rows after those, under a heading: the folders of the player's own content, what each row says, and what it is for.
@@ -162,6 +170,10 @@ const CUSTOM_ROWS: [(&str, &str); 3] = [
 ];
 /// What the Cel shading row says.
 pub(super) const CEL_NAMES: [&str; 3] = ["Off", "Subtle", "Strong"];
+/// What the Anti-aliasing row says.
+pub(super) const AA_NAMES: [&str; 4] = ["Off", "4x", "8x", "16x"];
+/// What the Motion blur row says.
+pub(super) const BLUR_NAMES: [&str; 4] = ["Off", "Subtle", "Moderate", "Intense"];
 /// A box on the Auto-Pause page, and its words.
 const AUTOPAUSE: [(&str, u32); 6] = [
     ("CB_ENDROUND", 42445),
@@ -203,7 +215,7 @@ const GRAPHICS_WORDS: [(&str, u32, Option<&str>); 8] = [
     (
         "BTN_ANTIALIAS",
         47971,
-        Some("Not built: one sample a pixel."),
+        Some("Set under Feedback: Anti-aliasing."),
     ),
     (
         "BTN_ANISOTROPY",
@@ -402,6 +414,24 @@ impl Stage {
             ..Row::default()
         });
         rows.push(Row {
+            text: format!(
+                "{}: {}",
+                VALUE_ROWS[4].0,
+                AA_NAMES[settings.anti_aliasing.clamp(0, 3) as usize]
+            ),
+            selected: settings.anti_aliasing > 0,
+            ..Row::default()
+        });
+        rows.push(Row {
+            text: format!(
+                "{}: {}",
+                VALUE_ROWS[5].0,
+                BLUR_NAMES[settings.motion_blur.clamp(0, 3) as usize]
+            ),
+            selected: settings.motion_blur > 0,
+            ..Row::default()
+        });
+        rows.push(Row {
             text: CUSTOM_HEADING.to_string(),
             dim: true,
             ..Row::default()
@@ -498,6 +528,16 @@ impl Stage {
         self.settings_changed();
     }
 
+    /// The anti-aliasing level the renderer is to draw with: 0 off, 1 4x, 2 8x, 3 16x.
+    pub fn anti_aliasing(&self) -> u8 {
+        self.menus.settings.anti_aliasing.clamp(0, 3) as u8
+    }
+
+    /// The motion blur level the renderer is to draw with: 0 off, 1 subtle, 2 moderate, 3 intense.
+    pub fn motion_blur(&self) -> u8 {
+        self.menus.settings.motion_blur.clamp(0, 3) as u8
+    }
+
     /// The nameplates key: all of them off, or on.
     pub fn toggle_nameplates(&mut self) {
         self.menus.settings.nameplates = !self.menus.settings.nameplates;
@@ -527,9 +567,11 @@ impl Stage {
                 s.cel_last = s.cel_shading.max(1);
             }
             Some(3) => s.pickup_radius = next_of(&PICKUP_RADII, s.pickup_radius),
-            Some(5) => self.menus.folder_to_open = crate::texture_override::folder(),
-            Some(6) => self.menus.folder_to_open = Stage::anim_folder(),
-            Some(7) => self.menus.folder_to_open = Stage::mesh_folder(),
+            Some(4) => s.anti_aliasing = (s.anti_aliasing + 1) % 4,
+            Some(5) => s.motion_blur = (s.motion_blur + 1) % 4,
+            Some(7) => self.menus.folder_to_open = crate::texture_override::folder(),
+            Some(8) => self.menus.folder_to_open = Stage::anim_folder(),
+            Some(9) => self.menus.folder_to_open = Stage::mesh_folder(),
             _ => {}
         }
         self.settings_changed();
@@ -575,6 +617,39 @@ mod tests {
     use super::super::Settings;
 
     /// The level is kept in the settings file and read back, and a level out of range is brought in.
+    #[test]
+    fn anti_aliasing_and_motion_blur_go_through_the_settings_file() {
+        for level in 0..=3 {
+            let s = Settings {
+                anti_aliasing: level,
+                motion_blur: 3 - level,
+                ..Settings::default()
+            };
+            let back = Settings::from_text(&s.to_text());
+            assert_eq!(back.anti_aliasing, level);
+            assert_eq!(back.motion_blur, 3 - level);
+        }
+        let wild = Settings::from_text(
+            "anti_aliasing=9
+motion_blur=-4
+",
+        );
+        assert_eq!(
+            (wild.anti_aliasing, wild.motion_blur),
+            (3, 0),
+            "brought into range"
+        );
+        let old = Settings::from_text(
+            "music=0.5
+",
+        );
+        assert_eq!(
+            (old.anti_aliasing, old.motion_blur),
+            (1, 1),
+            "an old file gets 4x and subtle"
+        );
+    }
+
     #[test]
     fn the_cel_shading_level_goes_through_the_settings_file() {
         for level in 0..=2 {

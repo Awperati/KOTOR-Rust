@@ -514,6 +514,11 @@ impl App {
                 .set_sky_at_infinity(stage.game.world.minigame.is_none());
             st.gpu.set_particles(stage.frame_particles());
             st.gpu.set_cel_shading(stage.cel_shading());
+            st.gpu.set_anti_aliasing(stage.anti_aliasing());
+            st.gpu.set_motion_blur(stage.motion_blur());
+            // None on a menu, a loading screen or a paused game.
+            st.gpu
+                .set_motion_blur_suspended(stage.menu_open() || stage.paused());
             scene_ms = ms(building);
             if let Err(e) =
                 st.gpu

@@ -366,6 +366,430 @@ fn alpha_look(img: &Image) -> AlphaLook {
     }
 }
 
+/// The pipelines that draw the scene, made for `count` samples a pixel: they change with the anti-aliasing level.
+struct Pipes {
+    pipeline: wgpu::RenderPipeline,
+    sky_pipeline: wgpu::RenderPipeline,
+    blend_pipeline: wgpu::RenderPipeline,
+    adding_pipeline: wgpu::RenderPipeline,
+    outline_pipeline: wgpu::RenderPipeline,
+    additive_pipeline: wgpu::RenderPipeline,
+    smoke_pipeline: wgpu::RenderPipeline,
+}
+
+fn make_pipelines(
+    device: &wgpu::Device,
+    module: &wgpu::ShaderModule,
+    particle_module: &wgpu::ShaderModule,
+    globals_layout: &wgpu::BindGroupLayout,
+    mesh_layout: &wgpu::BindGroupLayout,
+    particle_layout: &wgpu::BindGroupLayout,
+    count: u32,
+) -> Pipes {
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("kotor"),
+        bind_group_layouts: &[globals_layout, mesh_layout],
+        push_constant_ranges: &[],
+    });
+    let attrs =
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x2];
+    let make = |depth_write: bool,
+                compare: wgpu::CompareFunction,
+                blend: Option<wgpu::BlendState>,
+                (vs, fs, cull): (&str, &str, Option<wgpu::Face>)| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("kotor"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module,
+                entry_point: Some(vs),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &attrs,
+                }],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module,
+                entry_point: Some(fs),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                cull_mode: cull,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: depth_write,
+                depth_compare: compare,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count,
+                ..Default::default()
+            },
+            multiview: None,
+            cache: None,
+        })
+    };
+    let plain = ("vs_main", "fs_main", None);
+    let pipeline = make(true, wgpu::CompareFunction::Less, None, plain);
+    let sky_pipeline = make(false, wgpu::CompareFunction::Always, None, plain);
+    let blend_pipeline = make(
+        false,
+        wgpu::CompareFunction::Less,
+        Some(wgpu::BlendState::ALPHA_BLENDING),
+        plain,
+    );
+    // A picture that adds its light: what is behind stays, and this goes on top of it, as far as it is bright.
+    let adding = wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::One,
+        operation: wgpu::BlendOperation::Add,
+    };
+    let adding_pipeline = make(
+        false,
+        wgpu::CompareFunction::Less,
+        Some(wgpu::BlendState {
+            color: adding,
+            alpha: wgpu::BlendComponent::OVER,
+        }),
+        plain,
+    );
+    // The outline is the body again, a little fatter, of which only the faces turned away show.
+    let outline_pipeline = make(
+        true,
+        wgpu::CompareFunction::Less,
+        None,
+        ("vs_outline", "fs_outline", Some(wgpu::Face::Front)),
+    );
+    let particle_pipes = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("particle"),
+        bind_group_layouts: &[globals_layout, particle_layout],
+        push_constant_ranges: &[],
+    });
+    let particle_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x4];
+    let particle_pipeline = |blend: wgpu::BlendState| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("particle"),
+            layout: Some(&particle_pipes),
+            vertex: wgpu::VertexState {
+                module: particle_module,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<effects::ParticleVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &particle_attrs,
+                }],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: particle_module,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: Some(blend),
+                    write_mask: wgpu::ColorWrites::COLOR,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                cull_mode: None,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count,
+                ..Default::default()
+            },
+            multiview: None,
+            cache: None,
+        })
+    };
+    let additive_pipeline = particle_pipeline(wgpu::BlendState {
+        color: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::SrcAlpha,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        },
+        alpha: wgpu::BlendComponent::OVER,
+    });
+    let smoke_pipeline = particle_pipeline(wgpu::BlendState::ALPHA_BLENDING);
+    Pipes {
+        pipeline,
+        sky_pipeline,
+        blend_pipeline,
+        adding_pipeline,
+        outline_pipeline,
+        additive_pipeline,
+        smoke_pipeline,
+    }
+}
+
+/// After the scene: motion blur and the edge smoothing that is the top anti-aliasing tier. A full-screen triangle each.
+/// `DEPTH_TY` is the depth texture's type, which is multisampled when the scene is.
+const POST_SHADER: &str = r#"
+struct Post {
+    inv_vp: mat4x4<f32>,
+    prev_vp: mat4x4<f32>,
+    // x: how much of the last frame's movement to blur along (the exposure over the frame time), y: the longest blur in
+    // picture widths, z and w: one pixel across and down.
+    params: vec4<f32>,
+};
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@group(0) @binding(2) var<uniform> p: Post;
+@group(1) @binding(0) var depth: DEPTH_TY;
+
+struct VOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs(@builtin(vertex_index) i: u32) -> VOut {
+    let x = f32((i << 1u) & 2u);
+    let y = f32(i & 2u);
+    var o: VOut;
+    o.pos = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+    o.uv = vec2<f32>(x, y);
+    return o;
+}
+
+fn luma(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.299, 0.587, 0.114));
+}
+
+// FXAA (Lottes), the short form: the edge's direction from the lumas of the four corners, then two or four taps along it.
+@fragment
+fn fs_fxaa(i: VOut) -> @location(0) vec4<f32> {
+    let px = p.params.zw;
+    let rgb_nw = textureSampleLevel(src, samp, i.uv + vec2<f32>(-1.0, -1.0) * px, 0.0).rgb;
+    let rgb_ne = textureSampleLevel(src, samp, i.uv + vec2<f32>(1.0, -1.0) * px, 0.0).rgb;
+    let rgb_sw = textureSampleLevel(src, samp, i.uv + vec2<f32>(-1.0, 1.0) * px, 0.0).rgb;
+    let rgb_se = textureSampleLevel(src, samp, i.uv + vec2<f32>(1.0, 1.0) * px, 0.0).rgb;
+    let rgb_m = textureSampleLevel(src, samp, i.uv, 0.0).rgb;
+    let l_nw = luma(rgb_nw);
+    let l_ne = luma(rgb_ne);
+    let l_sw = luma(rgb_sw);
+    let l_se = luma(rgb_se);
+    let l_m = luma(rgb_m);
+    let l_min = min(l_m, min(min(l_nw, l_ne), min(l_sw, l_se)));
+    let l_max = max(l_m, max(max(l_nw, l_ne), max(l_sw, l_se)));
+    var dir = vec2<f32>(-((l_nw + l_ne) - (l_sw + l_se)), (l_nw + l_sw) - (l_ne + l_se));
+    let reduce = max((l_nw + l_ne + l_sw + l_se) * 0.25 * 0.125, 1.0 / 128.0);
+    let rcp = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+    dir = clamp(dir * rcp, vec2<f32>(-8.0), vec2<f32>(8.0)) * px;
+    let a = 0.5 * (textureSampleLevel(src, samp, i.uv + dir * (1.0 / 3.0 - 0.5), 0.0).rgb
+        + textureSampleLevel(src, samp, i.uv + dir * (2.0 / 3.0 - 0.5), 0.0).rgb);
+    let b = a * 0.5 + 0.25 * (textureSampleLevel(src, samp, i.uv + dir * -0.5, 0.0).rgb
+        + textureSampleLevel(src, samp, i.uv + dir * 0.5, 0.0).rgb);
+    let l_b = luma(b);
+    if (l_b < l_min || l_b > l_max) {
+        return vec4<f32>(a, 1.0);
+    }
+    return vec4<f32>(b, 1.0);
+}
+
+// Motion blur from the camera's own movement: where this pixel's point was on the last frame, from its depth and the
+// last frame's view and projection, and the picture smeared along the way it came, no further than the longest allowed.
+@fragment
+fn fs_blur(i: VOut) -> @location(0) vec4<f32> {
+    let xy = vec2<i32>(i.pos.xy);
+    let d = textureLoad(depth, xy, 0);
+    let ndc = vec4<f32>(i.uv.x * 2.0 - 1.0, 1.0 - i.uv.y * 2.0, d, 1.0);
+    let wp = p.inv_vp * ndc;
+    let world = wp / wp.w;
+    let pc = p.prev_vp * world;
+    var v = vec2<f32>(0.0);
+    if (pc.w > 0.0001) {
+        let before = vec2<f32>(pc.x / pc.w * 0.5 + 0.5, 0.5 - pc.y / pc.w * 0.5);
+        v = (i.uv - before) * p.params.x;
+    }
+    let len = length(v);
+    if (len > p.params.y) {
+        v = v * (p.params.y / len);
+    }
+    var acc = vec3<f32>(0.0);
+    let n = 12;
+    for (var k = 0; k < n; k = k + 1) {
+        let t = f32(k) / f32(n - 1) - 0.5;
+        acc = acc + textureSampleLevel(src, samp, i.uv + v * t, 0.0).rgb;
+    }
+    return vec4<f32>(acc / f32(n), 1.0);
+}
+"#;
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct PostUniform {
+    inv_vp: [[f32; 4]; 4],
+    prev_vp: [[f32; 4]; 4],
+    params: [f32; 4],
+}
+
+/// The full-screen passes after the scene.
+struct Post {
+    sampler: wgpu::Sampler,
+    layout: wgpu::BindGroupLayout,
+    depth_layout_1: wgpu::BindGroupLayout,
+    depth_layout_ms: wgpu::BindGroupLayout,
+    fxaa: wgpu::RenderPipeline,
+    blur_1: wgpu::RenderPipeline,
+    blur_ms: wgpu::RenderPipeline,
+}
+
+/// How long the shutter stays open for each motion blur level, in seconds, and the longest blur in picture widths.
+const BLUR_EXPOSURE: [f32; 4] = [0.0, 0.010, 0.020, 0.036];
+const BLUR_LONGEST: [f32; 4] = [0.0, 0.012, 0.026, 0.05];
+
+fn make_post(device: &wgpu::Device) -> Post {
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("post"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+    let depth_layout = |multisampled: bool| {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("post depth"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled,
+                },
+                count: None,
+            }],
+        })
+    };
+    let (depth_layout_1, depth_layout_ms) = (depth_layout(false), depth_layout(true));
+    let module = |ty: &str| {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("post"),
+            source: wgpu::ShaderSource::Wgsl(POST_SHADER.replace("DEPTH_TY", ty).into()),
+        })
+    };
+    let (m1, mms) = (
+        module("texture_depth_2d"),
+        module("texture_depth_multisampled_2d"),
+    );
+    let pipe = |module: &wgpu::ShaderModule, fs: &str, depth: Option<&wgpu::BindGroupLayout>| {
+        let mut layouts = vec![&layout];
+        layouts.extend(depth);
+        let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("post"),
+            bind_group_layouts: &layouts,
+            push_constant_ranges: &[],
+        });
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("post"),
+            layout: Some(&pl),
+            vertex: wgpu::VertexState {
+                module,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module,
+                entry_point: Some(fs),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
+        })
+    };
+    Post {
+        fxaa: pipe(&m1, "fs_fxaa", None),
+        blur_1: pipe(&m1, "fs_blur", Some(&depth_layout_1)),
+        blur_ms: pipe(&mms, "fs_blur", Some(&depth_layout_ms)),
+        sampler,
+        layout,
+        depth_layout_1,
+        depth_layout_ms,
+    }
+}
+
+/// What the scene is drawn into besides the finished picture: the multisampled colour and the depth, and the two images
+/// the post passes pass between.
+struct SceneTargets {
+    depth: wgpu::TextureView,
+    msaa: Option<wgpu::TextureView>,
+    aux: Vec<wgpu::Texture>,
+}
+
+/// The samples a pixel gets at each anti-aliasing level when the adapter allows `max`: off, 4x, 8x, 16x. 16x is not a
+/// sample count any adapter has: it is the 8x count (or the best there is) and the edge pass on top.
+fn aa_samples(level: u8, max: u32) -> u32 {
+    match level {
+        0 => 1,
+        1 => 4.min(max),
+        _ => {
+            if max >= 8 {
+                8
+            } else {
+                4.min(max)
+            }
+        }
+    }
+}
+
 pub struct GpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -386,7 +810,6 @@ pub struct GpuRenderer {
     width: u32,
     height: u32,
     color: wgpu::Texture,
-    depth: wgpu::TextureView,
     white: Tex,
     /// Drawn in place of a picture that is not ready, for a frame or two.
     grey: Tex,
@@ -399,6 +822,22 @@ pub struct GpuRenderer {
     /// Cel shading: 0 off, 1 subtle, 2 strong. The moving meshes get a thin dark outline from the second pipeline.
     cel: u8,
     outline_pipeline: wgpu::RenderPipeline,
+    module: wgpu::ShaderModule,
+    particle_module: wgpu::ShaderModule,
+    /// Anti-aliasing: 0 off, 1 4x, 2 8x, 3 16x; the samples a pixel has, and the most the adapter has.
+    aa: u8,
+    samples: u32,
+    max_samples: u32,
+    /// Motion blur: 0 off, 1 subtle, 2 moderate, 3 intense.
+    blur: u8,
+    /// Not blurred while this is on: a loading screen, a paused game.
+    blur_suspended: bool,
+    /// The frame time the blur goes by, when the caller knows it, and else the time since the last frame.
+    frame_dt: Option<f32>,
+    last_draw: Option<std::time::Instant>,
+    prev_vp: Option<Mat4>,
+    scene_targets: SceneTargets,
+    post: Post,
 }
 
 struct Draw {
@@ -446,10 +885,34 @@ impl GpuRenderer {
             .await
             .ok_or("no GPU adapter found")?;
         log::info!("adapter: {:?}", adapter.get_info());
+        // The sample counts above 4 a format has are told by the adapter, and only once this feature is on.
+        let wanted = wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES & adapter.features();
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    required_features: wanted,
+                    ..Default::default()
+                },
+                None,
+            )
             .await
             .map_err(|e| format!("request_device: {e}"))?;
+        let can = |format: wgpu::TextureFormat, n: u32| {
+            adapter
+                .get_texture_format_features(format)
+                .flags
+                .sample_count_supported(n)
+        };
+        let max_samples = [8u32, 4, 2]
+            .into_iter()
+            .find(|n| {
+                can(wgpu::TextureFormat::Rgba8Unorm, *n)
+                    && can(wgpu::TextureFormat::Depth32Float, *n)
+                    && (*n <= 4
+                        || wanted
+                            .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES))
+            })
+            .unwrap_or(1);
 
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kotor"),
@@ -493,86 +956,6 @@ impl GpuRenderer {
                 uniform(3, wgpu::ShaderStages::FRAGMENT),
             ],
         });
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("kotor"),
-            bind_group_layouts: &[&globals_layout, &mesh_layout],
-            push_constant_ranges: &[],
-        });
-        let attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x2];
-        let make = |depth_write: bool,
-                    compare: wgpu::CompareFunction,
-                    blend: Option<wgpu::BlendState>,
-                    (vs, fs, cull): (&str, &str, Option<wgpu::Face>)| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("kotor"),
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some(vs),
-                    compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Vertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &attrs,
-                    }],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some(fs),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: cull,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: depth_write,
-                    depth_compare: compare,
-                    stencil: Default::default(),
-                    bias: Default::default(),
-                }),
-                multisample: Default::default(),
-                multiview: None,
-                cache: None,
-            })
-        };
-        let plain = ("vs_main", "fs_main", None);
-        let pipeline = make(true, wgpu::CompareFunction::Less, None, plain);
-        let sky_pipeline = make(false, wgpu::CompareFunction::Always, None, plain);
-        let blend_pipeline = make(
-            false,
-            wgpu::CompareFunction::Less,
-            Some(wgpu::BlendState::ALPHA_BLENDING),
-            plain,
-        );
-        // A picture that adds its light: what is behind stays, and this goes on top of it, as far as it is bright.
-        let adding = wgpu::BlendComponent {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::One,
-            operation: wgpu::BlendOperation::Add,
-        };
-        let adding_pipeline = make(
-            false,
-            wgpu::CompareFunction::Less,
-            Some(wgpu::BlendState {
-                color: adding,
-                alpha: wgpu::BlendComponent::OVER,
-            }),
-            plain,
-        );
-        // The outline is the body again, a little fatter, of which only the faces turned away show.
-        let outline_pipeline = make(
-            true,
-            wgpu::CompareFunction::Less,
-            None,
-            ("vs_outline", "fs_outline", Some(wgpu::Face::Front)),
-        );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::Repeat,
             address_mode_v: wgpu::AddressMode::Repeat,
@@ -580,7 +963,7 @@ impl GpuRenderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let (color, depth) = make_targets(&device, width, height);
+        let color = make_color(&device, width, height);
         let particle_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("particle"),
             entries: &[
@@ -597,62 +980,25 @@ impl GpuRenderer {
             label: Some("particle"),
             source: wgpu::ShaderSource::Wgsl(PARTICLE_SHADER.into()),
         });
-        let particle_pipes = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("particle"),
-            bind_group_layouts: &[&globals_layout, &particle_layout],
-            push_constant_ranges: &[],
-        });
-        let particle_attrs =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x4];
-        let particle_pipeline = |blend: wgpu::BlendState| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("particle"),
-                layout: Some(&particle_pipes),
-                vertex: wgpu::VertexState {
-                    module: &particle_module,
-                    entry_point: Some("vs"),
-                    compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<effects::ParticleVertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &particle_attrs,
-                    }],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &particle_module,
-                    entry_point: Some("fs"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        blend: Some(blend),
-                        write_mask: wgpu::ColorWrites::COLOR,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: None,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: false,
-                    depth_compare: wgpu::CompareFunction::Less,
-                    stencil: Default::default(),
-                    bias: Default::default(),
-                }),
-                multisample: Default::default(),
-                multiview: None,
-                cache: None,
-            })
-        };
-        let additive_pipeline = particle_pipeline(wgpu::BlendState {
-            color: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::SrcAlpha,
-                dst_factor: wgpu::BlendFactor::One,
-                operation: wgpu::BlendOperation::Add,
-            },
-            alpha: wgpu::BlendComponent::OVER,
-        });
-        let smoke_pipeline = particle_pipeline(wgpu::BlendState::ALPHA_BLENDING);
+        let Pipes {
+            pipeline,
+            sky_pipeline,
+            blend_pipeline,
+            adding_pipeline,
+            outline_pipeline,
+            additive_pipeline,
+            smoke_pipeline,
+        } = make_pipelines(
+            &device,
+            &module,
+            &particle_module,
+            &globals_layout,
+            &mesh_layout,
+            &particle_layout,
+            1,
+        );
+        let scene_targets = make_scene_targets(&device, width, height, 1, false);
+        let post = make_post(&device);
         let grey = upload_image(
             &device,
             &queue,
@@ -699,7 +1045,18 @@ impl GpuRenderer {
             width,
             height,
             color,
-            depth,
+            module,
+            particle_module,
+            aa: 0,
+            samples: 1,
+            max_samples,
+            blur: 0,
+            blur_suspended: false,
+            frame_dt: None,
+            last_draw: None,
+            prev_vp: None,
+            scene_targets,
+            post,
         })
     }
 
@@ -725,8 +1082,90 @@ impl GpuRenderer {
         if width == 0 || height == 0 || (width, height) == (self.width, self.height) {
             return;
         }
-        (self.color, self.depth) = make_targets(&self.device, width, height);
+        self.color = make_color(&self.device, width, height);
         (self.width, self.height) = (width, height);
+        self.rebuild_scene_targets();
+        self.prev_vp = None;
+    }
+
+    /// The most samples a pixel can have on this adapter: 1, 2, 4 or 8.
+    pub fn max_samples(&self) -> u32 {
+        self.max_samples
+    }
+
+    /// The samples a pixel has now.
+    pub fn samples(&self) -> u32 {
+        self.samples
+    }
+
+    /// Anti-aliasing: 0 off, 1 4x, 2 8x, 3 16x. 4x and 8x are that many samples a pixel where the adapter has them (a
+    /// lesser count where it does not). 16x is no sample count that adapters have: it is 8x and an edge-smoothing pass on
+    /// the finished picture, which also catches the edges that samples cannot (cut-out leaves, hair).
+    pub fn set_anti_aliasing(&mut self, level: u8) {
+        let level = level.min(3);
+        let samples = aa_samples(level, self.max_samples);
+        let sample_change = samples != self.samples;
+        let post_change = (level == 3) != (self.aa == 3);
+        self.aa = level;
+        if sample_change {
+            self.samples = samples;
+            let p = make_pipelines(
+                &self.device,
+                &self.module,
+                &self.particle_module,
+                &self.globals_layout,
+                &self.mesh_layout,
+                &self.particle_layout,
+                samples,
+            );
+            self.pipeline = p.pipeline;
+            self.sky_pipeline = p.sky_pipeline;
+            self.blend_pipeline = p.blend_pipeline;
+            self.adding_pipeline = p.adding_pipeline;
+            self.outline_pipeline = p.outline_pipeline;
+            self.additive_pipeline = p.additive_pipeline;
+            self.smoke_pipeline = p.smoke_pipeline;
+        }
+        if sample_change || post_change {
+            self.rebuild_scene_targets();
+        }
+    }
+
+    /// Motion blur: 0 off, 1 subtle, 2 moderate, 3 intense.
+    pub fn set_motion_blur(&mut self, level: u8) {
+        let level = level.min(3);
+        if level != self.blur {
+            let had = self.post_wanted();
+            self.blur = level;
+            if had != self.post_wanted() {
+                self.rebuild_scene_targets();
+            }
+        }
+    }
+
+    /// No blur while `on`: a loading screen, a paused game. The frame after it starts fresh.
+    pub fn set_motion_blur_suspended(&mut self, on: bool) {
+        if on {
+            self.prev_vp = None;
+        }
+        self.blur_suspended = on;
+    }
+
+    /// The seconds a frame stands for, when the caller knows (a driver that steps by a fixed time): the blur goes by
+    /// this and not by the clock.
+    pub fn set_frame_time(&mut self, dt: Option<f32>) {
+        self.frame_dt = dt;
+    }
+
+    /// Whether a post pass is wanted: the edge pass of 16x, or motion blur.
+    fn post_wanted(&self) -> bool {
+        self.aa == 3 || self.blur > 0
+    }
+
+    fn rebuild_scene_targets(&mut self) {
+        let aux = self.post_wanted();
+        self.scene_targets =
+            make_scene_targets(&self.device, self.width, self.height, self.samples, aux);
     }
 
     /// By default a sky is drawn first, around the camera, with no depth, so it is never in front of anything and
@@ -766,6 +1205,8 @@ impl GpuRenderer {
         textures: &mut dyn FnMut(&str) -> Option<Image>,
     ) {
         self.static_draws = self.build_draws(scene, textures);
+        // A new area: the last frame's view says nothing of it.
+        self.prev_vp = None;
     }
 
     /// Another area, drawn only where it is seen through `aperture`, or none. The area's own picture is cut out of that
@@ -959,8 +1400,21 @@ impl GpuRenderer {
             0.05,
             2000.0,
         );
+        let this_vp = proj * view;
+        let now = std::time::Instant::now();
+        let dt = self
+            .frame_dt
+            .or_else(|| self.last_draw.map(|t| now.duration_since(t).as_secs_f32()));
+        self.last_draw = Some(now);
+        let blur_now = self.blur > 0
+            && !self.blur_suspended
+            && !self.figure_only
+            && dt.is_some_and(|d| d > 0.0001 && d < 0.25)
+            && self.prev_vp.is_some();
+        let prev_vp = self.prev_vp.unwrap_or(this_vp);
+        self.prev_vp = Some(this_vp);
         let globals = Globals {
-            view_proj: (proj * view).to_cols_array_2d(),
+            view_proj: this_vp.to_cols_array_2d(),
             light: [0.3, -0.5, 0.8, 0.0],
             planes: [[0.0; 4]; 5],
             // Cel shading: the level, how wide a pixel is a metre off, and the outline's width in pixels (a thin line at
@@ -1113,14 +1567,29 @@ impl GpuRenderer {
                 }],
             })
         });
-        let color_view = self.color.create_view(&Default::default());
+        // The post passes: motion blur from how far the view moved since the last frame, then the edge pass of 16x.
+        let fxaa_now = self.aa == 3;
+        let post_now = (blur_now || fxaa_now) && self.scene_targets.aux.len() == 2;
+        let (blur_now, fxaa_now) = (blur_now && post_now, fxaa_now && post_now);
+        let final_view = self.color.create_view(&Default::default());
+        let aux_views: Vec<wgpu::TextureView> = self
+            .scene_targets
+            .aux
+            .iter()
+            .map(|t| t.create_view(&Default::default()))
+            .collect();
+        let dest_view = if post_now { &aux_views[0] } else { &final_view };
+        let (color_view, resolve) = match &self.scene_targets.msaa {
+            Some(m) => (m, Some(dest_view)),
+            None => (dest_view, None),
+        };
         let mut enc = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &color_view,
-                    resolve_target: None,
+                    view: color_view,
+                    resolve_target: resolve,
                     ops: wgpu::Operations {
                         // A figure's or a planet's screen has space behind it, and a world has its sky.
                         load: wgpu::LoadOp::Clear(if self.figure_only {
@@ -1137,10 +1606,14 @@ impl GpuRenderer {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth,
+                    view: &self.scene_targets.depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
+                        store: if blur_now {
+                            wgpu::StoreOp::Store
+                        } else {
+                            wgpu::StoreOp::Discard
+                        },
                     }),
                     stencil_ops: None,
                 }),
@@ -1240,6 +1713,103 @@ impl GpuRenderer {
                 pass.set_bind_group(1, bind, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..*count, 0..1);
+            }
+        }
+        if post_now {
+            let px = [1.0 / self.width as f32, 1.0 / self.height as f32];
+            let exposure = BLUR_EXPOSURE[self.blur as usize];
+            let longest = BLUR_LONGEST[self.blur as usize];
+            let uniform = PostUniform {
+                inv_vp: this_vp.inverse().to_cols_array_2d(),
+                prev_vp: prev_vp.to_cols_array_2d(),
+                params: [
+                    exposure / dt.unwrap_or(1.0).max(0.0001),
+                    longest,
+                    px[0],
+                    px[1],
+                ],
+            };
+            let buf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("post"),
+                    contents: bytemuck::bytes_of(&uniform),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
+            let bind = |src: &wgpu::TextureView| {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("post"),
+                    layout: &self.post.layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(src),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.post.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: buf.as_entire_binding(),
+                        },
+                    ],
+                })
+            };
+            let run = |enc: &mut wgpu::CommandEncoder,
+                       pipe: &wgpu::RenderPipeline,
+                       src: &wgpu::TextureView,
+                       depth: Option<&wgpu::BindGroup>,
+                       to: &wgpu::TextureView| {
+                let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("post"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: to,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                pass.set_pipeline(pipe);
+                pass.set_bind_group(0, &bind(src), &[]);
+                if let Some(d) = depth {
+                    pass.set_bind_group(1, d, &[]);
+                }
+                pass.draw(0..3, 0..1);
+            };
+            let mut from = &aux_views[0];
+            if blur_now {
+                let ms = self.samples > 1;
+                let depth_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("post depth"),
+                    layout: if ms {
+                        &self.post.depth_layout_ms
+                    } else {
+                        &self.post.depth_layout_1
+                    },
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&self.scene_targets.depth),
+                    }],
+                });
+                let to = if fxaa_now { &aux_views[1] } else { &final_view };
+                let pipe = if ms {
+                    &self.post.blur_ms
+                } else {
+                    &self.post.blur_1
+                };
+                run(&mut enc, pipe, from, Some(&depth_bind), to);
+                if fxaa_now {
+                    from = &aux_views[1];
+                }
+            }
+            if fxaa_now {
+                run(&mut enc, &self.post.fxaa, from, None, &final_view);
             }
         }
         self.queue.submit([enc.finish()]);
@@ -1382,19 +1952,14 @@ fn sky_centre(m: &kotor_render::SceneMesh) -> Option<[f32; 3]> {
         .then(|| [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0))
 }
 
-fn make_targets(
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-) -> (wgpu::Texture, wgpu::TextureView) {
-    let size = wgpu::Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-    };
-    let color = device.create_texture(&wgpu::TextureDescriptor {
+fn make_color(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
         label: Some("color"),
-        size,
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -1403,20 +1968,67 @@ fn make_targets(
             | wgpu::TextureUsages::COPY_SRC
             | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
+    })
+}
+
+fn make_scene_targets(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    samples: u32,
+    aux: bool,
+) -> SceneTargets {
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let depth_tex = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("depth"),
+        size,
+        mip_level_count: 1,
+        sample_count: samples,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth32Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
     });
-    let depth = device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
+    let depth = depth_tex.create_view(&Default::default());
+    let msaa = (samples > 1).then(|| {
+        device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("color samples"),
+                size,
+                mip_level_count: 1,
+                sample_count: samples,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+            .create_view(&Default::default())
+    });
+    let image = || {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("post"),
             size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         })
-        .create_view(&Default::default());
-    (color, depth)
+    };
+    SceneTargets {
+        depth,
+        msaa,
+        aux: if aux {
+            vec![image(), image()]
+        } else {
+            Vec::new()
+        },
+    }
 }
 
 fn upload_image(device: &wgpu::Device, queue: &wgpu::Queue, img: &Image) -> Tex {
