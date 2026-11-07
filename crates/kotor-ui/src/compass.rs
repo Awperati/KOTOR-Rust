@@ -11,7 +11,6 @@ use kotor_image::Image;
 
 const ICON_SIZE: u32 = 64;
 const BAR_PICTURE: &str = "kotorrs_compass_bar";
-const ARROW_PICTURE: &str = "kotorrs_compass_arrow";
 const BAR_SIZE: (u32, u32) = (256, 32);
 /// What the strip shows each side of where the camera looks. Past that a mark is off it.
 const SPAN: f32 = std::f32::consts::FRAC_PI_2;
@@ -39,10 +38,6 @@ const NORTH_COLOR: [f32; 3] = [1.0, 0.88, 0.35];
 const HEADING_COLOR: [f32; 3] = [0.55, 0.8, 1.0];
 const LINE_BAND: [u8; 4] = [0, 0, 0, 150];
 const LINE_COLOR: [f32; 3] = [1.0, 0.88, 0.35];
-/// How far round the middle of the window the arrow to the tracked step goes, as a share of each side, and its size.
-const ARROW_ACROSS: f32 = 0.34;
-const ARROW_DOWN: f32 = 0.3;
-const ARROW_SIDE: f32 = 34.0;
 /// How dim a mark at the end of its range is.
 const FAR_STRENGTH: f32 = 0.45;
 
@@ -112,10 +107,9 @@ pub struct CompassView {
     /// Where the camera looks: radians from east towards north.
     pub facing: f32,
     pub marks: Vec<CompassMark>,
-    /// What the tracked quest says, under the strip.
+    /// What the tracked quest says, under the strip. The tracked step is shown only by the pin on the strip: the owner, "have
+    /// the quest arrow only appear on the compass itself".
     pub line: String,
-    /// Radians to the right of where the camera looks of a tracked step that is off the screen.
-    pub arrow: Option<f32>,
 }
 
 /// From -pi to pi.
@@ -270,37 +264,10 @@ fn bar_picture() -> Image {
     }
 }
 
-/// The arrow to a step off the screen: a yellow dart, pointing up.
-fn arrow_picture() -> Image {
-    let middle = ICON_SIZE as f32 / 2.0;
-    let mut rgba = Vec::with_capacity((ICON_SIZE * ICON_SIZE * 4) as usize);
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
-            let p = (x as f32 + 0.5 - middle, y as f32 + 0.5 - middle);
-            let left = triangle(p, (0.0, -28.0), (-22.0, 26.0), (0.0, 13.0));
-            let right = triangle(p, (0.0, -28.0), (22.0, 26.0), (0.0, 13.0));
-            let inside = left.max(right);
-            let solid = cover(inside);
-            rgba.extend_from_slice(&[
-                (solid * 255.0) as u8,
-                (solid * 225.0) as u8,
-                (6.0 + solid * 84.0) as u8,
-                (cover(inside + 3.0) * 255.0) as u8,
-            ]);
-        }
-    }
-    Image {
-        width: ICON_SIZE,
-        height: ICON_SIZE,
-        rgba,
-    }
-}
-
 /// A picture of the compass by name, drawn here.
 pub(crate) fn compass_picture(name: &str) -> Option<Image> {
     match name {
         BAR_PICTURE => Some(bar_picture()),
-        ARROW_PICTURE => Some(arrow_picture()),
         _ => COMPASS_ICONS
             .into_iter()
             .find(|i| i.picture() == name)
@@ -401,21 +368,6 @@ impl Ui<'_> {
         self.compass.on.then(|| self.compass_box(&gui.panel))
     }
 
-    /// The box of the arrow to a tracked step, in layout units.
-    fn arrow_box(&self, right: f32) -> [i32; 4] {
-        let (x, y) = self.arrow_at(right);
-        let side = (ARROW_SIDE * 1.5) as i32;
-        let wide = (side as f32 * self.scale / self.hud_across()).ceil() as i32;
-        [x as i32 - wide / 2, y as i32 - side / 2, wide, side]
-    }
-
-    fn arrow_at(&self, right: f32) -> (f32, f32) {
-        (
-            self.width as f32 * (0.5 + ARROW_ACROSS * right.sin()),
-            SCREEN.1 as f32 * (0.5 - ARROW_DOWN * right.cos()),
-        )
-    }
-
     /// The pixels that change between two views of the compass, which is on in both.
     pub(crate) fn compass_changes(
         &self,
@@ -430,11 +382,6 @@ impl Ui<'_> {
             || was.size != now.size
         {
             boxes.extend(self.pixel_box(self.compass_box(panel), 2));
-        }
-        if was.arrow != now.arrow {
-            for right in [was.arrow, now.arrow].into_iter().flatten() {
-                boxes.extend(self.pixel_box(self.arrow_box(right), 2));
-            }
         }
         boxes
     }
@@ -541,12 +488,6 @@ impl Ui<'_> {
             );
             self.draw_even_words(cv, &view.line, box_, LINE_LINE * unit, LINE_COLOR);
         }
-        if let Some(right) = view.arrow {
-            let at = self.arrow_at(right);
-            if let Some(img) = self.texture_shared(ARROW_PICTURE) {
-                cv.draw_turned(&img, at, ARROW_SIDE, right, [1.0; 3]);
-            }
-        }
     }
 }
 
@@ -566,7 +507,6 @@ mod tests {
         }
         assert!(compass_picture("nothing").is_none());
         assert!(compass_picture(BAR_PICTURE).is_some());
-        assert!(compass_picture(ARROW_PICTURE).is_some());
     }
 
     #[test]

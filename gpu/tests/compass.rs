@@ -334,13 +334,12 @@ fn a_quest_is_tracked_from_its_row_one_at_a_time_and_a_save_keeps_it() {
         let bearing = (step.position[1] - at[1]).atan2(step.position[0] - at[0]);
         let right = kotor_ui::wrapped(s.yaw - bearing);
         assert!((pin.right - right).abs() < 0.03, "{} {right}", pin.right);
-        // Behind the camera, the arrow. Before it, none.
-        s.yaw = bearing;
-        let view = s.compass_now();
-        assert_eq!(view.arrow, None);
+        // Behind the camera, the pin stays on the strip, held at its end, and nothing else on the screen points to it. The
+        // owner: "have the quest arrow only appear on the compass itself".
         s.yaw = bearing + std::f32::consts::PI;
         let view = s.compass_now();
-        assert!(view.arrow.is_some());
+        let pin = view.marks.iter().find(|m| m.icon == CompassIcon::Pin);
+        assert!(pin.is_some_and(|p| p.right.abs() > 2.5), "{pin:?}");
     }
 
     // A save keeps it, and one from before knows of none.

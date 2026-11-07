@@ -357,10 +357,9 @@ pub struct Settings {
     pub touch_controls: bool,
     /// How fast the look stick turns the camera, 0 to 1; a half is about what the keys do.
     pub look_stick_speed: f32,
-    /// The strip at the top middle of the HUD, how big in per cent, and the arrow to a tracked step off the screen.
+    /// The strip at the top middle of the HUD, and how big in per cent.
     pub compass: bool,
     pub compass_size: i32,
-    pub quest_arrow: bool,
     /// The install's `Override` folder is read first. Takes hold at the next start, as all of these do.
     pub override_folder: bool,
     /// And of it: compiled scripts, tables, and a talk table in place of the game's.
@@ -427,7 +426,6 @@ impl Default for Settings {
             look_stick_speed: 0.5,
             compass: true,
             compass_size: 100,
-            quest_arrow: true,
             override_folder: false,
             override_scripts: false,
             override_tables: false,
@@ -444,7 +442,7 @@ impl Settings {
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
             "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}
-auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\ncompass={}\ncompass_size={}\nquest_arrow={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\ncompass={}\ncompass_size={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -497,7 +495,6 @@ auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_ra
             self.look_stick_speed,
             self.compass,
             self.compass_size,
-            self.quest_arrow,
             self.override_folder,
             self.override_scripts,
             self.override_tables,
@@ -573,7 +570,6 @@ auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_ra
                 "look_stick_speed" => s.look_stick_speed = level(v, s.look_stick_speed),
                 "compass" => s.compass = v == "true",
                 "compass_size" => s.compass_size = v.parse().unwrap_or(s.compass_size),
-                "quest_arrow" => s.quest_arrow = v == "true",
                 "override_folder" => s.override_folder = v == "true",
                 "override_scripts" => s.override_scripts = v == "true",
                 "override_tables" => s.override_tables = v == "true",

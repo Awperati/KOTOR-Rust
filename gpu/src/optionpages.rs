@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 25] = [
+const STYLE_ROWS: [(&str, &str, &str); 24] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -129,11 +129,6 @@ const STYLE_ROWS: [(&str, &str, &str); 25] = [
         "Compass: On",
         "Compass: Off",
         "A strip at the top middle of the screen, with what is near marked on it and the quest being tracked.",
-    ),
-    (
-        "Quest arrow: On",
-        "Quest arrow: Off",
-        "An arrow on the screen to the next step of the quest being tracked, when it is not in front of you.",
     ),
     (
         "Auto attack mode: On",
@@ -289,8 +284,7 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         25 => &mut s.ground_finishers,
         26 => &mut s.respawn,
         27 => &mut s.compass,
-        28 => &mut s.quest_arrow,
-        29 => &mut s.auto_attack_mode,
+        28 => &mut s.auto_attack_mode,
         _ => return None,
     })
 }

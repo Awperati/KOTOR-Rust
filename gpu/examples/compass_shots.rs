@@ -120,13 +120,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = s.compass_now();
         shot(&mut s, "compass_tracked");
 
-        // The step behind the camera: the arrow.
+        // The step behind the camera: the pin held at the end of the strip, and no arrow on the screen.
         let here = s.game.world.pc_mover.pos;
         if let Some(step) = s.game.world.next_step(&tag) {
             let bearing = (step.position[1] - here[1]).atan2(step.position[0] - here[0]);
             s.yaw = bearing + 2.4;
             let _ = s.compass_now();
-            shot(&mut s, "compass_arrow");
+            shot(&mut s, "compass_behind");
         }
 
         // The journal, with its buttons.

@@ -20,8 +20,6 @@ const PARTY_RANGE: f32 = 40.0;
 const CONTAINER_RANGE: f32 = 12.0;
 const MOST_MARKS: usize = 24;
 const ENEMY_LIKING: i32 = 10;
-/// What the camera sees each side, about: past it the arrow shows.
-const VIEW_HALF: f32 = 0.7;
 /// A compass moves on by whole steps of these, so that it is not drawn again for a turn nobody could see.
 const ANGLE_STEP: f32 = 0.01;
 const NEAR_STEP: f32 = 0.1;
@@ -184,7 +182,6 @@ impl Stage {
             facing: stepped(wrapped(facing), ANGLE_STEP),
             marks,
             line: compass.line.clone(),
-            arrow: pin.filter(|r| s.quest_arrow && r.abs() > VIEW_HALF),
         }
     }
 
@@ -227,7 +224,7 @@ impl Stage {
         self.ui.compass_place()
     }
 
-    /// For a driver's state line: on or off, how many marks, whether there is a pin, the arrow, and the tracked line.
+    /// For a driver's state line: on or off, how many marks, whether there is a pin, and the tracked line.
     pub(in crate::stage) fn compass_state(&mut self) -> String {
         let view = self.compass_view();
         let pin = view
@@ -237,10 +234,9 @@ impl Stage {
             .map_or("-".to_string(), |m| format!("{:.2}", m.right));
         let tracked = self.game.world.tracked_quest.as_deref().unwrap_or("-");
         format!(
-            "compass={} marks={} pin={pin} arrow={} tracked={}",
+            "compass={} marks={} pin={pin} tracked={}",
             view.on,
             view.marks.len(),
-            view.arrow.map_or("-".to_string(), |a| format!("{a:.2}")),
             tracked.replace(' ', "_"),
         )
     }
