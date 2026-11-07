@@ -621,6 +621,18 @@ impl GpuRenderer {
         }
     }
 
+    /// Decode and upload these textures now, so that a picture that uses them is later put up without waiting for them. The
+    /// caller hands them over a few a frame.
+    pub fn warm_textures(
+        &mut self,
+        names: &[String],
+        textures: &mut dyn FnMut(&str) -> Option<Image>,
+    ) {
+        for n in names {
+            let _ = self.texture_view(&Some(n.clone()), textures);
+        }
+    }
+
     /// The view of a named texture, decoding and uploading it the first time.
     fn texture_view(
         &mut self,

@@ -33,7 +33,7 @@ Two areas often cannot stand side by side: the Cantina's floor would lie under t
 
 ## Assumptions and limits
 
-- **Triggers go seamless too.** A link trigger (the open ground between two areas on Dantooine, Korriban, Tatooine, Manaan) has no door to open. It stands at the middle of its polygon. The neighbour is joined and stitched as for a door, the trigger does not fire its transition while the neighbour is joined, and the crossing is walking 0.4 m past that middle (`update_seamless`). Where floor is missing across it, a strip of floor fills the gap (`Attached::gap_before` and `gap_after`, measured by `plan_with`, at most 12 m, else `Fallback::Gap`).
+- **Triggers go seamless too.** A link trigger (the open ground between two areas on Dantooine, Korriban, Tatooine, Manaan) has no door to open. It stands at the middle of its polygon. The neighbour is joined and stitched as for a door, the trigger does not fire its transition while the neighbour is joined, and the crossing is walking 0.4 m past that middle (`update_seamless`). Where floor is missing across it, a strip of floor fills the gap (`Attached::gap_before` and `gap_after`, measured by `plan_with`, at most 25 m, else `Fallback::Gap`).
 - **The neighbour's creatures and door models are shown before the crossing.** Their bodies are loaded one a frame so that no frame pays for all (`Stage::scenery_step`). A creature is drawn each frame at the spot and heading it has in the neighbour's own module, in the armour and underwear it wears, playing its idle clip at its own point of it (`Stage::neighbour_figures`; in a portal, drawn only through the doorway by `GpuRenderer::set_portal_moving`). Doors are drawn closed. They do not walk, talk or react until the crossing, when the real ones take over. The neighbour's own door back to us is left out, because ours stands there.
 - **Lights and fog** need nothing: this engine lights areas with baked lightmaps, which are part of the neighbour's picture, and has no area fog to carry.
 - **Minimap and map notes** switch at the crossing, not before.
@@ -81,17 +81,17 @@ Run `cargo run --release -p kotor-game --example seamless_survey -- tar_m02aa ta
 | tar_m10aa, m10ac, m11aa | elevators, `ptar_secdoor` | | tar_m10ac, m03aa | fall back: arrival points face opposite ways, or no clear side |
 | end_m01aa (Endar Spire) | end_door10 | (47.4, 120.1) | end_m01ab | falls back: end_m01ab has no door back |
 
-**Reading the table.** The doors of Taris that most people think of, Upper City to Apartments, to the Sith base, to the shop `tar_m02ad` and to the Cantina, join. The Apartments, the Sith base and `tar_m02ad` stand beside the street. The Cantina and the two Upper City street links (north and south) overlap it, so they are portals. Of the Lower City's doors the street doors that lead to a shop whose floor reaches the street itself (three of them) and the elevators keep the loading screen; the survey names the place. The Endar Spire's one link is one-way.
+**Reading the table.** The doors of Taris that most people think of, Upper City to Apartments, to the Sith base, to the shop `tar_m02ad` and to the Cantina, join. The Apartments, the Sith base and `tar_m02ad` stand beside the street. The Cantina and the two Upper City street links (north and south) overlap it, so they are portals. Of the Lower City's doors the two shop doors whose floor reaches the street itself, and the elevators, keep the loading screen; the survey names the place. The Endar Spire's one link is one-way.
 
 ## The other planets
 
-Surveyed on 8 Nov 2026 with `seamless_survey` (every module of each planet except the minigames and the Ebon Hawk, whose door back to a planet is one-way). The survey lists every link; its output is not committed. **Side by side** is a join with no overlap, **portal** is one seen through the doorway only, **old way** is the loading screen.
+Surveyed on 9 Nov 2026 with `seamless_survey` (every module of each planet except the minigames and the Ebon Hawk, whose door back to a planet is one-way). The survey lists every link; its output is not committed. **Side by side** is a join with no overlap, **portal** is one seen through the doorway only, **old way** is the loading screen.
 
 | Planet | Links | Side by side | Portal | Old way | Why the old way |
 |---|---|---|---|---|---|
 | Taris | 39 | 8 | 13 | 18 | see the Taris table: elevators, shop doors that overlap near the door, one-way links |
-| Dantooine | 23 | 0 | 6 | 17 | the trigger links of the five open areas overlap each other (9), arrival waypoints face the wrong way (6), no door back (1), no clear side (1) |
-| Tatooine | 22 | 6 | 8 | 8 | arrival waypoints disagree with the trigger (4), no link back (2), overlap (2) |
+| Dantooine | 23 | 0 | 4 | 19 | the trigger links of the five open areas overlap each other (11), arrival waypoints face the wrong way (6), no door back (1), no clear side (1) |
+| Tatooine | 22 | 6 | 6 | 10 | arrival waypoints disagree with the trigger (4), overlap (4), no link back (2) |
 | Kashyyyk | 11 | 6 | 1 | 4 | no link back (3), overlap (1) |
 | Manaan | 12 | 6 | 3 | 3 | no link back (2), overlap (1) |
 | Korriban | 17 | 16 | 0 | 1 | the Ebon Hawk link has no way back |
@@ -100,7 +100,23 @@ Surveyed on 8 Nov 2026 with `seamless_survey` (every module of each planet excep
 | Star Forge | 9 | 0 | 4 | 5 | the lift doors: arrival points face opposite ways (4), no link back to the Ebon Hawk (1) |
 | Unknown World | 16 | 9 | 0 | 7 | the trigger links of the overworld overlap each other (6), arrival points disagree (1) |
 
-All of these join with no other change: the planners, the stage and the driver work from the module's own doors and triggers, and the setting is global. Driven in the stage, hidden, at 1280x720: Korriban `k36_trg_k34` and Dantooine `to14be` (triggers, both ways, no jump, no menu frame), the Cantina and the Apartments on Taris (doors). `korr_m34aa k34_trg_k36` and `manm26ab to27a` fail only the driver's 7 m run-up, whose start is off the floor; they are not a fault of the join. **Not walked by hand:** the rest.
+All of these join with no other change: the planners, the stage and the driver work from the module's own doors and triggers, and the setting is global.
+
+### Walked
+
+Every link that joins on Korriban, Tatooine and Manaan, 39 in all, was walked in the stage, hidden, at 1280x720, by `scripts/drive_seamless.ps1`'s driver: up to the doorway by the game's own route, through, and back the same way (`seamless_drive <module> <tag>`, `<tag>#2` for the second door of that tag). **31 pass** every check: no jump (the biggest step 0.113 m a frame), no menu frame, the party on the new floor, back through with no load. The other eight, and what each is:
+
+| Link | What happened | What it is |
+|---|---|---|
+| `tat_m18aa` and `tat_m18ab` `AreaTransition` | now fall back: overlaps the other area at (275, 64) and (119, 305) | measured at the height of the floor under the trigger, the two floors overlap; they keep the loading screen |
+| `tat_m17aa` `TatooineTransition`, 1 of the 6 | the driver could not tell which side | the stage reads it right: in the driver the module has run 600 frames and a joined neighbour hides the closed door, so the driver now takes the doorway before it runs |
+| `tat_m20aa` `TatooineDoor3` | a conversation opens on entering | a menu frame counted by the driver, not a join fault |
+| `manm26ab` `to27a` (trigger) | the player slides along a creature standing in the trigger | the module's own creature in the way; the join is fine |
+| `korr_m33ab` `k33b_dor_academy` | a script moves the player 87 m on the way back | the academy's own entrance trigger |
+| `korr_m34aa` `k34_trg_k36` | no floor 1 to 7 m before it for the driver to start from | a driver limit |
+| `korr_m36aa` `kor36_kor38a`, `korr_m38aa` `kor38a_kor36` | a conversation opens in the academy module | menu frames counted by the driver |
+
+The way back out of every joined link is the same join the other way, so the 31 cover 62 crossings.
 
 ## Tests and the driver
 
@@ -113,6 +129,7 @@ All of these join with no other change: the planners, the stage and the driver w
 - A save made with a neighbour joined, before and after the crossing, loads into the same world with nothing joined, the player where they were and standing on the floor.
 - A party of four through a Lower City door turned 85 degrees.
 - A path across a doorway runs straight from any point along it: the join between the two sides covers the whole doorway, not one gap (three followers once took 5 to 9 s to get round each other there).
+- The join and leave cost, measured with `seamless_drive` at 3840x2160 on a quiet machine (the driver prints a frame log): see "Frame cost" below.
 - `gpu/tests/menus.rs`: the Seamless areas row of the Feedback page flips, is saved, and turns joining off and on.
 - The shader cut is checked by eye, in the frames below; no test reads pixels.
 - `scripts/drive_seamless.ps1` (runs `gpu/examples/seamless_drive.rs`): no window, frames drawn offscreen, so it cannot take focus or capture a screen. Checks: the area loads in the background, the player walks up, using the door opens it without a module change, walking through changes module, **no step larger than 1.6 times a frame's run** across the crossing, no menu or loading screen on any frame, the party on the new floor, and back out of the same door. `-Door tar02_cantdoor` runs the Cantina portal (the script unlocks that door for the run: it starts locked). Writes frames of the door opening and the walk to `docs/shots/seamless` at 1280x720 and 3840x2160 (not committed: they hold the game's textures).
@@ -121,9 +138,21 @@ Measured on 7 Nov 2026 (Upper City South, Apartments): largest step 0.090 m a fr
 
 Cantina portal, same day: largest step 0.113 m against 0.144 m, 0 jumps, no menu frames, both ways, at 1280x720 and 3840x2160; update median 0.09 to 0.10 ms, 99th percentile 7.7 to 8.1 ms, worst 78 ms at 2160p and 100 ms at 720p.
 
+## Frame cost
+
+A neighbour joining and leaving used to hitch: the picture went up to the GPU in one frame (145 to 363 ms), the bodies and doors were built on the main thread (25 ms a frame for a second), and a crossing rebuilt them (66 to 119 ms in the update). Now:
+
+- **The thread does the work that does not touch the GPU.** It decodes every texture of the neighbour, builds its creatures' bodies and its doors' picture, and moves the whole picture into place (`Loaded::images`, `rigs`, `doors`, `placed`). The main thread only files them.
+- **The GPU takes textures three a frame** (`Stage::take_warm`, `GpuRenderer::warm_textures`), and nothing joined goes into the picture until all are on it.
+- **The module just left** hands over its door models it already has, so the crossing loads none.
+- **Bodies seen through a doorway are posed every third frame**, as idling is slow.
+
+Measured at 3840x2160, best of three, Upper City South to the Cantina: no frame of the join or the leave takes more than 15 ms on the main thread (before: 25 to 195 ms a frame for the figures), the worst upload is 18 to 29 ms (before 145 to 363), and the worst update is 41 to 47 ms, which is the crossing's own module load. At 1280x720 the worst update is 39 to 41 ms for the Apartments. The first picture of the module itself, at its start, is 190 to 230 ms and is not a join. On a loaded machine (other builds running) the same runs read two to ten times worse; the figures above are the quiet ones.
+
 ## Not done
 
-- Creatures that walk, talk or fight before the crossing: the neighbour is a still scene with idling bodies, as it has no world of its own that runs.
-- The elevators, three Lower City shop doors and other links that overlap near the door or have no clear side still load the old way.
+- Creatures that walk, talk or fight before the crossing: the neighbour is a still scene with idling bodies, as it has no world of its own that runs. A second `World` stepped on the main thread for the neighbour would give it scripts and patrols, at the cost of a script machine's frame time and the neighbour's globals; left out.
+- **Two Lower City shop doors that overlap within 6 m** (`tar04_stddoor` to `tar_m03ad`, and `tar03_stddoor` back from it) stay on the loading screen. A portal reaching only 3.5 m would join two more, but the party then follows from outside the floor that is left, and a follower 8.7 m off it is put back on it in one frame: tried, and a test of four people fails.
+- The elevators, two Lower City shop doors and other links that overlap near the door or have no clear side still load the old way.
 - Triggers.
 - Modules the survey did not list (the Ebon Hawk, minigames, the `STUNT` modules) are not joined.

@@ -177,7 +177,17 @@ fn in_first(w: &World, first: &str, rigid: kotor_walkmesh::seamless::Rigid, who:
 fn party_of_four_through(module: &str, tag: &str, expect: &str) -> Option<()> {
     let mut w = world(module)?;
     let sketch: Sketch = w.sketch();
-    let site = sketch.sites.iter().find(|s| s.tag == tag)?.clone();
+    // `tag#2` is the second site with that tag.
+    let (name, nth) = match tag.split_once('#') {
+        Some((t, n)) => (t, n.parse::<usize>().unwrap() - 1),
+        None => (tag, 0),
+    };
+    let site = sketch
+        .sites
+        .iter()
+        .filter(|s| s.tag == name)
+        .nth(nth)?
+        .clone();
     let dir = kotor_core::install_dir().unwrap();
     let (att, _) = prepare(&dir, &sketch, &site, &Default::default())
         .unwrap_or_else(|e| panic!("{tag} joins: {e}"));

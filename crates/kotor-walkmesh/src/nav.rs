@@ -341,6 +341,15 @@ impl NavMesh {
     /// The faces a walker can reach from `from` without crossing a blocked line or entering a blocked face. Told apart
     /// from the rest, they show what lies behind a closed door. Empty when `from` is not on the floor.
     pub fn reachable_from(&self, from: V3) -> Vec<bool> {
+        self.reach(from, false)
+    }
+
+    /// Like `reachable_from`, but with creatures not in the way: a character standing in a doorway shuts no door.
+    pub fn reachable_from_floor(&self, from: V3) -> Vec<bool> {
+        self.reach(from, true)
+    }
+
+    fn reach(&self, from: V3, ignore_discs: bool) -> Vec<bool> {
         let mut seen = vec![false; self.tris.len()];
         let Some(start) = self.face_beside(from, 1.5) else {
             return seen;
@@ -350,7 +359,7 @@ impl NavMesh {
         seen[start] = true;
         while let Some(n) = stack.pop() {
             for l in &self.links[n] {
-                if seen[l.to] || self.blocked[l.to] != 0 {
+                if seen[l.to] || (!ignore_discs && self.blocked[l.to] != 0) {
                     continue;
                 }
                 let door = [

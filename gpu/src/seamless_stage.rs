@@ -5,9 +5,14 @@
 use super::{chest_templates, Stage};
 use crate::Aperture;
 use kotor_archive::Install;
+use kotor_core::ResType;
 use kotor_game::seamless::{prepare, Fallback, Sketch};
 use kotor_game::{Attached, Figure, Kind, Scenery};
+use kotor_gff::Gff;
+use kotor_image::Image;
+use kotor_render::Rig;
 use kotor_render::Scene;
+use kotor_tables::TwoDa;
 use kotor_walkmesh::seamless::{wrap, Rigid};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::mpsc::{channel, Receiver};
@@ -34,11 +39,114 @@ impl Still {
     }
 }
 
+/// A body built on the thread, keyed by appearance, variant and letter.
+type RigEntry = ((i32, u32, Option<char>), Rig);
+
 /// A neighbour as the thread loaded it.
 pub(super) struct Loaded {
     attached: Attached,
     scene: Scene,
     chests: Vec<String>,
+    /// The textures its picture uses, decoded on the thread.
+    images: Vec<(String, Image)>,
+    /// The bodies of its creatures, by what `Stage::rig_for` keys them with, built on the thread.
+    rigs: Vec<RigEntry>,
+    /// Its doors, closed, as a picture in its own space.
+    doors: Scene,
+    /// Its picture and its doors' already moved to where they stand beside the loaded module, so that joining costs no
+    /// move on the main thread.
+    placed: Scene,
+}
+
+/// A number out of a GFF file, as `rig_for` reads one.
+fn number(inst: &mut Install, name: &str, ty: ResType, field: &str) -> Option<i64> {
+    inst.read(name, ty)
+        .ok()
+        .and_then(|b| Gff::parse(&b).ok())
+        .and_then(|g| g.root.int(field))
+}
+
+/// What the thread makes of a neighbour's creatures and doors: the bodies and the doors' picture, ready to hand over.
+fn prepare_scenery(inst: &mut Install, sc: &Scenery, doorway: [f32; 3]) -> (Vec<RigEntry>, Scene) {
+    let baseitems = inst
+        .read("baseitems", ResType::TWODA)
+        .ok()
+        .and_then(|b| TwoDa::parse(&b).ok());
+    let mut rigs: Vec<RigEntry> = Vec::new();
+    for f in &sc.figures {
+        let mut var = number(inst, &f.template, ResType(2027), "TextureVar").unwrap_or(1);
+        let mut letter = None;
+        if let Some((base, item)) = &f.armour {
+            letter = baseitems
+                .as_ref()
+                .and_then(|t| t.get(*base as usize, "bodyvar"))
+                .and_then(|v| v.chars().next());
+            if let Some(v) = number(inst, item, ResType(2025), "TextureVar") {
+                var = v;
+            }
+        }
+        let key = (f.appearance, var as u32, letter);
+        if rigs.iter().any(|r| r.0 == key) {
+            continue;
+        }
+        if let Ok(rig) =
+            kotor_render::rig_for_outfit(inst, f.appearance as usize, var as u32, letter)
+        {
+            rigs.push((key, rig));
+        }
+    }
+    let mut doors = Scene::default();
+    let genericdoors = inst
+        .read("genericdoors", ResType::TWODA)
+        .ok()
+        .and_then(|b| TwoDa::parse(&b).ok());
+    let git = inst
+        .read(&sc.area, ResType::GIT)
+        .ok()
+        .and_then(|b| Gff::parse(&b).ok());
+    for (template, pos) in &sc.doors {
+        if (pos[0] - doorway[0]).hypot(pos[1] - doorway[1]) < 1.5 {
+            continue;
+        }
+        let at = |s: &kotor_gff::Struct, l: &str| s.float(l).unwrap_or(0.0) as f32;
+        let bearing = git
+            .as_ref()
+            .and_then(|g| g.root.list("Door List"))
+            .and_then(|l| {
+                l.iter()
+                    .find(|d| (at(d, "X") - pos[0]).abs() + (at(d, "Y") - pos[1]).abs() < 0.01)
+            })
+            .map_or(0.0, |d| at(d, "Bearing"));
+        let model = inst
+            .read(template, ResType(2042))
+            .ok()
+            .and_then(|b| Gff::parse(&b).ok())
+            .and_then(|utd| utd.root.int("GenericType"))
+            .and_then(|g| {
+                genericdoors
+                    .as_ref()?
+                    .get(g as usize, "modelname")
+                    .map(str::to_string)
+            })
+            .and_then(|name| super::load_model(inst, &name));
+        if let Some(m) = model {
+            doors.add_model_with(&m, None, &super::placement(*pos, bearing), &[], None, None);
+        }
+    }
+    (rigs, doors)
+}
+
+/// Every texture a scene names, lower-cased, once.
+fn texture_names(scene: &Scene) -> Vec<String> {
+    let mut names: Vec<String> = scene
+        .meshes
+        .iter()
+        .flat_map(|m| m.texture.iter().chain(m.lightmap.iter()))
+        .map(|n| n.to_ascii_lowercase())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 struct Job {
@@ -67,6 +175,11 @@ pub(super) struct Seam {
     pub portal_version: u64,
     /// The still creatures and doors of each module that is joined, in its own space, by module name.
     figures: HashMap<String, Still>,
+    /// A joined neighbour's picture and doors moved into place, by module, with the move they were made with.
+    placed: HashMap<String, (Rigid, Scene)>,
+    /// Textures of what has joined, not yet on the GPU: handed over a few a frame by `take_warm`, and nothing joined is
+    /// put into the picture until they all are.
+    warm: Vec<String>,
     /// Goes up when a module's figures are all drawn, so that the picture is stitched again.
     figure_version: u64,
     stitched_figures: u64,
@@ -83,6 +196,7 @@ impl Seam {
         self.parts.clear();
         self.portal_key = None;
         self.figures.clear();
+        self.placed.clear();
     }
 }
 
@@ -114,9 +228,23 @@ impl Stage {
             self.seamless_stitch();
             return;
         }
+        let t = std::time::Instant::now();
         self.seamless_harvest();
+        let harvest = t.elapsed();
         self.seamless_spawn();
+        let spawn = t.elapsed() - harvest;
         self.seamless_stitch();
+        let stitch = t.elapsed() - harvest - spawn;
+        if std::env::var_os("KOTOR_SEAM_TIMES").is_some()
+            && (harvest + spawn + stitch).as_millis() > 15
+        {
+            eprintln!(
+                "seam tick: join {:.0} ms, look for doors {:.0} ms, stitch and figures {:.0} ms",
+                harvest.as_secs_f32() * 1000.0,
+                spawn.as_secs_f32() * 1000.0,
+                stitch.as_secs_f32() * 1000.0
+            );
+        }
     }
 
     /// Join the neighbours whose threads have finished.
@@ -135,10 +263,41 @@ impl Stage {
                 Ok(l) => {
                     let w = &mut self.game.world;
                     if let Some(door) = w.link_door_at(at) {
+                        // Decoded already, on the thread: the GPU takes them a few a frame.
+                        let mut names = texture_names(&l.scene);
+                        names.extend(texture_names(&l.doors));
+                        names.extend(l.images.iter().map(|i| i.0.clone()));
+                        names.sort();
+                        names.dedup();
+                        for (n, img) in l.images {
+                            self.textures.entry(n).or_insert(Some(img));
+                        }
+                        let conventional = self.conventional_underwear;
+                        for (key, rig) in l.rigs {
+                            self.rigs
+                                .entry(key)
+                                .or_insert_with(|| Some(super::styled(rig, conventional)));
+                        }
+                        self.seam.warm.extend(names);
+                        self.seam
+                            .placed
+                            .insert(l.attached.module.clone(), (l.attached.rigid, l.placed));
+                        let scenery = &l.attached.scenery;
+                        self.seam.figures.insert(
+                            l.attached.module.clone(),
+                            Still {
+                                scene: l.doors,
+                                figures: Vec::new(),
+                                doors: Vec::new(),
+                                area: scenery.area.clone(),
+                                doorway: [0.0; 3],
+                            },
+                        );
+                        self.seam.figure_version += 1;
                         self.seam
                             .cache
                             .insert(l.attached.module.clone(), (l.scene, l.chests));
-                        w.seamless_attach(door, l.attached);
+                        self.game.world.seamless_attach(door, l.attached);
                     }
                 }
                 Err(why) => {
@@ -196,6 +355,7 @@ impl Stage {
             let (tx, rx) = channel();
             let (dir, from, site2, cut2) =
                 (self.dir.clone(), sketch.clone(), site.clone(), cut.clone());
+            let hd = self.hd3d.clone();
             std::thread::spawn(move || {
                 let load = || -> Result<Loaded, Fallback> {
                     let (attached, nk) = prepare(&dir, &from, &site2, &cut2)?;
@@ -210,10 +370,46 @@ impl Stage {
                         &mut scene, &mut inst, &nk.area, false, &chests,
                     )
                     .map_err(|e| gone(e.to_string()))?;
+                    let (rigs, doors) = prepare_scenery(
+                        &mut inst,
+                        &attached.scenery,
+                        attached.rigid.inverse().apply(attached.at),
+                    );
+                    // Bodies and doors have their textures decoded here too, where nothing is waiting on them. A body in a
+                    // player's underwear style is left to the stage, which dresses it.
+                    let mut names = texture_names(&scene);
+                    names.extend(texture_names(&doors));
+                    for (_, rig) in &rigs {
+                        if let Ok(body) = rig.posed(None) {
+                            names.extend(texture_names(&body).into_iter().filter(|n| {
+                                kotor_render::underwear::body_of_texture(n).is_none()
+                                    && !kotor_render::underwear::is_hero_head(n)
+                            }));
+                        }
+                    }
+                    names.sort();
+                    names.dedup();
+                    let images = names
+                        .into_iter()
+                        .filter_map(|n| {
+                            let img = hd
+                                .as_deref()
+                                .and_then(|d| super::upscaled(d, &n))
+                                .or_else(|| kotor_render::load_texture(&mut inst, &n))?;
+                            Some((n, img))
+                        })
+                        .collect();
+                    let r = attached.rigid;
+                    let mut placed = scene.moved(r.yaw, r.shift);
+                    placed.append(doors.moved(r.yaw, r.shift));
                     Ok(Loaded {
                         attached,
                         scene,
                         chests,
+                        images,
+                        rigs,
+                        doors,
+                        placed,
                     })
                 };
                 let _ = tx.send(load());
@@ -224,6 +420,33 @@ impl Stage {
                 rx,
             });
         }
+    }
+
+    /// The picture of module `m` placed by `r`: the one the thread moved if it was moved by the same, else moved now.
+    fn placed_picture(&self, m: &str, r: &Rigid) -> Option<Scene> {
+        match self.seam.placed.get(m) {
+            Some((was, s)) if was == r => Some(s.clone()),
+            _ => Some(self.seam.cache.get(m)?.0.moved(r.yaw, r.shift)),
+        }
+    }
+
+    /// The area name of a module just left: what its `Scenery` says.
+    fn area_name_of_old(&self, module: &str) -> String {
+        self.game
+            .world
+            .seamless
+            .attached
+            .values()
+            .find(|a| a.module == module)
+            .map(|a| a.scenery.area.clone())
+            .unwrap_or_default()
+    }
+
+    /// The next few textures of what has joined for the GPU to take, at most `n`: call each frame, hand them to
+    /// `GpuRenderer::warm_textures`. Nothing joined shows until all have been handed over.
+    pub fn take_warm(&mut self, n: usize) -> Vec<String> {
+        let k = n.min(self.seam.warm.len());
+        self.seam.warm.drain(..k).collect()
     }
 
     /// Draw one more of a neighbour's creatures or doors, as a still picture in its own space, leaving out the door
@@ -248,8 +471,16 @@ impl Stage {
         let (area, doorway) = (still.area.clone(), still.doorway);
         let mut scene = Scene::default();
         if let Some(f) = figure {
-            // Only the body is loaded now, one a frame; it is drawn each frame by `neighbour_figures`, idling.
-            let _ = self.rig_for(f.appearance, &f.template, f.armour.clone());
+            // Only the body is loaded now, one a frame, with its textures; it is drawn each frame by
+            // `neighbour_figures`, idling.
+            if let Some(rig) = self.rig_for(f.appearance, &f.template, f.armour.clone()) {
+                let mut body = Scene::default();
+                self.add_creature(&mut body, &rig, &[], &None, f.at, f.heading, &f.underwear);
+                for n in texture_names(&body) {
+                    let _ = self.texture(&n);
+                    self.seam.warm.push(n);
+                }
+            }
         }
         if let Some((template, pos)) = door {
             if (pos[0] - doorway[0]).hypot(pos[1] - doorway[1]) >= 1.5 {
@@ -354,7 +585,8 @@ impl Stage {
             .map(|a| a.module.clone())
             .collect();
         self.seam.figures.retain(|m, _| joined.contains(m));
-        let figures_ready = self.seam.figures.values().all(Still::done);
+        let figures_ready =
+            self.seam.figures.values().all(Still::done) && self.seam.warm.is_empty();
         if !figures_ready {
             // Nothing is stitched until the creatures are drawn, so the picture changes once, not once for each.
             return;
@@ -380,8 +612,13 @@ impl Stage {
         let figures_new = self.seam.figure_version != self.seam.stitched_figures;
         if door != self.seam.portal_key || figures_new {
             let ready = door.as_ref().and_then(|(m, r, a)| {
-                let mut s = self.seam.cache.get(m)?.0.moved(r.yaw, r.shift);
-                if let Some(f) = self.seam.figures.get(m) {
+                let mut s = self.placed_picture(m, r)?;
+                if let Some(f) = self
+                    .seam
+                    .figures
+                    .get(m)
+                    .filter(|_| !self.seam.placed.contains_key(m))
+                {
                     s.append(f.scene.moved(r.yaw, r.shift));
                 }
                 Some((s, *a))
@@ -399,9 +636,14 @@ impl Stage {
         }
         let mut scene = self.seam.base.clone();
         for (m, r) in &want {
-            if let Some((s, _)) = self.seam.cache.get(m) {
-                scene.append(s.moved(r.yaw, r.shift));
-                if let Some(f) = self.seam.figures.get(m) {
+            if let Some(s) = self.placed_picture(m, r) {
+                scene.append(s);
+                if let Some(f) = self
+                    .seam
+                    .figures
+                    .get(m)
+                    .filter(|_| !self.seam.placed.contains_key(m))
+                {
                     scene.append(f.scene.moved(r.yaw, r.shift));
                 }
             }
@@ -426,7 +668,40 @@ impl Stage {
             }
             None => self.seam.cache.clear(),
         }
+        // The doors of the module just left are in hand: they are the picture of its doors from here on, and no model has
+        // to be loaded for them.
+        let behind = self
+            .game
+            .world
+            .seamless
+            .attached
+            .values()
+            .find(|a| a.behind)
+            .map(|a| (a.module.clone(), a.rigid.inverse().apply(a.at)));
+        let mut doors = Scene::default();
+        if let Some((_, doorway)) = &behind {
+            for b in self.doors.values().flatten() {
+                let at = [b.xf[0][3], b.xf[1][3], b.xf[2][3]];
+                if (at[0] - doorway[0]).hypot(at[1] - doorway[1]) >= 1.5 {
+                    doors.add_model_with(&b.model, None, &b.xf, &[], None, None);
+                }
+            }
+        }
         self.seam.reset();
+        if let Some((module, doorway)) = behind {
+            let area = self.area_name_of_old(&module);
+            self.seam.figures.insert(
+                module,
+                Still {
+                    scene: doors,
+                    figures: Vec::new(),
+                    doors: Vec::new(),
+                    area,
+                    doorway,
+                },
+            );
+            self.seam.figure_version += 1;
+        }
         let c = crossed?;
         self.seam.cache.remove(&c.module)
     }

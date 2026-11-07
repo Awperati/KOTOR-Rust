@@ -415,6 +415,11 @@ impl App {
         }
         let stage = &mut self.stage;
         let uploading = std::time::Instant::now();
+        // What has joined has its textures put on the GPU a few a frame, so that it goes into the picture without a stall.
+        let warm = stage.take_warm(3);
+        if !warm.is_empty() {
+            st.gpu.warm_textures(&warm, &mut |n| stage.texture(n));
+        }
         if st.static_seen != stage.static_version {
             // What the launcher has to say, then what the viewer always says.
             let note = std::env::var("KOTOR_BUILD_NOTE").unwrap_or_default();
@@ -452,7 +457,8 @@ impl App {
         if self.frames.is_multiple_of(self.render_every) {
             let (scene, cam, figure) = stage.frame_scene();
             st.gpu.set_figure_only(figure);
-            if !figure && stage.portal().is_some() {
+            // Idle bodies seen through a doorway move at 20 frames a second: nobody can tell, and each costs a rebuild.
+            if !figure && self.frames.is_multiple_of(3) && stage.portal().is_some() {
                 let moving = stage.portal_figures();
                 st.gpu.set_portal_moving(&moving, &mut |n| stage.texture(n));
             }

@@ -23,7 +23,7 @@ pub const JAMB: f32 = 1.5;
 /// drawn through the doorway alone. See `Attached::portal`.
 pub const PORTAL_REACH: f32 = 20.0;
 /// The most floor that may be missing across a doorway, in metres, before a link falls back.
-pub const MAX_GAP: f32 = 12.0;
+pub const MAX_GAP: f32 = 25.0;
 /// Tried in turn, widest first: a crowded street takes a portal only close to the door. The party keeps within a few
 /// metres of the leader, so the smallest still holds it.
 pub const PORTAL_REACHES: [f32; 3] = [PORTAL_REACH, 10.0, 6.0];
@@ -65,7 +65,7 @@ pub enum Fallback {
     Disagree(f32, f32),
     Overlaps(String),
     /// The two floors are this many metres apart across the doorway: too far to walk without seeing the join.
-    Gap(f32),
+    Gap(f32, f32),
     Unloadable(String),
 }
 
@@ -81,7 +81,10 @@ impl std::fmt::Display for Fallback {
                 r.to_degrees()
             ),
             Fallback::Overlaps(w) => write!(f, "overlaps {w}"),
-            Fallback::Gap(m) => write!(f, "the floors are {m:.0} m apart"),
+            Fallback::Gap(a, b) => write!(
+                f,
+                "no floor within {MAX_GAP:.0} m across the doorway ({a:.0} m of ours, {b:.0} m of theirs)"
+            ),
             Fallback::Unloadable(e) => write!(f, "cannot load: {e}"),
         }
     }
@@ -145,7 +148,20 @@ impl World {
             tris,
             ..Sketch::default()
         };
-        let nav = self.nav.as_ref();
+        // Which side of a door is its stub is told with the door shut. One that a script has opened is shut for this.
+        let mut owned = self.nav.take();
+        let opened: Vec<([f32; 3], [f32; 3])> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Door && !o.link_module.is_empty() && o.open)
+            .map(crate::play::door_line)
+            .collect();
+        if let Some(n) = owned.as_mut() {
+            for (a, b) in &opened {
+                n.block_line(*a, *b);
+            }
+        }
+        let nav = owned.as_ref();
         for o in self.objects.values() {
             match o.kind {
                 Kind::Waypoint => {
@@ -156,11 +172,15 @@ impl World {
                 Kind::Door | Kind::Trigger if !o.link_module.is_empty() => {
                     let at = if o.kind == Kind::Trigger && o.polygon.len() >= 3 {
                         let n = o.polygon.len() as f32;
-                        [
+                        let (x, y) = (
                             o.polygon.iter().map(|p| p[0]).sum::<f32>() / n,
                             o.polygon.iter().map(|p| p[1]).sum::<f32>() / n,
-                            o.position[2],
-                        ]
+                        );
+                        // A trigger's own height is not the floor's: take the floor under its middle where there is one.
+                        let z = nav
+                            .and_then(|n| n.height_at(x, y, o.position[2] + 20.0))
+                            .unwrap_or(o.position[2]);
+                        [x, y, z]
                     } else {
                         o.position
                     };
@@ -196,6 +216,12 @@ impl World {
                 _ => {}
             }
         }
+        if let Some(n) = owned.as_mut() {
+            for (a, b) in &opened {
+                n.unblock_line(*a, *b);
+            }
+        }
+        self.nav = owned;
         s
     }
 }
@@ -210,7 +236,7 @@ fn door_side(
     let reach = |a: f32, d: f32| {
         let (x, y) = (at[0] + a.cos() * d, at[1] + a.sin() * d);
         let z = nav.height_at(x, y, at[2] + FLOOR_TOL).unwrap_or(at[2]);
-        nav.reachable_from([x, y, z])
+        nav.reachable_from_floor([x, y, z])
     };
     let count = |r: &[bool]| r.iter().filter(|&&b| b).count();
     let mut best: Option<(f32, Vec<usize>)> = None;
@@ -376,50 +402,55 @@ fn plan_with(
     // some metres where a trigger stands in the open between two areas.
     let nearest = |tris: &[Tri], toward_us: bool| -> f32 {
         let (sn, cs) = out.sin_cos();
+        // On a face of this floor at about the doorway's height: another storey over or under it is not it.
         let on_floor = |p: [f32; 2]| {
             tris.iter().any(|t| {
                 let side = |a: [f32; 3], b: [f32; 3]| {
                     (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
                 };
                 let (d0, d1, d2) = (side(t[0], t[1]), side(t[1], t[2]), side(t[2], t[0]));
-                (d0 >= 0.0 && d1 >= 0.0 && d2 >= 0.0) || (d0 <= 0.0 && d1 <= 0.0 && d2 <= 0.0)
+                let inside =
+                    (d0 >= 0.0 && d1 >= 0.0 && d2 >= 0.0) || (d0 <= 0.0 && d1 <= 0.0 && d2 <= 0.0);
+                let level = (t[0][2] + t[1][2] + t[2][2]) / 3.0;
+                inside && (level - site.at[2]).abs() < 4.0 * FLOOR_TOL
             })
         };
-        let lats = (0..=(2.0 * (site.half + 0.5) / 0.5) as i32)
-            .map(|i| -(site.half + 0.5) + i as f32 * 0.5)
-            .collect::<Vec<_>>();
-        let mut d = 0.0f32;
-        while d <= MAX_GAP {
-            let along = if toward_us { -d } else { d };
-            for lat in &lats {
-                let p = [
-                    site.at[0] + cs * along - sn * lat,
-                    site.at[1] + sn * along + cs * lat,
-                ];
-                if on_floor(p) {
-                    return d;
+        // The middle of the doorway first: floor to the side of it, along a wall, is not the floor in front of it. Where
+        // there is none in front, the whole width of it.
+        let narrow = [-0.5f32, 0.0, 0.5];
+        let wide: Vec<f32> = (0..=(2.0 * (site.half + 1.0) / 0.5) as i32)
+            .map(|i| -(site.half + 1.0) + i as f32 * 0.5)
+            .collect();
+        for lats in [&narrow[..], &wide[..]] {
+            let mut d = 0.0f32;
+            while d <= MAX_GAP {
+                let along = if toward_us { -d } else { d };
+                for lat in lats {
+                    let p = [
+                        site.at[0] + cs * along - sn * lat,
+                        site.at[1] + sn * along + cs * lat,
+                    ];
+                    if on_floor(p) {
+                        return d;
+                    }
                 }
+                d += 0.5;
             }
-            d += 0.5;
         }
         MAX_GAP + 1.0
     };
     let moved_all: Vec<Tri> = move_tris(&theirs_full, &forward);
-    let (gap_before, gap_after) = (nearest(&from.tris, true), nearest(&moved_all, false));
-    let (gap_before, gap_after) = (
-        if gap_before == f32::MAX {
-            0.0
-        } else {
-            gap_before
-        },
-        if gap_after == f32::MAX {
-            0.0
-        } else {
-            gap_after
-        },
-    );
+    // Our floor without the pocket behind a closed door, which is given up and is no floor to stand on.
+    let ours_floor: Vec<Tri> = from
+        .tris
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !cut.contains(i) && !site.stub.contains(i))
+        .map(|(_, t)| *t)
+        .collect();
+    let (gap_before, gap_after) = (nearest(&ours_floor, true), nearest(&moved_all, false));
     if gap_before + gap_after > MAX_GAP {
-        return Err(Fallback::Gap(gap_before + gap_after));
+        return Err(Fallback::Gap(gap_before, gap_after));
     }
     let place = |tris: &[Tri]| -> Vec<Tri> {
         move_tris(tris, &forward)

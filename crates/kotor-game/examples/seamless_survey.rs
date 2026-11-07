@@ -10,6 +10,17 @@ fn sketch(name: &str) -> Result<Sketch, String> {
         Install::open(kotor_core::install_dir().ok_or("no install")?).map_err(|e| e.to_string())?;
     let mut w = World::new(inst).map_err(|e| e.to_string())?;
     w.load_module(name).map_err(|e| e.to_string())?;
+    // As the game has it once the player is in: the module's own start-up has run (`KOTOR_SURVEY_ENTER=1`).
+    if std::env::var_os("KOTOR_SURVEY_ENTER").is_some() {
+        w.enter_area();
+        for _ in 0..std::env::var("KOTOR_SURVEY_STEPS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+        {
+            w.step(1.0 / 60.0);
+        }
+    }
     Ok(w.sketch())
 }
 

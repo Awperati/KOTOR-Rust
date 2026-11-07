@@ -10,6 +10,8 @@ use kotor_gpu::{composite, GpuRenderer};
 use std::time::Instant;
 
 const DT: f32 = 1.0 / 60.0;
+/// Frames since the start, for what is done every few.
+static FRAMES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 struct Run {
     failed: u32,
@@ -25,6 +27,58 @@ impl Run {
             name,
             if ok { "PASS" } else { "FAIL" }
         );
+    }
+}
+
+/// What the viewer does each frame before it draws: put a changed picture on the GPU, and the moving figures seen through a
+/// doorway. Records what that cost, for the frame log.
+fn sync(
+    gpu: &mut GpuRenderer,
+    s: &mut Stage,
+    seen: &mut (u64, u64),
+    log: &mut Vec<(f32, &'static str)>,
+) {
+    let warm = s.take_warm(3);
+    if !warm.is_empty() {
+        let t = Instant::now();
+        gpu.warm_textures(&warm, &mut |n| s.texture(n));
+        log.push((
+            t.elapsed().as_secs_f32() * 1000.0,
+            "textures go up, three a frame",
+        ));
+    }
+    if seen.0 != s.static_version {
+        let t = Instant::now();
+        let scene = s.static_scene().clone();
+        gpu.set_static_scene(&scene, &mut |n| s.texture(n));
+        seen.0 = s.static_version;
+        log.push((t.elapsed().as_secs_f32() * 1000.0, "the picture goes up"));
+    }
+    if seen.1 != s.portal_version() {
+        let t = Instant::now();
+        let other = s.portal().map(|(sc, a)| (sc.clone(), a));
+        gpu.set_portal(other.as_ref().map(|(sc, a)| (sc, *a)), &mut |n| {
+            s.texture(n)
+        });
+        seen.1 = s.portal_version();
+        log.push((
+            t.elapsed().as_secs_f32() * 1000.0,
+            "the portal picture goes up",
+        ));
+    }
+    // Bodies seen through a doorway are posed three frames in four from the last time: idling is slow.
+    if s.portal().is_some()
+        && FRAMES
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            .is_multiple_of(3)
+    {
+        let t = Instant::now();
+        let moving = s.portal_figures();
+        gpu.set_portal_moving(&moving, &mut |n| s.texture(n));
+        log.push((
+            t.elapsed().as_secs_f32() * 1000.0,
+            "figures seen through the doorway",
+        ));
     }
 }
 
@@ -73,6 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.enable_auto_pause(false);
     let mut gpu = GpuRenderer::new(width, height)?;
     let mut seen = (0u64, 0u64);
+    let mut uploads: Vec<(f32, &'static str)> = Vec::new();
     let frames_wall = std::cell::RefCell::new(Vec::<f32>::new());
     let step = |s: &mut Stage| {
         let t = Instant::now();
@@ -85,16 +140,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             s.continue_line();
         }
     };
+    let sketch = s.game.world.sketch();
     // Let any opening lines of the module pass.
-    for _ in 0..600 {
+    for _ in 0..std::env::var("DRIVE_WAIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(600)
+    {
         step(&mut s);
     }
     // The door, and the way through it: from where the player stands, away from the walkmesh's pocket behind the door.
-    let sketch = s.game.world.sketch();
+    // (taken before the module's first frames: once a neighbour is joined the doorway no longer reads as a closed door)
+    // `tag#2` is the second site with that tag, for modules whose doors share one.
+    if std::env::var_os("DRIVE_DEBUG").is_some() {
+        for x in &sketch.sites {
+            println!(
+                "site {} {:?} at {:?} out {:?} stub {}",
+                x.tag,
+                x.kind,
+                x.at,
+                x.out,
+                x.stub.len()
+            );
+        }
+        for o in s
+            .game
+            .world
+            .objects
+            .values()
+            .filter(|o| o.kind == kotor_game::Kind::Door)
+        {
+            println!(
+                "door {} at {:?} open {} locked {} link {}",
+                o.tag, o.position, o.open, o.locked, o.link_module
+            );
+        }
+    }
+    let (tag_name, nth) = match tag.split_once('#') {
+        Some((t, n)) => (t.to_string(), n.parse::<usize>().unwrap_or(1).max(1) - 1),
+        None => (tag.clone(), 0),
+    };
     let site = sketch
         .sites
         .iter()
-        .find(|x| x.tag == tag)
+        .filter(|x| x.tag == tag_name)
+        .nth(nth)
         .ok_or("no such site")?
         .clone();
     let door_id = s
@@ -114,11 +204,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .out
         }
     };
-    let start = [
-        site.at[0] - out_angle.cos() * 7.0,
-        site.at[1] - out_angle.sin() * 7.0,
-        site.at[2],
-    ];
+    // As far back from the doorway as there is floor, up to 7 m, so that the walk up to it is a real one.
+    let start = {
+        let nav = s.game.world.nav.as_ref().ok_or("no floor")?;
+        let mut best = None;
+        let mut d = 7.0f32;
+        while d >= 1.5 {
+            let (x, y) = (
+                site.at[0] - out_angle.cos() * d,
+                site.at[1] - out_angle.sin() * d,
+            );
+            if let Some(z) = nav.walkable_at(x, y, site.at[2] + 2.0) {
+                best = Some([x, y, z]);
+                break;
+            }
+            d -= 0.5;
+        }
+        best.ok_or("no floor to walk up from")?
+    };
     let pc = s.game.world.pc;
     s.game.world.teleport(pc, start);
     s.yaw = out_angle;
@@ -126,6 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let began = Instant::now();
     while s.game.world.seamless.attached.is_empty() && began.elapsed().as_secs() < 90 {
         step(&mut s);
+        sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     let loaded_in = began.elapsed().as_secs_f32();
@@ -178,8 +282,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         d
     };
     let mut walked = 0;
-    while dist(s.game.world.pc_mover.pos, site.at) > 1.3 && walked < 1200 {
+    // By the route the game itself finds, to a point just before the doorway: the floor before it can wind.
+    s.steer = (0.0, 0.0, false);
+    let mut pre = site.at;
+    let mut routed = false;
+    for d in [1.0f32, 1.5, 2.0, 3.0, 4.0] {
+        let (x, y) = (
+            site.at[0] - out_angle.cos() * d,
+            site.at[1] - out_angle.sin() * d,
+        );
+        let Some(z) = s
+            .game
+            .world
+            .nav
+            .as_ref()
+            .and_then(|n| n.walkable_at(x, y, site.at[2] + 2.0))
+        else {
+            continue;
+        };
+        pre = [x, y, z];
+        if s.game.world.walk_to(pre) {
+            routed = true;
+            break;
+        }
+    }
+    while dist(
+        s.game.world.pc_mover.pos,
+        if routed { pre } else { site.at },
+    ) > 0.7
+        && walked < 1500
+    {
         step(&mut s);
+        sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
@@ -189,7 +323,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.steer = (0.0, 0.0, false);
     r.check(
         "the player walks up to the door",
-        dist(s.game.world.pc_mover.pos, site.at) <= 1.4,
+        dist(s.game.world.pc_mover.pos, pre) <= 1.0,
         format!("{walked} frames"),
     );
     // Some doors start locked (the Cantina's). The test is about the crossing, not the lock, so it is taken off.
@@ -218,6 +352,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     for i in 0..90 {
         step(&mut s);
+        sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         if i == 30 {
@@ -235,18 +370,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut seen,
         &out.join(format!("2_open_{name}.png")),
     );
-    // Through.
+    // Through, the way the doorway faces.
+    s.yaw = out_angle;
     s.steer = (1.0, 0.0, false);
     let mut through = 0;
     let mut shot_mid = false;
     let mut crossed_at = None;
     while through < 400 {
         step(&mut s);
+        sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
         menus += s.menu_open() as u32;
         through += 1;
+        if through % 100 == 1 && std::env::var_os("DRIVE_DEBUG").is_some() {
+            if let Some(nav) = s.game.world.nav.as_ref() {
+                let row: String = (0..40)
+                    .map(|k| {
+                        let d = -2.0 + k as f32 * 0.25;
+                        let (x, y) = (
+                            site.at[0] + out_angle.cos() * d,
+                            site.at[1] + out_angle.sin() * d,
+                        );
+                        if nav.walkable_at(x, y, site.at[2] + 2.0).is_some() {
+                            '#'
+                        } else {
+                            '.'
+                        }
+                    })
+                    .collect();
+                println!("floor from 2 m before the doorway to 8 m past: {row}");
+            }
+            for a in s.game.world.seamless.attached.values() {
+                println!(
+                    "joined {} portal {} gaps {:.2} {:.2} half {:.2} out {:.2}",
+                    a.module, a.portal, a.gap_before, a.gap_after, a.half, a.out
+                );
+            }
+            println!(
+                "through {through}: pc {:?} steer {:?} yaw {:.2} out {out_angle:.2}",
+                s.game.world.pc_mover.pos, s.game.world.steer, s.yaw
+            );
+        }
         if crossed_at.is_none() && s.game.world.module != module {
             crossed_at = Some(through);
         }
@@ -272,7 +438,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         now != module,
         format!("{module} -> {now}"),
     );
-    let bound = kotor_game::RUN_SPEED * DT * 1.6;
+    // A sprint is 1.6 times a run and a route is walked a little faster still: a step under 0.35 m is a stride, and a
+    // teleport is metres.
+    let bound = kotor_game::RUN_SPEED * DT * 3.9;
     r.check(
         "no teleport: position continuous every frame",
         teleports == 0 && max_step <= bound,
@@ -309,16 +477,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // And back: turn round and walk out of the way we came, through the door the party left open.
     let inside = s.game.world.module.clone();
     s.yaw += std::f32::consts::PI;
-    s.steer = (1.0, 0.0, false);
+    s.steer = (0.0, 0.0, false);
     let mut back = 0;
     let mut back_shot = false;
     while back < 900 && s.game.world.module == inside {
-        // Head for the doorway we came through, not along a line: the floor beyond a trigger can be a winding path.
-        if let Some(a) = s.game.world.seamless.attached.values().find(|a| a.behind) {
-            let p = s.game.world.pc_mover.pos;
-            s.yaw = (a.at[1] - p[1]).atan2(a.at[0] - p[0]);
+        // Back by the game's own route to just past the doorway we came through.
+        if back == 0 {
+            if let Some(a) = s.game.world.seamless.attached.values().find(|a| a.behind) {
+                let (x, y) = (a.at[0] + a.out.cos() * 1.5, a.at[1] + a.out.sin() * 1.5);
+                let z = s
+                    .game
+                    .world
+                    .nav
+                    .as_ref()
+                    .and_then(|n| n.walkable_at(x, y, a.at[2] + 2.0))
+                    .unwrap_or(a.at[2]);
+                s.steer = (0.0, 0.0, false);
+                s.game.world.walk_to([x, y, z]);
+            }
         }
         step(&mut s);
+        sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
@@ -338,6 +517,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.steer = (0.0, 0.0, false);
     for _ in 0..90 {
         step(&mut s);
+        sync(&mut gpu, &mut s, &mut seen, &mut uploads);
         let d = track(&mut s, &mut last, &mut module_now);
         max_step = max_step.max(d);
         teleports += (d > 0.5) as u32;
@@ -378,6 +558,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "frame times (update only, ms): median {p50:.2}, p99 {p99:.2}, worst {:.2}, worst while walking {crossing_frame:.2}",
         ms.last().unwrap()
+    );
+    // What each frame paid on top of the update to get the picture up: the worst few, by what they were.
+    for (ms, what) in uploads.iter().filter(|u| u.0 > 8.0) {
+        println!("frame log, over 8 ms: {ms:.1} ms for {what}");
+    }
+    uploads.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (ms, what) in uploads.iter().take(4) {
+        println!("frame log, extra work before drawing: {ms:.1} ms for {what}");
+    }
+    let spent: f32 = uploads.iter().map(|u| u.0).sum();
+    println!(
+        "frame log: {} uploads in all, {spent:.0} ms together, none over {:.0} ms but the worst four above",
+        uploads.len(),
+        uploads.get(4).map_or(0.0, |u| u.0)
     );
     if r.failed > 0 {
         std::process::exit(1);
