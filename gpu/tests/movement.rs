@@ -972,8 +972,9 @@ fn a_closed_taris_door_stops_the_player_however_it_comes() {
                         let side = (p[0] - at[0]) * way[0] + (p[1] - at[1]) * way[1];
                         let along = ((p[0] - at[0]) * axis[0] + (p[1] - at[1]) * axis[1]).abs();
                         let shut = s.game.world.object(id).is_some_and(|o| !o.open);
+                        // Off the slab, which is 0.11 m each side of these doors' lines and 0.30 of the big ones'.
                         assert!(
-                            !(shut && side > 0.0 && along < half),
+                            !(shut && side > -0.4 && along < half),
                             "{tag} at {k}, facing {facing}, by {how}: {p:?} at frame {f}"
                         );
                     }

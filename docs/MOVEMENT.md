@@ -70,7 +70,7 @@ A click, a talk or a target during a roll brings it round 2.5 times as fast, and
 | Furthest drop the player falls | 6 m. More than that is a wall |
 | Hard landing | From 3.5 m/s: at most 0.45 s, at half speed |
 
-The player does not fall where a railing, a low wall or a fence stands, or where there is no way to walk back.
+The player does not fall where a railing, a low wall or a fence stands, or where there is no way to walk back. It keeps 0.5 m off a closed door, whose slab is up to 0.35 m thick each way, and may go along it or away.
 
 ## Camera
 

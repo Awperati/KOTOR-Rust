@@ -338,6 +338,22 @@ impl NavMesh {
         })
     }
 
+    /// How far `p` is from the nearest blocked line on its level, in plan.
+    pub fn block_distance(&self, p: V3) -> Option<f32> {
+        // More than a step, less than a storey, as for a crossing.
+        const LEVEL: f32 = 1.5;
+        self.lines
+            .iter()
+            .filter(|(a, _)| (p[2] - a[2]).abs() <= LEVEL)
+            .map(|&(a, b)| {
+                let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+                let long = (dx * dx + dy * dy).max(1e-9);
+                let t = (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / long).clamp(0.0, 1.0);
+                (p[0] - a[0] - dx * t).hypot(p[1] - a[1] - dy * t)
+            })
+            .min_by(f32::total_cmp)
+    }
+
     /// Like `crosses_block`, for a body that moves: the step is looked at `margin` metres further on, so that it never ends
     /// on a blocked line or a hair short of one. A step that ended exactly on a closed door's line (a roll slid up to it, and
     /// the product of the two sides came to zero) was not a crossing, and the next step walked through the door.

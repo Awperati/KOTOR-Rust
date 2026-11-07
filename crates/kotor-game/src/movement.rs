@@ -32,6 +32,9 @@ const BARRIER_HIGH: f32 = 1.2;
 const BARRIER_LOOK: f32 = 0.6;
 /// A jump that comes down on its own level is this many metres per second faster than it went up, at most, and lands light.
 const LIGHT_LANDING: f32 = 0.5;
+/// How far a body's middle keeps off a closed door's line, metres. A big door's slab is 0.30 m each side of it, and a body
+/// stopped at the line stood inside it, out of sight: the owner saw that as walking through the door.
+const DOOR_KEEP: f32 = 0.5;
 /// A body's head over its feet, and where under it a ceiling is looked for, metres. Assumed.
 const HEAD_HEIGHT: f32 = 1.85;
 const CEILING_FROM: f32 = 1.0;
@@ -146,6 +149,10 @@ pub trait Ground {
     /// `b` between two heights.
     fn barrier(&self, _a: [f32; 2], _b: [f32; 2], _low: f32, _high: f32) -> bool {
         false
+    }
+    /// How far `at` is from the nearest closed door's line, if one is near enough to matter.
+    fn door_distance(&self, _at: [f32; 3]) -> Option<f32> {
+        None
     }
     /// How far over `at` a ceiling is, within `reach` metres.
     fn ceiling(&self, _at: [f32; 3], _reach: f32) -> Option<f32> {
@@ -567,6 +574,14 @@ impl Body {
             let (x, y) = (p[0] + dx, p[1] + dy);
             if ground.blocked(p, [x, y, p[2]]) {
                 return None;
+            }
+            // It may go along a door or away from it, and it may not come closer. One the door shut on may walk out.
+            if let (Some(there), Some(here)) =
+                (ground.door_distance([x, y, p[2]]), ground.door_distance(p))
+            {
+                if there < DOOR_KEEP && there < here {
+                    return None;
+                }
             }
             let l = dx.hypot(dy).max(1e-6);
             let u = [dx / l, dy / l];
@@ -1610,6 +1625,37 @@ mod tests {
             let y = a[1] + (b[1] - a[1]) * (5.0 - a[0]) / (b[0] - a[0]);
             y.abs() < 2.0
         }
+        fn door_distance(&self, at: [f32; 3]) -> Option<f32> {
+            Some((at[0] - 5.0).hypot((at[1].abs() - 2.0).max(0.0)))
+        }
+    }
+
+    #[test]
+    fn a_body_keeps_off_a_closed_door_and_may_go_along_it_and_away() {
+        let t = Tuning::default();
+        let go = |dir: [f32; 2]| Input {
+            dir: Some(dir),
+            ..Input::default()
+        };
+        let mut b = Body::new([3.0, 0.0, 0.0], 0.0);
+        for _ in 0..120 {
+            b.step(go([1.0, 0.0]), &Shut, &t, 1.0 / 60.0);
+        }
+        assert!((b.pos[0] - (5.0 - DOOR_KEEP)).abs() < 0.12, "{:?}", b.pos);
+        assert!(b.speed() < 0.01, "stopped head on: {}", b.speed());
+        // At an angle it runs along the door, and no closer.
+        let mut b = Body::new([3.0, -1.5, 0.0], 0.0);
+        let aslant = 0.6f32;
+        for _ in 0..30 {
+            b.step(go([aslant.cos(), aslant.sin()]), &Shut, &t, 1.0 / 60.0);
+            assert!(b.pos[0] <= 5.0 - DOOR_KEEP + 0.001, "{:?}", b.pos);
+        }
+        // Shut in on it, it walks out.
+        let mut b = Body::new([4.9, 0.0, 0.0], std::f32::consts::PI);
+        for _ in 0..30 {
+            b.step(go([-1.0, 0.0]), &Shut, &t, 1.0 / 60.0);
+        }
+        assert!(b.pos[0] < 4.0, "{:?}", b.pos);
     }
 
     #[test]

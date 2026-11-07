@@ -34,6 +34,8 @@ const SKILL_SECURITY: usize = 6;
 /// Running speed: `runrate` of `creaturespeed.2da`, which is also `rundist` (3.96 m) over the 0.733 s run cycle.
 /// The reference video gives 5.8 m/s, give or take 0.6: see `docs/REFERENCE.md`.
 pub const RUN_SPEED: f32 = 5.4;
+/// How far the steered Classic player keeps off a closed door's line. The same as the Modern body's: see `movement.rs`.
+const DOOR_KEEP: f32 = 0.5;
 /// A body is stopped this far short of a closed door's line, so that it never stands on it.
 const DOOR_MARGIN: f32 = 0.03;
 /// When steered, the player keeps this far from the edge of the walkmesh, so that it does not stand in a wall.
@@ -56,6 +58,9 @@ impl Ground for NavGround<'_> {
     }
     fn barrier(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool {
         self.1.is_some_and(|m| m.across(a, b, low, high))
+    }
+    fn door_distance(&self, at: [f32; 3]) -> Option<f32> {
+        self.0.block_distance(at)
     }
     fn ceiling(&self, at: [f32; 3], reach: f32) -> Option<f32> {
         self.1.and_then(|m| m.above(at, reach))
@@ -950,6 +955,14 @@ impl World {
             let (x, y) = (p[0] + d[0] * go, p[1] + d[1] * go);
             if nav.crosses_block_near(p, [x, y, p[2]], DOOR_MARGIN) {
                 return None;
+            }
+            // Off a closed door's slab: it may go along it or away, and may not come closer.
+            if let (Some(there), Some(here)) =
+                (nav.block_distance([x, y, p[2]]), nav.block_distance(p))
+            {
+                if there < DOOR_KEEP && there < here {
+                    return None;
+                }
             }
             let len = d[0].hypot(d[1]).max(1e-6);
             nav.walkable_at(
