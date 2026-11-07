@@ -837,6 +837,104 @@ fn a_containers_label_fades_when_it_is_emptied_in_play() {
     assert_eq!(label(&s).opacity, 0.33, "{:?}", label(&s));
 }
 
+/// The cursor moves here. What is drawn again is what drawing the whole would give.
+fn cursor_to(s: &mut Stage, at: (f32, f32), what: &str) -> bool {
+    let seen = s.overlay_version;
+    s.hover(at, SIZE);
+    s.update(DT);
+    if s.overlay_version == seen {
+        return false;
+    }
+    let change = s.overlay_change_since(seen);
+    let part = s.overlay().unwrap().clone();
+    // A new size forgets what was drawn.
+    s.set_view(SIZE);
+    let whole = s.overlay().unwrap();
+    let wrong = part
+        .rgba
+        .chunks(4)
+        .zip(whole.rgba.chunks(4))
+        .position(|(a, b)| a != b);
+    assert_eq!(
+        wrong.map(|n| (n % part.width as usize, n / part.width as usize)),
+        None,
+        "{what} on {}: {change:?}",
+        s.menu_name()
+    );
+    change.unwrap_or_else(|| panic!("{what} on {}: all of it", s.menu_name()));
+    true
+}
+
+#[test]
+fn the_cursor_draws_again_only_what_it_changes_and_the_picture_is_the_same() {
+    let Some(mut s) = at_menu() else { return };
+    let dir = temp_saves(&mut s, "hover_part");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("settings.txt");
+    std::fs::write(&file, "").unwrap();
+    s.use_settings_file(file);
+    s.set_view(SIZE);
+    s.update(DT);
+    let mut changes = 0;
+    let mut through = |s: &mut Stage, tags: &[&str]| {
+        for tag in tags {
+            let Some(p) = s.menu_pixel(tag, None, SIZE) else {
+                continue;
+            };
+            changes += cursor_to(s, p, tag) as i32;
+            changes += cursor_to(s, (2.0, 2.0), "off it") as i32;
+        }
+    };
+    through(
+        &mut s,
+        &["BTN_NEWGAME", "BTN_LOADGAME", "BTN_OPTIONS", "BTN_EXIT"],
+    );
+    assert!(changes >= 6, "{changes}");
+
+    // A screen with a list and words that follow it, and the party's tabs.
+    press(&mut s, "BTN_NEWGAME");
+    for _ in 0..12000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.number_key(1);
+            s.continue_line();
+        } else if s.game.world.transcript.len() > 3 && s.game.world.delayed.is_empty() {
+            break;
+        }
+    }
+    for template in ["g_w_lngswrd01", "g_i_medeqpmnt01", "g_a_clothes01"] {
+        let w = &mut s.game.world;
+        let (pc, item) = (w.pc, w.spawn_item(template));
+        w.carry(pc, item);
+    }
+    let mut changes = 0;
+    let mut rows = |s: &mut Stage, n: usize| {
+        for row in 0..n {
+            if let Some(p) = s.menu_pixel("LB_ITEMS", Some(row), SIZE) {
+                changes += cursor_to(s, p, "a row") as i32;
+            }
+        }
+    };
+    s.open_inventory();
+    s.update(DT);
+    assert_eq!(s.menu_name(), "inventory");
+    rows(&mut s, 3);
+    let tab = s.menu_pixel("BTN_EQU", None, SIZE).unwrap();
+    cursor_to(&mut s, tab, "a tab");
+    s.click(tab, SIZE);
+    s.update(DT);
+    assert_eq!(s.menu_name(), "equip");
+    let slot = s.menu_pixel("BTN_INV_WEAP_R", None, SIZE).unwrap();
+    cursor_to(&mut s, slot, "a slot");
+    s.click(slot, SIZE);
+    s.update(DT);
+    rows(&mut s, 2);
+    s.escape();
+    s.escape();
+    s.update(DT);
+    assert!(changes >= 3, "{changes}");
+}
+
 /// The middle of a slider is at this share of its width, on the window.
 fn slide(s: &mut Stage, tag: &str, along: f32) {
     let (x, y) = s.menu_pixel(tag, None, SIZE).unwrap();

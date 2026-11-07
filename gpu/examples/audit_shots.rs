@@ -74,10 +74,15 @@ impl Rig {
 
     /// Milliseconds a thing takes, with the update that shows it.
     fn time(&mut self, what: &str, f: impl FnOnce(&mut Stage)) {
-        let t = Instant::now();
+        let (t, seen) = (Instant::now(), self.s.overlay_version);
         f(&mut self.s);
         self.s.update(DT);
-        println!("{what}: {:.1} ms", t.elapsed().as_secs_f32() * 1000.0);
+        println!(
+            "{what}: {:.1} ms, overlay {:.1}, box {:?}",
+            t.elapsed().as_secs_f32() * 1000.0,
+            self.s.overlay_ms,
+            self.s.overlay_change_since(seen),
+        );
     }
 }
 
@@ -124,6 +129,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         r.time(&format!("bug 1: {name}, the cursor moved again"), |s| {
             s.hover((width as f32 * 0.6, height as f32 * 0.6), size);
         });
+        // What it has drawn once is kept.
+        for k in [0.4, 0.6, 0.4, 0.6] {
+            r.time(&format!("bug 1: {name}, back and forth"), |s| {
+                s.hover((width as f32 * k, height as f32 * k), size);
+            });
+        }
         r.shot(&format!("7_{name}"));
         r.s.escape();
         r.s.update(DT);
@@ -240,6 +251,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.set_view(size);
     s.enable_chargen(true);
     let new_game = s.menu_pixel("BTN_NEWGAME", None, size).unwrap();
+    let load = s.menu_pixel("BTN_LOADGAME", None, size).unwrap();
+    s.update(DT);
+    for (what, at) in [
+        ("New Game", new_game),
+        ("Load", load),
+        ("New Game", new_game),
+    ]
+    .into_iter()
+    .cycle()
+    .take(9)
+    {
+        let (t, seen) = (Instant::now(), s.overlay_version);
+        s.hover(at, size);
+        let hovered = t.elapsed().as_secs_f32() * 1000.0;
+        s.update(DT);
+        println!(
+            "bug 1: main menu, the cursor on {what}: {:.1} ms, hover {hovered:.1}, overlay {:.1}, box {:?}",
+            t.elapsed().as_secs_f32() * 1000.0,
+            s.overlay_ms,
+            s.overlay_change_since(seen),
+        );
+    }
     s.hover(new_game, size);
     s.click(new_game, size);
     println!("bug 3: on {}", s.menu_name());

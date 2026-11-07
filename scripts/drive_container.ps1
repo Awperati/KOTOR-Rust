@@ -21,12 +21,12 @@ function Less([int]$n) { Press 377 (129 + 39 * $n + 7) 18 24 }
 function TakeSelected { Press 174 336 285 22 }
 
 WaitLog
-# Past the opening talks: one follows another a moment later, so it has to stay quiet for a while.
+# Past the opening talks: one follows another some seconds later, however busy the machine, so it has to stay quiet for a while.
 $s = WaitFor "dlg" "true"
-$quiet = 0
-$until = (Get-Date).AddSeconds(60)
-while ($quiet -lt 40 -and (Get-Date) -lt $until) {
-  if ($s.dlg -eq "true") { $quiet = 0; Key 0x31 0x02; Key 0x0D 0x1C } else { $quiet++ }
+$quietSince = Get-Date
+$until = (Get-Date).AddSeconds(90)
+while (((Get-Date) - $quietSince).TotalSeconds -lt 10 -and (Get-Date) -lt $until) {
+  if ($s.dlg -eq "true") { $quietSince = Get-Date; Key 0x31 0x02; Key 0x0D 0x1C }
   $s = State
 }
 $until = (Get-Date).AddSeconds(15)

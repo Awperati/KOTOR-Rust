@@ -10,7 +10,7 @@ use kotor_image::Image;
 use kotor_model::{parse_model, Model};
 use kotor_render::{Camera, Floor, Rig, Scene};
 use kotor_tables::TwoDa;
-use kotor_ui::{DialogueView, HudMember, Ui};
+use kotor_ui::{DialogueView, HudMember, MenuView, Ui};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -481,6 +481,8 @@ pub struct Stage {
     pub turret_assist: bool,
     /// Goes up whenever the overlay changes.
     pub overlay_version: u64,
+    /// The screen the overlay last showed, and the version of it that is.
+    menu_drawn: Option<(u64, MenuView)>,
     /// How long the last look at the overlay took, for `--frame-log`.
     pub overlay_ms: f32,
     /// What it last did on the HUD: 0 nothing, 1 the plates, 2 part of it, 3 the whole, 4 a conversation's box, 5 the whole
@@ -639,6 +641,7 @@ impl Stage {
             armed_home: None,
             turret_assist: false,
             overlay_version: 0,
+            menu_drawn: None,
             overlay_ms: 0.0,
             hud_drawn: 0,
             cues: Vec::new(),
@@ -2753,6 +2756,10 @@ impl Stage {
             self.plates_view_none();
             let key = format!("{view:?}{}", self.ui_width);
             if key != self.overlay_key {
+                if self.menu_in_part(&view) {
+                    self.overlay_key = key;
+                    return;
+                }
                 // A pop-up over the game leaves the HUD under it, as the video has it at 3:36.
                 let hud = (view.over_scene && view.notice.is_some()).then(|| {
                     self.overlay_key.clear();
@@ -2768,6 +2775,7 @@ impl Stage {
                     self.overlay = Some(under);
                 }
                 self.overlay_version += 1;
+                self.menu_drawn = Some((self.overlay_version, view));
             }
             return;
         }
@@ -2780,6 +2788,36 @@ impl Stage {
             return;
         }
         self.refresh_game_overlay();
+    }
+
+    /// Draw again only what has changed on the screen that is up, if that is all that has to be. Returns whether it did.
+    fn menu_in_part(&mut self, view: &MenuView) -> bool {
+        let Some((seen, was)) = self.menu_drawn.take() else {
+            return false;
+        };
+        let usable = seen == self.overlay_version
+            && !self.overlay_key.is_empty()
+            && self.settings().brightness == 0.5;
+        let picture = self.overlay.take_if(|_| usable);
+        let Some(picture) = picture else { return false };
+        let Some((picture, changed)) = self.ui.menu_part(picture, &was, view) else {
+            return false;
+        };
+        self.overlay = Some(picture);
+        self.overlay_changed_in(changed);
+        self.menu_drawn = Some((self.overlay_version, view.clone()));
+        true
+    }
+
+    /// The overlay has a new version, and all that changed is inside this box. Boxes since the last full change go together.
+    fn overlay_changed_in(&mut self, changed: [u32; 4]) {
+        let chained = self.plates_moved.filter(|m| m.1 == self.overlay_version);
+        let (from, all) = match chained {
+            Some((from, _, all)) => (from, union_box(Some(all), Some(changed)).unwrap_or(changed)),
+            None => (self.overlay_version, changed),
+        };
+        self.overlay_version += 1;
+        self.plates_moved = Some((from, self.overlay_version, all));
     }
 
     /// The HUD, or the conversation's box.
@@ -2935,16 +2973,7 @@ impl Stage {
                 let picture = self.overlay.take().expect("just seen");
                 let hud = self.hud_under_plates.as_ref().expect("just seen");
                 self.overlay = Some(self.ui.move_plates(hud, picture, dirty));
-                // Those since the last full change, together.
-                let chained = self.plates_moved.filter(|m| m.1 == self.overlay_version);
-                let (from, all) = match chained {
-                    Some((from, _, all)) => {
-                        (from, union_box(Some(all), Some(dirty)).unwrap_or(dirty))
-                    }
-                    None => (self.overlay_version, dirty),
-                };
-                self.overlay_version += 1;
-                self.plates_moved = Some((from, self.overlay_version, all));
+                self.overlay_changed_in(dirty);
                 return;
             }
         }

@@ -8,7 +8,7 @@
 
 use crate::canvas::Canvas;
 use crate::gui::{Control, Gui};
-use crate::screens::{Patch, Ui, SCREEN};
+use crate::screens::{merged_boxes, union_box, Patch, Ui, CONTROL_BOX_PAD, SCREEN};
 use kotor_image::Image;
 use std::collections::BTreeMap;
 
@@ -231,6 +231,24 @@ fn stepper_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
     ]
 }
 
+/// Whether a control of a screen is drawn differently in another view of it.
+fn control_changed(was: &MenuView, now: &MenuView, c: &Control) -> bool {
+    let lit = |v: &MenuView| match &v.hover {
+        Some(Hit::Button(t)) | Some(Hit::Slider(t, _)) => t == &c.tag,
+        _ => false,
+    };
+    if lit(was) != lit(now) || was.patches.get(&c.tag) != now.patches.get(&c.tag) {
+        return true;
+    }
+    let row = |v: &MenuView| match &v.hover {
+        Some(h @ (Hit::Row(t, _) | Hit::Cell(t, _, _) | Hit::Step(t, _, _))) if t == &c.tag => {
+            Some(h.clone())
+        }
+        _ => None,
+    };
+    c.kind == LIST && (row(was) != row(now) || was.lists.get(&c.tag) != now.lists.get(&c.tag))
+}
+
 /// How far across a shaded hole the dark comes, and how dark it starts: by eye from the video at 8:29:45.
 const SHADE_REACH: f32 = 0.75;
 const SHADE_DARKEST: f32 = 245.0;
@@ -304,6 +322,133 @@ impl Ui<'_> {
             self.draw_notice(&mut cv, n, &view.hover);
         }
         Some(cv.into_image())
+    }
+
+    /// Draw again only what has changed between two views of a screen, on the picture of the first. The whole of one takes 20
+    /// ms at 3840x2160, and the cursor changes what is lit each time it moves onto something. Gives the picture and the box of
+    /// pixels that changed, or nothing if the whole has to be drawn.
+    pub fn menu_part(
+        &mut self,
+        picture: Image,
+        was: &MenuView,
+        now: &MenuView,
+    ) -> Option<(Image, [u32; 4])> {
+        if (picture.width, picture.height) != self.pixels {
+            return None;
+        }
+        self.measure_for_menus();
+        let boxes = self.changed_boxes(was, now)?;
+        let across = self.pixels.0 as f32 / SCREEN.0 as f32;
+        let down = self.scale;
+        let (wide, high) = (self.pixels.0 as i32, self.pixels.1 as i32);
+        let pixels = boxes.iter().filter_map(|&[x, y, w, h]| {
+            let left = ((x as f32 * across).floor() as i32 - 1).clamp(0, wide);
+            let top = ((y as f32 * down).floor() as i32 - 1).clamp(0, high);
+            let right = (((x + w) as f32 * across).ceil() as i32 + 1).clamp(0, wide);
+            let bottom = (((y + h) as f32 * down).ceil() as i32 + 1).clamp(0, high);
+            (right > left && bottom > top).then_some([
+                left as u32,
+                top as u32,
+                (right - left) as u32,
+                (bottom - top) as u32,
+            ])
+        });
+        let pixels = merged_boxes(pixels.collect());
+        let mut cv = Canvas::over(picture, self.scale);
+        cv.scale_x = across;
+        let mut changed = None;
+        for b in pixels {
+            cv.redraw_only(b);
+            if !now.over_scene {
+                cv.fill_rect(0, 0, SCREEN.0 as i32 + 1, 481, [0, 0, 0, 255]);
+            }
+            self.draw_view(&mut cv, now)?;
+            if let Some(t) = &now.top {
+                self.draw_view(&mut cv, t)?;
+            }
+            changed = union_box(changed, Some(b));
+        }
+        Some((cv.into_image(), changed.unwrap_or([0; 4])))
+    }
+
+    /// The boxes of layout units that hold all that has changed between two views, or nothing if they are too unlike.
+    fn changed_boxes(&mut self, was: &MenuView, now: &MenuView) -> Option<Vec<[i32; 4]>> {
+        let alike = was.gui == now.gui
+            && !now.gui.is_empty()
+            && was.over_scene == now.over_scene
+            && was.holes == now.holes
+            && was.hole_veil == now.hole_veil
+            && was.hole_shades == now.hole_shades
+            && was.copies == now.copies
+            && was.marks == now.marks
+            && was.message == now.message
+            && was.notice.is_none()
+            && now.notice.is_none()
+            && was.dialog.is_none()
+            && now.dialog.is_none();
+        if !alike {
+            return None;
+        }
+        let gui = self.view_gui(now)?;
+        let (ox, oy) = self.panel_origin(&gui.panel);
+        let mut boxes = Vec::new();
+        for c in gui.panel.children.iter().filter(|c| c.kind != SCROLLBAR) {
+            if !control_changed(was, now, c) {
+                continue;
+            }
+            for view in [was, now] {
+                let patch = view.patches.get(&c.tag);
+                if patch.is_some_and(|p| p.cover.is_some()) {
+                    return None;
+                }
+                let e = &c.extent;
+                let [x, y, w, h] = patch
+                    .and_then(|p| p.place)
+                    .unwrap_or([e.left, e.top, e.width, e.height]);
+                let mut pad = CONTROL_BOX_PAD + self.words_past(c, patch, [w, h]);
+                if c.kind == SLIDER {
+                    pad += NEEDLE_WIDTH * 2;
+                }
+                boxes.push([ox + x - pad, oy + y - pad, w + pad * 2, h + pad * 2]);
+                if let Some((r, step, fits)) = row_layout(c).filter(|_| c.kind == LIST) {
+                    let rise = patch.map_or(0, |p| p.rise);
+                    let tall = step * fits as i32;
+                    boxes.push([
+                        ox + r[0] - CONTROL_BOX_PAD,
+                        oy + r[1] - rise - CONTROL_BOX_PAD,
+                        r[2] + CONTROL_BOX_PAD * 2,
+                        tall + rise + CONTROL_BOX_PAD * 2,
+                    ]);
+                }
+            }
+        }
+        match (&was.top, &now.top) {
+            (Some(a), Some(b)) => boxes.extend(self.changed_boxes(a, b)?),
+            (None, None) => {}
+            _ => return None,
+        }
+        Some(boxes)
+    }
+
+    /// How far a control's words can go past it: words too long for it do, across and down.
+    fn words_past(&mut self, c: &Control, patch: Option<&Patch>, [w, h]: [i32; 2]) -> i32 {
+        let Some(t) = &c.text else { return 0 };
+        let text = patch
+            .and_then(|p| p.text.clone())
+            .unwrap_or_else(|| match t.strref {
+                Some(s) if t.text.is_empty() => self.strref(s),
+                _ => t.text.clone(),
+            });
+        let font = patch.and_then(|p| p.font.as_deref()).unwrap_or(&t.font);
+        let Some(f) = self.font_shared(font) else {
+            return 0;
+        };
+        let inset = patch.map_or(0, |p| p.inset);
+        let lines = f.wrap(&text, w - inset * 2);
+        let wide = lines.iter().map(|l| f.measure(l)).max().unwrap_or(0);
+        (wide - w)
+            .max(lines.len() as i32 * f.line_height - h)
+            .max(0)
     }
 
     /// Where a notice goes: its box, its button, and its lines.

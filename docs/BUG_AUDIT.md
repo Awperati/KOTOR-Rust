@@ -16,7 +16,7 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 
 | # | Owner's words, short | Status | Evidence | Owner if open |
 |---|---|---|---|---|
-| 1 | Main menu stutters on hover | partly | `audit_shots`: 2 to 4 ms at 720p, 24 to 45 ms at 2160p for each change of what is under the cursor | Menus |
+| 1 | Main menu stutters on hover | fixed, feel not judged | `the_cursor_draws_again_only_what_it_changes_and_the_picture_is_the_same`. `audit_shots` at 2160p: main menu 2 ms for each change, was the whole picture at about 20. Character and Equipment 2 ms on a button; 12 to 29 ms on the big box over the figure, 28 to 44 ms the first time a slot's rows are drawn | |
 | 2 | Selected size stuck on first slot | fixed | `the_figure_the_mouse_is_on_is_the_big_one`, frames `cg_class_big_first`, `cg_class_big_last` | |
 | 3 | Figures in the class screen not animated | fixed | `audit_shots`: their vertices move over 0.7 s | |
 | 4 | Portraits low resolution | fixed | 40 at 8 times by Gigapixel, frame `audit_7_equip_2160p`. On this machine only: `scripts/upscale_portraits.ps1` | |

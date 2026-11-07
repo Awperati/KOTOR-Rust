@@ -143,10 +143,10 @@ struct HudDrawn {
 /// The lines rising words can wrap to.
 const FLOAT_MOST_LINES: i32 = 3;
 /// A text box's glow reaches past it, in layout units.
-const CONTROL_BOX_PAD: i32 = 8;
+pub(crate) const CONTROL_BOX_PAD: i32 = 8;
 
 /// The box that holds both of two: left, top, width, height.
-fn union_box(a: Option<[u32; 4]>, b: Option<[u32; 4]>) -> Option<[u32; 4]> {
+pub(crate) fn union_box(a: Option<[u32; 4]>, b: Option<[u32; 4]>) -> Option<[u32; 4]> {
     match (a, b) {
         (Some(a), Some(b)) => {
             let (left, top) = (a[0].min(b[0]), a[1].min(b[1]));
@@ -159,7 +159,7 @@ fn union_box(a: Option<[u32; 4]>, b: Option<[u32; 4]>) -> Option<[u32; 4]> {
 }
 
 /// Boxes that overlap enough to be cheaper as one, as one.
-fn merged_boxes(mut boxes: Vec<[u32; 4]>) -> Vec<[u32; 4]> {
+pub(crate) fn merged_boxes(mut boxes: Vec<[u32; 4]>) -> Vec<[u32; 4]> {
     let area = |b: [u32; 4]| b[2] as u64 * b[3] as u64;
     let mut n = 0;
     while n < boxes.len() {

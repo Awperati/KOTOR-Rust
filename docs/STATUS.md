@@ -203,5 +203,9 @@ Routines answering a fixed value on these modules, all others being real: `GetAt
 - Only an enemy's slots do this. A locked door's stay as they were.
 - Tests in `gpu/tests/plates.rs`, three on staying and going, one on size. Live: `scripts/drive_slots.ps1`, 6 checks at 720p and 2160p.
 
+## The cursor on a screen (bug 1)
+
+A change of what is under the cursor drew the whole picture again, 20 ms at 2160p, and sent all 33 MB of it to the card. Now `Ui::menu_part` draws only the controls that differ, and only that box goes to the card. Anything else about the screen changing draws the whole, as before. Test: the part is the same, pixel for pixel, as the whole on the main menu, Inventory and Equipment.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.
