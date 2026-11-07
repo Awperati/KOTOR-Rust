@@ -1347,7 +1347,13 @@ impl World {
             Action::OpenDoor(d) => {
                 self.open_door(d);
             }
-            Action::CloseDoor(d) => self.close_door(d),
+            // A script that shuts a door (a module's start-up closes its own entrance) does not shut the one the party has
+            // just come through from a joined area: it stands open while that area is joined behind it.
+            Action::CloseDoor(d) => {
+                if !self.seamless.attached.get(&d).is_some_and(|a| a.behind) {
+                    self.close_door(d)
+                }
+            }
             Action::SetLocked(d, locked) => {
                 if let Some(o) = self.object_mut(d) {
                     o.locked = locked;

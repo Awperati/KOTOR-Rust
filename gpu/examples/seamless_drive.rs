@@ -657,7 +657,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     while back < 900 && s.game.world.module == inside {
         // Back by the game's own route to just past the doorway we came through.
         if back == 0 {
-            if let Some(a) = s.game.world.seamless.attached.values().find(|a| a.behind) {
+            if let Some(a) = s
+                .game
+                .world
+                .seamless
+                .attached
+                .values()
+                .find(|a| a.behind)
+                .cloned()
+            {
                 let (x, y) = (a.at[0] + a.out.cos() * 1.5, a.at[1] + a.out.sin() * 1.5);
                 let z = s
                     .game
@@ -667,7 +675,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .and_then(|n| n.walkable_at(x, y, a.at[2] + 2.0))
                     .unwrap_or(a.at[2]);
                 s.steer = (0.0, 0.0, false);
-                s.game.world.walk_to([x, y, z]);
+                let routed = s.game.world.walk_to([x, y, z]);
+                if !routed {
+                    // No route to click along (reported): the keys, straight at the doorway.
+                    println!(
+                        "back: no route across the doorway to click along; steering by the keys"
+                    );
+                    s.yaw = a.out;
+                    s.steer = (1.0, 0.0, false);
+                }
+                if std::env::var_os("DRIVE_DEBUG").is_some() {
+                    println!(
+                        "back: from {:?} to {:?} (floor {:?}): routed {routed}",
+                        s.game.world.pc_mover.pos,
+                        [x, y, z],
+                        s.game
+                            .world
+                            .nav
+                            .as_ref()
+                            .and_then(|n| n.walkable_at(x, y, a.at[2] + 2.0))
+                    );
+                }
             }
         }
         step(&mut s);
@@ -683,6 +711,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 s.game.world.module,
                 s.game.world.pc_mover.pos
             );
+        }
+        if std::env::var_os("DRIVE_DEBUG").is_some() {
+            for e in s.game.world.events.iter().filter(|e| e.contains("closes")) {
+                println!("event at back {back}: {e}");
+            }
+        }
+        if back % 150 == 1 && std::env::var_os("DRIVE_DEBUG").is_some() {
+            if let Some(a) = s.game.world.seamless.attached.values().find(|a| a.behind) {
+                let p = s.game.world.pc_mover.pos;
+                let (along, across) = (
+                    (p[0] - a.at[0]) * a.out.cos() + (p[1] - a.at[1]) * a.out.sin(),
+                    -(p[0] - a.at[0]) * a.out.sin() + (p[1] - a.at[1]) * a.out.cos(),
+                );
+                let door = s
+                    .game
+                    .world
+                    .objects
+                    .values()
+                    .filter(|o| o.kind == kotor_game::Kind::Door)
+                    .map(|o| (o.tag.clone(), o.open, dist(o.position, a.at)))
+                    .min_by(|x, y| x.2.total_cmp(&y.2));
+                for o in s.game.world.objects.values() {
+                    let d = dist(o.position, p);
+                    if d < 3.0 && o.id != s.game.world.pc {
+                        println!(
+                            "  near: {:?} {} at {d:.2} m open {} dead {}",
+                            o.kind, o.tag, o.open, o.dead
+                        );
+                    }
+                }
+                println!(
+                    "back {back}: dialogue {} along {along:.2} across {across:.2} (half {:.2}), nearest door {:?}, steer {:?}, route {}",
+                    s.game.world.in_dialogue(),
+                    a.half,
+                    door,
+                    s.game.world.steer,
+                    s.game.world.pc_walking()
+                );
+            }
         }
         back += 1;
         if !back_shot && back == 60 {

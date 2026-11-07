@@ -805,3 +805,48 @@ fn rolling_or_jumping_at_a_closed_door_never_gets_through() {
         worst.join("\n")
     );
 }
+
+/// A module's start-up script shuts its own entrance a moment after the party arrives through it from a joined area
+/// (`tar03_javydoor` in the Lower City did): the door they came through stays open while that area is joined behind
+/// them, or the way back is a wall.
+#[test]
+fn a_script_cannot_shut_the_door_the_party_came_through() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    let sketch: Sketch = w.sketch();
+    let site = sketch
+        .sites
+        .iter()
+        .find(|s| s.tag == "Apartments")
+        .unwrap()
+        .clone();
+    let dir = kotor_core::install_dir().unwrap();
+    let (att, _) = prepare(&dir, &sketch, &site, &Default::default()).expect("fits");
+    let door = w.link_door_at(site.at).unwrap();
+    let (rigid, out) = (att.rigid, att.out);
+    w.seamless_attach(door, att);
+    w.use_door(door);
+    for _ in 0..90 {
+        w.step(1.0 / 60.0);
+    }
+    let start = [site.at[0] - out.cos(), site.at[1] - out.sin(), site.at[2]];
+    walk_through(&mut w, start, out, rigid, 40);
+    assert_eq!(w.module, "tar_m02aa");
+    let back = *w
+        .seamless
+        .attached
+        .iter()
+        .find(|(_, a)| a.behind)
+        .map(|(id, _)| id)
+        .unwrap();
+    assert!(w.objects[&back].open);
+    // The start-up script says to close it.
+    let pc = w.pc;
+    w.queue(pc, kotor_game::Action::CloseDoor(back));
+    for _ in 0..120 {
+        w.step(1.0 / 60.0);
+    }
+    assert!(w.objects[&back].open, "still open");
+    assert_eq!(w.objects[&back].door, DoorState::Open);
+}
