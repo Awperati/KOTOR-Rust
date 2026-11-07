@@ -81,3 +81,62 @@ fn the_shot_of_a_line_between_two_others_shows_the_speakers_face() {
     }
     panic!("no line between two others");
 }
+
+/// The owner's report of 7 Nov: the talk is the bounty hunter's, Carth in the party says a line, and the shot must be of Carth. His lines
+/// wait on `k_con_carthpm`: in the party's slot, and within 10 m of the player.
+#[test]
+fn a_party_members_line_in_someone_elses_talk_is_shot_on_them() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open("tar_m02ac", true).unwrap();
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    let dir = std::env::temp_dir().join(format!("kotor_talk_carth_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("settings.txt");
+    std::fs::write(&file, "auto_advance=false\n").unwrap();
+    s.use_settings_file(file);
+    s.set_saves_dir(dir);
+    let hunter = s.game.world.by_tag("BountyHunt022")[0];
+    let pc = s.game.world.pc;
+    let h = s.game.world.object(hunter).unwrap().position;
+    s.game.world.teleport(pc, [h[0] + 3.0, h[1], h[2]]);
+    let carth = s
+        .game
+        .world
+        .spawn_creature("p_carth", [h[0] + 4.6, h[1], h[2]]);
+    s.game.world.party.push(carth);
+    s.game.world.npc_slots.insert(2, carth);
+    s.game.world.queue(
+        hunter,
+        Action::StartConversation {
+            target: pc,
+            dialogue: "tar02_bountyh022".to_string(),
+            anywhere: true,
+        },
+    );
+    for _ in 0..30000 {
+        s.update(DT);
+        let w = &s.game.world;
+        if w.conversation_paused() || w.dialogue_view().is_none() {
+            continue;
+        }
+        if w.dialogue_pair().unwrap().0 != carth {
+            s.continue_line();
+            continue;
+        }
+        assert_eq!(w.dialogue_owner(), Some(hunter), "the talk stays the hunter's");
+        s.update(DT);
+        let w = &s.game.world;
+        let at = w.object(carth).unwrap().position;
+        let c = s.camera();
+        let off = (c.target[0] - at[0]).hypot(c.target[1] - at[1]);
+        assert!(off < 0.1, "the camera looks {off} m from Carth");
+        let faces = s.game.facing_of(carth).unwrap();
+        let ahead = (c.eye[0] - at[0]) * faces.cos() + (c.eye[1] - at[1]) * faces.sin();
+        assert!(ahead > 0.5, "the camera is {ahead} m in front of Carth");
+        return;
+    }
+    panic!("Carth said nothing");
+}
