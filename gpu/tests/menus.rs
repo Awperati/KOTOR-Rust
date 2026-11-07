@@ -6330,10 +6330,8 @@ fn several_actions_queue_while_paused_in_order_and_clear_and_undo_work() {
     s.click(one, SIZE);
     assert_eq!(s.game.world.queue_of(pc), vec![A::Attack, A::Power(23)]);
     assert_eq!(s.queue_pictures().len(), 2);
-    // A feat goes in after them, with the arrows and Shift.
+    // A feat goes in after them: the left slot's arrow was turned to it above, and Shift keeps it from starting anything.
     s.set_shift(true);
-    let down = s.hud_pixel("BTN_TARGETDOWN0", SIZE).unwrap();
-    s.click(down, SIZE);
     let slot = s.hud_pixel("BTN_TARGET0", SIZE).unwrap();
     s.click(slot, SIZE);
     s.set_shift(false);
