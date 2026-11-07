@@ -781,6 +781,8 @@ pub(super) struct Menus {
     option_reason: Option<&'static str>,
     /// V-Sync when its page opened, and what it should become.
     vsync_before: bool,
+    /// The anti-aliasing level the Advanced Graphics page found, for its Cancel.
+    anti_aliasing_before: i32,
     /// A folder a row has asked to be opened.
     folder_to_open: Option<PathBuf>,
     wanted_vsync: Option<bool>,
@@ -1654,6 +1656,7 @@ impl Stage {
         let mut v = MenuView::new("optgraphics");
         self.graphics_words(&mut v);
         v.inert(&["CB_SHADOWS", "CB_GRASS"]);
+        self.graphics_effect_buttons(&mut v);
         let s = self.menus.settings;
         v.value("SLI_GAMMA", (s.brightness * 100.0) as i32, 100);
         if let Some((w, h)) = s.size {
@@ -2457,8 +2460,14 @@ impl Stage {
                 self.settings_changed();
             }
             (Screen::Graphics, "BTN_DEFAULT") => {
-                self.menus.settings.brightness = Settings::default().brightness;
+                let d = Settings::default();
+                let s = &mut self.menus.settings;
+                (s.brightness, s.anti_aliasing, s.motion_blur) =
+                    (d.brightness, d.anti_aliasing, d.motion_blur);
                 self.settings_changed();
+            }
+            (Screen::Graphics, optionpages::AA_BUTTON | optionpages::BLUR_BUTTON) => {
+                self.graphics_effect_press(tag)
             }
             (Screen::Graphics, "BTN_ADVANCED") => self.open_graphics_advanced(),
             (Screen::GraphicsAdvanced, _) => self.graphics_advanced_press(tag),

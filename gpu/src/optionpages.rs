@@ -195,6 +195,14 @@ pub(super) const CEL_NAMES: [&str; 3] = ["Off", "Subtle", "Strong"];
 pub(super) const AA_NAMES: [&str; 4] = ["Off", "4x", "8x", "16x"];
 /// What the Motion blur row says.
 pub(super) const BLUR_NAMES: [&str; 4] = ["Off", "Subtle", "Moderate", "Intense"];
+/// The Graphics page's buttons for them. The file has none: they go in the free space over Advanced Options, as the owner
+/// looked for them there. They are copies of that button, and a click goes on to the next level, as Screen Resolution does.
+pub(super) const AA_BUTTON: &str = "BTN_AA";
+pub(super) const BLUR_BUTTON: &str = "BTN_MOTIONBLUR";
+const AA_BUTTON_AT: [i32; 4] = [60, 280, 240, 22];
+const BLUR_BUTTON_AT: [i32; 4] = [60, 315, 240, 22];
+/// The Advanced page's own Anti-Aliasing button and its arrows.
+const AA_ADVANCED: [&str; 3] = ["BTN_ANTIALIAS", "BTN_ANTIALIASLEFT", "BTN_ANTIALIASRIGHT"];
 /// A box on the Auto-Pause page, and its words.
 const AUTOPAUSE: [(&str, u32); 6] = [
     ("CB_ENDROUND", 42445),
@@ -221,7 +229,7 @@ const GAMEPLAY_WORDS: [(&str, u32); 2] = [("CB_LEVELUP", 42266), ("CB_DISABLEMOV
 
 /// Graphics boxes: the talk table's words, and why a greyed one is greyed. These need work in the renderer: this one has
 /// one sample a pixel, no mipmaps, no shadow pass, no grass and no frame effects.
-const GRAPHICS_WORDS: [(&str, u32, Option<&str>); 8] = [
+const GRAPHICS_WORDS: [(&str, u32, Option<&str>); 7] = [
     (
         "CB_SHADOWS",
         47951,
@@ -232,11 +240,6 @@ const GRAPHICS_WORDS: [(&str, u32, Option<&str>); 8] = [
         "BTN_TEXQUAL",
         47965,
         Some("Not built: every texture is used whole."),
-    ),
-    (
-        "BTN_ANTIALIAS",
-        47971,
-        Some("Set under Feedback: Anti-aliasing."),
     ),
     (
         "BTN_ANISOTROPY",
@@ -337,12 +340,33 @@ impl Stage {
         self.option_words(v, "LB_DESC");
     }
 
-    /// `optgraphicsadv.gui`. V-Sync is the one box the renderer can honour now.
+    /// The Graphics page's Anti-aliasing and Motion blur buttons: copies of Advanced Options, saying their levels.
+    pub(super) fn graphics_effect_buttons(&mut self, v: &mut MenuView) {
+        let s = self.menus.settings;
+        v.copy_control("BTN_ADVANCED", AA_BUTTON, AA_BUTTON_AT);
+        v.copy_control("BTN_ADVANCED", BLUR_BUTTON, BLUR_BUTTON_AT);
+        let aa = AA_NAMES[s.anti_aliasing.clamp(0, 3) as usize];
+        let blur = BLUR_NAMES[s.motion_blur.clamp(0, 3) as usize];
+        v.text(AA_BUTTON, format!("Anti-aliasing: {aa}"));
+        v.text(BLUR_BUTTON, format!("Motion blur: {blur}"));
+    }
+
+    /// A click on one of them: the next level, round again after the last.
+    pub(super) fn graphics_effect_press(&mut self, tag: &str) {
+        let s = &mut self.menus.settings;
+        match tag {
+            AA_BUTTON => s.anti_aliasing = (s.anti_aliasing + 1) % 4,
+            BLUR_BUTTON => s.motion_blur = (s.motion_blur + 1) % 4,
+            _ => return,
+        }
+        self.settings_changed();
+    }
+
+    /// `optgraphicsadv.gui`. V-Sync and Anti-aliasing are the boxes the renderer can honour now.
     pub(super) fn graphics_advanced_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optgraphicsadv");
         v.inert(&[
             "BTN_TEXQUAL",
-            "BTN_ANTIALIAS",
             "BTN_ANISOTROPY",
             "CB_FRAMEBUFF",
             "CB_SOFTSHADOWS",
@@ -350,11 +374,20 @@ impl Stage {
         v.hide(&[
             "BTN_TEXQUALLEFT",
             "BTN_TEXQUALRIGHT",
-            "BTN_ANTIALIASLEFT",
-            "BTN_ANTIALIASRIGHT",
             "BTN_ANISOTROPYLEFT",
             "BTN_ANISOTROPYRIGHT",
         ]);
+        let aa = self.menus.settings.anti_aliasing.clamp(0, 3);
+        v.text(
+            AA_ADVANCED[0],
+            format!("Anti-aliasing: {}", AA_NAMES[aa as usize]),
+        );
+        if aa == 0 {
+            v.hide(&[AA_ADVANCED[1]]);
+        }
+        if aa == 3 {
+            v.hide(&[AA_ADVANCED[2]]);
+        }
         v.value("CB_VSYNC", self.menus.settings.vsync as i32, 1);
         self.option_words(&mut v, "LB_DESC");
         v
@@ -364,7 +397,21 @@ impl Stage {
         let s = &mut self.menus.settings;
         match tag {
             "CB_VSYNC" => s.vsync = !s.vsync,
-            "BTN_DEFAULT" => s.vsync = Settings::default().vsync,
+            "BTN_ANTIALIAS" => {
+                s.anti_aliasing = (s.anti_aliasing + 1) % 4;
+                self.settings_changed();
+                return;
+            }
+            "BTN_ANTIALIASLEFT" | "BTN_ANTIALIASRIGHT" => {
+                let by = if tag == "BTN_ANTIALIASLEFT" { -1 } else { 1 };
+                s.anti_aliasing = (s.anti_aliasing + by).clamp(0, 3);
+                self.settings_changed();
+                return;
+            }
+            "BTN_DEFAULT" => {
+                s.vsync = Settings::default().vsync;
+                s.anti_aliasing = Settings::default().anti_aliasing;
+            }
             "BTN_BACK" => {
                 self.menus.option_words = None;
                 self.menus.stack.pop();
@@ -372,6 +419,7 @@ impl Stage {
             }
             "BTN_CANCEL" => {
                 s.vsync = self.menus.vsync_before;
+                s.anti_aliasing = self.menus.anti_aliasing_before;
                 self.menus.option_words = None;
                 self.menus.stack.pop();
             }
@@ -388,6 +436,7 @@ impl Stage {
 
     pub(super) fn open_graphics_advanced(&mut self) {
         self.menus.vsync_before = self.menus.settings.vsync;
+        self.menus.anti_aliasing_before = self.menus.settings.anti_aliasing;
         self.menus.option_words = None;
         self.menus.stack.push(Screen::GraphicsAdvanced);
     }
@@ -495,7 +544,17 @@ impl Stage {
         if let (Screen::Graphics | Screen::GraphicsAdvanced, Some(Hit::Button(tag))) =
             (screen, &self.menus.hover)
         {
-            if let Some((_, words, why)) = GRAPHICS_WORDS.iter().find(|g| g.0 == tag) {
+            let ours = if tag == AA_BUTTON || AA_ADVANCED.contains(&tag.as_str()) {
+                Some(VALUE_ROWS[4].1)
+            } else if tag == BLUR_BUTTON {
+                Some(VALUE_ROWS[5].1)
+            } else {
+                None
+            };
+            if ours.is_some() {
+                self.menus.option_words = None;
+                self.menus.option_reason = ours;
+            } else if let Some((_, words, why)) = GRAPHICS_WORDS.iter().find(|g| g.0 == tag) {
                 self.menus.option_words = Some(*words);
                 self.menus.option_reason = *why;
             }
