@@ -484,6 +484,8 @@ pub struct World {
     pub(crate) casts: Vec<(ObjId, i32)>,
     /// Grenades thrown and not yet burst.
     pub(crate) flights: Vec<crate::flight::Flight>,
+    /// For a profiler: when on, where `World::step` spends its time. Each name has its count, total and worst, in milliseconds.
+    pub step_profile: Option<BTreeMap<&'static str, (u32, f64, f64)>>,
     /// The template of the item being thrown, for the flight `cast_spell` starts.
     pub(crate) thrown_item: Option<String>,
     /// Animations scripts asked creatures for since the last step: who, which `ANIMATION_` constant, for how long.
@@ -633,6 +635,7 @@ impl World {
             hp_regen: 0.0,
             casts: Vec::new(),
             flights: Vec::new(),
+            step_profile: None,
             thrown_item: None,
             animations: Vec::new(),
             store: None,

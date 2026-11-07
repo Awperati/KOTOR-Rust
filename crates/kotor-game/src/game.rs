@@ -130,6 +130,33 @@ const DODGE_CLIP_SECONDS: f32 = 0.43;
 /// **Assumed:** the game keeps the stance for as long as the fight lasts. This covers the gap between two rounds.
 /// `throwgren` and the first stretch of a cast clip (`castout1` to `3`), measured in the humanoid supermodel.
 const THROW_SECONDS: f32 = 1.5;
+/// `inject` and `activate` of the humanoid supermodel (`kotor-tool anims S_Male02`).
+const INJECT_SECONDS: f32 = 1.5;
+const ACTIVATE_SECONDS: f32 = 1.0;
+
+/// The clip of using an item whose ability (`spells.2da` label, lower case) is `ITEM_ABILITY_*` or `PLOT_*`: medicine and
+/// stimulants are injected (`inject`, which `animations.2da` marks to hide what is held), shields, kits, devices and the plot
+/// items are `activate`. **Assumed:** which of the two goes with which item; the game's files give the clips and no table of
+/// them. `None` for a Force power, or an item whose throw is handled elsewhere.
+pub fn item_use_clip(label: &str) -> Option<(&'static str, f32)> {
+    if !(label.starts_with("item_") || label.starts_with("plot_")) {
+        return None;
+    }
+    let injected = [
+        "med_pack",
+        "life_support",
+        "remove_poison",
+        "stim",
+        "adrenal",
+        "combat_shot",
+        "serum",
+    ];
+    if injected.iter().any(|w| label.contains(w)) {
+        Some(("inject", INJECT_SECONDS))
+    } else {
+        Some(("activate", ACTIVATE_SECONDS))
+    }
+}
 const CAST_START_SECONDS: f32 = 0.333;
 const STANCE_HOLD_SECONDS: f32 = 3.5;
 
@@ -388,7 +415,7 @@ impl Game {
     /// **Assumed:** which of the three cast clips (`castout1` to `3`) goes with which `conjanim` (`hand` 1, `head` 2),
     /// and that the loop clip plays once.
     fn play_cast(&mut self, id: ObjId, spell: i32) {
-        let (conj, cast) = {
+        let (conj, cast, label) = {
             let t = self.world.table("spells");
             let get = |c: &str| {
                 t.as_ref()
@@ -396,10 +423,16 @@ impl Game {
                     .unwrap_or("")
                     .to_ascii_lowercase()
             };
-            (get("conjanim"), get("castanim"))
+            (get("conjanim"), get("castanim"), get("label"))
         };
         if conj == "throw" || cast == "throw" {
             self.play_once(id, "throwgren", THROW_SECONDS);
+            return;
+        }
+        // An item's ability, not a Force power: it has its own gestures, never the cast of a power (a medpac once played
+        // Force Push's).
+        if let Some((clip, seconds)) = item_use_clip(&label) {
+            self.play_once(id, clip, seconds);
             return;
         }
         let (start, hold, a, b) = match conj.as_str() {
@@ -415,7 +448,7 @@ impl Game {
         let (stance, ranged) = self.weapon_stance(id);
         let name = match how {
             Move::Attack if ranged => format!("b{stance}a1"),
-            Move::Attack if stance == 2 || stance == 3 => format!("c{stance}a1"),
+            Move::Attack if (2..=4).contains(&stance) => format!("c{stance}a1"),
             Move::Attack => format!("g{stance}a1"),
             Move::Hit => format!("g{stance}g1"),
             Move::Dodge => format!("g{stance}d1"),
@@ -447,11 +480,22 @@ impl Game {
         };
         let wield = t.int(row, "weaponwield").unwrap_or(0);
         let ranged = t.int(row, "rangedweapon").unwrap_or(0) > 0;
-        let stance = match wield {
-            1..=3 => wield,
-            4 => 5,
-            5 => 7,
-            6 => 9,
+        // A weapon in the left hand too: two blades are the fourth set (`g4`, `c4`), two pistols the sixth (`g6`, `b6`).
+        let off_wield = self
+            .world
+            .object(id)
+            .and_then(|o| o.equipped.get(&5))
+            .and_then(|i| self.world.object(*i))
+            .map(|i| i.base_item.max(0) as usize)
+            .and_then(|b| self.world.table("baseitems")?.int(b, "weaponwield"))
+            .unwrap_or(0);
+        let stance = match (wield, off_wield) {
+            (1..=2, 1..=2) => 4,
+            (4, 4) => 6,
+            (1..=3, _) => wield,
+            (4, _) => 5,
+            (5, _) => 7,
+            (6, _) => 9,
             _ => 8,
         };
         (stance as i32, ranged)

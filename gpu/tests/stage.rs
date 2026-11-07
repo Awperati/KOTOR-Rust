@@ -1360,3 +1360,41 @@ fn a_head_speaks_while_its_line_plays() {
         "the mouth shuts when the line is said"
     );
 }
+
+/// Bug 33: the sonic weapons' impact sound, `cb_ht_sonblclth1`, is in none of the game's archives, so a sonic hit was silent.
+/// It falls back to the plain blaster's impact. The shot is the sonic's own.
+#[test]
+fn a_sonic_weapons_hit_sounds_like_a_blasters_when_its_own_is_missing() {
+    let Some(mut s) = stage() else {
+        return;
+    };
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    let pc = s.game.world.pc;
+    let at = s.game.world.object(pc).unwrap().position;
+    let foe = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 4.0, at[1], at[2]]);
+    let gun = s.game.world.spawn_item("g_w_sonicpstl01");
+    s.game.world.equip(pc, gun, Some(4)).unwrap();
+    s.game.world.combat.log.push(kotor_game::AttackLog {
+        round: 1,
+        attacker: pc,
+        target: foe,
+        roll: 10,
+        bonus: 0,
+        defense: 10,
+        outcome: kotor_game::Outcome::Hit,
+        damage: 1,
+        target_hp: 10,
+    });
+    let cues = s.update(DT);
+    let heard = |name: &str| {
+        let want = wav(name);
+        cues.iter()
+            .any(|c| matches!(c, Cue::Effect(b) | Cue::FaintEffect(b, _) if *b == want))
+    };
+    assert!(heard("cb_sh_sonbl1"), "the sonic's own shot");
+    assert!(heard("cb_ht_blastleth1"), "a hit is not silent");
+}

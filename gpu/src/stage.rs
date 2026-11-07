@@ -418,6 +418,8 @@ pub struct Stage {
     underwear_plans: HashMap<String, Option<kotor_render::underwear::Plan>>,
     neck_plans: HashMap<String, Option<kotor_render::underwear::NeckPlan>>,
     baseitems: Option<TwoDa>,
+    /// The clips `animations.2da` marks `hideequ`: whoever plays one holds nothing in sight (`inject`, picking a lock).
+    hide_equipment: Option<std::collections::BTreeSet<String>>,
     /// An item's model, by item.
     held: HashMap<ObjId, Option<Rc<Model>>>,
     doors: HashMap<ObjId, Option<Rc<DoorBody>>>,
@@ -565,6 +567,7 @@ impl Stage {
             static_version: 0,
             rigs: HashMap::new(),
             baseitems: None,
+            hide_equipment: None,
             effects: Default::default(),
             chests: Vec::new(),
             chest_bodies: HashMap::new(),
@@ -1964,6 +1967,18 @@ impl Stage {
             .map(str::to_string)
     }
 
+    /// `name` if the install has a sound of that name, else `fallback`.
+    fn sound_that_exists(
+        &mut self,
+        name: Option<String>,
+        fallback: Option<String>,
+    ) -> Option<String> {
+        match name {
+            Some(n) if self.inst.read(&n, ResType::WAV).is_ok() => Some(n),
+            _ => fallback,
+        }
+    }
+
     fn attack_effects(&mut self, attacker: ObjId, target: ObjId, hit: bool) {
         let w = &self.game.world;
         let (Some(a), Some(t)) = (w.object(attacker), w.object(target)) else {
@@ -1996,6 +2011,19 @@ impl Stage {
                     .map(str::to_string)
             };
             let (shot, impact, model) = (get("shotsound0"), get("impactsound0"), get("model"));
+            // The sonic weapons' impact, `cb_ht_sonblclth1`, is in no archive of the game: a sonic hit was silent. Whatever a
+            // row names that is not there falls back to the plain blaster's (row 1) sound of the same kind.
+            let plain = |c: &str| {
+                table
+                    .get(1, c)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+            };
+            let (plain_shot, plain_impact) = (plain("shotsound0"), plain("impactsound0"));
+            let (shot, impact) = (
+                self.sound_that_exists(shot, plain_shot),
+                self.sound_that_exists(impact, plain_impact),
+            );
             let (bolt, color) = model
                 .and_then(|m| self.model(&m))
                 .and_then(|m| crate::effects::bolt_look(&m))
@@ -2215,8 +2243,36 @@ impl Stage {
         self.model_of_item(base as usize, template)
     }
 
+    /// Whether the clip a creature is playing hides what it holds.
+    fn hides_equipment(&mut self, id: ObjId) -> bool {
+        let Some(name) = self.game.clip(id).map(|c| c.name) else {
+            return false;
+        };
+        if self.hide_equipment.is_none() {
+            let set = self
+                .inst
+                .read("animations", ResType::TWODA)
+                .ok()
+                .and_then(|b| TwoDa::parse(&b).ok())
+                .map(|t| {
+                    (0..t.row_count())
+                        .filter(|r| t.get(*r, "hideequippeditems") == Some("1"))
+                        .filter_map(|r| t.get(r, "name").map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            self.hide_equipment = Some(set);
+        }
+        self.hide_equipment
+            .as_ref()
+            .is_some_and(|s| s.contains(name))
+    }
+
     /// What a creature holds: hand node and model.
     fn hands(&mut self, id: ObjId) -> Vec<(&'static str, Rc<Model>)> {
+        if self.hides_equipment(id) {
+            return Vec::new();
+        }
         let items: Vec<(&'static str, ObjId)> = self
             .game
             .world

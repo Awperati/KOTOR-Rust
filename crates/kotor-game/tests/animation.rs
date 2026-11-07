@@ -223,3 +223,165 @@ fn an_enemys_grenade_throw_plays_its_whole_clip_once_per_throw() {
         assert!((r - 1.5).abs() < 0.1, "a throw lasts 1.5 s: {runs:?}");
     }
 }
+
+/// The clip names the player plays through a fight with one weapon in hand, from the moment of its first attack.
+fn fight_clips(item: &str, left: Option<&str>) -> Option<Vec<String>> {
+    let mut g = game()?;
+    let pc = g.world.pc;
+    let foe = g
+        .world
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003")
+        .map(|o| o.id)?;
+    let at = g.world.object(foe).unwrap().position;
+    g.world.teleport(pc, [at[0] - 1.2, at[1], at[2]]);
+    g.world.object_mut(pc).unwrap().min_one_hp = true;
+    let f = g.world.object_mut(foe).unwrap();
+    (f.hp, f.max_hp) = (900, 900);
+    let it = g.world.spawn_item(item);
+    g.world.equip(pc, it, Some(4)).ok()?;
+    if let Some(l) = left {
+        let l = g.world.spawn_item(l);
+        g.world.equip(pc, l, Some(5)).ok()?;
+    }
+    g.world.attack(pc, foe);
+    g.world.attack(foe, pc);
+    let mut names: Vec<String> = Vec::new();
+    for _ in 0..(14.0 / g.dt) as usize {
+        g.step_once();
+        let n = g.clip(pc).map_or("-", |c| c.name).to_string();
+        if !names.contains(&n) {
+            names.push(n);
+        }
+    }
+    Some(names)
+}
+
+/// The animation set follows the weapon's `weaponwield` in `baseitems.2da`: 2 one-handed `g2`/`c2`, 3 two-handed (the double
+/// sword and the double saber) `g3`/`c3`, 5 rifle `g7`/`b7`, 6 heavy `g9`/`b9`. The two-handed grip had been drawn with the
+/// one-handed clips.
+#[test]
+fn each_weapon_class_fights_in_its_own_animation_set() {
+    for (item, ready, attack, hurt) in [
+        ("g_w_lngswrd01", "g2r1", "c2a1", "g2g1"),
+        ("g_w_dblswrd001", "g3r1", "c3a1", "g3g1"),
+        ("g_w_dblsbr001", "g3r1", "c3a1", "g3g1"),
+        ("g_w_blstrrfl001", "g7r1", "b7a1", "g7g1"),
+        ("g_w_hvrptbltr01", "g9r1", "b9a1", "g9g1"),
+    ] {
+        let Some(names) = fight_clips(item, None) else {
+            return;
+        };
+        assert!(
+            names.iter().any(|n| n == ready),
+            "{item} ready {ready}: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == attack),
+            "{item} attack {attack}: {names:?}"
+        );
+        // A blow that landed flinches, one that missed is dodged: either shows the set.
+        let dodge = hurt.replace("g1", "d1");
+        assert!(
+            names.iter().any(|n| *n == hurt || *n == dodge),
+            "{item} hurt {hurt}: {names:?}"
+        );
+    }
+}
+
+/// A weapon in each hand has sets of its own: two blades fight as `g4`/`c4`, two pistols as `g6`/`b6`.
+#[test]
+fn a_weapon_in_each_hand_fights_in_the_dual_sets() {
+    for (right, left, ready, attack) in [
+        ("g_w_shortsbr01", "g_w_shortsbr01", "g4r1", "c4a1"),
+        ("g_w_blstrpstl001", "g_w_blstrpstl001", "g6r1", "b6a1"),
+    ] {
+        let Some(names) = fight_clips(right, Some(left)) else {
+            return;
+        };
+        assert!(
+            names.iter().any(|n| n == ready),
+            "{right}: {ready} in {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == attack),
+            "{right}: {attack} in {names:?}"
+        );
+    }
+}
+
+/// Using an item has the clip of an item, never a Force power's cast: medicine and stimulants `inject` (1.5 s), a grenade keeps
+/// `throwgren`, a shield or device `activate`. The player and anyone else who uses one.
+#[test]
+fn using_a_medpac_a_stimulant_or_a_grenade_plays_the_clip_of_the_item() {
+    for (item, clip, seconds) in [
+        ("g_i_medeqpmnt01", "inject", 1.5),
+        ("g_i_adrnaline003", "inject", 1.5),
+        ("g_i_cmbtshot001", "inject", 1.5),
+        ("g_w_fraggren01", "throwgren", 1.5),
+    ] {
+        for who in ["player", "soldier"] {
+            let Some(mut g) = game() else { return };
+            let pc = g.world.pc;
+            let user = if who == "player" {
+                pc
+            } else {
+                g.world
+                    .objects
+                    .values()
+                    .find(|o| o.template == "n_sithsoldier003")
+                    .map(|o| o.id)
+                    .unwrap()
+            };
+            let foe = if who == "player" { user } else { pc };
+            let it = g.world.spawn_item(item);
+            g.world.carry(user, it);
+            // Nobody else comes to swing at them while the clip is looked at.
+            let others: Vec<_> = g
+                .world
+                .objects
+                .values()
+                .filter(|o| o.kind == kotor_game::Kind::Creature && o.id != pc && o.id != user)
+                .map(|o| o.id)
+                .collect();
+            for o in others {
+                g.world.teleport(o, [0.0, 0.0, -100.0]);
+            }
+            g.world.use_item_on(user, it, foe).unwrap();
+            let mut seen: Vec<(&'static str, f32)> = Vec::new();
+            for _ in 0..(2.5 / g.dt) as usize {
+                g.step_once();
+                let name = g.clip(user).map_or("-", |c| c.name);
+                match seen.last_mut() {
+                    Some((n, t)) if *n == name => *t += g.dt,
+                    _ => seen.push((name, g.dt)),
+                }
+            }
+            assert_eq!(seen[0].0, clip, "{who} using {item}: {seen:?}");
+            assert!((seen[0].1 - seconds).abs() < 0.1, "{who} {item}: {seen:?}");
+            assert!(
+                seen.iter().all(|c| !c.0.starts_with("castout")),
+                "{who} using {item} played a power's cast: {seen:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_item_without_a_clip_of_its_own_never_gets_a_powers() {
+    use kotor_game::item_use_clip_for_test as clip;
+    assert_eq!(
+        clip("item_ability_energy_shield").map(|c| c.0),
+        Some("activate")
+    );
+    assert_eq!(
+        clip("plot_tar_sith_disguise").map(|c| c.0),
+        Some("activate")
+    );
+    assert_eq!(
+        clip("item_ability_recovery_stim").map(|c| c.0),
+        Some("inject")
+    );
+    assert_eq!(clip("force_push"), None, "a power's label is not an item's");
+}

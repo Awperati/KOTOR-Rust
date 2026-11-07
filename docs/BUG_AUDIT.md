@@ -89,6 +89,30 @@ creatures had heartbeats. Placeables have them now, and one opened before its fi
 opened, 439 with items, none with an unnamed item. The 47 left have no items and no script in their files, `footlker001` for one.
 They are empty in the game's data. I have not seen one in the original.
 
+**Combat stutter (bug 22), after the HUD fix.** Measured at 2160p with `--frame-log` at the player's pace (`--autopilot --speed 1`, 333 s,
+24,480 frames): all frames median 11.5 ms, p99 49.0, p99.9 88.4; frames outside fights p99 45.8; in fights (3,714 frames) median
+16.4, p99 58.6, worst 113. A fight frame's mean is 1.6 ms update, 1.4 HUD, 0.7 upload, 6.1 scene, 7.4 draw: the earlier 9.3 and
+5.3 ms for update and upload were the pilot batching steps, not the game. Frames over 33 ms in fights spend 14.6 ms in the scene and
+15.6 in the draw. Built (`crates/kotor-game/tests/heartbeats.rs`): heartbeats no longer run all in one frame (the opening module's
+two dozen scripts took 11 ms together, now at most 4 in any frame, each at its own moment in the six seconds). Tried and left out:
+not skinning bodies outside the picture (the scene took 3.7 ms with and without it in a test fight). The after-run at the same pace
+was taken while other builds ran on the machine (no fights in it, p95 56 ms) and does not compare. `gpu/examples/fight_profile.rs`
+splits a fight frame and `World::step_profile` says where the game's part goes.
+
+**Animation sets (owner, 7 Nov).** `weaponwield` of `baseitems.2da` picks the set: 1 `g1`, 2 one-handed `g2`/`c2`, 3 two-handed
+`g3`/`c3`, pistol `g5`/`b5`, rifle `g7`/`b7`, heavy `g9`/`b9`, and now a weapon in each hand `g4`/`c4` (two blades) and `g6`/`b6`
+(two pistols), which had played the one-handed clips. Where the chain of supermodels lacks a set, `clip_name` falls to the first digit
+that has the clip, `g1`: all bodies of `appearance.2da` but 13 have `g3` and `g4` (`gpu/examples/anim_chains.rs`). Test
+`each_weapon_class_fights_in_its_own_animation_set` (long sword, double sword, double saber, rifle, heavy repeater), frames
+`docs/shots/combat/pose_strip_720p.png`. **Not found:** a case where the two-handed sword itself played `g1`; the dual sets were the
+one-handed ones. If the owner means something else, I need which weapon.
+
+**Using an item (owner, 7 Nov).** `spells.2da` gives medpacs, stimulants and shields `conjanim` `hand`, which played a Force power's
+`castout1`. Items now play their own clips (`animations.2da` lists them): medicine and stimulants `inject` (1.5 s, and the weapon in
+hand is hidden, as the table's `hideequippeditems` says), shields, kits and devices `activate` (1.0 s), grenades keep `throwgren`.
+Which of the two goes with which item is assumed. Test `using_a_medpac_a_stimulant_or_a_grenade_plays_the_clip_of_the_item` (player
+and a soldier), frames `pose_strip_720p.png` (bottom three).
+
 **Grenades flew nowhere (owner, 7 Nov): fixed.** Both throws, the player's `use_item_on` and the opening's `ActionUseTalentOnObject`
 (a Sith soldier at a Republic soldier, `end_m01aa`, game time 171 s), ended in `cast_spell`, which ran the grenade's script on the
 spot: the blast came at the first frame of the throw, before the arm moved. `cast_spell` now starts a flight (`crates/kotor-game/src/flight.rs`)

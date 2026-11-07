@@ -132,6 +132,11 @@ pub struct CombatState {
     pub log: Vec<AttackLog>,
     round_clock: f32,
     heartbeat_clock: f32,
+    /// When each creature and placeable beats next, on `heartbeat_clock`.
+    heartbeat_due: BTreeMap<ObjId, f32>,
+    module_heartbeat_clock: f32,
+    /// How many heartbeat scripts have run, for a test of how they are spread.
+    pub heartbeats_run: u64,
     perception_clock: f32,
     chasers: BTreeMap<ObjId, Mover>,
     replan_in: f32,
@@ -723,31 +728,54 @@ impl World {
         for (_, attacker, target, amount) in due {
             self.hurt(attacker, target, amount);
         }
+        // Each creature and placeable beats every `HEARTBEAT_SECONDS`, each at its own moment within them. All at once, in one
+        // frame, cost 11 ms (the opening module's two dozen scripts) and showed as a stutter.
         self.combat.heartbeat_clock += dt;
-        while self.combat.heartbeat_clock >= HEARTBEAT_SECONDS {
-            self.combat.heartbeat_clock -= HEARTBEAT_SECONDS;
-            let ids: Vec<ObjId> = self
-                .objects
-                .values()
-                .filter(|o| o.kind == Kind::Creature && !o.dead && o.id != self.pc)
-                .map(|o| o.id)
-                .collect();
-            for id in ids {
-                if self.objects.get(&id).is_some_and(|o| !o.dead) {
-                    self.run_event(id, "ScriptHeartbeat");
+        let beating: Vec<(ObjId, bool)> = self
+            .objects
+            .values()
+            .filter(|o| match o.kind {
+                Kind::Creature => !o.dead && o.id != self.pc,
+                Kind::Placeable => o.scripts.contains_key("OnHeartbeat"),
+                _ => false,
+            })
+            .map(|o| (o.id, o.kind == Kind::Creature))
+            .collect();
+        let clock = self.combat.heartbeat_clock;
+        let mut due: Vec<(ObjId, bool)> = Vec::new();
+        for (id, creature) in beating {
+            let next = self
+                .combat
+                .heartbeat_due
+                .entry(id)
+                .or_insert_with(|| clock + heartbeat_phase(id));
+            if clock >= *next {
+                *next += HEARTBEAT_SECONDS;
+                if *next <= clock {
+                    *next = clock + HEARTBEAT_SECONDS;
                 }
+                due.push((id, creature));
             }
-            // Placeables beat too. Most of the game's treasure is made this way: `OnHeartbeat` of a `g_tres*` template is
-            // `k_plc_tres*`, which fills it once (bug 12: their footlockers stayed empty).
-            let beating: Vec<ObjId> = self
-                .objects
-                .values()
-                .filter(|o| o.kind == Kind::Placeable && o.scripts.contains_key("OnHeartbeat"))
-                .map(|o| o.id)
-                .collect();
-            for id in beating {
-                self.run_event(id, "OnHeartbeat");
+        }
+        self.combat.heartbeats_run += due.len() as u64;
+        self.timed("heartbeats", |w| {
+            for (id, creature) in due {
+                if creature && w.objects.get(&id).is_some_and(|o| o.dead) {
+                    continue;
+                }
+                w.run_event(
+                    id,
+                    if creature {
+                        "ScriptHeartbeat"
+                    } else {
+                        "OnHeartbeat"
+                    },
+                );
             }
+        });
+        self.combat.module_heartbeat_clock += dt;
+        while self.combat.module_heartbeat_clock >= HEARTBEAT_SECONDS {
+            self.combat.module_heartbeat_clock -= HEARTBEAT_SECONDS;
             if self.minigame.is_none() {
                 self.run_module_script("Mod_OnHeartbeat");
             }
@@ -755,14 +783,14 @@ impl World {
         self.combat.perception_clock += dt;
         if self.combat.perception_clock >= PERCEPTION_SECONDS {
             self.combat.perception_clock = 0.0;
-            self.update_perception();
+            self.timed("perception", |w| w.update_perception());
         }
-        self.chase(dt);
+        self.timed("chase", |w| w.chase(dt));
         self.combat.round_clock += dt;
         while self.combat.round_clock >= ROUND_SECONDS {
             self.combat.round_clock -= ROUND_SECONDS;
             self.combat.round += 1;
-            self.run_round();
+            self.timed("round", |w| w.run_round());
         }
     }
 
@@ -1025,4 +1053,9 @@ impl World {
     pub(crate) fn perform_attack(&mut self, id: ObjId, target: ObjId) {
         self.attack(id, target);
     }
+}
+
+/// Where in the six seconds a thing's heartbeat falls: spread by its id, so that they do not all run in one frame.
+fn heartbeat_phase(id: ObjId) -> f32 {
+    ((id as f32 * 0.618_034) % 1.0) * HEARTBEAT_SECONDS
 }

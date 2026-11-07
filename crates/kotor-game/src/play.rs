@@ -677,12 +677,29 @@ impl World {
 
     /// Advance the game by `dt` seconds: the clock, delayed commands and action queues, the player's walk, the
     /// interaction waiting at the end of it, trigger enter/exit, and any requested module change.
+    /// Run `f` and, when `step_profile` is on, add its time to `name`'s row: count, total and worst, in milliseconds.
+    pub(crate) fn timed<T>(&mut self, name: &'static str, f: impl FnOnce(&mut World) -> T) -> T {
+        if self.step_profile.is_none() {
+            return f(self);
+        }
+        let start = std::time::Instant::now();
+        let out = f(self);
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        if let Some(p) = self.step_profile.as_mut() {
+            let row = p.entry(name).or_insert((0, 0.0, 0.0));
+            row.0 += 1;
+            row.1 += ms;
+            row.2 = row.2.max(ms);
+        }
+        out
+    }
+
     pub fn step(&mut self, dt: f32) {
         if self.game_over {
             self.step_dead(dt);
             return;
         }
-        self.tick(dt);
+        self.timed("tick", |w| w.tick(dt));
         self.update_flights();
         self.update_minigame(dt);
         self.update_race(dt);
@@ -748,8 +765,8 @@ impl World {
         if let Some(p) = self.objects.get_mut(&pc) {
             p.position = self.pc_mover.pos;
         }
-        self.update_followers(dt);
-        self.update_combat(dt);
+        self.timed("followers", |w| w.update_followers(dt));
+        self.timed("combat", |w| w.update_combat(dt));
         self.update_stealth();
         self.update_shoves();
         self.expire_effects();
@@ -759,9 +776,9 @@ impl World {
                 self.interact(t);
             }
         }
-        self.update_triggers();
+        self.timed("triggers", |w| w.update_triggers());
         self.update_traps();
-        self.update_seamless();
+        self.timed("seamless", |w| w.update_seamless());
         self.update_encounters();
         self.update_early_force(dt);
         for item in std::mem::take(&mut self.items_acquired) {
