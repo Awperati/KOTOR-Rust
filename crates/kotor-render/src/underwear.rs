@@ -2333,7 +2333,8 @@ fn collect_sheets(
 
 /// A pack's sheets, found once per id and kept: the files are on the owner's disk and read at run time.
 fn pack_sheets(id: &str) -> Option<Arc<HashMap<String, PathBuf>>> {
-    static KEPT: OnceLock<Mutex<HashMap<String, Arc<HashMap<String, PathBuf>>>>> = OnceLock::new();
+    type Sheets = Arc<HashMap<String, PathBuf>>;
+    static KEPT: OnceLock<Mutex<HashMap<String, Sheets>>> = OnceLock::new();
     let name = id.strip_prefix(PACK_PREFIX)?;
     if name.is_empty() || name.contains(['/', '\\', ':']) || name.contains("..") {
         return None;
