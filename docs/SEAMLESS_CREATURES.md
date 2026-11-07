@@ -57,3 +57,30 @@ from the one with loading screens.
 
 Do version 1 as one tip when asked. Do not start version 2 unless version 1 shows people want fights and talk seen through a
 door; the same effect for talk is cheaper as a bark line (a speech bubble) than as a second world.
+
+## Crossing while the neighbour's creatures are hostile or talking
+
+What happens now (read from the code, not run against a hostile case): up to the crossing every creature of the neighbour is
+a figure. It has no faction, no perception, no scripts and no fight, so nothing it would do can happen before the crossing.
+At the crossing `World::transition` loads the module for real: each creature appears at its file spot (a V1 walker where the
+picture showed it) and its spawn script and heartbeat run from the first frame. A hostile one within sight of the party
+begins to fight on that frame; a creature whose perception script starts a conversation starts it on that frame. The
+player has just walked through a door and is a few metres from them. With a loading screen the player arrives at an
+arrival waypoint instead; a join is only made when that waypoint lies within `MAX_SIDEWAYS` (3 m) to the side of the
+doorway, so the two arrivals are near each other.
+
+Nobody can shoot or talk to the player through the doorway before the crossing. That is the one visible difference
+from the game: a hostile that stands in view looks idle until the door is crossed.
+
+Options, smallest first:
+
+1. **Leave it.** No change. The surprise at the crossing is the game's own arrival surprise, a few metres nearer.
+2. **Hostiles look at the player** (about 80 lines and a test): a figure keeps its faction; hostile ones within range turn
+   to face the player like V1 walkers do, and play the combat idle clip. Shows alertness only; no attack.
+3. **A grace of one second** (about 20 lines): after a seamless crossing, perception and the fight stay off for 1 s so that
+   the arrival is not a hit on the first frame. Not in the game; chosen only if the first frame proves harsh.
+4. **The neighbour fights before the crossing** is version 2 (a second `World`), thousands of lines, not recommended.
+
+Recommendation: 1 now. If the owner wants to see enemies react through a door, 2 (one tip). 3 only if a real crossing into
+a hostile room shows a first-frame hit. Not tested against a hostile crossing: the 59 links have no hostile within 6 m of
+a door that I checked, so this is read from the code, not seen.
