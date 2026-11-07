@@ -28,9 +28,11 @@ do {
   if ($s.grenades -eq "-") { break }
 } while ((Get-Date) -lt $until)
 Report "It throws one" ($seen -eq 1) "grenades $had -> $($s.grenades) thrower(distance/fights/noticed/hp/template)=$($s.thrower)"
+# The grenade is in the air for about a second and a half after the throw: wait for it to land.
+$until = (Get-Date).AddSeconds(8)
+do { $after = State } while ([int]$after.hp -ge $hp -and (Get-Date) -lt $until)
 # A burst is over in a moment: pictures as fast as they come.
 if ($Shots) { foreach ($n in 1..8) { [Drv]::Save($h, "$Shots\grenades_burst$n.png") } }
-$after = State
 Report "It hurts" ([int]$after.hp -lt $hp) "hp $hp -> $($after.hp) (a frag burst takes about 10 to 30)"
 
 FocusReport
