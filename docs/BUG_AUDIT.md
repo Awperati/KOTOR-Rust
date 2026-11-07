@@ -33,17 +33,17 @@ master `c73d608`. The tests ran on the tip these fixes went in on, over master `
 | 15 | No collision between people | fixed | `the_player_does_not_walk_through_a_teammate_at_once`, `sweep_shots`: closest 0.80 m | |
 | 16 | No Security prompt on a door | fixed | `a_locked_door_is_tried_with_the_skill_and_a_spike_only_by_one_who_has_points`, frame `audit_16_security` | |
 | 17 | Mouse Look flips Y | fixed | Now the Invert Camera box, off by default. `drive_look`, new player's file too: 40 px down goes from lookdown 0.150 to 0.305 | |
-| 18 | Combat animations end early, no stance | fixed, not watched | `a_fighter_keeps_its_stance_between_rounds_and_a_flinch_is_not_cut` | |
+| 18 | Combat animations end early, no stance | fixed, watched | `a_fighter_keeps_its_stance_between_rounds_and_a_flinch_is_not_cut`; `gpu/examples/stance_shots.rs`: soldier with a vibroblade fought 12.0 s and a blaster one 13.9 s, idle 0.00 s, clips `g2r1`/`c2a1` and `g5r1`/`b5a1` alternating; frames `docs/shots/combat/stance_blade_720p.png`, `stance_blaster_720p.png` | |
 | 19 | Trask's "for the Republic" scene | partly | `a_scripts_animation_plays`; commit `c27c045` calls itself part of this item. Not compared with the video | Anim/audio |
 | 20 | Enemy highlight over the head | fixed | Nameplates: `gpu/tests/plates.rs`, `drive_plates` at 720p and 2160p | |
-| 21 | Trask shoots the player | fixed | `teammates_do_not_attack_one_another_or_the_player`, `sweep_shots`: 5 attacks on the foe, 0 on the player | |
+| 21 | Trask shoots the player | fixed, run with the real Trask | `trask_fights_the_foes_and_never_the_player_or_the_party` (the pilot plays the Endar Spire, Trask attacks foes and never the player or the party), `teammates_do_not_attack_one_another_or_the_player`, `sweep_shots` | |
 | 22 | Stutter in combat | partly | `Stage::update` in fights fell from 21.3 to 4.6 ms at 2160p (`docs/STATUS.md` 33). Frame times on the owner's screen never measured | Engine |
 | 23 | Click to walk can be turned off | fixed | `click_to_walk_works_in_both_modes_and_can_be_turned_off` | |
 | 24 | Force Push wrong animation, loops | fixed, not watched | `a_power_plays_its_cast_once_and_a_grenade_its_throw` | |
 | 25 | Enemies cannot see over a table | fixed | `crates/kotor-game/tests/sight.rs`, `sweep_shots`: fired over a short obstacle | |
 | 26 | Can look outside the room | fixed | `tilted_right_up_the_camera_stays_under_the_ceiling`, `walls_hide_enemies_and_stop_the_camera` | |
 | 27 | Hurt animation too short | fixed, not watched | `a_fighter_keeps_its_stance_between_rounds_and_a_flinch_is_not_cut` | |
-| 28 | Grenade throw too short | partly | The player's: `a_power_plays_its_cast_once_and_a_grenade_its_throw`. An enemy's: `drive_grenades` fails, see the end | Combat |
+| 28 | Grenade throw too short | fixed, the clip is 1.5 s | The player's: `a_power_plays_its_cast_once_and_a_grenade_its_throw`. An enemy's: `an_enemys_grenade_throw_plays_its_whole_clip_once_per_throw` (`throwgren` 1.5 s, once per throw), and `drive_grenades` passes 8 runs of 8 | |
 | 29 | No medkit slot in the quick panel | fixed | `a_medpac_is_used_from_the_quick_slot`, frame `audit_29_quick_slots`, `audit_shots`: 1 hit point to 12, medpac used up | |
 | 30 | Trask's icon not beside the player's | fixed | Frame `plates_seen_1280`: side by side; `the_hud_shows_portraits_and_bars_proportionally` | |
 | 31 | Right drag moves the character | fixed | `looking_round_moves_nobody_by_itself`, `a_held_key_follows_the_camera_in_both_modes`, `drive_move` | |

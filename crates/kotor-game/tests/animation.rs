@@ -4,11 +4,15 @@ use kotor_archive::Install;
 use kotor_game::{Game, World};
 
 fn game() -> Option<Game> {
+    game_in("end_m01aa")
+}
+
+fn game_in(module: &str) -> Option<Game> {
     let mut inst = Install::open(kotor_core::install_dir()?).ok()?;
     inst.set_prefer_rim(true);
     let mut w = World::new(inst).ok()?;
     w.interactive_dialogue = true;
-    w.load_module("end_m01aa").ok()?;
+    w.load_module(module).ok()?;
     let spec = w.recommended_character("Player", 0, 1)?;
     w.create_character(&spec).ok()?;
     w.enter_area();
@@ -146,4 +150,61 @@ fn a_scripts_animation_plays() {
     }
     let names: Vec<_> = droids.iter().map(|d| g.clip(*d).map(|c| c.name)).collect();
     assert!(names.contains(&Some("weld")), "{names:?}");
+}
+
+/// Bug 28 for an enemy: a soldier the game's AI makes throw a grenade plays `throwgren` for its whole 1.5 s, once per throw,
+/// and does not stand idle or flinch-cut it.
+#[test]
+fn an_enemys_grenade_throw_plays_its_whole_clip_once_per_throw() {
+    let Some(mut g) = game_in("end_m01ab") else {
+        return;
+    };
+    let pc = g.world.pc;
+    let at = g.world.object(pc).unwrap().position;
+    let soldier = g
+        .world
+        .objects
+        .values()
+        .find(|o| {
+            o.kind == kotor_game::Kind::Creature && !o.dead && g.world.reputation(o.id, pc) <= 10
+        })
+        .map(|o| o.id)
+        .expect("an enemy");
+    let item = g.world.spawn_item("g_w_fraggren01");
+    g.world.carry(soldier, item);
+    g.world.object_mut(item).unwrap().stack = 5;
+    {
+        let s = g.world.object_mut(soldier).unwrap();
+        s.ai_style = 4;
+        s.min_one_hp = true;
+    }
+    let o = g.world.object_mut(pc).unwrap();
+    (o.hp, o.max_hp) = (500, 500);
+    g.world.set_rng_seed(7);
+    g.world.combat.perceived.insert((soldier, pc));
+    g.world.attack(soldier, pc);
+    let mut runs: Vec<f32> = Vec::new();
+    let mut in_throw = false;
+    for _ in 0..(40.0 / g.dt) as usize {
+        let p = g.world.object(pc).unwrap().position;
+        g.world.teleport(soldier, [p[0] + 8.0, p[1], p[2]]);
+        g.step_once();
+        let throwing = g.clip(soldier).is_some_and(|c| c.name == "throwgren");
+        match (throwing, in_throw) {
+            (true, false) => runs.push(g.dt),
+            (true, true) => *runs.last_mut().unwrap() += g.dt,
+            _ => {}
+        }
+        in_throw = throwing;
+    }
+    let thrown = 5 - g.world.object(item).map_or(0, |o| o.stack);
+    let _ = at;
+    assert!(thrown >= 2, "it threw {thrown} {} {:?}", g.world.object(soldier).unwrap().template, g.world.errors);
+    assert!(
+        runs.len() as i32 >= thrown.min(2),
+        "one clip per throw: {runs:?} for {thrown}"
+    );
+    for r in &runs {
+        assert!((r - 1.5).abs() < 0.1, "a throw lasts 1.5 s: {runs:?}");
+    }
 }

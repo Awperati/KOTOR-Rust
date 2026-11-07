@@ -497,3 +497,36 @@ fn the_pilot_shoots_down_a_fighter_from_the_turret() {
     }
     assert!(hit(&g), "none down after {} s", p.time);
 }
+
+/// Bug 21 with the real Trask: he joins in the Endar Spire and fights beside the player through the rest of the module. Over
+/// the whole pilot run he attacks foes, and never the player or another of the party.
+#[test]
+fn trask_fights_the_foes_and_never_the_player_or_the_party() {
+    let Some(w) = world() else {
+        return;
+    };
+    let mut g = Game::new(w);
+    let mut p = Autopilot::new();
+    let (mut seen, mut on_foes, mut on_friends) = (0usize, 0, Vec::new());
+    while p.time < 1500.0 && !p.finished && g.world.module != "tar_m02af" {
+        p.run_steps(&mut g, 60);
+        let w = &g.world;
+        let trask: Vec<u32> = w.by_tag("end_trask");
+        let log = &w.combat.log;
+        for l in log.iter().skip(seen) {
+            if trask.contains(&l.attacker) {
+                let friend = l.target == w.pc
+                    || w.party.contains(&l.target)
+                    || w.object(l.target).is_some_and(|o| o.party_member);
+                if friend {
+                    on_friends.push(format!("{l:?}"));
+                } else {
+                    on_foes += 1;
+                }
+            }
+        }
+        seen = log.len();
+    }
+    assert!(on_friends.is_empty(), "Trask hit his own side: {on_friends:?}");
+    assert!(on_foes >= 1, "Trask never fought a foe");
+}
