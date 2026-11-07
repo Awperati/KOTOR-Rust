@@ -134,7 +134,10 @@ fn a_mode_goes_off_ten_seconds_after_the_fight_and_one_set_by_hand_and_never_fou
     assert!(w.attack_mode(), "the timer began again");
     run(&mut w, 2.0);
     assert!(!w.attack_mode(), "the leader's mode went off");
-    assert!(!w.in_attack_mode(mate), "and the companion's, though it was set by hand");
+    assert!(
+        !w.in_attack_mode(mate),
+        "and the companion's, though it was set by hand"
+    );
     // Set by hand and never fought in: it stays.
     w.set_mode_of(pc, true);
     run(&mut w, 30.0);
