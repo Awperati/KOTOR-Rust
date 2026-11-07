@@ -4334,6 +4334,54 @@ fn the_font_and_box_rows_change_the_picture_and_the_file_keeps_them() {
 }
 
 /// Item 3 of the owner's list of 6 Nov: figures shown on screens with no game running stood in the rest pose.
+/// However the leader was moving when the screen opened, the sheet's figure stands idle with nothing in the hands.
+#[test]
+fn the_sheet_shows_the_leader_idle_with_empty_hands() {
+    let Some((mut s, _)) = in_game("sheet_idle") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    s.open_character();
+    s.update(DT);
+    let idle = s.figure_scene();
+    let idle_reach = {
+        let at = s.game.world.object(pc).unwrap().position;
+        let all = idle.meshes.iter().flat_map(|m| m.positions.iter());
+        all.fold(0.0f32, |most, p| {
+            most.max((p[0] - at[0]).hypot(p[1] - at[1]))
+        })
+    };
+    s.escape();
+    // A pistol in the hand, and running.
+    let pistol = s.game.world.spawn_item("g_w_blstrpstl001");
+    s.game.world.carry(pc, pistol);
+    s.game.world.equip(pc, pistol, None).unwrap();
+    s.steer = (1.0, 0.0, false);
+    for _ in 0..40 {
+        s.update(DT);
+    }
+    let clip = s.game.clip(pc).expect("a clip").name;
+    assert_ne!(clip, "pause1", "running");
+    s.open_character();
+    s.update(DT);
+    let figure = s.figure_scene();
+    assert_eq!(
+        figure.meshes.len(),
+        idle.meshes.len(),
+        "the same body, with nothing more in its hands"
+    );
+    // A stride reaches further from the feet than standing does.
+    let reach = |scene: &kotor_render::Scene, s: &Stage| {
+        let at = s.game.world.object(pc).unwrap().position;
+        let all = scene.meshes.iter().flat_map(|m| m.positions.iter());
+        all.fold(0.0f32, |most, p| {
+            most.max((p[0] - at[0]).hypot(p[1] - at[1]))
+        })
+    };
+    let (now, standing) = (reach(&figure, &s), idle_reach);
+    assert!((now - standing).abs() < 0.05, "{now} against {standing}");
+}
+
 #[test]
 fn figures_on_the_party_screen_breathe() {
     let Some((mut s, _)) = in_game("party_idle") else {

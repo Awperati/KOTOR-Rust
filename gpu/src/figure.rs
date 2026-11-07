@@ -197,7 +197,8 @@ impl Stage {
         scene
     }
 
-    /// The leader alone, or whoever the party screen has chosen.
+    /// The leader alone, or whoever the party screen has chosen. They stand idle with empty hands, as the video has it at
+    /// 1:23:50 with a sword in the slot, whatever they were doing when the screen opened.
     pub fn figure_scene(&mut self) -> Scene {
         if self.top() == Some(Screen::Party) {
             if let Some(slot) = self.party_figure_slot() {
@@ -212,7 +213,7 @@ impl Stage {
         let Some(rig) = self.rig_of(pc) else {
             return scene;
         };
-        let hands = self.hands(pc);
+        let clip = self.idling(0);
         let wear = self
             .game
             .world
@@ -222,8 +223,8 @@ impl Stage {
         self.add_creature(
             &mut scene,
             &rig,
-            &hands,
-            &pose.clip,
+            &[],
+            &clip,
             pose.position,
             pose.heading,
             &wear,
