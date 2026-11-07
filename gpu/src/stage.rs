@@ -537,8 +537,6 @@ pub struct Stage {
     voice_energy: Vec<f32>,
     /// Voice lines whose files the install does not have, said once each.
     voice_missing: std::collections::HashSet<String>,
-    /// Every voice and sound file of the install by lower-case name, read on first use.
-    sound_index: std::cell::OnceCell<HashMap<String, PathBuf>>,
     /// A creature held in one clip for a look at it (`force_clip`), and the clip's name.
     forced_clip: Option<(ObjId, &'static str)>,
     camera_model: String,
@@ -707,7 +705,6 @@ impl Stage {
             beat_time: 0.0,
             voice_energy: Vec::new(),
             voice_missing: Default::default(),
-            sound_index: Default::default(),
             forced_clip: None,
             camera_model: String::new(),
             stunts: Vec::new(),
@@ -870,33 +867,7 @@ impl Stage {
         if resref.is_empty() {
             return None;
         }
-        let key = resref.to_ascii_lowercase();
-        // The install keeps most lines in folders named after them (`streamwaves\m02ab\boun01\...`), so every folder is read once.
-        self.sound_index
-            .get_or_init(|| {
-                let mut found = HashMap::new();
-                for d in ["streamsounds", "streamwaves"] {
-                    let mut todo = vec![self.dir.join(d)];
-                    while let Some(dir) = todo.pop() {
-                        let Ok(entries) = std::fs::read_dir(&dir) else {
-                            continue;
-                        };
-                        for e in entries.flatten() {
-                            let p = e.path();
-                            if p.is_dir() {
-                                todo.push(p);
-                            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("wav")) {
-                                if let Some(n) = p.file_stem().and_then(|s| s.to_str()) {
-                                    found.insert(n.to_ascii_lowercase(), p);
-                                }
-                            }
-                        }
-                    }
-                }
-                found
-            })
-            .get(&key)
-            .cloned()
+        kotor_game::sound_file(&self.dir, resref)
     }
 
     /// Advance the game by `dt` seconds of real time. Returns what to play.

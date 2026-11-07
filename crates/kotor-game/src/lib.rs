@@ -65,7 +65,9 @@ pub use combat::{
     HEARTBEAT_SECONDS, MELEE_REACH, RANGED_REACH, ROUND_SECONDS,
 };
 pub use combat_actions::{CombatAction, CombatChoice};
-pub use cutscene::{Beat, CameraShot, Conversation, LengthFrom, Lookup, Player, Step, Timeline};
+pub use cutscene::{
+    sound_file, Beat, CameraShot, Conversation, LengthFrom, Lookup, Player, Step, Timeline,
+};
 pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use earlyforce::FORCE_PUSH;
 pub use flight::{Flight, InFlight, RELEASE_SECONDS, THROW_SPEED};

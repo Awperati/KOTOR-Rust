@@ -412,15 +412,11 @@ impl Lookup for WorldLookup<'_> {
     }
 
     fn voice_seconds(&mut self, resref: &str) -> Option<f32> {
-        let root = self.world.inst.dir().to_path_buf();
-        ["streamwaves", "streamvoice", "streamsounds"]
-            .iter()
-            .find_map(|sub| {
-                let bytes = std::fs::read(root.join(sub).join(format!("{resref}.wav"))).ok()?;
-                kotor_audio::probe(&bytes)
-                    .ok()
-                    .map(|i| i.duration_secs as f32)
-            })
+        let path = crate::sound_file(self.world.inst.dir(), resref)?;
+        let bytes = std::fs::read(path).ok()?;
+        kotor_audio::probe(&bytes)
+            .ok()
+            .map(|i| i.duration_secs as f32)
     }
 }
 
@@ -446,4 +442,46 @@ impl World {
         };
         Some(Timeline::build(&conv, &mut lookup))
     }
+}
+
+/// The file of a voice or sound by resref, wherever under `streamwaves`, `streamvoice` or `streamsounds` of the install at
+/// `root` it is kept: most lines sit in folders named after their module (`streamwaves\m02ab\boun01\...`). Every folder is read once
+/// per install, and the name is matched without regard to case.
+pub fn sound_file(root: &std::path::Path, resref: &str) -> Option<std::path::PathBuf> {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex, OnceLock};
+    type Index = Arc<HashMap<String, PathBuf>>;
+    static INDEXES: OnceLock<Mutex<HashMap<PathBuf, Index>>> = OnceLock::new();
+    if resref.is_empty() {
+        return None;
+    }
+    let index = {
+        let mut all = INDEXES.get_or_init(Default::default).lock().ok()?;
+        all.entry(root.to_path_buf())
+            .or_insert_with(|| {
+                let mut found = HashMap::new();
+                for d in ["streamsounds", "streamvoice", "streamwaves"] {
+                    let mut todo = vec![root.join(d)];
+                    while let Some(dir) = todo.pop() {
+                        let Ok(entries) = std::fs::read_dir(&dir) else {
+                            continue;
+                        };
+                        for e in entries.flatten() {
+                            let p = e.path();
+                            if p.is_dir() {
+                                todo.push(p);
+                            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("wav")) {
+                                if let Some(n) = p.file_stem().and_then(|s| s.to_str()) {
+                                    found.insert(n.to_ascii_lowercase(), p);
+                                }
+                            }
+                        }
+                    }
+                }
+                Arc::new(found)
+            })
+            .clone()
+    };
+    index.get(&resref.to_ascii_lowercase()).cloned()
 }
