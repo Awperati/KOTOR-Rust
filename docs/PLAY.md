@@ -16,7 +16,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 |---|---|
 | W A S D | run in that direction, relative to the camera; Shift walks. While the look button is held, the keys keep the direction they had |
 | Left Ctrl | roll, in Modern movement (Key Mapping has it, under Roll) |
-| Space | jump, in Modern movement (Key Mapping has it, under Jump); end a line, or close a container |
+| Space | jump, in Modern movement and not at a walk (Key Mapping has it, under Jump); end a line, or close a container |
 | X | pause and go on (Key Mapping has it, under Pause) |
 | F8 | read the roll, landing and jump pose files again: see [MOVEMENT_POSE.md](MOVEMENT_POSE.md) |
 | Right button drag, or the arrow keys | turn the camera round the player |
@@ -95,7 +95,7 @@ The blue button with a gamepad on it, in the top right corner under the menu key
 | Tap | anywhere free | What a click does: walk there, use or talk to what is under it. |
 | Action | round buttons, over the slots | Says what it will do: talk, open, use. |
 | Attack | | Goes for the target if it is an enemy, else the nearest enemy seen. |
-| Jump, Roll | | As their keys. Greyed in Classic movement. |
+| Jump, Roll | | As their keys, so Jump does nothing under a light push of the stick. Greyed in Classic movement. |
 | Pickup, Pause, Attack mode | | As their keys. |
 | Four slots, menu keys | the HUD's own | Bigger while the controls are on. |
 

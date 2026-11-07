@@ -634,3 +634,29 @@ fn the_hud_drawn_in_part_for_a_moved_stick_is_the_hud_drawn_whole() {
         .count();
     assert_eq!(different, 0, "pixels differ");
 }
+
+/// A light push walks, and there is no jump at a walk: the button asks, and the world says no.
+#[test]
+fn the_jump_button_does_nothing_under_a_light_push_of_the_stick() {
+    let Some(mut s) = on_floor("walkjump") else {
+        return;
+    };
+    turn_on(&mut s, SIZE);
+    let thumb = stick(&mut s);
+    s.finger_down(11, thumb, SIZE);
+    s.finger_moved(11, (thumb.0, thumb.1 - 25.0), SIZE);
+    assert!(s.touch_steer().unwrap().2, "a light push walks");
+    run(&mut s, 20);
+    let jump = key(&mut s, TouchKey::Jump);
+    s.finger_down(12, jump, SIZE);
+    run(&mut s, 2);
+    assert!(s.game.world.pc_body.grounded, "no jump at a walk");
+    s.finger_up(12, jump, SIZE);
+    // A full push runs, and the same button jumps.
+    s.finger_moved(11, (thumb.0, thumb.1 - 120.0), SIZE);
+    assert!(!s.touch_steer().unwrap().2);
+    run(&mut s, 20);
+    s.finger_down(12, jump, SIZE);
+    run(&mut s, 2);
+    assert!(!s.game.world.pc_body.grounded, "a jump at a run");
+}

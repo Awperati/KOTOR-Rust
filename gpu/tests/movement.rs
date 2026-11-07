@@ -765,6 +765,40 @@ fn a_doorway_goes_with_the_module_it_was_in() {
 }
 
 /// The owner's words: "Make spacebar perform a jump, not pause the game, make pausing the game the X key."
+/// The owner's words: "Disable the ability to jump while walking and not running".
+#[test]
+fn space_does_not_jump_at_a_walk_and_does_at_a_run_or_from_a_stand() {
+    let Some((mut s, file)) = stage("nowalkjump", "") else {
+        return;
+    };
+    s.yaw = clear_way(&mut s);
+    let leaves_the_floor = |s: &mut Stage| {
+        s.jump_key();
+        s.update(DT);
+        let left = !s.game.world.pc_body.grounded;
+        run(s, 80);
+        left
+    };
+    // Walking: nothing, and the press is not kept for later.
+    s.steer = (1.0, 0.0, true);
+    run(&mut s, 30);
+    assert!(!leaves_the_floor(&mut s), "at a walk");
+    s.steer = (1.0, 0.0, false);
+    s.update(DT);
+    assert!(s.game.world.pc_body.grounded, "not kept for the run");
+    // Running.
+    run(&mut s, 30);
+    assert!(leaves_the_floor(&mut s), "at a run");
+    // Standing still, and with Shift held standing still.
+    s.steer = (0.0, 0.0, false);
+    run(&mut s, 45);
+    assert!(leaves_the_floor(&mut s), "from a stand");
+    s.steer = (0.0, 0.0, true);
+    run(&mut s, 5);
+    assert!(leaves_the_floor(&mut s), "from a stand with the walk held");
+    std::fs::remove_file(&file).ok();
+}
+
 #[test]
 fn space_jumps_and_x_pauses() {
     let Some((mut s, file)) = stage("spacejump", "") else {

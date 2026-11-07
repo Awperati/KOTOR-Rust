@@ -740,7 +740,9 @@ impl World {
         if modern {
             self.sync_body();
         }
-        let jump = std::mem::take(&mut self.jump_request) && modern && self.may_roll();
+        // The owner: "Disable the ability to jump while walking and not running". From a stand it still jumps.
+        let walking = self.steer.is_some_and(|(_, run)| !run);
+        let jump = std::mem::take(&mut self.jump_request) && modern && !walking && self.may_roll();
         if jump && self.pc_body.jump(&self.tuning) {
             self.body_cues.jumped = true;
         }

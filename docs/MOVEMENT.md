@@ -47,6 +47,7 @@ There is no separate run: a held key goes to a sprint. Going diagonally is no fa
 | Paddling | From about 0.35 s in the air: legs and arms change over, and back |
 
 - Only from the floor, on its feet. Not in the air, in a roll, in a conversation, in a minigame or while down.
+- Not at a walk: Space does nothing with Shift held and a direction pressed, or with a light push on the touch stick. A run, a sprint and a stand all jump, a stand even with Shift held.
 - Space does nothing during a pause, and nothing for half a second after a conversation.
 - The legs come out of the run, stride, paddle, and go down into the landing, with no jump between poses.
 - The head stops at a low ceiling, and the jump falls from there. A beam or a branch counts as a ceiling.
