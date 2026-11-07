@@ -876,6 +876,16 @@ impl World {
                 .collect();
             o.actions.clear();
         }
+        // A save can hold an item picked up before these names were put right.
+        let tagged: Vec<ObjId> = self
+            .objects
+            .values()
+            .filter(|o| o.kind == Kind::Item)
+            .map(|o| o.id)
+            .collect();
+        for item in tagged {
+            self.name_item_in_words(item);
+        }
         // A save from before creatures had their portraits read has them blank.
         let blank: Vec<(ObjId, String)> = self
             .objects

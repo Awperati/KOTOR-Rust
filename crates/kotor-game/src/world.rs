@@ -827,6 +827,7 @@ impl World {
         self.fill_from_template(id, template, ty, &Struct::default());
         if kind == Kind::Item {
             self.item_template(template);
+            self.name_item_in_words(id);
         }
         if let Some(o) = self.objects.get_mut(&id) {
             o.position = position;

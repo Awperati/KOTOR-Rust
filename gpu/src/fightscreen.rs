@@ -175,7 +175,7 @@ impl Stage {
         !self.lock_choices().is_empty()
     }
 
-    fn first_picture(&mut self, names: &[String]) -> String {
+    pub(super) fn first_picture(&mut self, names: &[String]) -> String {
         names
             .iter()
             .find(|n| self.ui.texture(n).is_some())

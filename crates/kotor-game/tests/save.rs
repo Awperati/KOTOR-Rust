@@ -20,6 +20,33 @@ fn temp_place(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn an_item_the_talk_table_names_with_a_tag_goes_by_its_kind_through_a_save_too() {
+    let Some(mut w) = world() else { return };
+    w.load_module("end_m01ab").unwrap();
+    let rifle = w.spawn_item("end_onedam");
+    assert_eq!(w.object(rifle).unwrap().name, "Blaster Rifle");
+    // A real name stays.
+    let medpac = w.spawn_item("g_i_medeqpmnt01");
+    assert_eq!(w.object(medpac).unwrap().name, "Medpac");
+    // An older save has the tag in it.
+    let pc = w.pc;
+    w.object_mut(rifle).unwrap().name = "end_onedam".to_string();
+    w.object_mut(pc).unwrap().inventory.push(rifle);
+    let bytes = w.save_bytes("old").unwrap();
+    w.load_save(&bytes).unwrap();
+    let names: Vec<String> = w
+        .objects
+        .values()
+        .filter(|o| o.template == "end_onedam")
+        .map(|o| o.name.clone())
+        .collect();
+    assert!(
+        !names.is_empty() && names.iter().all(|n| n == "Blaster Rifle"),
+        "{names:?}"
+    );
+}
+
+#[test]
 fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
     let Some(mut w) = world() else { return };
     let hero = w.pc;

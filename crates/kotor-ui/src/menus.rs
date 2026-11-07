@@ -610,6 +610,9 @@ impl Ui<'_> {
         } else if !patch.plain {
             self.draw_border(cv, &c.border, r, patch.fill.as_deref());
         }
+        if patch.greyed {
+            cv.fill_rect(r[0], r[1], r[2], r[3], crate::screens::GREYED);
+        }
         if let (true, Some(h), None) = (lit, &c.hilight, patch.line) {
             self.draw_border(cv, h, r, None);
         }

@@ -23,7 +23,7 @@ const NOTO_EM_OF_LINE: f32 = 0.72;
 const SLOT_WORDS: [u32; 3] = [48303, 48307, 48311];
 const SLOT_WORDS_FONT: &str = "dialogfont10x10";
 /// What darkens a picture that cannot be used.
-const GREYED: [u8; 4] = [0, 0, 0, 170];
+pub(crate) const GREYED: [u8; 4] = [0, 0, 0, 170];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
 const HUD_TEXT_BOXES: [&str; 1] = ["LBL_ACTIONDESCBG"];
 /// The Pickup button's picture: see [`pickup_picture`].

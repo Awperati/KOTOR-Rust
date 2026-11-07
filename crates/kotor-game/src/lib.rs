@@ -24,6 +24,7 @@ mod k2feats;
 mod labels;
 mod soundset;
 mod volley;
+pub use items::name_is_a_tag;
 pub use labels::ObjectLabel;
 mod keymap;
 mod levelup;

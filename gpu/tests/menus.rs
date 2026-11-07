@@ -637,6 +637,51 @@ fn a_container_opens_its_own_window_over_the_scene() {
     assert_eq!(s.menu_name(), "pause");
 }
 
+#[test]
+fn every_kind_on_the_bench_has_its_picture_and_what_cannot_be_chosen_is_greyed() {
+    let Some((mut s, _)) = in_game("bench_pictures") else {
+        return;
+    };
+    // How many pixels in a kind's box are at least this bright.
+    let bright = |s: &mut Stage, tag: &str, least: u8| -> usize {
+        s.update(DT);
+        let (x, y) = s.menu_pixel(tag, None, SIZE).unwrap();
+        let o = s.overlay().unwrap();
+        let (half_w, half_h) = (70 * 3 / 2, 64 * 3 / 2);
+        let mut count = 0;
+        for py in (y as u32 - half_h)..(y as u32 + half_h) {
+            for px in (x as u32 - half_w)..(x as u32 + half_w) {
+                let p = &o.rgba[((py * o.width + px) * 4) as usize..][..3];
+                count += p.iter().all(|c| *c >= least) as usize;
+            }
+        }
+        count
+    };
+    const KINDS: [&str; 4] = ["BTN_LIGHTSABER", "BTN_RANGED", "BTN_MELEE", "BTN_ARMOR"];
+    s.open_bench();
+    for tag in KINDS {
+        assert!(bright(&mut s, tag, 60) > 300, "{tag} has its picture");
+        assert!(
+            bright(&mut s, tag, 200) < 300,
+            "{tag} has nothing to upgrade"
+        );
+    }
+    s.escape();
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let saber = w.spawn_item("g_w_lghtsbr01");
+    w.carry(pc, saber);
+    s.open_bench();
+    assert!(
+        bright(&mut s, "BTN_LIGHTSABER", 200) > 300,
+        "it can be chosen"
+    );
+    assert!(
+        bright(&mut s, "BTN_RANGED", 200) < 300,
+        "this still has nothing"
+    );
+}
+
 /// A creature's remains here, holding this template.
 fn remains_at(s: &mut Stage, at: [f32; 3], template: &str, count: i32) -> (u32, u32) {
     let w = &mut s.game.world;

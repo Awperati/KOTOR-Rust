@@ -12,9 +12,6 @@ use std::collections::BTreeMap;
 
 /// The file's words start on their box's edge. **Assumed:** this far in, by eye.
 const WORDS_IN: i32 = 4;
-/// The screen's picture has dark shapes in the panels, which the video at 20:00 does not show on a kind not chosen. The same
-/// colour as the panel covers them, and the panel's round corners stay. It is the video's 15, 18, 44, to one level.
-const KIND_PANEL: [u8; 3] = [15, 18, 45];
 /// The line round a kind, from the video at 20:00: 51, 59, 81 on the left of one and 48, 67, 95 on its top.
 const KIND_LINE: [u8; 3] = [50, 63, 88];
 const KINDS: [(&str, &str, BenchKind); 4] = [
@@ -68,18 +65,6 @@ pub(super) struct Draft {
     changes: BTreeMap<usize, Option<ObjId>>,
 }
 
-/// Where a kind's dark shape is in its panel, in layout units.
-fn kind_blank(label: &str) -> [i32; 4] {
-    const SIZE: (i32, i32) = (116, 84);
-    let (left, top) = match label {
-        "LBL_LSABER" => (190, 116),
-        "LBL_RANGED" => (334, 116),
-        "LBL_MELEE" => (190, 268),
-        _ => (334, 268),
-    };
-    [left, top, SIZE.0, SIZE.1]
-}
-
 impl Stage {
     /// A script has asked for the bench.
     pub(in crate::stage) fn take_bench_request(&mut self) {
@@ -103,9 +88,8 @@ impl Stage {
         self.game.world.bench_items(pc, kind)
     }
 
-    /// `upgradesel.gui`, as the video has it at 20:00: thin lines round every kind, and a picture only on the chosen one. A
-    /// kind with nothing to upgrade cannot be chosen. **Assumed:** a kind with something to upgrade looks the same until it
-    /// is chosen: the video's three blank ones may all have had nothing.
+    /// `upgradesel.gui`: thin lines round every kind, and each with its picture, as the owner asked. The video at 20:00 has a
+    /// picture only on the chosen one. A kind with nothing to upgrade cannot be chosen, and its picture is greyed.
     pub(super) fn bench_kinds_view(&mut self) -> MenuView {
         let mut v = MenuView::new("upgradesel");
         let pc = self.game.world.pc;
@@ -113,12 +97,12 @@ impl Stage {
         let mut can_go = false;
         for (button, label, kind) in KINDS {
             v.patches.entry(button.to_string()).or_default().line = Some(KIND_LINE);
-            if chosen == Some(kind) && !self.game.world.bench_items(pc, kind).is_empty() {
+            let has_some = !self.game.world.bench_items(pc, kind).is_empty();
+            if !has_some {
+                v.patches.entry(label.to_string()).or_default().greyed = true;
+            } else if chosen == Some(kind) {
                 v.lit(button);
                 can_go = true;
-            } else {
-                let at = kind_blank(label);
-                v.patches.entry(label.to_string()).or_default().cover = Some((at, KIND_PANEL));
             }
         }
         if !can_go {
@@ -191,7 +175,8 @@ impl Stage {
                 Some(Some(upgrade)) => {
                     let view = self.game.world.item_view(*upgrade);
                     names.extend(view.as_ref().map(|i| i.name.clone()));
-                    view.and_then(|i| i.icons.first().cloned())
+                    view.map(|i| self.first_picture(&i.icons))
+                        .filter(|p| !p.is_empty())
                 }
                 Some(None) => None,
                 None => installed.get(&(slot as i32)).and_then(|row| {

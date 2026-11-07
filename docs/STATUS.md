@@ -211,5 +211,9 @@ A change of what is under the cursor drew the whole picture again, 20 ms at 2160
 
 All the credits in a container are one row with their sum. The capsule in the first action slot is now a Pickup button, with F and a radius in the Options (3 m): everything open in reach is one panel, and what is taken leaves its own container. Tests: `every_pile_of_credits_in_a_container_is_one_row_with_their_sum`, `pickup_opens_what_is_near_as_one_container_and_what_is_taken_leaves_its_own`. Frames from `pickup_shots`.
 
+## Item names and the bench's pictures (B2, B5)
+
+Sixteen item templates have a designer's tag for a name in the talk table, such as `end_onedam`, a Blaster Rifle. They now go by the name of their kind, in old saves too. `examples/raw_names.rs` lists them over all 5,334 templates. The rest of its list stays: names shown only to tests or cutscenes (`Run_soldier`, `Extra01`, `zonecontroller`), or real ones with a digit (`T3-M4`, `HK-47`). Every kind on the bench has its picture, greyed where there is nothing to upgrade. Tests: `an_item_the_talk_table_names_with_a_tag_goes_by_its_kind_through_a_save_too`, `every_kind_on_the_bench_has_its_picture_and_what_cannot_be_chosen_is_greyed`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

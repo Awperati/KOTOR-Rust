@@ -75,6 +75,13 @@ pub enum CannotEquip {
     BothHandsFull,
 }
 
+/// One word with an underscore or a digit, such as `end_onedam` or `Item001`: what a designer called it, and not a name.
+pub fn name_is_a_tag(name: &str) -> bool {
+    !name.is_empty()
+        && !name.contains(' ')
+        && name.contains(|c: char| c == '_' || c.is_ascii_digit())
+}
+
 impl World {
     pub(crate) fn item_template(&mut self, template: &str) -> Rc<ItemTemplate> {
         let key = template.to_ascii_lowercase();
@@ -330,6 +337,26 @@ impl World {
         };
         self.carry(who, item);
         true
+    }
+
+    /// An item the talk table names with a designer's tag goes by the name of its kind: `end_onedam` is a Blaster Rifle. The
+    /// game never shows them, as no one could take them from a body. Here remains hold everything. See `examples/raw_names.rs`.
+    pub(crate) fn name_item_in_words(&mut self, id: ObjId) {
+        let Some((row, true)) = self
+            .objects
+            .get(&id)
+            .map(|o| (o.base_item.max(0) as usize, name_is_a_tag(&o.name)))
+        else {
+            return;
+        };
+        let words = self
+            .table("baseitems")
+            .and_then(|t| t.int(row, "name"))
+            .map(|s| self.strref_text(s as i32))
+            .filter(|w| !w.is_empty());
+        if let (Some(words), Some(o)) = (words, self.objects.get_mut(&id)) {
+            o.name = words;
+        }
     }
 
     /// [`World::carry`], for an item new to whoever gets it: the module hears of it. An item that joins a stack goes, and
