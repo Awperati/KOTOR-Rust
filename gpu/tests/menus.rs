@@ -5003,6 +5003,53 @@ fn figures_on_the_party_screen_breathe() {
     );
 }
 
+/// A test driver's viewer may not overwrite or delete a save it did not make. One it made, it may.
+#[test]
+fn a_guarded_stage_keeps_its_hands_off_a_save_it_did_not_make() {
+    let Some((mut s, dir)) = in_game("guard") else {
+        return;
+    };
+    s.escape();
+    press(&mut s, "BTN_SAVEGAME");
+    press(&mut s, "BTN_SAVELOAD");
+    s.type_text(" theirs");
+    s.continue_line();
+    // A save from before the guard: the player's, as far as this run knows. It is the one chosen.
+    let theirs = dir.join("save_0001.sav");
+    assert!(theirs.is_file(), "{}", s.menu_message());
+    let bytes = std::fs::read(&theirs).unwrap();
+    s.guard_saves();
+
+    press(&mut s, "BTN_DELETE");
+    press(&mut s, "BTN_DELETE");
+    assert!(theirs.is_file(), "not deleted");
+    assert!(
+        s.menu_message().contains("did not make"),
+        "{}",
+        s.menu_message()
+    );
+    press(&mut s, "BTN_SAVELOAD");
+    s.continue_line();
+    assert_eq!(std::fs::read(&theirs).unwrap(), bytes, "not overwritten");
+    assert!(
+        s.menu_message().contains("did not make"),
+        "{}",
+        s.menu_message()
+    );
+
+    // A new one is its own, and may go.
+    click_row(&mut s, "LB_GAMES", 0);
+    press(&mut s, "BTN_SAVELOAD");
+    s.type_text(" mine");
+    s.continue_line();
+    let mine = dir.join("save_0002.sav");
+    assert!(mine.is_file(), "{}", s.menu_message());
+    press(&mut s, "BTN_DELETE");
+    press(&mut s, "BTN_DELETE");
+    assert!(!mine.exists(), "its own can go: {}", s.menu_message());
+    assert!(theirs.is_file());
+}
+
 /// The Override rows flip and the file keeps them. All are off to begin with, as the folder does not pass the gate with them on.
 #[test]
 fn the_override_rows_flip_and_start_off() {

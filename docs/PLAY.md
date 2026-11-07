@@ -31,7 +31,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | M | map |
 | C | character |
 
-Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--near TAG`, `--xp N`, `--pilot-until W`, `--autopilot` (a scripted player takes the controls and prints what stalls), `--speed N` (`docs/FASTTEST.md`) and `--frame-log FILE` (what each frame spent, in milliseconds, as a CSV: game, HUD, upload, scene, draw, new textures, showing it).
+Options: `--skip-menu`, `--module M` (where New Game starts), `--installed-mod`, `--orbit D`, `--volume V`, `--mute`, `--frames N`, `--hidden`, `--monitor NAME`, and for test drivers `--state-log`, `--saves DIR` (keep saves in this folder; a driver's viewer has a temp folder without it, and may not use the player's), `--near TAG`, `--xp N`, `--pilot-until W`, `--autopilot` (a scripted player takes the controls and prints what stalls), `--speed N` (`docs/FASTTEST.md`) and `--frame-log FILE` (what each frame spent, in milliseconds, as a CSV: game, HUD, upload, scene, draw, new textures, showing it).
 
 `scripts/drive_move.ps1 -Shots folder -Log file [-Size 3840x2160]` walks, sprints, rolls and falls off a ledge on Taris in the running window, and prints PASS or FAIL for the speeds and heights it records.
 

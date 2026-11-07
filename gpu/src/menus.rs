@@ -632,6 +632,8 @@ pub(super) struct Menus {
     pub exit: bool,
     /// Where saves live; `None` when the system does not say where local data goes.
     saves_dir: Option<PathBuf>,
+    /// With a test driver, the saves written in this run: no other may be overwritten or deleted. `None` for a player.
+    own_saves: Option<std::collections::HashSet<PathBuf>>,
     /// Saves, newest first.
     saves: Vec<SaveFile>,
     /// The chosen row of the save list, and the first row shown.
@@ -2535,6 +2537,19 @@ impl Stage {
         self.menus.hover = None;
     }
 
+    /// For a test driver: from now on only a save written in this run may be overwritten or deleted.
+    pub fn guard_saves(&mut self) {
+        self.menus.own_saves = Some(Default::default());
+    }
+
+    /// Whether the guard stops this file being overwritten or deleted.
+    fn save_is_guarded(&self, path: &std::path::Path) -> bool {
+        self.menus
+            .own_saves
+            .as_ref()
+            .is_some_and(|own| path.exists() && !own.contains(path))
+    }
+
     /// The name dialog's OK: write the chosen file, or a new one, and go back to the list.
     fn write_save(&mut self) {
         let name = self.menus.name.trim().to_string();
@@ -2553,6 +2568,12 @@ impl Stage {
                 .find(|p| !p.exists())
                 .expect("a free name"),
         };
+        if self.save_is_guarded(&path) {
+            self.menus.message =
+                "A test driver may not overwrite a save it did not make.".to_string();
+            self.menus.stack.pop();
+            return;
+        }
         let written = std::fs::create_dir_all(&dir)
             .map_err(|e| e.to_string())
             .and_then(|()| {
@@ -2564,6 +2585,9 @@ impl Stage {
         self.menus.stack.pop();
         match written {
             Ok(()) => {
+                if let Some(own) = self.menus.own_saves.as_mut() {
+                    own.insert(path.clone());
+                }
                 self.menus.message = format!("Saved {name}.");
                 self.reload_saves();
                 self.menus.first = 0;
@@ -2582,6 +2606,10 @@ impl Stage {
         else {
             return;
         };
+        if self.save_is_guarded(&path) {
+            self.menus.message = "A test driver may not delete a save it did not make.".to_string();
+            return;
+        }
         if self.menus.delete_armed.as_ref() != Some(&path) {
             self.menus.message = format!("Press Delete again to delete {name}.");
             self.menus.delete_armed = Some(path);

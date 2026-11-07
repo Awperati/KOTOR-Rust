@@ -3,12 +3,13 @@
 param([string]$Shots)
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
 # --xp gives the level, since an earned one lies past the first fights. --near puts the player by the footlocker.
-# It writes one save to %LOCALAPPDATA%\kotor-rs\saves, deletes it through the screen, and leaves other saves alone.
+# It writes one save to a folder of its own with --saves, deletes it through the screen, and never touches the player's saves.
 . "$PSScriptRoot\drive_common.ps1"
-$savesDir = Join-Path $env:LOCALAPPDATA "kotor-rs\saves"
+$savesDir = Join-Path $scratch "kotor_play_saves_$PID"
+New-Item -ItemType Directory -Force $savesDir | Out-Null
 $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $script:stateFile = "$scratch\kotor_play.out"
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--no-early-force","--state-log","--near","end_locker01","--xp","1000","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_play.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--mute","--no-tutorials","--no-auto-pause","--no-chargen","--no-early-force","--state-log","--saves",$savesDir,"--near","end_locker01","--xp","1000","--frames","200000") -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_play.err" -PassThru -NoNewWindow
 for ($i = 0; $i -lt 600 -and $v.MainWindowTitle -notlike "kotor-rs*"; $i++) { Start-Sleep -Milliseconds 50; $v.Refresh() }
 $h = $v.MainWindowHandle; [Drv]::NeverActive($h)
 "window $h"
@@ -194,5 +195,6 @@ Report "Exit closes the window" $gone "exited=$gone"
 if (-not $gone) { Stop-Process -Id $v.Id -Force }
 foreach ($f in $left) { Remove-Item $f.FullName -Force }
 Get-Content "$scratch\kotor_play.err" -Tail 4
+Remove-Item -Recurse -Force $savesDir -ErrorAction SilentlyContinue
 if ($script:failed) { exit 1 }
 exit 0

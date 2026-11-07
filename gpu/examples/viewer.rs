@@ -12,6 +12,9 @@
 //!     --volume V      0 to 1 (default 0.8); --mute opens no sound device
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
+//!     --saves DIR     keep saves in this folder, made if missing. With --state-log or --autopilot the viewer is a test
+//!                     driver's: without this flag it has a temp folder of its own, the player's folder is refused, it
+//!                     works on a temp copy of the settings, and it may not overwrite or delete a save it did not make
 //!     --near TAG      start beside the object with this tag, for a test scene, when a game starts
 //!     --foe M         an enemy stands this many metres ahead of the player, when a game starts, for a test driver
 //!     --loot T*N,...  the object of --near holds these too, this many of each template, for a test driver
@@ -820,8 +823,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .unwrap_or((1280, 720));
     let original = !flag("--installed-mod");
+    // A test driver's viewer leaves the player's folder alone: its saves, settings and poses are in a temp folder of its own.
+    let driver = flag("--state-log") || flag("--autopilot");
+    let scratch =
+        driver.then(|| std::env::temp_dir().join(format!("kotor_driver_{}", std::process::id())));
+    let saves_flag = opt("--saves").map(std::path::PathBuf::from);
+    if driver {
+        if let (Some(asked), Some(players)) = (&saves_flag, kotor_gpu::stage::default_saves_dir()) {
+            let same = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or(p.to_path_buf());
+            if same(asked) == same(&players) {
+                return Err("a test driver may not use the player's saves folder".into());
+            }
+        }
+    }
+    let settings_file = opt("--settings").map(std::path::PathBuf::from).or_else(|| {
+        let copy = scratch.as_ref()?.join("settings.txt");
+        std::fs::create_dir_all(copy.parent()?).ok()?;
+        // No file of the player's yet: it starts from the defaults.
+        let _ = std::fs::copy(kotor_gpu::stage::default_settings_file()?, &copy);
+        Some(copy)
+    });
     // Before anything opens the game's files.
-    kotor_gpu::stage::choose_override_use(opt("--settings").map(Into::into));
+    kotor_gpu::stage::choose_override_use(settings_file.clone());
     let mut stage = if flag("--skip-menu") || flag("--autopilot") {
         Stage::open(&module, original)?
     } else {
@@ -846,16 +869,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.turret_assist = flag("--auto-aim");
     stage.combat_autosave = !flag("--state-log") && !flag("--autopilot");
     stage.pace_loading = true;
+    if let Some(dir) = saves_flag.or_else(|| Some(scratch.as_ref()?.join("saves"))) {
+        let _ = std::fs::create_dir_all(&dir);
+        stage.set_saves_dir(dir);
+    }
+    if driver {
+        stage.guard_saves();
+    }
     if flag("--original-underwear") {
         stage.set_conventional_underwear(false);
     }
     if flag("--early-force") {
         stage.restart_with_early_force()?;
     }
-    if let Some(file) = opt("--settings") {
-        stage.use_settings_file(file.into());
-    } else if !flag("--skip-menu") && !flag("--autopilot") {
-        stage.use_saved_settings();
+    // A driver that names no settings used to run with none when it skipped the menu, and it still does.
+    let plain_driver = opt("--settings").is_none() && (flag("--skip-menu") || flag("--autopilot"));
+    match settings_file {
+        Some(file) if !plain_driver => stage.use_settings_file(file),
+        None if !flag("--skip-menu") && !flag("--autopilot") => stage.use_saved_settings(),
+        _ => {}
     }
     let out = if flag("--mute") {
         None
@@ -948,6 +980,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let el = EventLoop::new()?;
     el.set_control_flow(ControlFlow::Poll);
     el.run_app(&mut app)?;
+    if let Some(dir) = &scratch {
+        let _ = std::fs::remove_dir_all(dir);
+    }
     if let Some(e) = app.failed {
         return Err(e.into());
     }
