@@ -445,6 +445,12 @@ pub struct World {
     pub pc_guard: bool,
     /// Melee blows struck as ground finishers since the window last looked: attacker and victim. For the attacker's clip.
     pub finishers: Vec<(ObjId, ObjId)>,
+    /// Who walks a route by the game's script (`ActionForceMoveToObject` to a waypoint).
+    pub route_walkers: std::collections::BTreeSet<ObjId>,
+    /// What those in a talk or a fight were doing on their route, to go on with afterwards.
+    pub route_held: BTreeMap<ObjId, Vec<Action>>,
+    /// A save or a module return has no queues: the routes have to be started again.
+    pub routes_to_restart: bool,
     pub story: crate::story_branches::StoryState,
     /// The player takes each level on a screen, instead of when the experience comes in.
     pub hold_levels: bool,
@@ -767,6 +773,9 @@ impl World {
             pc_blowing: false,
             pc_guard: false,
             finishers: Vec::new(),
+            route_walkers: Default::default(),
+            route_held: Default::default(),
+            routes_to_restart: false,
             story: Default::default(),
             hold_levels: false,
             party_screen: false,
@@ -1168,6 +1177,9 @@ impl World {
         self.programs.clear();
         self.item_templates.clear();
         self.orientation_locked.clear();
+        self.route_walkers.clear();
+        self.route_held.clear();
+        self.routes_to_restart = false;
         self.remember_items();
         let ifo = Gff::parse(&self.inst.read("module", ResType::IFO)?)?;
         let area_name = ifo

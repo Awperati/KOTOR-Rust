@@ -3,11 +3,22 @@
 
 use crate::follow::{dist2d, slide_around, trim_route};
 use crate::movement::{Body, Ground, Input, MovementMode};
-use crate::world::{DoorState, Kind, ObjId, Object, World};
+use crate::world::{Action, DoorState, Kind, ObjId, Object, World};
 use kotor_core::{Error, ResType, Result};
 use kotor_script::OBJECT_INVALID;
 use kotor_walkmesh::{parse_bwm, parse_lyt, Bwm, MoveParams, MoveStatus, Mover, NavMesh};
 use std::collections::HashSet;
+
+/// How far inside a walk's range it ends, in metres. The game's route script (`ActionForceMoveToObject` with range 2.5, then
+/// asking whether the waypoint is within 2.5) takes the next waypoint only from inside. Exactly on the range, by rounding
+/// 2.5000017 away, the walker stood there asking for good. **Assumed:** the size of this margin.
+const WALK_ENDS_INSIDE: f32 = 0.1;
+/// What `k_ai_master` is run with at the end of a combat round.
+const END_OF_ROUND: i32 = 1003;
+/// The local number of a creature that holds the number of its route.
+const ROUTE_NUMBER: i32 = 2;
+/// How far under the floor a waypoint is still looked for, in metres. The deepest seen is about 8.
+const UNDER_THE_FLOOR: f32 = 12.0;
 
 /// Half the width a closed door blocks when its model gives none (metres).
 pub const DOOR_BLOCK_RADIUS: f32 = 1.1;
@@ -723,6 +734,78 @@ impl World {
         out
     }
 
+    /// People on a route leave it while they talk or fight, and go on with it after. A save or a module return has lost the
+    /// queues, so there the game's own way back to a route is taken: what `k_ai_master` does at the end of a combat round
+    /// with nobody to fight (event 1003), for those its check would pass.
+    fn update_routes(&mut self) {
+        if self.routes_to_restart && self.conv.is_none() {
+            self.routes_to_restart = false;
+            let on_a_route: Vec<ObjId> = self
+                .objects
+                .values()
+                .filter(|o| {
+                    o.kind == Kind::Creature
+                        && o.id != self.pc
+                        && !o.dead
+                        && !self.party.contains(&o.id)
+                        && self.has_a_route(o)
+                })
+                .map(|o| o.id)
+                .collect();
+            for id in on_a_route {
+                self.script_vars.push(END_OF_ROUND);
+                let _ = self.run_script("k_ai_master", id);
+                self.script_vars.pop();
+            }
+        }
+        let owner = self.dialogue_owner();
+        let pair = self.dialogue_pair();
+        let in_the_talk = |w: &World, id: ObjId| {
+            w.conv.is_some()
+                && (owner == Some(id)
+                    || w.route_held.contains_key(&id)
+                    || pair.is_some_and(|(a, b)| a == id || b == id))
+        };
+        for id in self.route_walkers.clone() {
+            let busy = in_the_talk(self, id) || self.combat.in_combat(id);
+            let held = self.route_held.contains_key(&id);
+            if busy && !held {
+                let Some(o) = self.objects.get(&id) else {
+                    continue;
+                };
+                let (route, rest): (Vec<Action>, Vec<Action>) =
+                    o.actions.iter().cloned().partition(|a| match a {
+                        Action::MoveTo {
+                            target: Some(t), ..
+                        } => self
+                            .objects
+                            .get(t)
+                            .is_some_and(|t| t.kind == Kind::Waypoint),
+                        Action::Wait(_) | Action::DoCommand { .. } => true,
+                        _ => false,
+                    });
+                self.route_held.insert(id, route);
+                if let Some(o) = self.objects.get_mut(&id) {
+                    o.actions = rest.into();
+                }
+            } else if !busy && held {
+                let route = self.route_held.remove(&id).unwrap_or_default();
+                if let Some(o) = self.objects.get_mut(&id) {
+                    o.actions.extend(route);
+                }
+            }
+        }
+    }
+
+    /// The check of `k_ai_master` before it walks someone: a waypoint `WP_<tag>_01`, a post `POST_<tag>`, or the numbered route of
+    /// the creature's local number 2, `WP_<nn>_01`.
+    fn has_a_route(&self, o: &crate::world::Object) -> bool {
+        let numbered = o.local_numbers.get(&ROUTE_NUMBER).copied().unwrap_or(0);
+        !self.by_tag(&format!("WP_{}_01", o.tag)).is_empty()
+            || !self.by_tag(&format!("POST_{}", o.tag)).is_empty()
+            || (numbered > 0 && !self.by_tag(&format!("WP_{numbered:02}_01")).is_empty())
+    }
+
     pub fn step(&mut self, dt: f32) {
         if self.game_over {
             self.step_dead(dt);
@@ -734,6 +817,7 @@ impl World {
         self.update_minigame(dt);
         self.update_race(dt);
         self.resume_conversation();
+        self.update_routes();
         self.update_doors(dt);
         let before = self.pc_mover.pos;
         let modern = self.movement == MovementMode::Modern && self.nav.is_some();
@@ -1019,12 +1103,21 @@ impl World {
                 if dist2d(pos, goal) <= range {
                     return true;
                 }
-                let Some(route) = self.route_through_doors(pos, goal) else {
+                let route = self.route_through_doors(pos, goal).or_else(|| {
+                    // Some of the game's waypoints lie metres under the floor they stand on (Dantooine's `WP_dan13_jedif_01`
+                    // is 5 m under its Jedi): they count by where they are on the map.
+                    let nav = self.nav.as_ref()?;
+                    let z = nav
+                        .walkable_at(goal[0], goal[1], pos[2] + 1.0)
+                        .or_else(|| nav.walkable_at(goal[0], goal[1], goal[2] + UNDER_THE_FLOOR))?;
+                    self.route_through_doors(pos, [goal[0], goal[1], z])
+                });
+                let Some(route) = route else {
                     self.events
                         .push(format!("{} has no way there", self.describe(id)));
                     return true;
                 };
-                let route = trim_route(route, range);
+                let route = trim_route(route, (range - WALK_ENDS_INSIDE).max(0.0));
                 if route.len() < 2 {
                     return true;
                 }

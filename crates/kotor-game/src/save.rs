@@ -919,6 +919,7 @@ impl World {
                 .collect();
             o.actions.clear();
         }
+        self.routes_to_restart = true;
         // A save can hold an item picked up before these names were put right.
         let tagged: Vec<ObjId> = self
             .objects

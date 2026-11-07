@@ -2311,6 +2311,12 @@ impl Host for Adapter<'_> {
                     let at = self.location(args.first()).map_or([0.0; 3], |l| l.0);
                     (None, at, 0.2)
                 };
+                let to_waypoint = target
+                    .and_then(|t| self.world.object(t))
+                    .is_some_and(|o| o.kind == Kind::Waypoint);
+                if name == "ActionForceMoveToObject" && to_waypoint && !self.world.in_dialogue() {
+                    self.world.route_walkers.insert(caller);
+                }
                 self.world.queue(
                     caller,
                     Action::MoveTo {
