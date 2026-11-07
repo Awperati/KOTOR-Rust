@@ -605,7 +605,7 @@ impl World {
     pub fn new(mut inst: Install) -> Result<World> {
         let nss = inst.read("nwscript", ResType::NSS)?;
         let routines = Rc::new(Routines::parse(&kotor_core::latin1(&nss))?);
-        let tlk = std::fs::read(inst.dir().join("dialog.tlk"))
+        let tlk = std::fs::read(inst.talk_table_file())
             .ok()
             .and_then(|b| Tlk::parse(&b).ok());
         let mut w = World {

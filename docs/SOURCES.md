@@ -70,3 +70,5 @@ Clippy `-D warnings` and fmt pass on the whole `gpu/` workspace.
 How the nameplates and object labels behave comes from the README and settings file of the K1 Nameplates mod by phalladar
 (MIT, https://github.com/phalladar/k1-nameplates). None of its code or files are used: its DLL patches the original game and
 was never run. See `gpu/src/nameplates.rs` for what was kept and what was assumed.
+
+Override content is the owner's own install, read at run time from its `Override` folder and never copied into the repository, a build or the launcher's folder. Third-party mods there stay read only and are not distributed.

@@ -693,10 +693,10 @@ impl<'a> Ui<'a> {
                 .and_then(|t| t.get(theirs))
                 .unwrap_or_default();
         }
-        let dir = self.inst.dir().to_path_buf();
+        let file = self.inst.talk_table_file();
         self.tlk
             .get_or_insert_with(|| {
-                std::fs::read(dir.join("dialog.tlk"))
+                std::fs::read(file)
                     .ok()
                     .and_then(|b| kotor_tables::Tlk::parse(&b).ok())
             })
@@ -1222,7 +1222,7 @@ impl<'a> Ui<'a> {
         };
         let (left, top) = (low(x), low(y));
         let (right, bottom) = (high(x + w, self.pixels.0), high(y + h, self.pixels.1));
-        (right > left && bottom > top).then_some([left, top, right - left, bottom - top])
+        (right > left && bottom > top).then(|| [left, top, right - left, bottom - top])
     }
 
     fn hud_patches(

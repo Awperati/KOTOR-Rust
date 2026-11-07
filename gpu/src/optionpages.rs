@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 14] = [
+const STYLE_ROWS: [(&str, &str, &str); 19] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -84,6 +84,31 @@ const STYLE_ROWS: [(&str, &str, &str); 14] = [
         "Looted containers: Hidden",
         "Looted containers: Say [empty]",
         "What has nothing left has no label, or says so in grey.",
+    ),
+    (
+        "Override folder: On",
+        "Override folder: Off",
+        "Your install's Override folder comes before the game's own files, as in the original game. Takes hold at the next start. What could not be used is in override_problems.txt beside the settings.",
+    ),
+    (
+        "Override scripts: On",
+        "Override scripts: Off",
+        "Scripts in the Override folder are run too. A mod's script can change rules this game works out for itself, or need a patched game. Takes hold at the next start.",
+    ),
+    (
+        "Override tables: On",
+        "Override tables: Off",
+        "Tables in the Override folder are used too. A mod's rows can change rules this game works out for itself, or need a patched game. Takes hold at the next start.",
+    ),
+    (
+        "Override screens: On",
+        "Override screens: Off",
+        "Menu screens in the Override folder are used too. They are laid out for one window size in a patched game, and buttons can land off the screen here. Takes hold at the next start.",
+    ),
+    (
+        "Override talk table: On",
+        "Override talk table: Off",
+        "A dialog.tlk in the Override folder takes the place of the game's. It changes wording in about 5,200 lines and the sound names of 16,000. Takes hold at the next start.",
     ),
 ];
 /// What the Pickup radius goes round, in metres.
@@ -182,6 +207,11 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         16 => &mut s.object_labels,
         17 => &mut s.door_labels,
         18 => &mut s.hide_empty,
+        19 => &mut s.override_folder,
+        20 => &mut s.override_scripts,
+        21 => &mut s.override_tables,
+        22 => &mut s.override_screens,
+        23 => &mut s.override_talk,
         _ => return None,
     })
 }

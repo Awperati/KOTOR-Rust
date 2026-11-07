@@ -31,7 +31,12 @@ mod racescreen;
 mod roomshell;
 #[path = "seamless_stage.rs"]
 mod seamless_stage;
-pub use menus::{about_words, default_saves_dir, default_settings_file, Settings};
+pub use menus::{
+    about_words, choose_override_use, default_saves_dir, default_settings_file, Settings,
+};
+#[path = "overridescan.rs"]
+mod overridescan;
+pub use overridescan::{scan_override_folder, scan_override_in_background};
 
 type Mat = [[f32; 4]; 4];
 

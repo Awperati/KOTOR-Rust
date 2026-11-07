@@ -5003,6 +5003,43 @@ fn figures_on_the_party_screen_breathe() {
     );
 }
 
+/// The Override rows flip and the file keeps them. All are off to begin with, as the folder does not pass the gate with them on.
+#[test]
+fn the_override_rows_flip_and_start_off() {
+    let Some((mut s, dir)) = in_game("override_rows") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    s.use_settings_file(file.clone());
+    let set = s.settings();
+    assert!(
+        !set.override_folder
+            && !set.override_scripts
+            && !set.override_tables
+            && !set.override_screens
+            && !set.override_talk
+    );
+    s.escape();
+    press(&mut s, "BTN_FEEDBACK");
+    for _ in 0..18 {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_OPTIONS", 19);
+    click_row(&mut s, "LB_OPTIONS", 23);
+    let set = s.settings();
+    let flags = (
+        set.override_folder,
+        set.override_scripts,
+        set.override_tables,
+        set.override_screens,
+        set.override_talk,
+    );
+    assert_eq!(flags, (true, false, false, false, true));
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("override_folder=true") && text.contains("override_talk=true"));
+    assert!(text.contains("override_tables=false"));
+}
+
 /// The last row of Feedback is Seamless areas: it flips, the file keeps it, and with it off no door joins its neighbour.
 #[test]
 fn the_seamless_areas_row_flips_and_turns_the_joining_off() {
@@ -5058,7 +5095,7 @@ fn the_cel_shading_row_goes_round_and_the_key_toggles_it() {
     for _ in 0..30 {
         s.menu_wheel(-1.0);
     }
-    click_row(&mut s, "LB_OPTIONS", 21);
+    click_row(&mut s, "LB_OPTIONS", 26);
     assert_eq!(s.settings().cel_shading, (start + 1) % 3);
     assert!(std::fs::read_to_string(&file)
         .unwrap()

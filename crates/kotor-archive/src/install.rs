@@ -1,7 +1,9 @@
+use crate::overrides::{self, Loose, OverrideUse};
 use crate::{Bif, Erf, Key, Source};
 use kotor_core::{Error, ResRef, ResType, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Identifies a resource in the base game data.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -19,8 +21,9 @@ pub struct Install {
     bifs: Vec<Option<Bif>>,
     /// Archives searched before the BIFs, newest first (modules, patch.erf).
     overlays: Vec<Erf>,
-    /// Read loose files from `<install>/Override` first. Off by default.
-    honour_override: bool,
+    /// What is read from `<install>/Override` first. None, unless the player has chosen it.
+    override_use: OverrideUse,
+    loose: Option<Arc<Loose>>,
     /// Load a module from its original `.rim` pair even when a `.mod` of the same name exists. Off by default.
     prefer_rim: bool,
 }
@@ -38,13 +41,16 @@ impl Install {
             index.insert(id, (e.bif_index, e.res_index));
         }
         let bifs = vec![None; key.bifs.len()];
+        let override_use = overrides::override_use_for(&dir);
+        let loose = override_use.folder.then(|| overrides::loose_files(&dir));
         Ok(Install {
             dir,
             key,
             index,
             bifs,
             overlays: Vec::new(),
-            honour_override: false,
+            override_use,
+            loose,
             prefer_rim: false,
         })
     }
@@ -65,16 +71,41 @@ impl Install {
     /// Whether loose files in the `Override` folder win over everything else.
     /// Off by default so the engine sees the stock game; the folder is only ever read.
     pub fn set_honour_override(&mut self, on: bool) {
-        self.honour_override = on;
+        self.override_use = if on {
+            OverrideUse::ALL
+        } else {
+            OverrideUse::NONE
+        };
+        self.loose = on.then(|| overrides::loose_files(&self.dir));
     }
 
-    fn override_file(&self, resref: &str, restype: ResType) -> Option<PathBuf> {
-        if !self.honour_override {
+    /// The same, by part.
+    pub fn set_override_use(&mut self, chosen: OverrideUse) {
+        self.override_use = chosen;
+        self.loose = chosen.folder.then(|| overrides::loose_files(&self.dir));
+    }
+
+    fn override_file(&self, resref: &str, restype: ResType) -> Option<&PathBuf> {
+        if !self.override_use.would_read(restype) {
             return None;
         }
-        let ext = restype.extension()?;
-        let p = self.dir.join("Override").join(format!("{resref}.{ext}"));
-        p.is_file().then_some(p)
+        let key = (resref.to_ascii_lowercase(), restype);
+        self.loose.as_ref()?.get(&key)
+    }
+
+    /// Is this in the `Override` folder, and used? A picture there wins whatever type the game's own is.
+    pub fn in_override(&self, resref: &str, restype: ResType) -> bool {
+        self.override_file(resref, restype).is_some()
+    }
+
+    /// The talk table in use: the one beside the game, or the folder's if the player has asked for that.
+    pub fn talk_table_file(&self) -> PathBuf {
+        let theirs = self.dir.join("Override").join("dialog.tlk");
+        if self.override_use.folder && self.override_use.talk && theirs.is_file() {
+            overrides::note_used("dialog.tlk".to_string(), true);
+            return theirs;
+        }
+        self.dir.join("dialog.tlk")
     }
 
     /// Add an archive that takes priority over everything added before it.
@@ -150,9 +181,35 @@ impl Install {
 
     /// Read a resource: overlays first, then the BIFs named by the key file.
     pub fn read(&mut self, resref: &str, restype: ResType) -> Result<Vec<u8>> {
-        if let Some(p) = self.override_file(resref, restype) {
-            return Ok(std::fs::read(p)?);
+        if let Some(p) = self.override_file(resref, restype).cloned() {
+            let file = format!("{resref}.{restype}").to_ascii_lowercase();
+            match std::fs::read(&p) {
+                Ok(bytes) if overrides::looks_right(restype, &bytes) => {
+                    overrides::note_used(file, self.stock_has(resref, restype));
+                    return Ok(bytes);
+                }
+                Ok(_) => overrides::note_override_problem(format!(
+                    "{file}: not a {restype} file, so the stock one is used"
+                )),
+                Err(e) => overrides::note_override_problem(format!(
+                    "{file}: cannot be read ({e}), so the stock one is used"
+                )),
+            }
         }
+        self.read_stock(resref, restype)
+    }
+
+    fn stock_has(&self, resref: &str, restype: ResType) -> bool {
+        let rr = ResRef::new(resref);
+        self.overlays.iter().any(|o| o.find(&rr, restype).is_some())
+            || self.index.contains_key(&ResourceId {
+                resref: rr,
+                restype,
+            })
+    }
+
+    /// Read a resource past the `Override` folder: for one there that turned out not to parse.
+    pub fn read_stock(&mut self, resref: &str, restype: ResType) -> Result<Vec<u8>> {
         let rr = ResRef::new(resref);
         for o in &self.overlays {
             if let Some(e) = o.find(&rr, restype) {

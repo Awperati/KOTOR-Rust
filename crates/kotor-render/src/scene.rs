@@ -380,13 +380,48 @@ pub fn load_texture(inst: &mut Install, name: &str) -> Option<Image> {
         .read(name, ResType::TXI)
         .map(|b| String::from_utf8_lossy(&b).to_string())
         .unwrap_or_default();
-    let mut img = if let Ok(d) = inst.read(name, ResType::TPC) {
-        let t = kotor_image::parse_tpc(&d).ok()?;
+    // A TGA in the `Override` folder beats the game's own TPC, and a TPC there beats a TGA there.
+    let loose_tpc = inst.in_override(name, ResType::TPC);
+    let loose_tga = !loose_tpc && inst.in_override(name, ResType::TGA);
+    if loose_tga {
+        let parsed = inst
+            .read(name, ResType::TGA)
+            .map_err(|e| e.to_string())
+            .and_then(|d| kotor_image::parse_tga(&d).map_err(|e| e.to_string()));
+        match parsed {
+            Ok(mut img) => {
+                apply_txi_alpha(&mut img, &txi.to_ascii_lowercase());
+                return Some(img);
+            }
+            Err(e) => kotor_archive::note_override_problem(format!(
+                "{name}.tga: failed to parse ({e}), so the stock one is used"
+            )),
+        }
+    }
+    let tpc = |inst: &mut Install, stock: bool| {
+        let d = if stock {
+            inst.read_stock(name, ResType::TPC)
+        } else {
+            inst.read(name, ResType::TPC)
+        };
+        d.ok().map(|d| kotor_image::parse_tpc(&d))
+    };
+    let parsed = match tpc(inst, loose_tga) {
+        Some(Err(e)) if loose_tpc => {
+            kotor_archive::note_override_problem(format!(
+                "{name}.tpc: failed to parse ({e}), so the stock one is used"
+            ));
+            tpc(inst, true)
+        }
+        p => p,
+    };
+    let mut img = if let Some(t) = parsed {
+        let t = t.ok()?;
         txi.push_str(&t.txi);
         // TPC rows are stored bottom-up; `Image` and the renderers have the first row on top.
         flip_rows(t.image)
     } else {
-        kotor_image::parse_tga(&inst.read(name, ResType::TGA).ok()?).ok()?
+        kotor_image::parse_tga(&inst.read_stock(name, ResType::TGA).ok()?).ok()?
     };
     apply_txi_alpha(&mut img, &txi.to_ascii_lowercase());
     Some(img)

@@ -322,6 +322,13 @@ pub struct Settings {
     pub cel_last: i32,
     /// How far the Pickup button reaches, in metres.
     pub pickup_radius: i32,
+    /// The install's `Override` folder is read first. Takes hold at the next start, as all of these do.
+    pub override_folder: bool,
+    /// And of it: compiled scripts, tables, and a talk table in place of the game's.
+    pub override_scripts: bool,
+    pub override_tables: bool,
+    pub override_screens: bool,
+    pub override_talk: bool,
 }
 
 impl Default for Settings {
@@ -370,6 +377,11 @@ impl Default for Settings {
             cel_shading: 1,
             cel_last: 1,
             pickup_radius: 3,
+            override_folder: false,
+            override_scripts: false,
+            override_tables: false,
+            override_screens: false,
+            override_talk: false,
         }
     }
 }
@@ -380,7 +392,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\ncel_shading={}\npickup_radius={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\ncel_shading={}\npickup_radius={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -421,7 +433,12 @@ impl Settings {
             self.nameplate_range,
             self.nameplate_size,
             self.cel_shading,
-            self.pickup_radius
+            self.pickup_radius,
+            self.override_folder,
+            self.override_scripts,
+            self.override_tables,
+            self.override_screens,
+            self.override_talk
         )
     }
 
@@ -479,6 +496,11 @@ impl Settings {
                     s.cel_last = s.cel_shading.max(1);
                 }
                 "pickup_radius" => s.pickup_radius = v.parse().unwrap_or(s.pickup_radius),
+                "override_folder" => s.override_folder = v == "true",
+                "override_scripts" => s.override_scripts = v == "true",
+                "override_tables" => s.override_tables = v == "true",
+                "override_screens" => s.override_screens = v == "true",
+                "override_talk" => s.override_talk = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -488,6 +510,30 @@ impl Settings {
             }
         }
         s
+    }
+}
+
+/// Before the game's files are first opened: what the settings say of the install's `Override` folder, and where its
+/// problems go, beside the settings. The folder itself is only read.
+pub fn choose_override_use(settings_file: Option<PathBuf>) {
+    let Some(file) = settings_file.or_else(default_settings_file) else {
+        return;
+    };
+    let s = std::fs::read_to_string(&file)
+        .map_or_else(|_| Settings::default(), |t| Settings::from_text(&t));
+    kotor_archive::set_override_use(kotor_archive::OverrideUse {
+        folder: s.override_folder,
+        scripts: s.override_scripts,
+        tables: s.override_tables,
+        screens: s.override_screens,
+        talk: s.override_talk,
+    });
+    if let (true, Some(folder), Some(game)) =
+        (s.override_folder, file.parent(), kotor_core::install_dir())
+    {
+        let problems = folder.join("override_problems.txt");
+        super::overridescan::scan_override_in_background(game.join("Override"), problems.clone());
+        kotor_archive::set_override_problems_file(problems);
     }
 }
 

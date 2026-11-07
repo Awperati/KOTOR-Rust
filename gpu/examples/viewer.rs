@@ -810,6 +810,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .unwrap_or((1280, 720));
     let original = !flag("--installed-mod");
+    // Before anything opens the game's files.
+    kotor_gpu::stage::choose_override_use(opt("--settings").map(Into::into));
     let mut stage = if flag("--skip-menu") || flag("--autopilot") {
         Stage::open(&module, original)?
     } else {
