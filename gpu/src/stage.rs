@@ -272,6 +272,18 @@ fn chest_templates(inst: &mut Install, area: &str) -> Vec<String> {
     out
 }
 
+/// The owner's own pictures, outside the repository and the install: `KOTOR_ASSETS_DIR`, or this folder.
+pub fn default_assets_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("KOTOR_ASSETS_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    Some(
+        PathBuf::from(std::env::var_os("LOCALAPPDATA")?)
+            .join("kotor-rs")
+            .join("assets"),
+    )
+}
+
 /// Where upscaled pictures live: outside the repository and the install, since they are made from game files.
 pub fn default_hd_dir() -> Option<PathBuf> {
     Some(
@@ -667,6 +679,7 @@ impl Stage {
         // Upscaled interface pictures, when `scripts/upscale_ui.ps1` has made them.
         let hd = default_hd_dir().filter(|d| d.is_dir());
         s.ui.set_hd_dir(hd);
+        s.ui.set_assets_dir(default_assets_dir());
         s.set_view((1280, 720));
         Ok(s)
     }

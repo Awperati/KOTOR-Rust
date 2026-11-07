@@ -223,5 +223,9 @@ Sixteen item templates have a designer's tag for a name in the talk table, such 
 
 The fourth slot at the bottom right lists the powers `spells.2da` calls friendly, with its arrows. A click casts one and costs Force; another click while it is on ends it with nothing paid back, and a yellow line marks it on. **Differs from the game, by the owner's choice:** the game has no way to end one sooner. **Assumed:** the cast is at once, in a fight too. Test: `a_power_for_oneself_is_in_the_fourth_slot_and_a_click_turns_it_on_and_off`.
 
+## The title card
+
+The main menu draws the owner's `title-card.png` from the assets folder (see `docs/SOURCES.md`) in place of the logo, above the buttons. It has no alpha, so black is seen through. From 960 pixels high it uses an upscaled copy. With no card the game's own logo stays. Test: `the_title_card_comes_from_the_assets_folder_and_black_is_seen_through`. Frames from `title_shots`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

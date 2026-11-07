@@ -688,6 +688,56 @@ fn a_power_for_oneself_is_in_the_fourth_slot_and_a_click_turns_it_on_and_off() {
 }
 
 #[test]
+fn the_title_card_comes_from_the_assets_folder_and_black_is_seen_through() {
+    let Some(mut s) = at_menu() else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("kotor_rs_title_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // None in the folder: the game's own stays, where the file has it.
+    s.set_assets_dir(Some(dir.clone()));
+    s.update(DT);
+    assert_eq!(s.menu_picture_of("LBL_GAMELOGO"), None);
+
+    // A card: black and gold, twice as wide as high.
+    let mut rgba = Vec::new();
+    for _ in 0..2 {
+        for x in 0..4 {
+            let gold = x >= 2;
+            rgba.extend_from_slice(if gold {
+                &[255, 200, 0, 255]
+            } else {
+                &[0, 0, 0, 255]
+            });
+        }
+    }
+    let card = kotor_image::Image {
+        width: 4,
+        height: 2,
+        rgba,
+    };
+    std::fs::write(dir.join("title-card.png"), kotor_image::to_png(&card)).unwrap();
+    s.set_assets_dir(Some(dir.clone()));
+    s.update(DT);
+    let name = s.menu_picture_of("LBL_GAMELOGO").expect("the card");
+    let shown = s.ui_texture_for_test(&name).expect("its picture");
+    assert_eq!((shown.width, shown.height), (4, 2));
+    assert_eq!(shown.rgba[3], 0, "black is seen through");
+    assert_eq!(shown.rgba[2 * 4 + 3], 255, "gold is not");
+    for tag in ["BTN_NEWGAME", "BTN_LOADGAME", "BTN_OPTIONS", "BTN_EXIT"] {
+        assert!(s.menu_pixel(tag, None, SIZE).is_some(), "{tag}");
+    }
+
+    // Gone again: back to the game's own.
+    std::fs::remove_file(dir.join("title-card.png")).unwrap();
+    s.set_assets_dir(Some(dir.clone()));
+    s.update(DT);
+    assert_eq!(s.menu_picture_of("LBL_GAMELOGO"), None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_rounded_button_has_no_square_plate_behind_it() {
     let Some((mut s, _)) = in_game("rounded") else {
         return;

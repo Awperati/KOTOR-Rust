@@ -27,6 +27,10 @@ installed game at runtime. Nothing from the game folder is copied into the repo.
 Because several of these are GPL, nothing may be pasted from them into this MIT/Apache-licensed repo.
 If a future session reads their source for a hard format, record the file and licence here first.
 
+## The owner's own pictures
+
+`title-card.png`, the main menu's title card: third-party artwork the owner supplied, for local use only. It is not in this repository and no licence is known. The engine reads it at run time from `%LOCALAPPDATA%\kotor-rs\assets`, or from `KOTOR_ASSETS_DIR`, and draws the game's own logo when it is not there. `scripts/upscale_title.ps1` makes the upscaled copy in `%LOCALAPPDATA%\kotor-rs\hd`.
+
 ## Crates
 
 The main workspace uses only `std`.

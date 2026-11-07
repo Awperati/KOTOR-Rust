@@ -32,6 +32,9 @@ const LINE_THICK: i32 = 2;
 pub(crate) const ROUNDED_FILLS: [&str; 2] = ["dialog2", "dialog3"];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
 const HUD_TEXT_BOXES: [&str; 1] = ["LBL_ACTIONDESCBG"];
+/// The main menu's title card by the name the interface draws it under, and its file in the owner's own pictures.
+pub const TITLE_CARD: &str = "kotorrs_title";
+const TITLE_CARD_FILE: &str = "title-card.png";
 /// The Pickup button's picture: see [`pickup_picture`].
 const PICKUP_PICTURE: &str = "kotorrs_pickup";
 /// How many words that do not fit are kept for whoever asks.
@@ -51,6 +54,8 @@ pub struct Ui<'a> {
     pub(crate) pixels: (u32, u32),
     /// A folder of upscaled pictures (see `docs/PLAY.md`), used once the interface is drawn at twice the file's size.
     hd_dir: Option<std::path::PathBuf>,
+    /// The owner's own pictures, outside the repository.
+    assets_dir: Option<std::path::PathBuf>,
     /// What the left mouse button would do to the target, shown under its name.
     action: String,
     /// The icon in the first action slot while there is a target.
@@ -285,6 +290,7 @@ impl<'a> Ui<'a> {
             scale: 1.0,
             pixels: SCREEN,
             hd_dir: None,
+            assets_dir: None,
             action: String::new(),
             action_icon: String::new(),
             textures: HashMap::new(),
@@ -339,6 +345,24 @@ impl<'a> Ui<'a> {
         self.hd_dir = dir;
         self.textures.clear();
         self.fonts.clear();
+    }
+
+    /// Look in this folder for the owner's own pictures.
+    pub fn set_assets_dir(&mut self, dir: Option<std::path::PathBuf>) {
+        self.assets_dir = dir;
+        self.textures.remove(TITLE_CARD);
+    }
+
+    /// The owner's title card, or its upscaled copy when the scale calls for it, on a black ground that is seen through.
+    /// With no card in the folder there is none, whatever copies are left.
+    fn title_card(&self) -> Option<Image> {
+        let file = self.assets_dir.as_ref()?.join(TITLE_CARD_FILE);
+        let card = std::fs::read(file).ok()?;
+        let mut img = self
+            .hd_picture(TITLE_CARD)
+            .or_else(|| kotor_image::parse_png(&card))?;
+        brightness_to_alpha(&mut img);
+        Some(img)
     }
 
     /// An upscaled picture: `<name>.png`, with its alpha from `<name>__a.png` when there is one.
@@ -536,6 +560,10 @@ impl<'a> Ui<'a> {
             return None;
         }
         let key = name.to_ascii_lowercase();
+        if key == TITLE_CARD && !self.textures.contains_key(&key) {
+            let card = self.title_card();
+            self.textures.insert(key.clone(), card.map(Rc::new));
+        }
         if !self.textures.contains_key(&key) {
             let mut img = self
                 .hd_picture(&key)

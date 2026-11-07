@@ -47,6 +47,10 @@ mod workbenchscreen;
 
 /// Longest name a save can be given, and the characters the interface font has.
 const SAVE_NAME_MAX: usize = 32;
+/// The owner's title card on the main menu, in layout units: how wide, over the middle of the buttons, and above their panel.
+const TITLE_WIDE: i32 = 380;
+const TITLE_MIDDLE: i32 = 386;
+const TITLE_BELOW: i32 = 218;
 /// What the first action slot says when it is the Pickup button, and what it says when it finds nothing. Neither is in the
 /// talk table: the button is not in the game.
 const PICKUP_WORDS: &str = "Pickup";
@@ -825,6 +829,20 @@ impl Stage {
             Screen::Tutorial => MenuView::default(),
             Screen::Main => {
                 let mut v = main_menu();
+                let card = self.ui.texture(kotor_ui::TITLE_CARD);
+                if let Some((w, h)) = card.map(|c| (c.width as i32, c.height as i32)) {
+                    v.fill("LBL_GAMELOGO", kotor_ui::TITLE_CARD);
+                    let height = TITLE_WIDE * h / w.max(1);
+                    v.patches
+                        .entry("LBL_GAMELOGO".to_string())
+                        .or_default()
+                        .place = Some([
+                        TITLE_MIDDLE - TITLE_WIDE / 2,
+                        (TITLE_BELOW - height) / 2,
+                        TITLE_WIDE,
+                        height,
+                    ]);
+                }
                 if self.main_scene_ready() {
                     v.holes.push("LBL_3DVIEW".to_string());
                     v.hole_veil = mainscene::VEIL;
@@ -1576,6 +1594,16 @@ impl Stage {
         self.menu_view()
             .and_then(|mut v| v.lists.remove(tag))
             .map_or(Vec::new(), |l| l.0)
+    }
+
+    /// The picture a screen gives a control in place of the file's.
+    pub fn menu_picture_of(&mut self, tag: &str) -> Option<String> {
+        self.menu_view()?.patches.get(tag)?.fill.clone()
+    }
+
+    /// Look in this folder for the owner's own pictures.
+    pub fn set_assets_dir(&mut self, dir: Option<PathBuf>) {
+        self.ui.set_assets_dir(dir);
     }
 
     /// The words a screen gives a control in place of the file's.

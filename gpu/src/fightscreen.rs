@@ -762,6 +762,11 @@ impl Stage {
             .retain(|r| time - r.born < FLOAT_SECONDS);
     }
 
+    /// A picture of the interface by name, for a test.
+    pub fn ui_texture_for_test(&mut self, name: &str) -> Option<kotor_image::Image> {
+        self.ui.texture(name).cloned()
+    }
+
     /// What the name bar says of the slot under the cursor, for a test.
     pub fn combat_words(&mut self) -> Option<String> {
         let action = self.target_view_action();
