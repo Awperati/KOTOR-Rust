@@ -54,6 +54,8 @@ const CAMERA_FOV: f32 = 55.0;
 const CAMERA_OFF_SURFACE: f32 = 0.2;
 /// How high a closed door stops the camera, over the door's foot, in metres. A door's frame and wall go on above it.
 const DOOR_CAMERA_HEIGHT: f32 = 4.0;
+/// How thick a closed door is each side of its line, metres. Measured: the big doors 0.30, an elevator's 0.35, the small 0.11.
+const DOOR_SLAB: f32 = 0.35;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
 /// combat reads.
 const ARMOUR_SLOT: i32 = 1;
@@ -1547,7 +1549,8 @@ impl Stage {
             if towards.abs() < 1e-4 {
                 continue;
             }
-            let t = (ox * nx + oy * ny) / towards;
+            // To the near face of the slab, not its middle.
+            let t = (ox * nx + oy * ny) / towards - DOOR_SLAB / towards.abs();
             let along = (back[0] * t - ox) * ax + (back[1] * t - oy) * ay;
             let high = target[2] + back[2] * t - o.position[2];
             if t > 0.0

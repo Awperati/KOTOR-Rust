@@ -1021,7 +1021,7 @@ fn a_closed_door_stops_the_camera_across_its_whole_width() {
         let eye = s.camera().eye;
         let past = (eye[0] - site.at[0]) * c + (eye[1] - site.at[1]) * n;
         assert!(
-            past < 0.0,
+            past < -0.35,
             "{k} of the way along: the eye is {past} past the door"
         );
     }

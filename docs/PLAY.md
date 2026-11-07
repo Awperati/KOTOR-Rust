@@ -1,5 +1,7 @@
 # Playing in the window
 
+For the keys, jump, roll, sprint and camera in plain numbers, see [MOVEMENT.md](MOVEMENT.md).
+
 `gpu/examples/viewer.rs` runs the game loop in a window. `gpu/src/stage.rs` holds everything but the window (camera, posed bodies, interface, what to play), so `gpu/tests/stage.rs` runs the same loop headless. `scripts/check.ps1` runs that test.
 
 ```
@@ -16,7 +18,7 @@ It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and
 | Left Ctrl | roll, in Modern movement (Key Mapping has it, under Roll) |
 | Space | jump, in Modern movement (Key Mapping has it, under Jump); end a line, or close a container |
 | X | pause and go on (Key Mapping has it, under Pause) |
-| F8 | read the roll and landing pose files again: see [MOVEMENT_POSE.md](MOVEMENT_POSE.md) |
+| F8 | read the roll, landing and jump pose files again: see [MOVEMENT_POSE.md](MOVEMENT_POSE.md) |
 | Right button drag, or the arrow keys | turn the camera round the player |
 | Left click on the floor | run there, unless Click to walk is off in Feedback |
 | Left click on a creature, door or placeable | run up and talk, open or use; an enemy is attacked |

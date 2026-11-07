@@ -11,6 +11,24 @@ fn at_turret() -> Option<Stage> {
     Some(s)
 }
 
+/// Space fires there: the player does not jump out of the seat.
+#[test]
+fn space_on_a_turret_is_no_jump() {
+    let Some(mut s) = at_turret() else { return };
+    assert!(s.turret_on());
+    for _ in 0..30 {
+        s.jump_key();
+        s.update(DT);
+        assert!(!s.game.world.jump_request, "nothing is asked of the body");
+        let t = s.game.world.tuning;
+        assert!(
+            s.game.world.pc_body.jump_progress(&t).is_none(),
+            "in the seat"
+        );
+    }
+    assert!(s.turret_on());
+}
+
 #[test]
 fn the_mouse_and_keys_turn_it_the_button_fires_and_there_is_no_hud() {
     let Some(mut s) = at_turret() else { return };
