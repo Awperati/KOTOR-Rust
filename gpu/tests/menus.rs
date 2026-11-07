@@ -3360,12 +3360,13 @@ fn the_keys_can_be_changed_kept_and_put_back() {
     let movement = frame(&mut s);
     press(&mut s, "BTN_Filter_Game");
     assert!(frame(&mut s) != movement);
-    // Mini Games has nothing, and stays on the page shown.
+    // The Force page is the third, and the Game page comes back.
     let game = frame(&mut s);
     press(&mut s, "BTN_Filter_Mini");
     s.hover((1.0, 1.0), SIZE);
-    assert!(frame(&mut s) != movement);
-    let _ = game;
+    assert!(frame(&mut s) != game);
+    press(&mut s, "BTN_Filter_Game");
+    s.hover((1.0, 1.0), SIZE);
 
     // A click on a row waits for a key. Esc gives up, and the key stays.
     click_row(&mut s, "LST_EventList", 2);
@@ -6038,5 +6039,51 @@ fn combat_is_classic_until_the_box_is_ticked_and_modern_needs_modern_movement() 
     // Default leaves the two modes alone, as it does the movement.
     press(&mut s, "BTN_DEFAULT");
     assert!(s.modern_combat());
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn the_force_page_lists_every_power_with_no_key_and_takes_a_key_with_alt() {
+    let Some((mut s, file)) = in_game("force_page") else {
+        return;
+    };
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "BTN_KEYMAP");
+    press(&mut s, "BTN_Filter_Mini");
+    assert_eq!(
+        s.menu_button_words("BTN_Filter_Mini").as_deref(),
+        Some("Force")
+    );
+    let rows = s.menu_rows("LST_EventList");
+    assert_eq!(rows.len(), 42);
+    assert!(rows.iter().all(|r| r.text.ends_with(": -")), "{rows:?}");
+    assert!(
+        rows.iter().all(|r| !r.text.starts_with(':')),
+        "every row has its name: {rows:?}"
+    );
+    // A letter that is free, then Alt and a letter that is not.
+    click_row(&mut s, "LST_EventList", 0);
+    assert!(s.capture_key("KeyG"));
+    assert_eq!(s.action_for_key("KeyG"), Some("Force4"));
+    click_row(&mut s, "LST_EventList", 1);
+    assert!(s.capture_key("AltLeft"), "Alt alone waits");
+    assert!(s.capture_key("Alt+KeyW"));
+    assert_eq!(s.action_for_key("Alt+KeyW"), Some("Force7"));
+    assert_eq!(s.action_for_key("KeyW"), Some("MoveForward"));
+    // With Alt held, what has no Alt key does what it always does.
+    assert_eq!(s.action_for_key("Alt+KeyA"), Some("MoveLeft"));
+    assert!(s.menu_rows("LST_EventList")[1].text.ends_with(": Alt+W"));
+    // A key another action needs is not taken from it by a row with none to give back, and the row says so.
+    click_row(&mut s, "LST_EventList", 2);
+    assert!(s.capture_key("KeyI"));
+    assert_eq!(s.action_for_key("KeyI"), Some("Inventory"));
+    let row = s.menu_rows("LST_EventList")[2].text.clone();
+    assert!(row.ends_with(": I is taken"), "{row}");
+    // The first keys' button leaves these.
+    press(&mut s, "BTN_Default");
+    assert_eq!(s.action_for_key("KeyG"), Some("Force4"));
+    press(&mut s, "BTN_Cancel");
+    assert_eq!(s.action_for_key("KeyG"), None);
     std::fs::remove_file(&file).ok();
 }

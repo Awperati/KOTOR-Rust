@@ -196,6 +196,7 @@ struct App {
     last: std::time::Instant,
     cursor: (f32, f32),
     turning: f32,
+    alt: bool,
     keys: [bool; 5],
     looking: bool,
     /// Windows can follow a finger with a mouse message of its own: for a moment after one, the mouse is not listened to.
@@ -657,10 +658,13 @@ impl App {
         match code {
             KeyCode::ControlLeft | KeyCode::ControlRight => self.stage.set_ctrl(pressed),
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.stage.set_shift(pressed),
+            KeyCode::AltLeft | KeyCode::AltRight => self.alt = pressed,
             _ => {}
         }
-        // The Key Mapping page takes a key first, then what it says each key does.
-        let name = format!("{code:?}");
+        // The Key Mapping page takes a key first, then what it says each key does. A letting go is the plain key's, whatever was
+        // pressed since, or a key held when Alt came down would stay held.
+        let alt_key = pressed && self.alt && !matches!(code, KeyCode::AltLeft | KeyCode::AltRight);
+        let name = format!("{}{code:?}", if alt_key { "Alt+" } else { "" });
         if pressed && self.stage.capture_key(&name) {
             return;
         }
@@ -704,7 +708,9 @@ impl App {
                         "CustomGarment" => self.stage.cycle_garment(),
                         "SoloMode" => self.stage.solo_key(),
                         "Roll" => self.stage.roll_key(),
-                        _ => {}
+                        power => {
+                            self.stage.power_key(power);
+                        }
                     }
                 }
                 return;
@@ -795,6 +801,7 @@ impl ApplicationHandler for App {
             WindowEvent::Focused(false) => {
                 self.stage.set_ctrl(false);
                 self.stage.set_shift(false);
+                self.alt = false;
                 self.keys = [false; 5];
                 self.looking = false;
                 self.turning = 0.0;
@@ -1070,6 +1077,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last: std::time::Instant::now(),
         cursor: (0.0, 0.0),
         turning: 0.0,
+        alt: false,
         keys: [false; 5],
         looking: false,
         last_finger: None,

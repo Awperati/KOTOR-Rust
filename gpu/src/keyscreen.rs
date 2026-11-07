@@ -4,8 +4,8 @@
 //! **Differences:** the table has more rows, for things not built, and those are left out. Its keys differ from these in
 //! places (P for the character, L for quests, Z and C to strafe). The first keys are the ones `docs/PLAY.md` lists, which
 //! came first here, and the Default button goes between them and the table's, called Original. A key taken from another
-//! action swaps with it. Mini Games is greyed: none are built. **Assumed:** reversed buttons swap everywhere, on the
-//! screens too.
+//! action swaps with it. Mini Games, of which none are built, became the Force page: each power can have a key, Modern combat's
+//! only. **Assumed:** reversed buttons swap everywhere, on the screens too.
 
 use super::{Screen, Stage};
 use kotor_ui::{MenuView, Row};
@@ -66,7 +66,63 @@ const ORIGINAL_NAMES: [(&str, &str); 18] = [
     ("SoloMode", "PartyActive"),
 ];
 const ORIGINAL_LABEL: &str = "Original";
-const MINI_GAMES_PAGE: usize = 2;
+/// The Force page, on what was the Mini Games button.
+const FORCE_PAGE: usize = 2;
+const FORCE_WORDS: &str = "Force";
+/// Each power, by its row of `spells.2da`, which gives its name. Their keys start empty: few letters are free.
+const FORCE_ROWS: [(&str, i32); 42] = [
+    ("Force4", 4),
+    ("Force7", 7),
+    ("Force8", 8),
+    ("Force9", 9),
+    ("Force10", 10),
+    ("Force11", 11),
+    ("Force12", 12),
+    ("Force13", 13),
+    ("Force15", 15),
+    ("Force16", 16),
+    ("Force17", 17),
+    ("Force18", 18),
+    ("Force19", 19),
+    ("Force20", 20),
+    ("Force22", 22),
+    ("Force23", 23),
+    ("Force24", 24),
+    ("Force25", 25),
+    ("Force26", 26),
+    ("Force27", 27),
+    ("Force28", 28),
+    ("Force29", 29),
+    ("Force30", 30),
+    ("Force31", 31),
+    ("Force32", 32),
+    ("Force33", 33),
+    ("Force34", 34),
+    ("Force35", 35),
+    ("Force36", 36),
+    ("Force37", 37),
+    ("Force38", 38),
+    ("Force40", 40),
+    ("Force41", 41),
+    ("Force42", 42),
+    ("Force43", 43),
+    ("Force44", 44),
+    ("Force45", 45),
+    ("Force46", 46),
+    ("Force47", 47),
+    ("Force48", 48),
+    ("Force49", 49),
+    ("Force50", 50),
+];
+/// What a key has in front of its name with Alt held, and what a row with no key shows.
+const ALT: &str = "Alt+";
+const NO_KEY: &str = "-";
+
+/// The power an action on the Force page is.
+pub(in crate::stage) fn force_row(action: &str) -> Option<i32> {
+    FORCE_ROWS.iter().find(|r| r.0 == action).map(|r| r.1)
+}
+
 const FILTERS: [&str; 3] = ["BTN_Filter_Move", "BTN_Filter_Game", "BTN_Filter_Mini"];
 const STR_REVERSE_WORDS: u32 = 48450;
 /// The page is about more than the mouse now, and the box for the on-screen controls goes under the file's.
@@ -166,8 +222,9 @@ impl KeyMap {
             if before_jump && name == "Pause" && key == "Space" {
                 continue;
             }
-            let known = KEY_ACTIONS.iter().find(|a| a.0 == name);
-            if let Some((action, ..)) = known {
+            let actions = KEY_ACTIONS.iter().map(|a| a.0);
+            let known = actions.chain(FORCE_ROWS.iter().map(|r| r.0));
+            if let Some(action) = known.into_iter().find(|a| *a == name) {
                 self.0.insert(action, key.to_string());
             }
         }
@@ -185,6 +242,25 @@ impl KeyMap {
             }
         }
         self.0.insert(action, key.to_string());
+        // A power that gave up its key to one with none has none.
+        self.0
+            .retain(|a, k| !k.is_empty() || force_row(a).is_none());
+    }
+
+    /// These keys without the Force page's.
+    fn without_powers(&self) -> KeyMap {
+        let mut keys = self.clone();
+        keys.0.retain(|a, _| force_row(a).is_none());
+        keys
+    }
+
+    /// The Default button leaves the Force page's keys alone, except any that a first key now needs.
+    fn keep_powers_of(&mut self, other: &KeyMap) {
+        for (action, key) in other.0.iter().filter(|(a, _)| force_row(a).is_some()) {
+            if !self.0.values().any(|k| k == key) {
+                self.0.insert(action, key.clone());
+            }
+        }
     }
 }
 
@@ -211,25 +287,32 @@ fn key_from_table(key: &str) -> String {
     }
 }
 
-/// A key as the page shows it: `KeyW` is W, `Digit1` is 1, and `ArrowUp` is Up.
-fn pretty(key: &str) -> &str {
-    key.strip_prefix("Key")
-        .or(key.strip_prefix("Digit"))
-        .or(key.strip_prefix("Arrow"))
-        .unwrap_or(key)
+/// A key as the page shows it: `KeyW` is W, `Digit1` is 1, `ArrowUp` is Up, and `Alt+KeyG` is Alt+G.
+fn pretty(key: &str) -> String {
+    let (alt, plain) = key.strip_prefix(ALT).map_or(("", key), |k| (ALT, k));
+    let plain = plain
+        .strip_prefix("Key")
+        .or(plain.strip_prefix("Digit"))
+        .or(plain.strip_prefix("Arrow"))
+        .unwrap_or(plain);
+    format!("{alt}{plain}")
 }
 
 impl Stage {
     /// The key of an action, as the page shows it.
     pub(super) fn key_words(&self, action: &str) -> String {
         let key = self.menus.keys.0.get(action).cloned().unwrap_or_default();
-        pretty(&key).to_string()
+        pretty(&key)
     }
 
-    /// What a key does in the game, by `winit`'s name for it.
+    /// What a key does in the game, by `winit`'s name for it. With Alt held, a key with nothing of its own does what it always does.
     pub fn action_for_key(&self, key: &str) -> Option<&'static str> {
         let mut on_key = self.menus.keys.0.iter().filter(|(_, k)| *k == key);
-        let first = on_key.next().map(|(a, _)| *a)?;
+        let Some(first) = on_key.next().map(|(a, _)| *a) else {
+            return key
+                .strip_prefix(ALT)
+                .and_then(|plain| self.action_for_key(plain));
+        };
         // F stops a fight, as it does in the game, and picks up when there is no fight to stop.
         let shared = first == "CancelCombat" && on_key.any(|(a, _)| *a == "Pickup");
         Some(if shared && !self.party_blocked() {
@@ -243,7 +326,7 @@ impl Stage {
     pub(super) fn with_keys(&self, words: &str) -> String {
         let mut out = words.to_string();
         for (action, key) in self.menus.keys.0.iter() {
-            out = out.replace(&format!("{{{action}}}"), pretty(key));
+            out = out.replace(&format!("{{{action}}}"), &pretty(key));
         }
         out
     }
@@ -259,10 +342,26 @@ impl Stage {
         let Some(action) = self.menus.key_capture else {
             return false;
         };
-        self.menus.key_capture = None;
-        if !FIXED_KEYS.contains(&key) {
-            self.menus.keys.bind(action, key);
+        // Alt alone is half of a key: the page waits for the rest.
+        if matches!(key, "AltLeft" | "AltRight") {
+            return true;
         }
+        self.menus.key_capture = None;
+        self.menus.key_refused = None;
+        let plain = key.strip_prefix(ALT).unwrap_or(key);
+        if FIXED_KEYS.contains(&plain) || key == "Alt+F4" {
+            return true;
+        }
+        // A power with no key to give back would leave the other action with none.
+        let keys = &self.menus.keys.0;
+        let taken = keys
+            .iter()
+            .any(|(a, k)| k == key && *a != action && force_row(a).is_none());
+        if force_row(action).is_some() && !keys.contains_key(action) && taken {
+            self.menus.key_refused = Some((action, key.to_string()));
+            return true;
+        }
+        self.menus.keys.bind(action, key);
         true
     }
 
@@ -277,12 +376,23 @@ impl Stage {
         self.menus.keys_before = self.menus.keys.clone();
         self.menus.key_page = 0;
         self.menus.key_capture = None;
+        self.menus.key_refused = None;
         self.menus.first = 0;
         self.menus.stack.push(Screen::KeyMap);
     }
 
-    fn page_actions(&self) -> Vec<(&'static str, u32)> {
+    fn page_actions(&mut self) -> Vec<(&'static str, u32)> {
         let page = self.menus.key_page;
+        if page == FORCE_PAGE {
+            let w = &mut self.game.world;
+            return FORCE_ROWS
+                .iter()
+                .map(|(action, row)| {
+                    let words = w.power_row(*row).map(|r| r.0);
+                    (*action, words.unwrap_or(NOT_IN_TALK_TABLE))
+                })
+                .collect();
+        }
         KEY_ACTIONS
             .iter()
             .filter(|a| a.2 == page)
@@ -292,9 +402,9 @@ impl Stage {
 
     pub(super) fn key_map_view(&mut self) -> MenuView {
         let mut v = MenuView::new("optkeymapping");
-        v.inert(&[FILTERS[MINI_GAMES_PAGE]]);
+        v.text(FILTERS[FORCE_PAGE], FORCE_WORDS);
         // The button says what a click gives.
-        if self.menus.keys == KeyMap::default() {
+        if self.menus.keys.without_powers() == KeyMap::default() {
             v.text("BTN_Default", ORIGINAL_LABEL);
         }
         v.lit(FILTERS[self.menus.key_page]);
@@ -308,7 +418,13 @@ impl Stage {
             };
             let key = self.menus.keys.0.get(action).cloned().unwrap_or_default();
             let waiting = capture == Some(action);
-            let shown = if waiting { "..." } else { pretty(&key) };
+            let refused = self.menus.key_refused.as_ref();
+            let shown = match refused.filter(|(a, _)| *a == action) {
+                _ if waiting => "...".to_string(),
+                Some((_, taken)) => format!("{} is taken", pretty(taken)),
+                None if key.is_empty() => NO_KEY.to_string(),
+                None => pretty(&key),
+            };
             rows.push(Row {
                 text: format!("{name}: {shown}"),
                 selected: waiting,
@@ -321,18 +437,22 @@ impl Stage {
 
     /// A click on a row: the next key pressed is its key.
     pub(super) fn key_row(&mut self, row: usize) {
+        self.menus.key_refused = None;
         self.menus.key_capture = self.page_actions().get(row).map(|a| a.0);
     }
 
     pub(super) fn key_map_press(&mut self, tag: &str) {
         self.menus.key_capture = None;
+        self.menus.key_refused = None;
         match tag {
             "BTN_Default" => {
-                self.menus.keys = if self.menus.keys == KeyMap::default() {
+                let mut keys = if self.menus.keys.without_powers() == KeyMap::default() {
                     self.original_keys()
                 } else {
                     KeyMap::default()
                 };
+                keys.keep_powers_of(&self.menus.keys);
+                self.menus.keys = keys;
             }
             "BTN_Accept" => {
                 self.menus.stack.pop();
@@ -340,8 +460,7 @@ impl Stage {
             }
             "BTN_Cancel" => self.cancel_key_map(),
             _ => {
-                let page = FILTERS.iter().position(|f| *f == tag);
-                if let Some(page) = page.filter(|p| *p != MINI_GAMES_PAGE) {
+                if let Some(page) = FILTERS.iter().position(|f| *f == tag) {
                     self.menus.key_page = page;
                     self.menus.first = 0;
                 }
@@ -419,7 +538,41 @@ impl Stage {
 
 #[cfg(test)]
 mod tests {
-    use super::{KeyMap, KEY_DEFAULTS_LINE};
+    use super::{force_row, pretty, KeyMap, KEY_DEFAULTS_LINE};
+
+    #[test]
+    fn a_power_starts_with_no_key_and_keeps_one_through_the_file() {
+        let mut k = KeyMap::default();
+        assert!(k.0.keys().all(|a| force_row(a).is_none()));
+        k.bind("Force23", "KeyG");
+        k.bind("Force50", "Alt+KeyW");
+        let text = k.to_text();
+        assert!(text.contains("key.Force23=KeyG"));
+        let mut again = KeyMap::default();
+        again.read(&text);
+        assert_eq!(again.0["Force23"], "KeyG");
+        assert_eq!(again.0["Force50"], "Alt+KeyW");
+        assert_eq!(again.0["MoveForward"], "KeyW", "Alt+W is another key");
+        // A file from before the page has none, and one from after is no trouble for what it does not name.
+        let mut old = KeyMap::default();
+        old.read("key.Inventory=KeyY\nkey.Jump=Space\nkey.NoSuchThing=KeyZ\n");
+        assert!(old.0.keys().all(|a| force_row(a).is_none()));
+        assert_eq!(old.0["Inventory"], "KeyY");
+    }
+
+    #[test]
+    fn two_powers_swap_and_one_that_gives_up_its_key_has_none() {
+        let mut k = KeyMap::default();
+        k.bind("Force23", "KeyG");
+        k.bind("Force50", "KeyH");
+        k.bind("Force23", "KeyH");
+        assert_eq!(k.0["Force23"], "KeyH");
+        assert_eq!(k.0["Force50"], "KeyG");
+        k.bind("Force46", "KeyG");
+        assert!(!k.0.contains_key("Force50"));
+        assert_eq!(pretty("Alt+KeyG"), "Alt+G");
+        assert_eq!(pretty("KeyG"), "G");
+    }
 
     #[test]
     fn a_settings_file_from_before_the_jump_gives_up_space() {

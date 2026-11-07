@@ -522,6 +522,103 @@ fn the_shot_follows_the_drift_that_shows() {
     std::fs::remove_file(&file).ok();
 }
 
+/// Every row of the Force page, as the settings file names it.
+const POWERS: [i32; 42] = [
+    4, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+    33, 34, 35, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+];
+
+#[test]
+fn every_power_has_a_row_and_casts_from_its_key_at_what_the_crosshair_is_on() {
+    let Some((mut s, file)) = stage("powers", "") else {
+        return;
+    };
+    assert!(blaster_in_hand(&mut s));
+    aim_at(&mut s);
+    let foe = aim_yaw_onto(&mut s, 2.0);
+    let pc = s.game.world.pc;
+    assert!(s.aim_hot());
+    let stands = s.game.world.object(foe).unwrap().position;
+    for power in POWERS {
+        let action = format!("Force{power}");
+        // The last power may have thrown it across the room, which takes a moment, and it may have hit back.
+        run(&mut s, 90);
+        let me = s.game.world.object_mut(pc).unwrap();
+        (me.hp, me.max_hp, me.dead, me.down) = (5000, 5000, false, false);
+        s.game.world.teleport(foe, stands);
+        run(&mut s, 2);
+        let w = &mut s.game.world;
+        let f = w.object_mut(foe).unwrap();
+        (f.hp, f.max_hp, f.dead, f.down, f.faction) = (5000, 5000, false, false, 1);
+        let o = w.object_mut(pc).unwrap();
+        (o.force, o.max_force, o.dead, o.down) = (1000, 1000, false, false);
+        o.spells.insert(power);
+        w.last_power.remove(&pc);
+        assert_eq!(s.power_key(&action), None, "{action}");
+        let w = &s.game.world;
+        assert_eq!(w.last_power.get(&pc).map(|p| p.0), Some(power), "{action}");
+        assert!(w.object(pc).unwrap().force <= 1000, "{action}");
+        run(&mut s, 1);
+    }
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn a_power_key_says_why_it_does_nothing_and_only_works_in_modern() {
+    let Some((mut s, file)) = stage("nopower", "") else {
+        return;
+    };
+    assert!(blaster_in_hand(&mut s));
+    let pc = s.game.world.pc;
+    // Force Wound, row 50: for an enemy, at reach. Cure, row 10: on the player.
+    let (wound, cure) = ("Force50", "Force10");
+    let o = s.game.world.object_mut(pc).unwrap();
+    (o.force, o.max_force) = (1000, 1000);
+    o.spells.remove(&50);
+    // Classic: nothing, not a word.
+    assert_eq!(s.power_key(wound), None);
+    assert!(!s.game.world.last_power.contains_key(&pc));
+    aim_at(&mut s);
+    // Not known.
+    let said = s.power_key(wound).unwrap();
+    assert!(said.ends_with("not known"), "{said}");
+    // No one on the crosshair.
+    s.game.world.object_mut(pc).unwrap().spells.insert(50);
+    let said = s.power_key(wound).unwrap();
+    assert!(said.ends_with("no target"), "{said}");
+    assert!(!s.game.world.last_power.contains_key(&pc));
+    assert_eq!(s.game.world.object(pc).unwrap().force, 1000);
+    // Not enough Force.
+    let foe = aim_yaw_onto(&mut s, 3.0);
+    s.game.world.object_mut(pc).unwrap().force = 0;
+    let said = s.power_key(wound).unwrap();
+    assert!(said.ends_with("Force points needed"), "{said}");
+    // Out of reach of the power, on the crosshair still.
+    s.game.world.object_mut(pc).unwrap().force = 1000;
+    let foe_far = s.game.world.object(foe).unwrap().position;
+    let (x, y) = (s.yaw.cos(), s.yaw.sin());
+    s.game.world.teleport(
+        foe,
+        [foe_far[0] + x * 20.0, foe_far[1] + y * 20.0, foe_far[2]],
+    );
+    aim_back(&mut s, foe);
+    if s.aim_hot() {
+        let said = s.power_key(wound).unwrap();
+        assert!(said.ends_with("out of reach"), "{said}");
+    }
+    // A power on the player needs no crosshair, and a second press ends one that lasts.
+    s.game.world.object_mut(pc).unwrap().spells.insert(10);
+    s.game.world.object_mut(pc).unwrap().spells.insert(17);
+    assert_eq!(s.power_key(cure), None);
+    assert_eq!(s.game.world.last_power.get(&pc).map(|p| p.0), Some(10));
+    assert_eq!(s.power_key("Force17"), None);
+    run(&mut s, 2);
+    assert!(s.game.world.power_active(pc, 17));
+    assert_eq!(s.power_key("Force17"), None);
+    assert!(!s.game.world.power_active(pc, 17));
+    std::fs::remove_file(&file).ok();
+}
+
 #[test]
 fn a_click_while_aiming_does_not_walk() {
     let Some((mut s, file)) = stage("click", "") else {

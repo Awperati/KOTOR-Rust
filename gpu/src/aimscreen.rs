@@ -33,6 +33,11 @@ const BOLT_SHORT: f32 = 0.05;
 const SWAY_RATE: f32 = 6.0;
 /// How far along the ray the crosshair's point is taken, in metres. The ray's direction is what counts.
 const CROSSHAIR_POINT: f32 = 10.0;
+/// What a power key says when it does nothing, over the player.
+const NOT_KNOWN: &str = "not known";
+const FORCE_NEEDED: &str = "Force points needed";
+const NO_TARGET: &str = "no target";
+const OUT_OF_REACH: &str = "out of reach";
 
 impl Stage {
     /// The aim button, down or up. It is the look button: holding it does nothing new until aiming may begin.
@@ -176,6 +181,58 @@ impl Stage {
                 self.effect_from(&s, gun);
             }
         }
+    }
+
+    /// A key of the Force page: Modern combat's, at once, with no queue. The power goes to what the crosshair lies on, or to the
+    /// player if it can. It gives back what it told the player, if it could not be cast.
+    pub fn power_key(&mut self, action: &str) -> Option<String> {
+        let power = super::menus::force_row(action)?;
+        if !self.modern_combat() || self.menu_open() || self.paused() {
+            return None;
+        }
+        let w = &mut self.game.world;
+        if w.in_dialogue() || w.game_over {
+            return None;
+        }
+        let pc = w.pc;
+        let (_, range) = w.spell_cost_and_range(power)?;
+        let (name, hostile) = w.power_row(power)?;
+        let cost = w.power_cost(pc, power).unwrap_or(0);
+        let o = w.object(pc)?;
+        let (known, force) = (o.spells.contains(&power), o.force);
+        if range == 0.0 && w.power_active(pc, power) {
+            w.end_power(pc, power);
+            return None;
+        }
+        let name = self.ui.strref(name);
+        let on_crosshair = self.aim_on.then(|| {
+            let (eye, dir) = self.aim_ray();
+            let reach = self.aim_reach(eye, dir);
+            self.game.world.aim_hit(eye, dir, reach).who
+        });
+        let target = on_crosshair
+            .flatten()
+            .or((range == 0.0 || !hostile).then_some(pc));
+        let refused = if !known {
+            Some(format!("{name}: {NOT_KNOWN}"))
+        } else if force < cost {
+            Some(format!("{name}: {cost} {FORCE_NEEDED}"))
+        } else if target.is_none() {
+            Some(format!("{name}: {NO_TARGET}"))
+        } else {
+            None
+        };
+        if refused.is_none() {
+            if let Err(_why) = self.game.world.cast_spell(pc, power, target?, false) {
+                let out = format!("{name}: {OUT_OF_REACH}");
+                self.say_over_player(out.clone());
+                return Some(out);
+            }
+        }
+        if let Some(words) = &refused {
+            self.say_over_player(words.clone());
+        }
+        refused
     }
 
     /// How high the camera looks, over the feet.

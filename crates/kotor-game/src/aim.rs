@@ -143,6 +143,16 @@ impl World {
         SWAY_STILL * weapon * feats * moving
     }
 
+    /// A power's name in the talk table, and whether it is for an enemy: `name` and `forcehostile` of `spells.2da`.
+    pub fn power_row(&mut self, power: i32) -> Option<(u32, bool)> {
+        let t = self.table("spells")?;
+        let row = power.max(0) as usize;
+        Some((
+            t.int(row, "name")? as u32,
+            t.int(row, "forcehostile").is_some(),
+        ))
+    }
+
     /// Where a shot leaves the player.
     pub fn pc_gun(&self) -> [f32; 3] {
         let p = self.pc_mover.pos;

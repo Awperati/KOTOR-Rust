@@ -32,6 +32,7 @@ pub(super) use fightscreen::target_slot;
 mod galaxyscreen;
 #[path = "keyscreen.rs"]
 mod keyscreen;
+pub(in crate::stage) use keyscreen::force_row;
 #[path = "notices.rs"]
 mod notices;
 #[path = "optionpages.rs"]
@@ -727,6 +728,8 @@ pub(super) struct Menus {
     keys_before: keyscreen::KeyMap,
     key_page: usize,
     key_capture: Option<&'static str>,
+    /// A power that asked for a key another action needs, and that key.
+    key_refused: Option<(&'static str, String)>,
     /// How many screens were up when last looked at.
     stack_seen: Option<usize>,
     /// The fight's slots and rising words.
