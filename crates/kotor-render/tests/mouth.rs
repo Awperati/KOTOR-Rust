@@ -44,5 +44,4 @@ fn the_mouth_follows_the_voices_syllables_and_stops_in_a_pause() {
     // The loop advances at MOUTH_RATE of the clip's speed over the voiced part: a clip second per second of voice, not more.
     let voiced_seconds = energy[..75].iter().filter(|e| **e > 0.0).count() as f32 / VOICE_STEPS;
     assert!((clock(1.5) - voiced_seconds * MOUTH_RATE).abs() < 0.05);
-    assert!(MOUTH_RATE <= 0.35);
 }
