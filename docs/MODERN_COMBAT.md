@@ -1,6 +1,12 @@
 # Modern combat: design and size
 
-Design only. No code for this exists yet. All sizes and numbers for new work are my guesses, until a stage measures them.
+The owner: "Start Modern". The owner's seven decisions below are the recommendations as written. All sizes and numbers for new work are my guesses, until a stage measures them.
+
+## Built so far
+
+| Stage | State |
+| --- | --- |
+| 0 | Built. The Combat box on the Gameplay page, `combat_modern` in the settings file, off by default. `Stage::modern_combat` is what the rest asks. It does nothing else yet |
 
 The job, as Top Dog relayed the owner's addition to the PRD: two combat modes, Classic and Modern. Modern has a crosshair, right-click over-the-shoulder aim, Force Unleashed-style sabre combat, and every Force power keybindable.
 

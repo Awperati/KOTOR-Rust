@@ -177,6 +177,12 @@ pub(super) const MOVEMENT_BOX: &str = "CB_REVERSE";
 pub(super) const MOVEMENT_MODERN: &str = "Movement: Modern";
 pub(super) const MOVEMENT_CLASSIC: &str = "Movement: Classic";
 const MOVEMENT_WORDS: &str = "Ticked, Modern: the keys go where the camera looks, with momentum, gravity, a sprint a quarter faster and a roll on its key. Not ticked, Classic: the walk as the game has it.";
+/// The box that picks the combat. The file has no such box, nor room in its column: it goes under the words, over Close.
+pub(super) const COMBAT_BOX: &str = "CB_COMBAT_MODERN";
+pub(super) const COMBAT_BOX_AT: [i32; 4] = [330, 368, 240, 40];
+pub(super) const COMBAT_MODERN: &str = "Combat: Modern";
+pub(super) const COMBAT_CLASSIC: &str = "Combat: Classic";
+const COMBAT_WORDS: &str = "Ticked, Modern: a crosshair, aimed shots, sabre chains, and a key for every Force power. It needs Modern movement. Not ticked, Classic: the game's own rounds.";
 /// Words for the boxes on the Gameplay page that do something new.
 const GAMEPLAY_WORDS: [(&str, u32); 2] = [("CB_LEVELUP", 42266), ("CB_DISABLEMOVE", 42484)];
 
@@ -454,6 +460,11 @@ impl Stage {
         {
             self.menus.option_words = None;
             self.menus.option_reason = Some(MOVEMENT_WORDS);
+        }
+        if matches!((screen, &self.menus.hover), (Screen::Gameplay, Some(Hit::Button(tag))) if tag == COMBAT_BOX)
+        {
+            self.menus.option_words = None;
+            self.menus.option_reason = Some(COMBAT_WORDS);
         }
         if let (Screen::Feedback, Some(Hit::Row(_, row))) = (screen, &self.menus.hover) {
             let past = row.checked_sub(FEEDBACK.len());

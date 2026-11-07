@@ -5627,3 +5627,41 @@ fn the_cel_shading_row_goes_round_and_the_key_toggles_it() {
         assert_eq!(s.cel_shading(), 0, "off again");
     }
 }
+
+/// The owner's two modes: Classic stays the default, for a new settings file and an old one.
+#[test]
+fn combat_is_classic_until_the_box_is_ticked_and_modern_needs_modern_movement() {
+    let Some((mut s, dir)) = in_game("combat_mode") else {
+        return;
+    };
+    assert!(!s.settings().combat_modern);
+    assert!(!s.modern_combat());
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("settings.txt");
+    std::fs::write(&file, "movement_modern=true\n").unwrap();
+    s.use_settings_file(file.clone());
+    assert!(!s.modern_combat(), "a file from before the box");
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "CB_COMBAT_MODERN");
+    assert!(s.settings().combat_modern);
+    assert!(s.modern_combat());
+    let saved = std::fs::read_to_string(&file).unwrap();
+    assert!(saved.contains("combat_modern=true"), "{saved}");
+    // Classic movement has no body to fight with: the setting waits, and the box cannot be pressed.
+    press(&mut s, "CB_REVERSE");
+    assert!(!s.settings().movement_modern);
+    assert!(!s.modern_combat());
+    assert!(s.settings().combat_modern, "kept for when it comes back");
+    if let Some(p) = s.menu_pixel("CB_COMBAT_MODERN", None, SIZE) {
+        s.hover(p, SIZE);
+        s.click(p, SIZE);
+    }
+    assert!(s.settings().combat_modern, "greyed");
+    press(&mut s, "CB_REVERSE");
+    assert!(s.modern_combat());
+    // Default leaves the two modes alone, as it does the movement.
+    press(&mut s, "BTN_DEFAULT");
+    assert!(s.modern_combat());
+    std::fs::remove_file(&file).ok();
+}

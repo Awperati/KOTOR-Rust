@@ -302,6 +302,8 @@ pub struct Settings {
     pub glow_boxes: bool,
     /// Modern movement: momentum, gravity, a faster sprint and a roll. Off is the game's own walk.
     pub movement_modern: bool,
+    /// Modern combat: a crosshair, aimed shots and sabre chains. It needs Modern movement. Off is the game's own rounds.
+    pub combat_modern: bool,
     /// A click on the floor walks there.
     pub click_to_walk: bool,
     /// What is shown is spelt as in Australia, and not as the game's files have it.
@@ -375,6 +377,7 @@ impl Default for Settings {
             noto_font: true,
             glow_boxes: true,
             movement_modern: true,
+            combat_modern: false,
             click_to_walk: true,
             australian_english: true,
             seamless_areas: true,
@@ -408,7 +411,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\npickup_radius={}\ntouch_controls={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -437,6 +440,7 @@ impl Settings {
             self.noto_font,
             self.glow_boxes,
             self.movement_modern,
+            self.combat_modern,
             self.click_to_walk,
             self.seamless_areas,
             self.australian_english,
@@ -478,6 +482,7 @@ impl Settings {
                 // Not `invert_camera`: that box was called Mouse Look, and a tick left in an old file would flip the mouse unasked.
                 "invert_y" => s.invert_y = v == "true",
                 "movement_modern" => s.movement_modern = v == "true",
+                "combat_modern" => s.combat_modern = v == "true",
                 "click_to_walk" => s.click_to_walk = v == "true",
                 "autosave" => s.autosave = v == "true",
                 "difficulty" => s.difficulty = v.parse().unwrap_or(1).clamp(0, 2),
@@ -1382,6 +1387,17 @@ impl Stage {
         self.menus.settings.movement_modern = modern;
     }
 
+    /// Modern or Classic combat for this run, without touching the settings file. For a test.
+    pub fn set_combat_modern(&mut self, modern: bool) {
+        self.menus.settings.combat_modern = modern;
+    }
+
+    /// Whether Modern combat is what the player has now: the box is ticked, the movement is Modern and nobody else drives.
+    pub fn modern_combat(&self) -> bool {
+        let s = &self.menus.settings;
+        s.combat_modern && s.movement_modern && self.pilot.is_none()
+    }
+
     /// Read the player's settings from their file, and keep them there from now on.
     pub fn use_saved_settings(&mut self) {
         if let Some(path) = default_settings_file() {
@@ -1511,6 +1527,23 @@ impl Stage {
                 optionpages::MOVEMENT_CLASSIC
             },
         );
+        v.copy_control(
+            optionpages::MOVEMENT_BOX,
+            optionpages::COMBAT_BOX,
+            optionpages::COMBAT_BOX_AT,
+        );
+        v.value(optionpages::COMBAT_BOX, s.combat_modern as i32, 1);
+        v.text(
+            optionpages::COMBAT_BOX,
+            if s.combat_modern {
+                optionpages::COMBAT_MODERN
+            } else {
+                optionpages::COMBAT_CLASSIC
+            },
+        );
+        if !s.movement_modern {
+            v.inert(&[optionpages::COMBAT_BOX]);
+        }
         v.value("CB_LEVELUP", s.auto_level as i32, 1);
         v.value("CB_DISABLEMOVE", s.combat_movement as i32, 1);
         v.value("CB_INVERTCAM", s.invert_y as i32, 1);
@@ -2251,6 +2284,12 @@ impl Stage {
             (Screen::Gameplay, optionpages::MOVEMENT_BOX) => {
                 self.menus.settings.movement_modern = !self.menus.settings.movement_modern;
                 self.settings_changed();
+            }
+            (Screen::Gameplay, optionpages::COMBAT_BOX) => {
+                if self.menus.settings.movement_modern {
+                    self.menus.settings.combat_modern = !self.menus.settings.combat_modern;
+                    self.settings_changed();
+                }
             }
             (Screen::Gameplay, "CB_LEVELUP") => {
                 self.menus.settings.auto_level = !self.menus.settings.auto_level;
