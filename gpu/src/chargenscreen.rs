@@ -146,6 +146,45 @@ impl Draft {
     }
 }
 
+/// The three saves in their box: the file has them 14 apart, too close for the words. Each row's controls, and their places
+/// across and how wide.
+pub(super) fn spread_saves(v: &mut MenuView) {
+    const ROWS: [(i32, &str, &str, &str, &str); 3] = [
+        (
+            357,
+            "LBL_FORTITUDE",
+            "OLD_FORT_LBL",
+            "FORT_ARROW_LBL",
+            "NEW_FORT_LBL",
+        ),
+        (
+            373,
+            "LBL_REFLEX",
+            "OLD_REFL_LBL",
+            "REFL_ARROW_LBL",
+            "NEW_REFL_LBL",
+        ),
+        (
+            389,
+            "LBL_WILL",
+            "OLD_WILL_LBL",
+            "WILL_ARROW_LBL",
+            "NEW_WILL_LBL",
+        ),
+    ];
+    const HIGH: i32 = 21;
+    for (top, name, old, arrow, new) in ROWS {
+        for (tag, left, wide) in [
+            (name, 325, 158),
+            (old, 488, 42),
+            (arrow, 515, 34),
+            (new, 532, 42),
+        ] {
+            v.patches.entry(tag.to_string()).or_default().place = Some([left, top, wide, HIGH]);
+        }
+    }
+}
+
 impl Stage {
     /// New Game goes through these screens. Off unless asked for, as a test wants a game at once.
     /// Whether Settings' early Force choice counts: off for tests and the pilot, which play the game's own rules.
@@ -313,6 +352,7 @@ impl Stage {
     /// `maincg.gui`, as the level-up panel has it, with the panel for where the character has got to.
     pub(super) fn chargen_main_view(&mut self) -> MenuView {
         let mut v = MenuView::new("maincg");
+        spread_saves(&mut v);
         v.holes.push("MODEL_LBL".to_string());
         v.fill("PORTRAIT_LBL", self.portrait());
         v.hide(&[

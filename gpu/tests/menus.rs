@@ -944,6 +944,29 @@ fn the_words_for_a_row_name_the_key_it_has_now() {
 }
 
 #[test]
+fn the_feats_tab_has_room_for_more_rows_than_the_others() {
+    let Some((mut s, _)) = in_game("feats_tab") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let many: Vec<i32> = (0..40).collect();
+    s.game.world.object_mut(pc).unwrap().feats.extend(many);
+    s.open_abilities();
+    press(&mut s, "BTN_FEATS");
+    let rows = s.menu_rows("LB_ABILITY");
+    assert!(rows.len() > 8, "{} rows", rows.len());
+    // The sixth is on the screen with no need of the wheel, where the file's list has four.
+    click_row(&mut s, "LB_ABILITY", 5);
+    assert!(s.menu_rows("LB_ABILITY")[5].selected);
+    // The wheel stops with the last row on the screen.
+    for _ in 0..rows.len() {
+        s.menu_wheel(-1.0);
+    }
+    click_row(&mut s, "LB_ABILITY", rows.len() - 6);
+    assert!(s.menu_rows("LB_ABILITY")[rows.len() - 6].selected);
+}
+
+#[test]
 fn the_words_on_the_map_fit_at_each_size() {
     let Some((mut s, _)) = in_game("map_words") else {
         return;

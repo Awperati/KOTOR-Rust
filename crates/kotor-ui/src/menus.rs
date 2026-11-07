@@ -139,6 +139,8 @@ pub struct MenuView {
     pub hole_veil: u8,
     /// Controls the file has not got: a copy of one it has, with a new tag, at a place of the panel.
     pub copies: Vec<(String, String, [i32; 4])>,
+    /// A list somewhere else than the file has it, in layout units: its rows and bar go with it.
+    pub lists_moved: Vec<(String, [i32; 4])>,
 }
 
 impl MenuView {
@@ -291,6 +293,26 @@ impl Ui<'_> {
             c.extent.width = at[2];
             c.extent.height = at[3];
             gui.panel.children.push(c);
+        }
+        for (tag, at) in &view.lists_moved {
+            let Some(c) = gui.panel.children.iter_mut().find(|c| c.tag == *tag) else {
+                continue;
+            };
+            let (dx, dy) = (at[0] - c.extent.left, at[1] - c.extent.top);
+            let more_high = at[3] - c.extent.height;
+            c.extent.left = at[0];
+            c.extent.top = at[1];
+            c.extent.width = at[2];
+            c.extent.height = at[3];
+            if let Some(p) = c.proto_item.as_deref_mut() {
+                p.extent.left += dx;
+                p.extent.top += dy;
+            }
+            for k in &mut c.children {
+                k.extent.left += dx;
+                k.extent.top += dy;
+                k.extent.height += more_high;
+            }
         }
         Some(gui)
     }
@@ -725,6 +747,11 @@ impl Ui<'_> {
         let Some(proto) = list.proto_item.as_deref() else {
             return;
         };
+        if let Some([red, green, blue]) = view.patches.get(&list.tag).and_then(|p| p.behind) {
+            let e = &list.extent;
+            let c = [red, green, blue, 255];
+            cv.fill_rect(at.0 + e.left, at.1 + e.top, e.width, e.height, c);
+        }
         let Some(t) = proto.text.as_ref() else { return };
         let Some((first_row, step, fits)) = row_layout(list) else {
             return;
@@ -745,6 +772,7 @@ impl Ui<'_> {
                     return;
                 };
                 let [x, y, w, _] = first_row;
+                let (x, w) = (x + patch.inset, w - patch.inset * 2);
                 let y = y - patch.rise;
                 let room = list.extent.top + list.extent.height - y;
                 let n = (room / f.line_height.max(1)).max(0) as usize;
@@ -1130,8 +1158,8 @@ impl Ui<'_> {
     }
 
     /// How many rows of a list fit on screen.
-    pub fn menu_rows_shown(&mut self, gui: &str, tag: &str) -> usize {
-        self.gui(gui)
+    pub fn menu_rows_shown(&mut self, view: &MenuView, tag: &str) -> usize {
+        self.view_gui(view)
             .and_then(|g| row_layout(g.find(tag)?))
             .map_or(1, |l| l.2)
     }

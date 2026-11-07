@@ -255,6 +255,8 @@ pub struct Patch {
     pub greyed: bool,
     /// Its words stand this many layout units in from each side.
     pub inset: i32,
+    /// A list: this colour behind it, in place of the screen's picture.
+    pub behind: Option<[u8; 3]>,
     /// A thin line of this colour instead of the file's border.
     pub line: Option<[u8; 3]>,
     /// Where it goes, in layout units, in place of where the file has it.

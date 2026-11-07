@@ -63,6 +63,9 @@ pub(super) struct Draft {
     chosen: Option<i32>,
 }
 
+/// The Feats page's words keep this far off the edges of their box, in layout units.
+const DESC_MARGIN: i32 = 5;
+
 impl Stage {
     fn restore(&mut self, object: Object) {
         if let Some(o) = self.game.world.object_mut(object.id) {
@@ -129,6 +132,7 @@ impl Stage {
     /// `maincg.gui` with `leveluppnl.gui` over it, and the figure in a hole in the picture: see `figure.rs`.
     pub(super) fn level_panel_view(&mut self) -> MenuView {
         let mut v = MenuView::new("maincg");
+        super::chargenscreen::spread_saves(&mut v);
         let title = self.ui.strref(STR_LEVEL_UP);
         v.text("MAIN_TITLE_LBL", title);
         v.fill("PORTRAIT_LBL", self.portrait());
@@ -352,6 +356,7 @@ impl Stage {
     pub(super) fn level_feats_view(&mut self) -> MenuView {
         let mut v = MenuView::new("ftchrgen");
         self.page_title(&mut v);
+        v.patches.entry("LB_DESC".to_string()).or_default().inset = DESC_MARGIN;
         let choices = self.level_choices(Screen::LevelFeats);
         let rows = self.choice_rows(&choices);
         v.lists

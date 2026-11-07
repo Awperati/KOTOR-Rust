@@ -255,5 +255,9 @@ Going past 960 pixels high drops all the interface pictures and reads others. Ne
 
 A picture whose name starts `po_` on a stretched screen stays square, in the middle of its place: the Abilities, Equipment, Inventory and character-making screens, the change buttons and the party screen. Test: `a_portrait_stays_square_on_a_wide_window`.
 
+## Tight panels, from the audit
+
+The Abilities screen's Feats tab has no numbers, so its list takes their room and the portrait's, six rows where it had four. The Feats page's words keep off the edges of their box. The three saves on the character-making and level-up panels stand 16 apart, not 14. A colour covers the dark shapes behind the Inventory and Equipment lists, which did not line up with the rows. The map's two thin buttons use a smaller font. `menu_shots` says what does not fit, at three sizes.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

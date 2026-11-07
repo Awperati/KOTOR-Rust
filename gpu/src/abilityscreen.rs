@@ -8,6 +8,10 @@ use kotor_ui::{Hit, MenuView, Row};
 const TAB_BUTTONS: [&str; 3] = ["BTN_SKILLS", "BTN_POWERS", "BTN_FEATS"];
 const SKILLS_TAB: usize = 0;
 const POWERS_TAB: usize = 1;
+/// Where the Feats tab's list goes, in layout units, what it covers, and in what colour.
+const FEATS_LIST: [i32; 4] = [55, 116, 269, 286];
+const FEATS_COVER: [i32; 4] = [55, 113, 272, 110];
+const PANEL_GROUND: [u8; 3] = [0, 0, 12];
 const NUMBERS: [&str; 6] = [
     "LBL_SKILLRANK",
     "LBL_RANKVAL",
@@ -50,6 +54,13 @@ impl Stage {
         self.change_buttons(&mut v);
         v.fill("LBL_PORTRAIT", self.portrait());
         let (tab, rows) = self.ability_rows();
+        // Feats have no numbers, so their list has the room of the portrait and the numbers too, as the owner asked.
+        if tab != SKILLS_TAB && tab != POWERS_TAB {
+            v.hide(&["LBL_INFOBG"]);
+            let portrait = v.patches.entry("LBL_PORTRAIT".to_string()).or_default();
+            portrait.cover = Some((FEATS_COVER, PANEL_GROUND));
+            v.lists_moved.push(("LB_ABILITY".to_string(), FEATS_LIST));
+        }
         let pc = self.game.world.pc;
         if self.game.world.owned_powers(pc).is_empty() {
             v.inert(&["BTN_POWERS"]);

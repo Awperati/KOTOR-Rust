@@ -51,6 +51,9 @@ const SAVE_NAME_MAX: usize = 32;
 const TITLE_WIDE: i32 = 380;
 const TITLE_MIDDLE: i32 = 386;
 const TITLE_BELOW: i32 = 218;
+/// Behind the item lists: the dark shapes in the screens' pictures do not line up with the rows, so they are covered. The
+/// colour of the panel round them.
+const LIST_GROUND: [u8; 3] = [0, 0, 12];
 /// What the first action slot says when it is the Pickup button, and what it says when it finds nothing. Neither is in the
 /// talk table: the button is not in the game.
 const PICKUP_WORDS: &str = "Pickup";
@@ -1232,6 +1235,7 @@ impl Stage {
     fn inventory_view(&mut self) -> MenuView {
         let mut v = MenuView::new("inventory");
         self.change_buttons(&mut v);
+        v.patches.entry("LB_ITEMS".to_string()).or_default().behind = Some(LIST_GROUND);
         let about_item = self.menus.about;
         let usable = about_item
             .and_then(|i| self.game.world.item_view(i))
@@ -1262,6 +1266,7 @@ impl Stage {
     fn equip_view(&mut self) -> MenuView {
         let mut v = MenuView::new("equip");
         self.change_buttons(&mut v);
+        v.patches.entry("LB_ITEMS".to_string()).or_default().behind = Some(LIST_GROUND);
         let picking = self.menus.slot;
         match picking {
             Some(_) => {
@@ -2657,7 +2662,7 @@ impl Stage {
         let Some((tag, (rows, _))) = view.lists.iter().next() else {
             return;
         };
-        let fits = self.ui.menu_rows_shown(&view.gui, tag);
+        let fits = self.ui.menu_rows_shown(&view, tag);
         let last = rows.len().saturating_sub(fits) as i32;
         self.menus.first =
             (self.menus.first as i32 - lines.signum() as i32).clamp(0, last) as usize;
