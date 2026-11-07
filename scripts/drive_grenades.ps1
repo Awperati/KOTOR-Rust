@@ -15,6 +15,8 @@ $until = (Get-Date).AddSeconds(240)
 do { $s = State; Start-Sleep -Milliseconds 100 } while ((-not $s.grenades -or $s.grenades -eq "-") -and (Get-Date) -lt $until)
 Report "A soldier is armed" ($s.grenades -and $s.grenades -ne "-") "grenades=$($s.grenades) hp=$($s.hp)"
 $had = [int]$s.grenades
+# --grenadier gives the player 500 hit points, unhurt, so the check below is about the burst and not about a fight lost.
+Report "Player starts unhurt" ([int]$s.hp -ge 450) "hp=$($s.hp)"
 $hp = [int]$s.hp
 Shot "grenades_before"
 
@@ -25,11 +27,11 @@ do {
   if ($s.grenades -ne "-" -and [int]$s.grenades -lt $had) { $seen = 1; break }
   if ($s.grenades -eq "-") { break }
 } while ((Get-Date) -lt $until)
-Report "It throws one" ($seen -eq 1) "grenades $had -> $($s.grenades)"
+Report "It throws one" ($seen -eq 1) "grenades $had -> $($s.grenades) thrower(distance/fights/noticed/hp/template)=$($s.thrower)"
 # A burst is over in a moment: pictures as fast as they come.
 if ($Shots) { foreach ($n in 1..8) { [Drv]::Save($h, "$Shots\grenades_burst$n.png") } }
 $after = State
-Report "It hurts" ([int]$after.hp -lt $hp) "hp $hp -> $($after.hp)"
+Report "It hurts" ([int]$after.hp -lt $hp) "hp $hp -> $($after.hp) (a frag burst takes about 10 to 30)"
 
 FocusReport
 Stop-Process -Id $v.Id -Force

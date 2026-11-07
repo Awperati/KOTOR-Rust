@@ -89,10 +89,13 @@ creatures had heartbeats. Placeables have them now, and one opened before its fi
 opened, 439 with items, none with an unnamed item. The 47 left have no items and no script in their files, `footlker001` for one.
 They are empty in the game's data. I have not seen one in the original.
 
-**Open: `scripts/drive_grenades.ps1` is not reliable.** At `c73d608` it failed twice in a row: a soldier armed by `--grenadier` held
-its 5 grenades for 90 s and the player kept 12 hit points. On the tip over `d3dc804` it throws, and only "It hurts" fails: the
-player was already at 1 hit point, so the check cannot pass. One run each way, so whether a commit changed it or the fight differs
-from run to run is not known. `a_grenade_bursts_where_it_lands` and `gpu/tests/grenades.rs` pass. Owner: Combat.
+**`scripts/drive_grenades.ps1` was not reliable; it is now (8 runs of 8 pass).** Two causes, both in the driver. The soldier it
+armed ran up to the player, and the game's own AI keeps its grenades for a foe farther than about 4 m: headless, 8 seeds, a
+soldier at 4 m never throws in 60 s, from 4.5 m up it throws within 3 to 18 s (`a_soldier_throws_at_a_foe_far_off_and_keeps_its_grenades_for_one_close_up`,
+`crates/kotor-game/examples/grenade_hold.rs`). So soldiers do hold their grenades close up, as the original script does. And the
+party often killed the armed soldier before its first throw. `--grenadier` now fixes the seed, gives the player 500 hit points
+(the check reads 500 -> below 500), stands the soldier on open floor 8 m off in sight, keeps it there until its first throw, and
+keeps it from dying. The state line has `thrower=` (distance/fights/noticed/hp/template) for the next time it holds.
 
 **Seen once, not explained.** In one 2160p run a bright blue square covered the Inventory tab, while pictures were being upscaled.
 It did not come back in 5 more runs.

@@ -122,3 +122,37 @@ fn the_leviathan_s_gas_finds_who_is_in_the_room() {
     w.run_script("k_plev_gas04", pc).unwrap();
     assert!(w.is_disabled(pc), "{:?}", w.errors);
 }
+
+/// Does a soldier with grenades throw one in `seconds`, when the player stands `metres` away and neither moves?
+fn throws_from(metres: f32, seconds: f32) -> Option<bool> {
+    let mut w = world("end_m01ab")?;
+    w.enter_area();
+    w.set_rng_seed(7);
+    let pc = w.pc;
+    let (soldier, item) = grenadier(&mut w, 5);
+    let at = w.object(pc).unwrap().position;
+    w.object_mut(pc).unwrap().max_hp = 500;
+    w.object_mut(pc).unwrap().hp = 500;
+    w.object_mut(soldier).unwrap().min_one_hp = true;
+    w.combat.perceived.insert((soldier, pc));
+    w.attack(soldier, pc);
+    for _ in 0..(seconds / STEP) as usize {
+        w.teleport(soldier, [at[0] + metres, at[1], at[2]]);
+        w.step(STEP);
+        if w.object(item).map_or(0, |o| o.stack) < 5 {
+            return Some(true);
+        }
+    }
+    Some(false)
+}
+
+#[test]
+fn a_soldier_throws_at_a_foe_far_off_and_keeps_its_grenades_for_one_close_up() {
+    // The game's own AI script decides; the driver of 7b8bd02 saw soldiers hold 5 grenades for 90 s once they had run up.
+    // Over 4 m it throws within a few rounds; at 4 m or less it never does, and fights with its weapon.
+    let (Some(far), Some(near)) = (throws_from(8.0, 30.0), throws_from(4.0, 60.0)) else {
+        return;
+    };
+    assert!(far, "8 m: it throws");
+    assert!(!near, "4 m: it keeps them");
+}

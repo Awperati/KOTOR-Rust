@@ -427,6 +427,9 @@ pub struct Stage {
     pub combat_autosave: bool,
     /// A test driver has given someone this: `--grenadier`.
     pub armed: Option<ObjId>,
+    /// The one `--grenadier` armed, and where it stood: a thrower is put back there when it closes in, as the AI throws only
+    /// at a foe farther than about 4 m and a driver's check has to see it throw.
+    pub armed_home: Option<(ObjId, [f32; 3])>,
     /// A test driver has the turret aim for it.
     pub turret_assist: bool,
     /// Goes up whenever the overlay changes.
@@ -572,6 +575,7 @@ impl Stage {
             overlay_key: String::new(),
             combat_autosave: false,
             armed: None,
+            armed_home: None,
             turret_assist: false,
             overlay_version: 0,
             overlay_ms: 0.0,
@@ -774,6 +778,7 @@ impl Stage {
             return std::mem::take(&mut self.cues);
         }
         self.turret_tick(dt);
+        self.thrower_tick();
         self.race_input();
         let (ahead, right, walk) = self.steer;
         let steer_yaw = self.keys_yaw(dt);
@@ -2665,6 +2670,27 @@ impl Stage {
             .armed
             .and_then(|i| self.game.world.object(i))
             .map_or("-".to_string(), |o| o.stack.to_string());
+        // The one armed by a driver: its distance from the player, whether it fights, has noticed the player, and its
+        // hit points. For a driver that finds a thrower holding its grenades.
+        let thrower = {
+            let w = &self.game.world;
+            let holder = self.armed.and_then(|i| {
+                w.objects
+                    .values()
+                    .find(|o| o.kind == Kind::Creature && w.carried(o.id).contains(&i))
+            });
+            holder.map_or("-".to_string(), |o| {
+                let at = w.object(w.pc).map_or([0.0; 3], |p| p.position);
+                format!(
+                    "{:.1}/{}/{}/{}/{}",
+                    (o.position[0] - at[0]).hypot(o.position[1] - at[1]),
+                    w.combat.in_combat(o.id) as u8,
+                    w.combat.perceived.contains(&(o.id, w.pc)) as u8,
+                    o.hp,
+                    o.template
+                )
+            })
+        };
         // The turret's hit points, how many fighters are flying, and how far round it is.
         let turret = self
             .game
@@ -2728,7 +2754,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} thrower={thrower} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

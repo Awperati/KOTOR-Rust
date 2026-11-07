@@ -95,6 +95,9 @@ pub fn target_slot(tag: &str) -> Option<usize> {
     }
 }
 
+/// What `--grenadier` hands out.
+const GRENADIER_COUNT: i32 = 5;
+
 impl Stage {
     /// Left: the plain attack, then the feats. Middle: Force powers. Right: what can be thrown.
     fn slot_choices(&mut self, slot: usize) -> Vec<SlotChoice> {
@@ -432,6 +435,18 @@ impl Stage {
         }
     }
 
+    /// A driver's thrower stays where it was armed until its first throw: the AI's decision comes at a round's start, and
+    /// by then a soldier that has run at the player is close, where it fights with its weapon and keeps its grenades.
+    pub(crate) fn thrower_tick(&mut self) {
+        let (Some((who, home)), Some(item)) = (self.armed_home, self.armed) else {
+            return;
+        };
+        let w = &mut self.game.world;
+        if w.object(item).map_or(0, |o| o.stack) >= GRENADIER_COUNT {
+            w.teleport(who, home);
+        }
+    }
+
     /// The player's wounds heal at once, for a driver handed a fight a player of that level could not win.
     pub fn keep_player_standing(&mut self, on: bool) {
         self.menus.fight.unhurt = on;
@@ -449,23 +464,38 @@ impl Stage {
 
     /// Space: goes on with a line or a container, or else pauses. It never pauses in a conversation, nor just after
     /// one: a player going through its lines presses once more than there are.
-    /// For a test driver: the nearest enemy has grenades, and throws them.
+    /// For a test driver: an enemy has grenades, and throws them. The fight is the same every run: a fixed seed, a
+    /// player with 500 hit points who starts unhurt, and the nearest enemy that is at least `HOLDS_WITHIN` metres off
+    /// (the game's own AI keeps its grenades for a foe farther than that and fights close up with its weapon).
     pub fn arm_nearest_enemy(&mut self) {
-        const COUNT: i32 = 5;
+        const COUNT: i32 = GRENADIER_COUNT;
         const GRENADE: &str = "g_w_fraggren01";
         const THROWS: i32 = 4;
+        const HOLDS_WITHIN: f32 = 5.0;
+        const SEED: u64 = 7;
+        const HIT_POINTS: i32 = 500;
         let w = &mut self.game.world;
         let pc = w.pc;
+        w.set_rng_seed(SEED);
+        if let Some(o) = w.object_mut(pc) {
+            (o.max_hp, o.hp) = (HIT_POINTS, HIT_POINTS);
+        }
         let at = w.object(pc).map_or([0.0; 3], |o| o.position);
-        let near = w
+        let distance =
+            |o: &kotor_game::Object| (o.position[0] - at[0]).hypot(o.position[1] - at[1]);
+        let foes: Vec<&kotor_game::Object> = w
             .objects
             .values()
             .filter(|o| !o.dead && o.id != pc && o.kind == kotor_game::Kind::Creature)
             .filter(|o| w.reputation(o.id, pc) <= 10)
-            .min_by(|a, b| {
-                let far =
-                    |o: &&kotor_game::Object| (o.position[0] - at[0]).hypot(o.position[1] - at[1]);
-                far(a).total_cmp(&far(b))
+            .collect();
+        let near = foes
+            .iter()
+            .filter(|o| distance(o) >= HOLDS_WITHIN)
+            .min_by(|a, b| distance(a).total_cmp(&distance(b)))
+            .or_else(|| {
+                foes.iter()
+                    .min_by(|a, b| distance(a).total_cmp(&distance(b)))
             })
             .map(|o| o.id);
         if let Some(near) = near {
@@ -476,8 +506,28 @@ impl Stage {
             }
             if let Some(o) = w.object_mut(near) {
                 o.ai_style = THROWS;
+                // The party would otherwise kill it before its first throw, which takes up to 18 s.
+                o.min_one_hp = true;
             }
             self.armed = Some(item);
+            // Stand it on open floor 8 m off, in sight of the player, so it throws the same way every run.
+            let spot = w.nav.as_ref().and_then(|nav| {
+                [8.0f32, 7.0, 6.0].iter().find_map(|r| {
+                    (0..12).find_map(|k| {
+                        let a = k as f32 * std::f32::consts::TAU / 12.0;
+                        let (x, y) = (at[0] + r * a.cos(), at[1] + r * a.sin());
+                        let z = nav.height_at(x, y, at[2] + 1.0)?;
+                        let p = [x, y, z];
+                        let (eye, far) = ([at[0], at[1], at[2] + 1.5], [x, y, z + 1.5]);
+                        (nav.same_island(at, p) && !nav.sight_blocked(eye, far)).then_some(p)
+                    })
+                })
+            });
+            if let Some(p) = spot {
+                w.teleport(near, p);
+            }
+            let home = w.object(near).map_or([0.0; 3], |o| o.position);
+            self.armed_home = Some((near, home));
         }
     }
 
