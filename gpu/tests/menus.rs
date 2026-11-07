@@ -638,6 +638,56 @@ fn a_container_opens_its_own_window_over_the_scene() {
 }
 
 #[test]
+fn a_power_for_oneself_is_in_the_fourth_slot_and_a_click_turns_it_on_and_off() {
+    let Some((mut s, _)) = in_game("self_powers") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    // Nothing known, nothing shown: as the video has it on a Soldier.
+    assert!(s.quick_slot_shown(2).is_none());
+    const BURST_OF_SPEED: i32 = 8;
+    const FORCE_ARMOR: i32 = 17;
+    const FORCE_PUSH: i32 = 23;
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.spells.extend([BURST_OF_SPEED, FORCE_ARMOR, FORCE_PUSH]);
+    (o.force, o.max_force) = (100, 100);
+    s.update(DT);
+    let shown = s.quick_slot_shown(2).expect("the slot");
+    assert!(shown.more, "two powers for oneself, and not the Push");
+    assert!(!shown.lit);
+
+    // Its name under the cursor.
+    let slot = s.hud_pixel("BTN_ACTION3", SIZE).unwrap();
+    s.hover(slot, SIZE);
+    let name = s.combat_words().expect("a name");
+    assert!(name.contains("Speed"), "{name}");
+
+    // A click casts it, and it costs Force.
+    let effects = |s: &Stage| s.game.world.object(pc).unwrap().effects.len();
+    let before = effects(&s);
+    s.click(slot, SIZE);
+    s.update(DT);
+    let paid = s.game.world.object(pc).unwrap().force;
+    assert!(paid < 100, "{paid}");
+    assert!(effects(&s) > before);
+    assert!(s.quick_slot_shown(2).unwrap().lit);
+
+    // Another ends it, and nothing comes back.
+    s.click(slot, SIZE);
+    assert_eq!(effects(&s), before);
+    assert!(!s.quick_slot_shown(2).unwrap().lit);
+    assert_eq!(s.game.world.object(pc).unwrap().force, paid);
+
+    // Too dear: it goes from the slot, unless it is on.
+    s.click(slot, SIZE);
+    s.update(DT);
+    s.game.world.object_mut(pc).unwrap().force = 0;
+    assert!(s.quick_slot_shown(2).is_some(), "on, so it can go off");
+    s.click(slot, SIZE);
+    assert_eq!(effects(&s), before);
+}
+
+#[test]
 fn a_rounded_button_has_no_square_plate_behind_it() {
     let Some((mut s, _)) = in_game("rounded") else {
         return;

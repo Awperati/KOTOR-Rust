@@ -219,5 +219,9 @@ Sixteen item templates have a designer's tag for a name in the talk table, such 
 
 `BTN_AUTO`, `BTN_LEVELUP`, `LBL_SOLOMODE`, and the panels of `container.gui`, `confirm.gui` and `savename.gui` had a square plate: the half-dark fill lay under edges that are half dark themselves and clear past the line. It now lies only inside them, and a rounded panel over the scene has no square backing. Test: `a_rounded_button_has_no_square_plate_behind_it`.
 
+## Powers for oneself
+
+The fourth slot at the bottom right lists the powers `spells.2da` calls friendly, with its arrows. A click casts one and costs Force; another click while it is on ends it with nothing paid back, and a yellow line marks it on. **Differs from the game, by the owner's choice:** the game has no way to end one sooner. **Assumed:** the cast is at once, in a fight too. Test: `a_power_for_oneself_is_in_the_fourth_slot_and_a_click_turns_it_on_and_off`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

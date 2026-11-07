@@ -2080,11 +2080,13 @@ impl Host for Adapter<'_> {
             "DelayCommand" => {
                 if let Some((script, state)) = self.action_arg(args, 1) {
                     let due = self.world.time + float(args, 0);
+                    let spell = self.world.spell;
                     self.world.delayed.push(Delayed {
                         due,
                         caller,
                         script,
                         state,
+                        spell,
                     });
                 }
                 None
@@ -2098,8 +2100,15 @@ impl Host for Adapter<'_> {
             }
             "ActionDoCommand" => {
                 if let Some((script, state)) = self.action_arg(args, 0) {
-                    self.world
-                        .queue(caller, Action::DoCommand { script, state });
+                    let spell = self.world.spell;
+                    self.world.queue(
+                        caller,
+                        Action::DoCommand {
+                            script,
+                            state,
+                            spell,
+                        },
+                    );
                 }
                 None
             }

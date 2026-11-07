@@ -171,7 +171,37 @@ impl World {
             .collect()
     }
 
-    /// The powers a creature knows that are for an enemy and it has the Force for.
+    /// What the leader can use on themselves, for the fourth slot at the bottom right: the powers `spells.2da` fills `forcefriendly` for. The game gives them a time and has no way to end one sooner. The owner asked for that.
+    pub fn self_powers(&mut self, id: ObjId) -> Vec<CombatChoice> {
+        let Some((known, force)) = self.objects.get(&id).map(|o| (o.spells.clone(), o.force))
+        else {
+            return Vec::new();
+        };
+        let Some(t) = self.table("spells") else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for spell in known {
+            let row = spell.max(0) as usize;
+            if t.int(row, "forcefriendly").is_none() {
+                continue;
+            }
+            let cost = self.power_cost(id, spell).unwrap_or(i32::MAX);
+            // One that is on can always be turned off, whatever is left.
+            let usable = cost <= force || self.power_active(id, spell);
+            if usable || self.is_early(id) {
+                out.push(CombatChoice {
+                    action: CombatAction::Power(spell),
+                    name: t.int(row, "name").unwrap_or(0) as u32,
+                    icon: t.get(row, "iconresref").unwrap_or("").to_ascii_lowercase(),
+                    usable,
+                });
+            }
+        }
+        out
+    }
+
+    /// The Force powers that hurt, for the middle slot under an enemy's bar.
     pub fn combat_powers(&mut self, id: ObjId) -> Vec<CombatChoice> {
         let Some((known, force)) = self.objects.get(&id).map(|o| (o.spells.clone(), o.force))
         else {

@@ -94,6 +94,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", s.state_line());
     shot(&mut s, "pickup_panel");
 
+    // A power for oneself in the fourth slot, on.
+    let w = &mut s.game.world;
+    w.close_container();
+    let pc = w.pc;
+    let o = w.object_mut(pc).unwrap();
+    o.spells.extend([8, 17]);
+    (o.force, o.max_force) = (100, 100);
+    s.update(DT);
+    let slot = s.hud_pixel("BTN_ACTION3", size).expect("the slot");
+    s.click(slot, size);
+    s.hover(slot, size);
+    shot(&mut s, "power_on");
+    s.hover((width as f32 / 2.0, height as f32 / 2.0), size);
+
     // The rounded buttons on the character sheet.
     s.game.world.close_container();
     s.game.world.hold_levels = true;

@@ -110,7 +110,7 @@ pub struct Thud {
 }
 
 /// The power being cast right now (`GetSpellId`, `GetSpellTargetObject`, `GetLastSpellCaster`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpellContext {
     pub id: i32,
     pub caster: ObjId,
@@ -495,6 +495,33 @@ impl World {
             self.burst(caster, spell, target);
         }
         Ok(())
+    }
+
+    /// Whether this power is on this creature now.
+    pub fn power_active(&self, who: ObjId, spell: i32) -> bool {
+        self.objects.get(&who).is_some_and(|o| {
+            o.effects
+                .iter()
+                .any(|h| self.effect_spell.get(h) == Some(&spell))
+        })
+    }
+
+    /// This power stops, on this creature and the party it may have reached, with nothing paid back.
+    pub fn end_power(&mut self, who: ObjId, spell: i32) {
+        let on: Vec<ObjId> = std::iter::once(who)
+            .chain(self.party.iter().copied())
+            .collect();
+        for id in on {
+            let Some(o) = self.objects.get_mut(&id) else {
+                continue;
+            };
+            let spells = &self.effect_spell;
+            let mine = |h: &u32| spells.get(h) == Some(&spell);
+            for h in o.effects.iter().filter(|h| mine(h)) {
+                self.effect_expiry.remove(h);
+            }
+            o.effects.retain(|h| !mine(h));
+        }
     }
 
     /// The power's script runs, and a hostile one makes its target an attacker's business.

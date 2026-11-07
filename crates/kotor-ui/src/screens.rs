@@ -24,6 +24,10 @@ const SLOT_WORDS: [u32; 3] = [48303, 48307, 48311];
 const SLOT_WORDS_FONT: &str = "dialogfont10x10";
 /// What darkens a picture that cannot be used.
 pub(crate) const GREYED: [u8; 4] = [0, 0, 0, 170];
+/// Round a power that is on: the yellow of what the HUD has chosen.
+const POWER_ON_LINE: [u8; 3] = [255, 255, 76];
+/// How thick that is, in layout units.
+const LINE_THICK: i32 = 2;
 /// The half-dark fills of the rounded buttons and panels: `BTN_LEVELUP`, `container.gui`, `confirm.gui`.
 pub(crate) const ROUNDED_FILLS: [&str; 2] = ["dialog2", "dialog3"];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
@@ -99,6 +103,8 @@ pub struct SlotShown {
     pub more: bool,
     /// It is too dear for now: greyed.
     pub greyed: bool,
+    /// A power it shows is on now: a line round it.
+    pub lit: bool,
 }
 
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
@@ -825,6 +831,14 @@ impl<'a> Ui<'a> {
         if patch.greyed {
             cv.fill_rect(r[0], r[1], r[2], r[3], GREYED);
         }
+        if let Some([red, green, blue]) = patch.line {
+            let c = [red, green, blue, 255];
+            let t = LINE_THICK;
+            cv.fill_rect(r[0], r[1], r[2], t, c);
+            cv.fill_rect(r[0], r[1] + r[3] - t, r[2], t, c);
+            cv.fill_rect(r[0], r[1], t, r[3], c);
+            cv.fill_rect(r[0] + r[2] - t, r[1], t, r[3], c);
+        }
         if let Some(t) = &c.text {
             let text = patch.text.clone().unwrap_or_else(|| match t.strref {
                 Some(s) if t.text.is_empty() => self.strref(s),
@@ -1398,6 +1412,10 @@ impl<'a> Ui<'a> {
             let picture = patches.entry(format!("LBL_ACTION{n}")).or_default();
             picture.hidden = false;
             picture.fill = Some(shown.picture.clone());
+            picture.greyed = shown.greyed;
+            if shown.lit {
+                picture.line = Some(POWER_ON_LINE);
+            }
             if shown.more {
                 for arrow in ["UP", "DOWN"] {
                     let tag = format!("BTN_ACTION{arrow}{n}");

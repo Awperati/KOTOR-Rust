@@ -36,6 +36,8 @@ enum SlotDoes {
     Throw(ObjId),
     /// Try the target's lock with the skill and this spike.
     Security(Option<ObjId>),
+    /// A power the leader uses on themselves: on, or off again.
+    OnSelf(i32),
 }
 
 /// The Security skill's name in the talk table.
@@ -183,16 +185,29 @@ impl Stage {
             .unwrap_or_default()
     }
 
-    /// What a quick slot offers. The third has nothing yet: the video shows it empty on a Soldier.
+    /// What a quick slot offers. The third has the powers for oneself: the video shows it empty on a Soldier.
     fn quick_choices(&mut self, slot: usize) -> Vec<SlotChoice> {
         let w = &mut self.game.world;
         let pc = w.pc;
+        if slot == 2 {
+            let powers = w.self_powers(pc);
+            return powers
+                .into_iter()
+                .map(|c| {
+                    let CombatAction::Power(spell) = c.action else {
+                        unreachable!("self_powers gives powers");
+                    };
+                    SlotChoice {
+                        does: SlotDoes::OnSelf(spell),
+                        name: self.ui.strref(c.name),
+                        icon: c.icon,
+                        usable: c.usable,
+                    }
+                })
+                .collect();
+        }
         let mut lists = w.quick_items(pc);
-        let items = match slot {
-            0 => std::mem::take(&mut lists[0]),
-            1 => std::mem::take(&mut lists[1]),
-            _ => return Vec::new(),
-        };
+        let items = std::mem::take(&mut lists[slot]);
         let views: Vec<_> = items.iter().filter_map(|i| w.item_view(*i)).collect();
         views
             .into_iter()
@@ -216,10 +231,12 @@ impl Stage {
                 continue;
             }
             let pick = &choices[self.menus.fight.quick_picks[slot] % choices.len()];
+            let w = &self.game.world;
             *shown = Some(SlotShown {
                 picture: pick.icon.clone(),
                 more: choices.len() > 1,
-                greyed: false,
+                greyed: !pick.usable,
+                lit: matches!(pick.does, SlotDoes::OnSelf(p) if w.power_active(w.pc, p)),
             });
             let tag = format!("BTN_ACTION{}", slot + 1);
             if over.as_deref() == Some(tag.as_str()) {
@@ -245,13 +262,24 @@ impl Stage {
         if choices.is_empty() {
             return;
         }
-        if let SlotDoes::Throw(item) =
-            choices[self.menus.fight.quick_picks[slot] % choices.len()].does
-        {
-            let w = &mut self.game.world;
-            let pc = w.pc;
-            let _ = w.use_item_on(pc, item, pc);
+        let w = &mut self.game.world;
+        let pc = w.pc;
+        match choices[self.menus.fight.quick_picks[slot] % choices.len()].does {
+            SlotDoes::Throw(item) => {
+                let _ = w.use_item_on(pc, item, pc);
+            }
+            SlotDoes::OnSelf(power) if w.power_active(pc, power) => w.end_power(pc, power),
+            // At once, in a fight too, and it can fail for want of Force: the slot says nothing.
+            SlotDoes::OnSelf(power) => {
+                let _ = w.cast_spell(pc, power, pc, false);
+            }
+            _ => {}
         }
+    }
+
+    /// What a quick slot shows, for a test.
+    pub fn quick_slot_shown(&mut self, slot: usize) -> Option<SlotShown> {
+        self.quick_view().0[slot].clone()
     }
 
     /// An arrow on a quick slot.
@@ -338,6 +366,7 @@ impl Stage {
                 picture: shown.icon.clone(),
                 more: choices.len() > 1,
                 greyed: !shown.usable,
+                lit: false,
             });
             if over.as_deref().and_then(target_slot) == Some(slot) {
                 hover = Some((slot, shown.name.clone()));
@@ -358,6 +387,8 @@ impl Stage {
         }
         match choices[pick].does {
             SlotDoes::Attack => true,
+            // Only the quick slots have these.
+            SlotDoes::OnSelf(_) => false,
             SlotDoes::Security(spike) => {
                 self.game.world.lock_tool = spike;
                 true

@@ -36,6 +36,8 @@ pub enum Action {
     DoCommand {
         script: String,
         state: Box<SavedState>,
+        /// The power being cast when it was asked for: what it does is that power's.
+        spell: crate::force::SpellContext,
     },
     /// Talk with `target`, using `dialogue` (the owner's own conversation when empty).
     StartConversation {
@@ -89,6 +91,8 @@ pub struct Delayed {
     pub caller: ObjId,
     pub script: String,
     pub state: Box<SavedState>,
+    /// The power being cast when it was asked for: what it does is that power's.
+    pub spell: crate::force::SpellContext,
 }
 
 #[derive(Clone, Debug)]
@@ -1286,7 +1290,9 @@ impl World {
             .partition(|d| d.due <= now);
         self.delayed = later;
         for d in due {
+            let saved = std::mem::replace(&mut self.spell, d.spell);
             let _ = self.run_saved(&d.script, &d.state, d.caller);
+            self.spell = saved;
         }
         let ids: Vec<ObjId> = self.objects.keys().copied().collect();
         for id in ids {
@@ -1390,8 +1396,14 @@ impl World {
                 }
                 self.events.push(format!("{}: {what}", self.describe(id)));
             }
-            Action::DoCommand { script, state } => {
+            Action::DoCommand {
+                script,
+                state,
+                spell,
+            } => {
+                let saved = std::mem::replace(&mut self.spell, spell);
                 let _ = self.run_saved(&script, &state, id);
+                self.spell = saved;
             }
             Action::StartConversation {
                 target,
