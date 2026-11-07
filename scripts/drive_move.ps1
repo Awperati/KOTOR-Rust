@@ -147,7 +147,7 @@ if ($Shots) {
   Close
 }
 # Space jumps and B pauses, in the window.
-$SPACE = @(0x20, 0x39); $B = @(0x42, 0x30)
+$SPACE = @(0x20, 0x39); $PAUSE = @(0x42, 0x30)
 $s = Open "jump" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767")
 $floor = [double]$s.pcz
 $m = Mark
@@ -160,10 +160,10 @@ $top = ($rows | Measure-Object z -Maximum).Maximum
 Report "Space jumps" ($top - $floor -gt 0.5 -and $top - $floor -lt 1.2) "$([Math]::Round($top - $floor, 2)) m up at most, $(@($rows | Where-Object { $_.air -eq 'true' }).Count) samples in the air"
 Report "Space does not pause" ($after.paused -eq "false") "paused=$($after.paused)"
 Report "It comes down" ([Math]::Abs([double]$after.pcz - $floor) -lt 0.05 -and $after.air -eq "false") "z=$($after.pcz) air=$($after.air)"
-Key $B[0] $B[1]
+Key $PAUSE[0] $PAUSE[1]
 $s = WaitFor "paused" "true"
 Report "B pauses" ($s.paused -eq "true") "paused=$($s.paused)"
-Key $B[0] $B[1]
+Key $PAUSE[0] $PAUSE[1]
 $s = WaitFor "paused" "false"
 Report "B goes on" ($s.paused -eq "false") "paused=$($s.paused)"
 FocusReport

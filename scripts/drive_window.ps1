@@ -60,14 +60,14 @@ $moved = Moved $a $b
 Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
 
 # B pauses out of a conversation: W does nothing until B again.
-$B = @(0x42, 0x30)
-Key $B[0] $B[1]
+$PAUSE = @(0x42, 0x30)
+Key $PAUSE[0] $PAUSE[1]
 [void](State)
 $a = State
 Key $W[0] $W[1] 300
 $b = State
 Report "B pauses" ((Moved $a $b) -lt 0.05) "$($a.pc) -> $($b.pc)"
-Key $B[0] $B[1]
+Key $PAUSE[0] $PAUSE[1]
 [void](State)
 $a = State
 $b = HoldUntilMoved $W $a 0.3 60

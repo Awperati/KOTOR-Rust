@@ -5,7 +5,7 @@
 param([string]$Size = "1280x720")
 # Run from the repo root after building the viewer example.
 . "$PSScriptRoot\drive_common.ps1"
-$SPACE = @(0x20, 0x39); $B = @(0x42, 0x30); $Y = @(0x59, 0x15); $G = @(0x47, 0x22)
+$SPACE = @(0x20, 0x39); $PAUSE = @(0x42, 0x30); $Y = @(0x59, 0x15); $G = @(0x47, 0x22)
 $scratch = $env:TEMP
 
 function Open($name, $settings, $extra) {
@@ -48,14 +48,14 @@ Settle
 $r = Press1 $SPACE
 Report "Space jumps" ($r.air -and $r.up -gt 0.5 -and $r.up -lt 1.2) "up $([Math]::Round($r.up, 2)) m, air seen $($r.air)"
 Report "Space does not pause" (-not $r.paused) "paused=$($r.paused)"
-$before = (Press1 $B)
+$before = (Press1 $PAUSE)
 Report "B pauses" $before.paused "paused=$($before.paused)"
 $r = @{ s = State }
 $z = [double]$r.s.pcz
 Key $SPACE[0] $SPACE[1]
 $r = State; $r = State
 Report "Space in a pause does nothing" ($r.paused -eq "true" -and $r.air -ne "true" -and [double]$r.pcz -eq $z) "paused=$($r.paused) air=$($r.air) z=$($r.pcz)"
-Key $B[0] $B[1]
+Key $PAUSE[0] $PAUSE[1]
 $r = WaitFor "paused" "false"
 Report "B goes on" ($r.paused -eq "false") "paused=$($r.paused)"
 WaitSteps 20
@@ -67,7 +67,7 @@ Open "rebound" "movement_modern=true`nkey.Jump=KeyY`nkey.Pause=KeyG" $PLACE
 Settle
 $r = Press1 $SPACE
 Report "Rebound: Space does nothing" (-not $r.air -and -not $r.paused) "air=$($r.air) paused=$($r.paused)"
-$r = Press1 $B
+$r = Press1 $PAUSE
 Report "Rebound: B does nothing" (-not $r.air -and -not $r.paused) "air=$($r.air) paused=$($r.paused)"
 $r = Press1 $Y
 Report "Rebound: Y jumps" ($r.air -and $r.up -gt 0.5) "up $([Math]::Round($r.up, 2)) m"
@@ -81,7 +81,7 @@ Settle
 $r = Press1 $SPACE
 Report "Classic: Space does not jump" (-not $r.air -and $r.up -lt 0.05) "up $([Math]::Round($r.up, 2)) m, air seen $($r.air)"
 Report "Classic: Space does not pause" (-not $r.paused) "paused=$($r.paused)"
-$r = Press1 $B
+$r = Press1 $PAUSE
 Report "Classic: B pauses" $r.paused "paused=$($r.paused)"
 Close
 
