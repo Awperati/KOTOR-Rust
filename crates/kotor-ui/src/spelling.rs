@@ -101,6 +101,7 @@ const ISE: &[&str] = &[
     "real",
     "recogn",
     "region",
+    "regional",
     "reinitial",
     "social",
     "special",
@@ -121,7 +122,7 @@ const ISE: &[&str] = &[
     "victim",
     "woman",
 ];
-const ISE_ENDINGS: [(&str, &str); 7] = [
+const ISE_ENDINGS: [(&str, &str); 8] = [
     ("ize", "ise"),
     ("izes", "ises"),
     ("ized", "ised"),
@@ -129,6 +130,7 @@ const ISE_ENDINGS: [(&str, &str); 7] = [
     ("izer", "iser"),
     ("izers", "isers"),
     ("ization", "isation"),
+    ("izations", "isations"),
 ];
 /// Words with a single `l` that double it before an ending.
 const DOUBLE_L: &[&str] = &[
@@ -139,6 +141,7 @@ const DOUBLE_L: &[&str] = &[
 const DOUBLE_L_ENDINGS: [&str; 4] = ["ed", "ing", "er", "ers"];
 /// The rest, each form by itself.
 const WORDS: &[(&str, &str)] = &[
+    ("aging", "ageing"),
     ("analyze", "analyse"),
     ("analyzed", "analysed"),
     ("analyzes", "analyses"),
@@ -171,6 +174,8 @@ const WORDS: &[(&str, &str)] = &[
     ("grayish", "greyish"),
     ("instill", "instil"),
     ("jewelry", "jewellery"),
+    ("judgment", "judgement"),
+    ("judgments", "judgements"),
     ("kilometer", "kilometre"),
     ("kilometers", "kilometres"),
     ("license", "licence"),
@@ -195,6 +200,7 @@ const WORDS: &[(&str, &str)] = &[
     ("paralyzation", "paralysation"),
     ("paralyzing", "paralysing"),
     ("pretense", "pretence"),
+    ("pretenses", "pretences"),
     ("skeptic", "sceptic"),
     ("skeptical", "sceptical"),
     ("skepticism", "scepticism"),

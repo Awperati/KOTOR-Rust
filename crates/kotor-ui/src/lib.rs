@@ -20,5 +20,5 @@ pub use screens::{
     CombatHud, DialogueView, Float, HudMember, MiniMap, Patch, SlotShown, Ui, SCREEN,
 };
 pub use screens::{ATTACK_MODE_BUTTON, TARGET_BAR_AND_SLOTS_HIGH, TARGET_BAR_HIGH, TITLE_CARD};
-pub use spelling::set_australian;
+pub use spelling::{set_australian, shown};
 pub use ttf::{Face, Sized};
