@@ -5,6 +5,7 @@
 //! fight, a seen enemy or Attack mode stand for one.
 
 use super::Stage;
+use kotor_game::ObjId;
 use kotor_ui::Crosshair;
 
 /// How fast the camera goes in and out, a second.
@@ -33,6 +34,20 @@ const BOLT_SHORT: f32 = 0.05;
 const SWAY_RATE: f32 = 6.0;
 /// How far along the ray the crosshair's point is taken, in metres. The ray's direction is what counts.
 const CROSSHAIR_POINT: f32 = 10.0;
+/// Lock-on, all my guesses: how far off the middle a creature may be, in radians, for the key and for the wheel.
+const LOCK_CONE: f32 = 0.6;
+const LOCK_CONE_WHEEL: f32 = 1.6;
+/// How far it reaches, and how far before it lets go, in metres.
+const LOCK_REACH: f32 = 25.0;
+const LOCK_FAR: f32 = 30.0;
+/// How long it may be out of sight, in seconds.
+const LOCK_LOST_SECONDS: f32 = 2.0;
+/// How fast the camera comes round to it, a second.
+const LOCK_TURN_RATE: f32 = 5.0;
+/// How far right of it the camera looks, in radians, or the player's own body stands in front of it.
+const LOCK_ASIDE: f32 = 0.16;
+/// Where on the body the mark goes, in metres over the feet.
+const LOCK_MARK: f32 = 1.1;
 /// What a power key says when it does nothing, over the player.
 const NOT_KNOWN: &str = "not known";
 const FORCE_NEEDED: &str = "Force points needed";
@@ -106,6 +121,99 @@ impl Stage {
                 self.pitch += (PLAIN_LOWEST - self.pitch) * (1.0 - (-PITCH_BACK_RATE * dt).exp());
             }
         }
+    }
+
+    /// What the player is locked on to.
+    pub fn locked_on(&self) -> Option<ObjId> {
+        self.lock_on
+    }
+
+    /// Each creature the lock may go to, and how far round from the camera's middle it is, in radians.
+    fn lock_round(&self, cone: f32) -> Vec<(ObjId, f32)> {
+        let tau = std::f32::consts::TAU;
+        let w = &self.game.world;
+        let eye = self.camera().eye;
+        let ids = w.objects.values().map(|o| (o.id, o.position));
+        ids.filter(|(id, _)| w.may_lock(*id, LOCK_REACH))
+            .map(|(id, at)| {
+                let way = (at[1] - eye[1]).atan2(at[0] - eye[0]);
+                let off = (way - self.yaw + tau / 2.0).rem_euclid(tau) - tau / 2.0;
+                (id, off)
+            })
+            .filter(|(_, off)| off.abs() <= cone)
+            .collect()
+    }
+
+    /// The lock-on key: the nearest to the middle of the view, or let go. Modern combat's only.
+    pub fn lock_key(&mut self) {
+        if self.lock_on.take().is_some() || !self.modern_combat() || self.menu_open() {
+            return;
+        }
+        self.lock_lost = 0.0;
+        let nearest = self
+            .lock_round(LOCK_CONE)
+            .into_iter()
+            .min_by(|a, b| a.1.abs().total_cmp(&b.1.abs()));
+        self.lock_on = nearest.map(|n| n.0);
+    }
+
+    /// The wheel while locked: the next one round. Up goes left, as the view turns.
+    pub fn lock_wheel(&mut self, lines: f32) {
+        let Some(now) = self.lock_on else { return };
+        let mut round = self.lock_round(LOCK_CONE_WHEEL);
+        round.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let Some(place) = round.iter().position(|c| c.0 == now) else {
+            return;
+        };
+        let next = if lines > 0.0 {
+            round.get(place + 1)
+        } else {
+            place.checked_sub(1).and_then(|p| round.get(p))
+        };
+        if let Some(next) = next {
+            self.lock_on = Some(next.0);
+            self.lock_lost = 0.0;
+        }
+    }
+
+    /// Each frame of the game: it lets go if it must, the camera comes round, and the body faces it. Aiming wins while it lasts.
+    pub(super) fn lock_tick(&mut self, dt: f32) {
+        let Some(id) = self.lock_on else { return };
+        if self.menu_open() || self.paused() {
+            return;
+        }
+        let w = &self.game.world;
+        let me = w.pc_mover.pos;
+        let it = w.object(id);
+        let gone = !self.modern_combat()
+            || w.in_dialogue()
+            || w.game_over
+            || w.object(w.pc).is_none_or(|o| o.down || o.dead)
+            || it.is_none_or(|o| o.dead || o.down);
+        let far =
+            it.is_some_and(|o| (o.position[0] - me[0]).hypot(o.position[1] - me[1]) > LOCK_FAR);
+        self.lock_lost = if w.may_lock(id, LOCK_FAR) {
+            0.0
+        } else {
+            self.lock_lost + dt
+        };
+        if gone || far || self.lock_lost > LOCK_LOST_SECONDS {
+            self.lock_on = None;
+            return;
+        }
+        if self.aim_on {
+            return;
+        }
+        let tau = std::f32::consts::TAU;
+        let Some(at) = w.object(id).map(|o| o.position) else {
+            return;
+        };
+        let eye = self.camera().eye;
+        let way = (at[1] - eye[1]).atan2(at[0] - eye[0]);
+        let off = (way - LOCK_ASIDE - self.yaw + tau / 2.0).rem_euclid(tau) - tau / 2.0;
+        self.yaw += off * (1.0 - (-LOCK_TURN_RATE * dt).exp());
+        self.game.world.pc_aim = Some((at[1] - me[1]).atan2(at[0] - me[0]));
+        self.hover_target = Some(id);
     }
 
     /// The ray through the crosshair: where it starts, and its unit direction. It follows the drift the player sees.
@@ -210,8 +318,10 @@ impl Stage {
             let reach = self.aim_reach(eye, dir);
             self.game.world.aim_hit(eye, dir, reach).who
         });
+        // Aiming wins over the lock while it lasts.
         let target = on_crosshair
             .flatten()
+            .or(self.lock_on)
             .or((range == 0.0 || !hostile).then_some(pc));
         let refused = if !known {
             Some(format!("{name}: {NOT_KNOWN}"))
@@ -253,7 +363,10 @@ impl Stage {
     /// What the HUD draws for the aim: where the ray goes on the screen.
     pub fn crosshair_view(&self) -> Option<Crosshair> {
         if !self.aim_on {
-            return None;
+            // Locked, it marks what it is locked on to.
+            let at = self.game.world.object(self.lock_on?)?.position;
+            let (x, y) = self.project(at, LOCK_MARK)?;
+            return Some(Crosshair { x, y, hot: true });
         }
         let (eye, dir) = self.aim_ray();
         let (x, y) = self

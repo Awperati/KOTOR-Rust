@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 /// The roll and the jump are not in the game, so they have no words in the talk table.
 const NOT_IN_TALK_TABLE: u32 = 0;
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 28] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 29] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
@@ -37,6 +37,7 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 28] = [
     ("CancelCombat", 48315, 1, "KeyF"),
     ("Pickup", NOT_IN_TALK_TABLE, 1, "KeyF"),
     ("AttackMode", NOT_IN_TALK_TABLE, 1, "KeyX"),
+    ("LockOn", NOT_IN_TALK_TABLE, 1, "KeyQ"),
     ("SoloMode", 48035, 1, "KeyV"),
     ("Nameplates", NOT_IN_TALK_TABLE, 1, "F6"),
     ("CelShading", NOT_IN_TALK_TABLE, 1, "F7"),
@@ -230,6 +231,13 @@ impl KeyMap {
         }
         if !text.lines().any(|l| l == KEY_DEFAULTS_LINE) {
             self.move_to_new_defaults();
+        }
+        // A file from before the lock-on may have its key on something the player chose: that stays, and the lock-on has none.
+        if !text.contains("key.LockOn=") {
+            let lock = KeyMap::default().0["LockOn"].clone();
+            if self.0.iter().any(|(a, k)| *a != "LockOn" && *k == lock) {
+                self.0.insert("LockOn", String::new());
+            }
         }
     }
 
@@ -558,6 +566,17 @@ mod tests {
         old.read("key.Inventory=KeyY\nkey.Jump=Space\nkey.NoSuchThing=KeyZ\n");
         assert!(old.0.keys().all(|a| force_row(a).is_none()));
         assert_eq!(old.0["Inventory"], "KeyY");
+    }
+
+    #[test]
+    fn a_file_from_before_the_lock_on_keeps_what_it_put_on_its_key() {
+        let mut k = KeyMap::default();
+        k.read("key.Inventory=KeyY\nkey.Jump=Space\n");
+        assert_eq!(k.0["LockOn"], "KeyQ");
+        let mut k = KeyMap::default();
+        k.read("key.Force23=KeyQ\nkey.Jump=Space\n");
+        assert_eq!(k.0["Force23"], "KeyQ");
+        assert_eq!(k.0["LockOn"], "");
     }
 
     #[test]

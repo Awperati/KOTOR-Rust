@@ -330,7 +330,8 @@ impl Stage {
         let (ahead, right, _) = self.steer;
         let held = ahead != 0.0 || right != 0.0;
         // Aiming, the keys go by the aim at once, or a strafe bends with every turn of the mouse.
-        if !held || !self.settings().movement_modern || self.pilot.is_some() || self.aim_on {
+        let by_camera = self.aim_on || self.lock_on.is_some();
+        if !held || !self.settings().movement_modern || self.pilot.is_some() || by_camera {
             self.steer_yaw = self.yaw;
         } else {
             let tau = std::f32::consts::TAU;

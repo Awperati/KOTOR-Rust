@@ -619,6 +619,187 @@ fn a_power_key_says_why_it_does_nothing_and_only_works_in_modern() {
     std::fs::remove_file(&file).ok();
 }
 
+/// Three enemies in front of the player: on the left, in the middle, and on the right of the view, each `ahead` metres off.
+fn three_foes(s: &mut Stage, ahead: f32) -> [u32; 3] {
+    let (pc, at) = (s.game.world.pc, s.game.world.pc_mover.pos);
+    let mut out = [0; 3];
+    for (n, off) in [0.45f32, 0.0, -0.45].into_iter().enumerate() {
+        let way = s.yaw + off;
+        let at = [at[0] + way.cos() * ahead, at[1] + way.sin() * ahead, at[2]];
+        let id = s.game.world.spawn_creature("n_calonord", at);
+        let f = s.game.world.object_mut(id).unwrap();
+        (f.hp, f.max_hp, f.faction) = (9000, 9000, 1);
+        out[n] = id;
+    }
+    let me = s.game.world.object_mut(pc).unwrap();
+    (me.hp, me.max_hp) = (9000, 9000);
+    out
+}
+
+fn sturdy_stage(name: &str) -> Option<(Stage, std::path::PathBuf)> {
+    let (mut s, file) = stage(name, "")?;
+    s.set_combat_modern(true);
+    run(&mut s, 2);
+    Some((s, file))
+}
+
+#[test]
+fn the_lock_takes_the_nearest_to_the_middle_lets_go_and_the_wheel_goes_round() {
+    let Some((mut s, file)) = sturdy_stage("lock") else {
+        return;
+    };
+    // Nothing to lock on to, and Classic has none.
+    s.lock_key();
+    assert_eq!(s.locked_on(), None);
+    let [left, middle, right] = three_foes(&mut s, 6.0);
+    s.set_combat_modern(false);
+    s.lock_key();
+    assert_eq!(s.locked_on(), None, "Classic");
+    s.set_combat_modern(true);
+    s.lock_key();
+    assert_eq!(s.locked_on(), Some(middle));
+    assert!(s.crosshair_view().is_some(), "a mark on it");
+    // The wheel goes round, and stops at the ends.
+    s.lock_wheel(1.0);
+    assert_eq!(s.locked_on(), Some(left));
+    s.lock_wheel(-1.0);
+    assert_eq!(s.locked_on(), Some(middle));
+    s.lock_wheel(-1.0);
+    assert_eq!(s.locked_on(), Some(right));
+    // The key lets go.
+    s.lock_key();
+    assert_eq!(s.locked_on(), None);
+    assert!(s.crosshair_view().is_none());
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn locked_the_camera_comes_round_the_body_faces_it_and_circles_and_aiming_wins() {
+    let Some((mut s, file)) = sturdy_stage("circle") else {
+        return;
+    };
+    let [left, _, _] = three_foes(&mut s, 6.0);
+    s.lock_key();
+    s.lock_wheel(1.0);
+    assert_eq!(s.locked_on(), Some(left));
+    let way_to = |s: &Stage, from: [f32; 3]| {
+        let at = s.game.world.object(left).unwrap().position;
+        (at[1] - from[1]).atan2(at[0] - from[0])
+    };
+    let apart = |a: f32, b: f32| {
+        let tau = std::f32::consts::TAU;
+        ((a - b + tau / 2.0).rem_euclid(tau) - tau / 2.0).abs()
+    };
+    run(&mut s, 90);
+    let eye = s.camera().eye;
+    let off = apart(s.yaw, way_to(&s, eye));
+    assert!(
+        off > 0.05 && off < 0.3,
+        "the camera came round, to one side: {off}"
+    );
+    let me = s.game.world.pc_mover.pos;
+    let heading = s.game.world.pc_mover.heading;
+    assert!(apart(heading, way_to(&s, me)) < 0.2, "the body faces it");
+    // A strafe goes round it and the body keeps facing it.
+    let start = way_to(&s, me);
+    s.steer = (0.0, 1.0, false);
+    run(&mut s, 60);
+    s.steer = (0.0, 0.0, false);
+    let me = s.game.world.pc_mover.pos;
+    assert!(apart(way_to(&s, me), start) > 0.1, "it went round");
+    let heading = s.game.world.pc_mover.heading;
+    assert!(apart(heading, way_to(&s, me)) < 0.3, "still facing it");
+    // Aiming wins: the camera is the player's, and the lock is still there.
+    s.set_aim_held(true);
+    run(&mut s, 30);
+    assert!(s.aiming());
+    let yaw = s.yaw + 1.0;
+    s.yaw = yaw;
+    run(&mut s, 30);
+    assert!(
+        apart(s.yaw, yaw) < 0.001,
+        "the camera stays where the mouse put it"
+    );
+    assert_eq!(s.locked_on(), Some(left));
+    s.set_aim_held(false);
+    run(&mut s, 120);
+    let eye = s.camera().eye;
+    assert!(apart(s.yaw, way_to(&s, eye)) < 0.3, "and comes back");
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn the_lock_ends_when_it_dies_is_far_or_stays_out_of_sight() {
+    let Some((mut s, file)) = sturdy_stage("lose") else {
+        return;
+    };
+    let [left, middle, right] = three_foes(&mut s, 6.0);
+    // Dead.
+    s.lock_key();
+    assert_eq!(s.locked_on(), Some(middle));
+    s.game.world.object_mut(middle).unwrap().dead = true;
+    run(&mut s, 1);
+    assert_eq!(s.locked_on(), None, "dead");
+    // Far away.
+    s.lock_key();
+    let id = s.locked_on().expect("another");
+    assert!(id == left || id == right);
+    let (x, y) = (s.yaw.cos(), s.yaw.sin());
+    let p = s.game.world.object(id).unwrap().position;
+    s.game
+        .world
+        .teleport(id, [p[0] + x * 60.0, p[1] + y * 60.0, p[2]]);
+    run(&mut s, 2);
+    assert_eq!(s.locked_on(), None, "far");
+    // Behind a closed door for a moment, and then for longer.
+    let other = if id == left { right } else { left };
+    s.yaw = {
+        let me = s.game.world.pc_mover.pos;
+        let at = s.game.world.object(other).unwrap().position;
+        (at[1] - me[1]).atan2(at[0] - me[0])
+    };
+    run(&mut s, 1);
+    s.lock_key();
+    assert_eq!(s.locked_on(), Some(other));
+    let me = s.game.world.pc_mover.pos;
+    let at = s.game.world.object(other).unwrap().position;
+    let (mx, my) = ((me[0] + at[0]) / 2.0, (me[1] + at[1]) / 2.0);
+    let (dx, dy) = (at[0] - me[0], at[1] - me[1]);
+    let l = dx.hypot(dy);
+    let (sx, sy) = (-dy / l * 5.0, dx / l * 5.0);
+    s.game
+        .world
+        .nav
+        .as_mut()
+        .unwrap()
+        .block_line([mx + sx, my + sy, me[2]], [mx - sx, my - sy, me[2]]);
+    run(&mut s, 60);
+    assert_eq!(s.locked_on(), Some(other), "a moment");
+    run(&mut s, 120);
+    assert_eq!(s.locked_on(), None, "too long");
+    std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn a_power_goes_to_the_lock_with_no_crosshair() {
+    let Some((mut s, file)) = sturdy_stage("lockpower") else {
+        return;
+    };
+    let [_, middle, _] = three_foes(&mut s, 6.0);
+    s.lock_key();
+    assert_eq!(s.locked_on(), Some(middle));
+    let pc = s.game.world.pc;
+    let o = s.game.world.object_mut(pc).unwrap();
+    (o.force, o.max_force) = (1000, 1000);
+    o.spells.insert(50);
+    // Force Wound, row 50, with no crosshair.
+    assert_eq!(s.power_key("Force50"), None);
+    assert_eq!(s.game.world.last_power.get(&pc).map(|p| p.0), Some(50));
+    let cost = s.game.world.power_cost(pc, 50).unwrap();
+    assert_eq!(s.game.world.object(pc).unwrap().force, 1000 - cost);
+    std::fs::remove_file(&file).ok();
+}
+
 #[test]
 fn a_click_while_aiming_does_not_walk() {
     let Some((mut s, file)) = stage("click", "") else {

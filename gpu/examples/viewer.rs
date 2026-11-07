@@ -696,6 +696,7 @@ impl App {
                         "CancelCombat" => self.stage.hud_disengage(),
                         "Pickup" => self.stage.pickup(),
                         "AttackMode" => self.stage.attack_mode_key(),
+                        "LockOn" => self.stage.lock_key(),
                         "Nameplates" => self.stage.toggle_nameplates(),
                         "CelShading" => self.stage.toggle_cel_shading(),
                         "ReloadCustom" => {
@@ -834,6 +835,8 @@ impl ApplicationHandler for App {
                 };
                 if self.stage.menu_open() {
                     self.stage.menu_wheel(d);
+                } else if self.stage.locked_on().is_some() {
+                    self.stage.lock_wheel(d);
                 } else {
                     self.stage.distance = (self.stage.distance - d * 0.4).clamp(1.5, 12.0);
                 }

@@ -4,6 +4,7 @@
 //! **Assumed, all of it:** the body's shape and the reach. A shot on the body never misses outright: `resolve_aimed` rolls a
 //! graze, a hit or a critical. The enemies' attacks keep their rounds and the near misses of the no-misses rule.
 
+use crate::follow::dist2d;
 use crate::world::{Kind, ObjId, Object, World};
 
 /// How far a shot goes, in metres, against 12 for a round's shot.
@@ -70,6 +71,16 @@ impl World {
             && !o.down
             && !self.on_player_team(o.id)
             && (self.attack_mode || self.reputation(self.pc, o.id) <= 10)
+    }
+
+    /// Whether the player can lock on to this creature from here: a shot may hit it, nothing stands between, and it is within `reach`.
+    pub fn may_lock(&self, id: ObjId, reach: f32) -> bool {
+        let at = self.pc_mover.pos;
+        self.objects.get(&id).is_some_and(|o| {
+            self.shot_may_hit(o)
+                && dist2d(at, o.position) <= reach
+                && self.clear_line(at, o.position)
+        })
     }
 
     /// What a ray of unit `dir` through the crosshair comes to, within `reach` metres. A body behind the player, or with a wall
