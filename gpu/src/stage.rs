@@ -893,6 +893,10 @@ impl Stage {
                 .filter(|r| r.name == "EffectVisualEffect")
                 .and_then(|r| r.nums.first())
                 .map(|r| *r as i32);
+            // What the blast sounds like: the row's `soundimpact` in `visualeffects.2da` (`cb_gr_fragment` for a frag grenade).
+            if let Some(sound) = row.and_then(|r| self.visual_sound(r)) {
+                self.effect_from(&sound, at);
+            }
             let Some((_, Some((model, up)))) = row.and_then(|r| self.visual_row(r)) else {
                 continue;
             };
@@ -900,6 +904,15 @@ impl Stage {
                 self.effects.play_model(&m, [at[0], at[1], at[2] + up]);
             }
         }
+    }
+
+    /// The sound a visual effect makes where it lands: `soundimpact` of its row in `visualeffects.2da`.
+    fn visual_sound(&mut self, row: i32) -> Option<String> {
+        let t = TwoDa::parse(&self.inst.read("visualeffects", ResType::TWODA).ok()?).ok()?;
+        let i = t.labels.iter().position(|l| l == &row.to_string())?;
+        t.get(i, "soundimpact")
+            .filter(|s| !s.is_empty() && *s != "****")
+            .map(str::to_string)
     }
 
     /// The visuals in an effect record and whatever it is linked with. A handle is an index plus one.
@@ -2036,21 +2049,37 @@ impl Stage {
             let o = self.game.world.object(item)?;
             (o.base_item as usize, o.template.clone())
         };
+        let model = self.model_of_item(base, &template);
+        self.held.insert(item, model.clone());
+        model
+    }
+
+    /// The model of an item by its base item and template.
+    fn model_of_item(&mut self, base: usize, template: &str) -> Option<Rc<Model>> {
         let variation = self
             .inst
-            .read(&template, ResType(2025))
+            .read(template, ResType(2025))
             .ok()
             .and_then(|b| Gff::parse(&b).ok())
             .and_then(|g| g.root.int("ModelVariation"))
             .unwrap_or(1);
         let class = self.baseitem(base, "itemclass").unwrap_or_default();
         let named = format!("{class}_{variation:03}");
-        let model = self.model(&named).or_else(|| {
+        self.model(&named).or_else(|| {
             let d = self.baseitem(base, "defaultmodel")?;
             self.model(&d)
-        });
-        self.held.insert(item, model.clone());
-        model
+        })
+    }
+
+    /// A grenade in the air: its model by the item's template.
+    fn flying_model(&mut self, template: &str) -> Option<Rc<Model>> {
+        let base = self
+            .inst
+            .read(template, ResType(2025))
+            .ok()
+            .and_then(|b| Gff::parse(&b).ok())
+            .and_then(|g| g.root.int("BaseItem"))?;
+        self.model_of_item(base as usize, template)
     }
 
     /// What a creature holds: hand node and model.
@@ -2278,6 +2307,13 @@ impl Stage {
                     scene.add_model_with(&body.model, sampled.as_ref(), &body.xf, &[], None, None);
                 }
                 _ => {}
+            }
+        }
+        // A grenade in the air, spinning as it goes.
+        for g in self.game.world.grenades_in_flight() {
+            if let Some(m) = self.flying_model(&g.template) {
+                let angle = self.game.world.time * 9.0;
+                scene.add_model_with(&m, None, &placement(g.position, angle), &[], None, None);
             }
         }
         self.neighbour_figures(&mut scene, false);

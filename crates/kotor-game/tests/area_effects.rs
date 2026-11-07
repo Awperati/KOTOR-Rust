@@ -1,7 +1,7 @@
 //! Grenades thrown by enemies, and what a trigger holds, through the game's own scripts.
 
 use kotor_archive::Install;
-use kotor_game::{Kind, World};
+use kotor_game::{Kind, World, RELEASE_SECONDS};
 
 const GRENADE: &str = "g_w_fraggren01";
 const STEP: f32 = 0.05;
@@ -94,6 +94,11 @@ fn a_grenade_hurts_all_in_its_circle_and_not_those_outside() {
     w.carry(pc, grenade);
     w.use_item_on(pc, grenade, soldiers[0]).unwrap();
     let hp = |w: &World, id: u32| w.object(id).unwrap().hp;
+    // It has not burst yet: it is in the hand, then in the air.
+    assert_eq!(hp(&w, soldiers[0]), 500, "no damage at the throw");
+    for _ in 0..(3.0 / STEP) as usize {
+        w.step(STEP);
+    }
     assert!(hp(&w, soldiers[0]) < 500, "the one aimed at");
     assert!(hp(&w, soldiers[1]) < 500, "the one beside");
     assert_eq!(hp(&w, soldiers[2]), 500, "the one far off");
@@ -155,4 +160,59 @@ fn a_soldier_throws_at_a_foe_far_off_and_keeps_its_grenades_for_one_close_up() {
     };
     assert!(far, "8 m: it throws");
     assert!(!near, "4 m: it keeps them");
+}
+
+#[test]
+fn a_thrown_grenade_flies_before_it_bursts_and_hurts_where_it_lands() {
+    let Some(mut w) = world("end_m01aa") else {
+        return;
+    };
+    let pc = w.pc;
+    let at = w.object(pc).unwrap().position;
+    let foe = w
+        .objects
+        .values()
+        .find(|o| o.kind == Kind::Creature && o.template.starts_with("n_sithsoldier"))
+        .map(|o| o.id)
+        .unwrap();
+    w.teleport(foe, [at[0] + 9.0, at[1], at[2]]);
+    let f = w.object_mut(foe).unwrap();
+    (f.max_hp, f.hp) = (500, 500);
+    let grenade = w.spawn_item(GRENADE);
+    w.carry(pc, grenade);
+    w.use_item_on(pc, grenade, foe).unwrap();
+    let t0 = w.time;
+    let mut path: Vec<(f32, [f32; 3])> = Vec::new();
+    let mut burst_at = None;
+    for _ in 0..(4.0 / STEP) as usize {
+        w.step(STEP);
+        if let Some(g) = w.grenades_in_flight().first() {
+            path.push((w.time - t0, g.position));
+        }
+        if burst_at.is_none() && !w.effects_at.is_empty() {
+            burst_at = Some(w.time - t0);
+            assert!(w.object(foe).unwrap().hp < 500, "the damage lands with the burst");
+        }
+        if burst_at.is_none() {
+            assert_eq!(w.object(foe).unwrap().hp, 500, "nothing hurt before it lands");
+        }
+    }
+    let burst_at = burst_at.expect("it bursts");
+    // In the hand for 0.83 s, then 9 m at 10 m/s: about 1.7 s in all.
+    assert!(
+        (burst_at - (RELEASE_SECONDS + 0.9)).abs() < 0.2,
+        "burst at {burst_at}"
+    );
+    assert!(path.len() >= 10, "seen in the air over several frames: {}", path.len());
+    assert!(path.first().unwrap().0 >= RELEASE_SECONDS - 0.1, "not before it leaves the hand");
+    let x: Vec<f32> = path.iter().map(|p| p.1[0]).collect();
+    assert!(x.windows(2).all(|p| p[1] >= p[0]), "it travels towards the target: {x:?}");
+    assert!(x.last().unwrap() - x.first().unwrap() > 6.0, "it covers the distance: {x:?}");
+    let top = path.iter().map(|p| p.1[2]).fold(f32::MIN, f32::max);
+    assert!(top > path.first().unwrap().1[2] + 0.5, "it rises on an arc: {top}");
+    // It lands on the target.
+    let end = path.last().unwrap().1;
+    let foe_at = w.object(foe).unwrap().position;
+    assert!((end[0] - foe_at[0]).abs() < 1.0, "{end:?} {foe_at:?}");
+    assert!(w.grenades_in_flight().is_empty());
 }

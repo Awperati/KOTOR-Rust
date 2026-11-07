@@ -683,6 +683,7 @@ impl World {
             return;
         }
         self.tick(dt);
+        self.update_flights();
         self.update_minigame(dt);
         self.update_race(dt);
         self.resume_conversation();

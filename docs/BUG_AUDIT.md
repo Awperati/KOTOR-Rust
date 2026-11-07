@@ -89,6 +89,17 @@ creatures had heartbeats. Placeables have them now, and one opened before its fi
 opened, 439 with items, none with an unnamed item. The 47 left have no items and no script in their files, `footlker001` for one.
 They are empty in the game's data. I have not seen one in the original.
 
+**Grenades flew nowhere (owner, 7 Nov): fixed.** Both throws, the player's `use_item_on` and the opening's `ActionUseTalentOnObject`
+(a Sith soldier at a Republic soldier, `end_m01aa`, game time 171 s), ended in `cast_spell`, which ran the grenade's script on the
+spot: the blast came at the first frame of the throw, before the arm moved. `cast_spell` now starts a flight (`crates/kotor-game/src/flight.rs`)
+and the script runs where it lands: the hand lets go at 0.83 s of the 1.5 s `throwgren` clip (measured: the right hand's fastest
+moment, `crates/kotor-model/examples/throw_release.rs`), the grenade flies at 10 m/s on an arc (assumed) and bursts on landing, with
+the sound of the effect row (`soundimpact` `cb_gr_fragment`). Tests: `a_thrown_grenade_flies_before_it_bursts_and_hurts_where_it_lands`
+(damage only at the landing, 10+ positions across frames, moving towards the target, arc), `a_grenade_is_seen_in_the_air_and_its_blast_is_heard_where_it_lands`.
+Frames: `docs/shots/combat/grenade_strip_player_720p.png` and `grenade_strip_opening_720p.png` (throw, flight, blast, from
+`gpu/examples/grenade_strip.rs`). I could not tell from the owner's recording which frame lacked the blast. **Not built:** a fuse wait
+after landing, a bounce, the grenade held in the hand before release.
+
 **`scripts/drive_grenades.ps1` was not reliable; it is now (8 runs of 8 pass).** Two causes, both in the driver. The soldier it
 armed ran up to the player, and the game's own AI keeps its grenades for a foe farther than about 4 m: headless, 8 seeds, a
 soldier at 4 m never throws in 60 s, from 4.5 m up it throws within 3 to 18 s (`a_soldier_throws_at_a_foe_far_off_and_keeps_its_grenades_for_one_close_up`,

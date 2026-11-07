@@ -453,23 +453,36 @@ impl World {
             self.describe(caster),
             self.describe(target)
         ));
+        self.last_power.insert(caster, (spell, script.is_some()));
+        // A thrown grenade is in the air first: its power happens where it lands (`flight.rs`).
+        if script.is_some() && self.is_throw(spell) {
+            self.start_flight(caster, spell, target);
+        } else {
+            self.burst(caster, spell, target);
+        }
+        Ok(())
+    }
+
+    /// The power's script runs, and a hostile one makes its target an attacker's business.
+    pub(crate) fn burst(&mut self, caster: ObjId, spell: i32, target: ObjId) {
+        let script = self
+            .table("spells")
+            .and_then(|t| t.get(spell as usize, "impactscript").map(str::to_string))
+            .filter(|s| !s.is_empty());
         let saved = self.spell;
         self.spell = SpellContext {
             id: spell,
             caster,
             target,
         };
-        let ran = script.is_some();
         if let Some(s) = script {
             let _ = self.run_script(&s, caster);
         }
-        self.last_power.insert(caster, (spell, ran));
         self.spell = saved;
         // A hostile cast makes the target an attacker's business: the target is told it was attacked.
         if self.reputation(target, caster) <= 10 && target != caster {
             self.combat.last_attacker.insert(target, caster);
         }
-        Ok(())
     }
 
     /// DC of the powers a caster casts.

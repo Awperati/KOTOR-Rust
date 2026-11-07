@@ -11,6 +11,7 @@ mod cutscene;
 mod dialogue;
 mod earlyforce;
 mod encounters;
+mod flight;
 mod follow;
 mod force;
 mod galaxy;
@@ -43,6 +44,7 @@ mod weapon_focus;
 mod workbench;
 mod world;
 
+pub use flight::{Flight, InFlight, RELEASE_SECONDS, THROW_SPEED};
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
 pub use autopilot::{lead_with_the_best_at, state_digest, Autopilot, FightResult, Stall};
 pub use chargen::{

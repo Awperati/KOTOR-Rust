@@ -93,7 +93,10 @@ impl World {
     pub fn use_item_on(&mut self, who: ObjId, item: ObjId, at: ObjId) -> Result<(), CannotUse> {
         let spell = self.item_view(item).and_then(|v| v.power);
         let spell = spell.ok_or(CannotUse::NoPower)?;
-        self.cast_spell(who, spell, at, true)
+        self.thrown_item = self.objects.get(&item).map(|o| o.template.clone());
+        let cast = self.cast_spell(who, spell, at, true);
+        self.thrown_item = None;
+        cast
             .map_err(|_| CannotUse::Failed)?;
         self.spend_one(who, item);
         Ok(())

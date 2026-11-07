@@ -474,6 +474,9 @@ fn run(args: &[String]) -> Result<()> {
                     moving_from.unwrap_or(0.0),
                     still_from
                 );
+                for e in &a.events {
+                    println!("  event {:.3} {}", e.time, e.name);
+                }
             }
         }
         "obj" | "render" => {

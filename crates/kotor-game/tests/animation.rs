@@ -65,7 +65,17 @@ fn a_power_plays_its_cast_once_and_a_grenade_its_throw() {
     assert!((seen[0].1 - 0.333).abs() < 0.05, "{seen:?}");
     assert!((seen[1].1 - 0.933).abs() < 0.05, "{seen:?}");
     assert!(!names[2..].contains(&"castout1"), "no looping: {seen:?}");
-    // A grenade, spell 87: its throw, 1.5 s, once.
+    // A grenade, spell 87: its throw, 1.5 s, once. Nobody else is near to swing at the player and cut the clip short.
+    let others: Vec<_> = g
+        .world
+        .objects
+        .values()
+        .filter(|o| o.kind == kotor_game::Kind::Creature && o.id != pc && o.id != foe)
+        .map(|o| o.id)
+        .collect();
+    for o in others {
+        g.world.teleport(o, [0.0, 0.0, -100.0]);
+    }
     g.world.cast_spell(pc, 87, foe, true).unwrap();
     let seen = clips(&mut g, 2.5);
     assert_eq!(seen[0].0, "throwgren", "{seen:?}");

@@ -482,6 +482,10 @@ pub struct World {
     pub(crate) hp_regen: f32,
     /// Who has just cast a power, for the animation.
     pub(crate) casts: Vec<(ObjId, i32)>,
+    /// Grenades thrown and not yet burst.
+    pub(crate) flights: Vec<crate::flight::Flight>,
+    /// The template of the item being thrown, for the flight `cast_spell` starts.
+    pub(crate) thrown_item: Option<String>,
     /// Animations scripts asked creatures for since the last step: who, which `ANIMATION_` constant, for how long.
     pub(crate) animations: Vec<(ObjId, i32, f32)>,
     /// The shop that is open, and what never runs out in any shop.
@@ -628,6 +632,8 @@ impl World {
             force_regen: 0.0,
             hp_regen: 0.0,
             casts: Vec::new(),
+            flights: Vec::new(),
+            thrown_item: None,
             animations: Vec::new(),
             store: None,
             store_infinite: BTreeSet::new(),
