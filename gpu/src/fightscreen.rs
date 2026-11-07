@@ -5,7 +5,7 @@
 //! and is not queued.
 
 use super::Stage;
-use kotor_game::{CombatAction, CombatChoice, Kind, ObjId};
+use kotor_game::{CombatAction, CombatChoice, Kind, ObjId, PowerSlot};
 use kotor_ui::{Float, SlotShown};
 
 const STR_MISS: u32 = 42134;
@@ -79,8 +79,8 @@ pub(super) struct Fight {
     round: u32,
     down: std::collections::BTreeSet<ObjId>,
     target: Option<ObjId>,
-    /// What each quick slot at the bottom right shows.
-    quick_picks: [usize; 3],
+    /// What each quick slot at the bottom right shows: the last is the first on the screen.
+    quick_picks: [usize; 4],
     /// A driver's player cannot fall.
     unhurt: bool,
 }
@@ -94,6 +94,12 @@ pub fn target_slot(tag: &str) -> Option<usize> {
         _ => None,
     }
 }
+
+/// Which of the quick slots is the far left of the screen.
+const FAR_LEFT: usize = 3;
+
+/// What the quick slots show: the last three on the screen, the first, and the name of the one under the cursor.
+type QuickView = ([Option<SlotShown>; 3], Option<SlotShown>, Option<String>);
 
 /// What `--grenadier` hands out.
 const GRENADIER_COUNT: i32 = 5;
@@ -185,12 +191,18 @@ impl Stage {
             .unwrap_or_default()
     }
 
-    /// What a quick slot offers. The third has the powers for oneself: the video shows it empty on a Soldier.
+    /// What a quick slot offers. The owner: "Force powers far left, consumables middle left. Middle right is shields". The third
+    /// has the powers with a lasting effect, and is empty on a Soldier. The fourth is the far left of the screen.
     fn quick_choices(&mut self, slot: usize) -> Vec<SlotChoice> {
         let w = &mut self.game.world;
         let pc = w.pc;
-        if slot == 2 {
-            let powers = w.self_powers(pc);
+        if slot >= 2 {
+            let which = if slot == FAR_LEFT {
+                PowerSlot::Active
+            } else {
+                PowerSlot::Passive
+            };
+            let powers = w.self_powers(pc, which);
             return powers
                 .into_iter()
                 .map(|c| {
@@ -220,12 +232,16 @@ impl Stage {
             .collect()
     }
 
-    /// What the quick slots show, and the name of the one under the cursor.
-    pub(super) fn quick_view(&mut self) -> ([Option<SlotShown>; 3], Option<String>) {
-        let mut shows = [None, None, None];
+    /// What the quick slots show, and the name of the one under the cursor. `far_left`: the first on the screen is theirs, as
+    /// there is no target to act on.
+    pub(super) fn quick_view(&mut self, far_left: bool) -> QuickView {
+        let mut shows = [None, None, None, None];
         let mut hover = None;
         let over = self.menus.fight.hover.clone();
         for (slot, shown) in shows.iter_mut().enumerate() {
+            if slot == FAR_LEFT && !far_left {
+                continue;
+            }
             let choices = self.quick_choices(slot);
             if choices.is_empty() {
                 continue;
@@ -238,25 +254,30 @@ impl Stage {
                 greyed: !pick.usable,
                 lit: matches!(pick.does, SlotDoes::OnSelf(p) if w.power_active(w.pc, p)),
             });
-            let tag = format!("BTN_ACTION{}", slot + 1);
+            let tag = format!("BTN_ACTION{}", (slot + 1) % 4);
             if over.as_deref() == Some(tag.as_str()) {
                 hover = Some(pick.name.clone());
             }
         }
-        (shows, hover)
+        let [a, b, c, first] = shows;
+        ([a, b, c], first, hover)
     }
 
+    /// `BTN_ACTION1` to `3` are the first three, and `BTN_ACTION0` the last.
     fn quick_slot_of(tag: &str) -> usize {
-        tag.chars()
-            .last()
-            .and_then(|c| c.to_digit(10))
-            .map_or(1, |n| n as usize)
-            .clamp(1, 3)
-            - 1
+        match tag.chars().last().and_then(|c| c.to_digit(10)) {
+            Some(n @ 1..=3) => n as usize - 1,
+            _ => FAR_LEFT,
+        }
+    }
+
+    /// With no target to act on, whether the far left slot has powers to use, and is not the Pickup button.
+    pub(in crate::stage) fn far_left_has_powers(&mut self) -> bool {
+        !self.quick_choices(FAR_LEFT).is_empty()
     }
 
     /// A click on a quick slot: the leader uses what it shows on themselves.
-    pub(super) fn use_quick_slot(&mut self, tag: &str) {
+    pub(in crate::stage) fn use_quick_slot(&mut self, tag: &str) {
         let slot = Self::quick_slot_of(tag);
         let choices = self.quick_choices(slot);
         if choices.is_empty() {
@@ -279,7 +300,13 @@ impl Stage {
 
     /// What a quick slot shows, for a test.
     pub fn quick_slot_shown(&mut self, slot: usize) -> Option<SlotShown> {
-        self.quick_view().0[slot].clone()
+        self.quick_view(false).0[slot].clone()
+    }
+
+    /// What the far left slot shows of the powers, if it does, for a test.
+    pub fn first_slot_shown(&mut self) -> Option<SlotShown> {
+        let action = self.target_view_action();
+        self.quick_view(action.is_none()).1
     }
 
     /// An arrow on a quick slot.
@@ -339,6 +366,10 @@ impl Stage {
     }
 
     /// The cursor is on the Attack mode button.
+    pub(super) fn over_solo(&self) -> bool {
+        self.menus.fight.hover.as_deref() == Some("TB_SOLO")
+    }
+
     pub(super) fn over_attack_mode(&self) -> bool {
         self.menus.fight.hover.as_deref() == Some(kotor_ui::ATTACK_MODE_BUTTON)
     }

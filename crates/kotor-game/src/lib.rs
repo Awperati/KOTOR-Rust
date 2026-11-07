@@ -25,6 +25,7 @@ mod k2feats;
 mod labels;
 mod law;
 mod respawn;
+mod slots;
 mod soundset;
 mod story_branches;
 pub use story_branches::{
@@ -117,6 +118,7 @@ pub use seamless_world::{
     Attached, Crossing, Figure, Scenery, State as SeamlessState, LET_GO, THRESHOLD,
 };
 pub use sheet::{CannotUse, Sheet};
+pub use slots::{PowerSlot, SlotsTable};
 pub use stealth::StealthXp;
 pub use store::{CannotTrade, StoreLine, StoreOpen};
 pub use swoop::{

@@ -326,16 +326,18 @@ impl World {
         (trained, spikes)
     }
 
-    /// What someone carries to use on themselves, for the quick slots: what heals, and then the rest. The video at 7:50 has
-    /// a Medpac in the first of these and Adrenal Stamina in the next. **Assumed:** a repair kit goes with what heals.
+    /// What someone can use on themselves, for the quick slots. First what they carry: what heals, and then the rest, as the
+    /// owner has medpacs and stims in one slot. Then the shields they wear. **Assumed:** a repair kit goes with what heals, and a
+    /// shield must be worn, as a forearm band is.
     pub fn quick_items(&mut self, who: ObjId) -> [Vec<ObjId>; 2] {
         const HEALS: [&str; 3] = [
             "Medical_Equipment",
             "Squad_Recovery_kit",
             "Droid_Repair_Equipment",
         ];
+        const SHIELDS: [&str; 2] = ["Forearm_Bands", "Droid_Shield"];
         let thrown = self.combat_throwables(who);
-        let mut out = [Vec::new(), Vec::new()];
+        let (mut heals, mut rest) = (Vec::new(), Vec::new());
         for item in self.carried(who) {
             let for_self = self
                 .item_view(item)
@@ -343,10 +345,25 @@ impl World {
             if thrown.contains(&item) || !for_self {
                 continue;
             }
-            let label = self.base_label(item);
-            out[usize::from(!HEALS.contains(&label.as_str()))].push(item);
+            if HEALS.contains(&self.base_label(item).as_str()) {
+                heals.push(item);
+            } else {
+                rest.push(item);
+            }
         }
-        out
+        heals.append(&mut rest);
+        let worn: Vec<ObjId> = self
+            .objects
+            .get(&who)
+            .map_or(Vec::new(), |o| o.equipped.values().copied().collect());
+        let mut shields = Vec::new();
+        for item in worn {
+            let usable = self.item_view(item).is_some_and(|v| v.power.is_some());
+            if usable && SHIELDS.contains(&self.base_label(item).as_str()) {
+                shields.push(item);
+            }
+        }
+        [heals, shields]
     }
 
     pub(crate) fn remember_items(&mut self) {

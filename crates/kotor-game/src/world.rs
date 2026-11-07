@@ -193,6 +193,8 @@ pub struct Object {
     pub droppable: bool,
     /// Items: how many are stacked. Everything: the plot flag (cannot be hurt) and the good-evil value (0-100).
     pub stack: i32,
+    /// Items: how many of the charges in its file have been used.
+    pub charges_used: i32,
     pub plot: bool,
     pub alignment: i32,
 }
@@ -278,6 +280,7 @@ impl Object {
             underwear: String::new(),
             droppable: false,
             stack: 1,
+            charges_used: 0,
             plot: false,
             upgrades: BTreeMap::new(),
             ai_style: 0,

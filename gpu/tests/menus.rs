@@ -783,6 +783,185 @@ fn a_power_for_oneself_is_in_the_fourth_slot_and_a_click_turns_it_on_and_off() {
     assert_eq!(effects(&s), before);
 }
 
+/// Nobody and nothing about to be the target.
+fn nothing_near(s: &mut Stage) {
+    let w = &mut s.game.world;
+    let pc = w.pc;
+    let others: Vec<u32> = w
+        .objects
+        .values()
+        .filter(|o| o.id != pc && o.kind == kotor_game::Kind::Creature)
+        .map(|o| o.id)
+        .collect();
+    for id in others {
+        let at = w.object(id).unwrap().position;
+        w.teleport(id, [at[0] + 500.0, at[1], at[2]]);
+    }
+    for o in w.objects.values_mut() {
+        o.useable = false;
+    }
+}
+
+#[test]
+fn powers_go_far_left_and_far_right_by_the_table_and_the_target_comes_first() {
+    let Some((mut s, _)) = in_game("slots_powers") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    const CURE: i32 = 10;
+    const HEAL: i32 = 28;
+    const BURST_OF_SPEED: i32 = 8;
+    const FORCE_ARMOR: i32 = 17;
+    nothing_near(&mut s);
+    let slot = s.hud_pixel("BTN_ACTION0", SIZE).unwrap();
+    assert!(
+        s.first_slot_shown().is_none(),
+        "no powers: the Pickup button"
+    );
+
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.spells.extend([CURE, HEAL, BURST_OF_SPEED, FORCE_ARMOR]);
+    (o.force, o.max_force) = (100, 100);
+    o.hp = 1;
+    s.update(DT);
+
+    // The two that work at once are far left, with arrows. The two that last are far right.
+    let shown = s.first_slot_shown().expect("far left");
+    assert!(shown.more);
+    assert!(s.quick_slot_shown(2).expect("far right").more);
+    s.hover(slot, SIZE);
+    let first = s.combat_words().expect("a name");
+    assert!(first.contains("Cure"), "{first}");
+    let up = s.hud_pixel("BTN_ACTIONUP0", SIZE).unwrap();
+    s.click(up, SIZE);
+    s.hover(slot, SIZE);
+    let second = s.combat_words().expect("a name");
+    assert!(second.contains("Heal"), "{second}");
+
+    // A click casts it and opens nothing.
+    s.click(slot, SIZE);
+    assert_eq!(s.menu_name(), "-");
+    s.update(DT);
+    assert!(
+        s.game.world.object(pc).unwrap().force < 100,
+        "it costs Force"
+    );
+    assert!(!s.first_slot_shown().unwrap().lit, "it works at once");
+
+    // Far right holds only what lasts: a click turns it on, and it shows.
+    let right = s.hud_pixel("BTN_ACTION3", SIZE).unwrap();
+    s.hover(right, SIZE);
+    let name = s.combat_words().expect("a name");
+    assert!(name.contains("Speed"), "{name}");
+    s.click(right, SIZE);
+    s.update(DT);
+    assert!(s.quick_slot_shown(2).unwrap().lit);
+
+    // Too dear: far left is the Pickup button again.
+    s.game.world.object_mut(pc).unwrap().force = 0;
+    s.update(DT);
+    assert!(s.first_slot_shown().is_none());
+}
+
+#[test]
+fn the_target_has_the_far_left_slot_while_it_offers_something() {
+    let Some((mut s, _)) = in_game("slots_target") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let o = s.game.world.object_mut(pc).unwrap();
+    o.spells.insert(28);
+    (o.force, o.max_force) = (100, 100);
+    s.update(DT);
+    nothing_near(&mut s);
+    s.update(DT);
+    assert!(s.first_slot_shown().is_some(), "no target");
+    let at = s.game.world.object(pc).unwrap().position;
+    let someone = s
+        .game
+        .world
+        .spawn_creature("n_calonord", [at[0] + 1.0, at[1], at[2]]);
+    s.game.world.object_mut(someone).unwrap().useable = true;
+    s.update(DT);
+    assert!(s.first_slot_shown().is_none(), "the target comes first");
+    s.game
+        .world
+        .teleport(someone, [at[0] + 500.0, at[1], at[2]]);
+    s.update(DT);
+    assert!(s.first_slot_shown().is_some());
+}
+
+#[test]
+fn medpacs_and_stims_are_in_one_slot_and_a_worn_shield_in_the_next_until_its_charges_run_out() {
+    let Some((mut s, _)) = in_game("slots_items") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let medpac = carrying(&mut s, "g_i_medeqpmnt01");
+    let stim = carrying(&mut s, "g_i_adrnaline003");
+    let shield = carrying(&mut s, "g_i_frarmbnds01");
+    assert_eq!(s.game.world.quick_items(pc)[0], vec![medpac, stim]);
+    assert!(
+        s.game.world.quick_items(pc)[1].is_empty(),
+        "carried and not worn"
+    );
+    s.game.world.equip(pc, shield, None).unwrap();
+    s.update(DT);
+    assert_eq!(s.game.world.quick_items(pc)[1], vec![shield]);
+    assert!(s.quick_slot_shown(0).unwrap().more);
+    let shown = s.quick_slot_shown(1).expect("the shield");
+    assert!(!shown.more);
+
+    // The arrows show with one thing in the slot too, and a click on one does not use it.
+    let arrow = s.hud_pixel("BTN_ACTIONUP2", SIZE).unwrap();
+    s.click(arrow, SIZE);
+    s.update(DT);
+    assert_eq!(s.game.world.object(shield).unwrap().charges_used, 0);
+
+    // A slot with nothing in it is dim.
+    let frame = |s: &mut Stage, tag: &str| -> usize {
+        s.update(DT);
+        let at = s.hud_pixel(tag, SIZE).unwrap();
+        let (x, y) = (at.0 as i32, at.1 as i32);
+        let place = s.hud_place(tag).unwrap();
+        let k = SIZE.1 as f32 / 480.0;
+        let (wide, high) = (
+            (place[2] as f32 * k / 2.0) as i32,
+            (place[3] as f32 * k / 2.0) as i32,
+        );
+        let o = s.overlay().unwrap();
+        let mut bright = 0;
+        for dy in -high..high {
+            for dx in -wide..wide {
+                let i = ((y + dy) as usize * o.width as usize + (x + dx) as usize) * 4;
+                if o.rgba.get(i + 2).is_some_and(|b| *b > 180) {
+                    bright += 1;
+                }
+            }
+        }
+        bright
+    };
+    let full = frame(&mut s, "BTN_ACTION2");
+    let empty = frame(&mut s, "BTN_ACTION3");
+    assert!(empty * 2 < full, "{empty} and {full}");
+
+    // Its file gives it five uses, and it stays on until the last.
+    let slot = s.hud_pixel("BTN_ACTION2", SIZE).unwrap();
+    for used in 1..5 {
+        s.click(slot, SIZE);
+        s.update(DT);
+        assert_eq!(s.game.world.object(shield).unwrap().charges_used, used);
+        assert_eq!(s.game.world.quick_items(pc)[1], vec![shield]);
+    }
+    s.click(slot, SIZE);
+    s.update(DT);
+    assert!(s.game.world.object(shield).is_none(), "used up");
+    assert!(s.game.world.quick_items(pc)[1].is_empty());
+    let o = s.game.world.object(pc).unwrap();
+    assert!(!o.equipped.values().any(|i| *i == shield));
+    assert!(!o.inventory.contains(&shield));
+}
+
 #[test]
 fn the_title_card_comes_from_the_assets_folder_and_black_is_seen_through() {
     let Some(mut s) = at_menu() else {
@@ -2092,8 +2271,8 @@ fn a_medpac_is_used_from_the_quick_slot() {
     let medpac = carrying(&mut s, "g_i_medeqpmnt01");
     carrying(&mut s, "g_i_adrnaline003");
     let lists = s.game.world.quick_items(pc);
-    assert_eq!(lists[0], vec![medpac]);
-    assert_eq!(lists[1].len(), 1, "a stim goes in the next slot");
+    assert_eq!(lists[0].first(), Some(&medpac));
+    assert_eq!(lists[0].len(), 2, "a stim goes after it");
     s.game.world.object_mut(pc).unwrap().hp = 1;
     s.update(DT);
     let slot = s.hud_pixel("BTN_ACTION1", SIZE).unwrap();
@@ -5346,12 +5525,22 @@ fn solo_mode_asks_shows_its_button_and_scripts_take_people_off_the_party_screen(
     };
     assert_eq!(s.action_for_key("KeyV"), Some("SoloMode"));
     let button = s.hud_pixel("TB_SOLO", SIZE).unwrap();
-    s.click(button, SIZE);
-    assert_eq!(s.menu_name(), "-", "off, it does not show");
+    s.hover(button, SIZE);
+    assert_eq!(s.combat_words().as_deref(), Some("Solo mode: Off"));
+    // How much of the button's line shows.
+    let line = |s: &mut Stage| -> usize {
+        s.update(DT);
+        let o = s.overlay().unwrap();
+        o.rgba
+            .chunks(4)
+            .filter(|p| p[0] > 240 && p[1] > 240 && (60..100).contains(&p[2]))
+            .count()
+    };
+    let without = line(&mut s);
 
     // No leaves it off, and the game waits for the answer.
-    s.solo_key();
-    assert_eq!(s.menu_name(), "solo");
+    s.click(button, SIZE);
+    assert_eq!(s.menu_name(), "solo", "it is always there, and asks");
     words_too_big(&mut s, "solo", &mut Vec::new());
     s.escape();
     assert_eq!(s.menu_name(), "-");
@@ -5363,6 +5552,9 @@ fn solo_mode_asks_shows_its_button_and_scripts_take_people_off_the_party_screen(
     assert_eq!(s.menu_name(), "-");
     assert!(s.game.world.solo_mode);
     s.update(DT);
+    s.hover(button, SIZE);
+    assert_eq!(s.combat_words().as_deref(), Some("Solo mode: On"));
+    assert!(line(&mut s) > without + 100, "it lights");
     s.click(button, SIZE);
     assert_eq!(s.menu_name(), "solo");
     press(&mut s, "BTN_OK");

@@ -171,8 +171,9 @@ impl World {
             .collect()
     }
 
-    /// What the leader can use on themselves, for the fourth slot at the bottom right: the powers `spells.2da` fills `forcefriendly` for. The game gives them a time and has no way to end one sooner. The owner asked for that.
-    pub fn self_powers(&mut self, id: ObjId) -> Vec<CombatChoice> {
+    /// What the leader can use on themselves, for one of the quick slots: the powers `spells.2da` fills `forcefriendly` for, and
+    /// `docs/slots.tsv` says which slot. The game gives them a time and has no way to end one sooner. The owner asked for that.
+    pub fn self_powers(&mut self, id: ObjId, slot: crate::PowerSlot) -> Vec<CombatChoice> {
         let Some((known, force)) = self.objects.get(&id).map(|o| (o.spells.clone(), o.force))
         else {
             return Vec::new();
@@ -183,7 +184,9 @@ impl World {
         let mut out = Vec::new();
         for spell in known {
             let row = spell.max(0) as usize;
-            if t.int(row, "forcefriendly").is_none() {
+            if t.int(row, "forcefriendly").is_none()
+                || crate::SlotsTable::get().slot_of(t.get(row, "label").unwrap_or("")) != slot
+            {
                 continue;
             }
             let cost = self.power_cost(id, spell).unwrap_or(i32::MAX);

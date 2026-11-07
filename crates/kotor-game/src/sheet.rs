@@ -101,8 +101,29 @@ impl World {
         Ok(())
     }
 
-    /// One comes off a stack, and the last is gone.
+    /// One comes off a stack, and the last is gone. What is worn spends a charge instead, and is gone with the last.
+    /// **Assumed:** a shield with no charges left goes, as a medpac does. The game's files do not say.
     pub(crate) fn spend_one(&mut self, who: ObjId, item: ObjId) {
+        let worn = self
+            .objects
+            .get(&who)
+            .is_some_and(|o| o.equipped.values().any(|e| *e == item));
+        if worn {
+            let Some(template) = self.objects.get(&item).map(|o| o.template.clone()) else {
+                return;
+            };
+            let charges = self.item_template(&template).charges;
+            if let Some(o) = self.objects.get_mut(&item) {
+                o.charges_used += 1;
+                if o.charges_used < charges {
+                    return;
+                }
+                o.stack = 1;
+            }
+            if let Some(o) = self.objects.get_mut(&who) {
+                o.equipped.retain(|_, i| *i != item);
+            }
+        }
         let last = self.objects.get(&item).is_some_and(|o| o.stack <= 1);
         if last {
             if let Some(o) = self.objects.get_mut(&who) {

@@ -1872,9 +1872,13 @@ impl Stage {
             self.hud_click_sound(&tag);
             if tag == "BTN_ACTION0" {
                 let action = self.target_view_action();
-                match self.target().filter(|_| !menus::slot_is_pickup(action)) {
-                    Some(id) => self.use_thing(id),
-                    None => self.pickup(),
+                if action.is_none() && self.far_left_has_powers() {
+                    self.use_quick_slot(&tag);
+                } else {
+                    match self.target().filter(|_| !menus::slot_is_pickup(action)) {
+                        Some(id) => self.use_thing(id),
+                        None => self.pickup(),
+                    }
                 }
             } else if let Some(slot) = menus::target_slot(&tag) {
                 if self.use_slot(slot) {
@@ -3539,7 +3543,11 @@ impl Stage {
             ),
         };
         // What is under the plates depends on whether one is the target's, which takes the place of its bar.
-        let key = format!("{key}{}", plates.iter().any(|p| p.framed));
+        let key = format!(
+            "{key}{}{}",
+            plates.iter().any(|p| p.framed),
+            self.game.world.solo_mode
+        );
         let crosshair = if view.is_none() {
             self.crosshair_view()
         } else {

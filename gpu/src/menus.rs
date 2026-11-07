@@ -61,6 +61,8 @@ const PICKUP_WORDS: &str = "Pickup";
 const NOTHING_NEARBY: &str = "Nothing nearby";
 /// What the Attack mode button says, off and on. Not in the talk table either.
 const ATTACK_MODE_WORDS: [&str; 2] = ["Attack mode: Off", "Attack mode: On"];
+/// And the Solo button, off and on.
+const SOLO_WORDS: [&str; 2] = ["Solo mode: Off", "Solo mode: On"];
 
 /// The first action slot is the Pickup button, unless the target has something else to do: attack, talk, a door.
 pub(super) fn slot_is_pickup(action: Option<&str>) -> bool {
@@ -1953,13 +1955,15 @@ impl Stage {
                 self.open_if_level_waits();
             }
             "BTN_ACTION1" | "BTN_ACTION2" | "BTN_ACTION3" => self.use_quick_slot(tag),
-            "BTN_ACTIONUP1" | "BTN_ACTIONUP2" | "BTN_ACTIONUP3" | "BTN_ACTIONDOWN1"
-            | "BTN_ACTIONDOWN2" | "BTN_ACTIONDOWN3" => self.turn_quick_slot(tag),
+            "BTN_ACTIONUP0" | "BTN_ACTIONUP1" | "BTN_ACTIONUP2" | "BTN_ACTIONUP3"
+            | "BTN_ACTIONDOWN0" | "BTN_ACTIONDOWN1" | "BTN_ACTIONDOWN2" | "BTN_ACTIONDOWN3" => {
+                self.turn_quick_slot(tag)
+            }
             "BTN_CLEARALL" | "BTN_CLEARONE" | "BTN_CLEARONE2" => self.disengage(),
             "TB_PAUSE" => self.toggle_pause(),
             kotor_ui::ATTACK_MODE_BUTTON => self.attack_mode_key(),
             kotor_ui::TOUCH_BUTTON => self.toggle_touch(),
-            "TB_SOLO" if self.game.world.solo_mode => self.solo_key(),
+            "TB_SOLO" => self.solo_key(),
             "BTN_TARGETUP0" | "BTN_TARGETDOWN0" | "BTN_TARGETUP1" | "BTN_TARGETDOWN1"
             | "BTN_TARGETUP2" | "BTN_TARGETDOWN2" => self.turn_slot(tag),
             "BTN_OPT" => self.escape(),
@@ -2000,17 +2004,23 @@ impl Stage {
         let hostile = action == Some("Attack");
         let locked = !hostile && self.target_has_a_way_in();
         let (slots, hover) = self.slots_view(hostile || locked, &mut queue);
-        let (quick, quick_hover) = self.quick_view();
-        let pickup = slot_is_pickup(action);
+        let (quick, first, quick_hover) = self.quick_view(action.is_none());
+        let pickup = slot_is_pickup(action) && first.is_none();
         let on_pickup = pickup && self.over_first_action_slot();
         let attack_mode = self.game.world.attack_mode();
         let on_attack_mode = self.over_attack_mode();
         let quick_hover = on_attack_mode
             .then(|| ATTACK_MODE_WORDS[attack_mode as usize].to_string())
             .or(quick_hover);
+        let solo = self.game.world.solo_mode;
+        let quick_hover = self
+            .over_solo()
+            .then(|| SOLO_WORDS[solo as usize].to_string())
+            .or(quick_hover);
         CombatHud {
             locked,
             quick,
+            first,
             quick_hover: on_pickup.then(|| PICKUP_WORDS.to_string()).or(quick_hover),
             pickup,
             attack_mode,

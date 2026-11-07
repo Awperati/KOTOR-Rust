@@ -1,0 +1,23 @@
+# Quick slots: which of the two slots each Force power for oneself goes in. The owner edits this file; the game reads it when it is built.
+# Columns are separated by tabs. Lines starting with # are notes.
+#
+# <power, as spells.2da names it> <slot>
+#   active    the far left slot: a power that works at once
+#   passive   the far right slot: a power with a lasting effect
+# A power that is not here goes in passive.
+FORCE_POWER_CURE	active
+FORCE_POWER_HEAL	active
+FORCE_POWER_SPEED_BURST	passive
+FORCE_POWER_KNIGHT_SPEED	passive
+FORCE_POWER_SPEED_MASTERY	passive
+FORCE_POWER_FORCE_ARMOR	passive
+FORCE_POWER_FORCE_AURA	passive
+FORCE_POWER_FORCE_SHIELD	passive
+FORCE_POWER_FORCE_IMMUNITY	passive
+FORCE_POWER_FORCE_VALOR	passive
+FORCE_POWER_KNIGHT_VALOR	passive
+FORCE_POWER_MASTER_VALOR	passive
+FORCE_POWER_REGENERATION_XXX	passive
+FORCE_POWER_RESIST_ENERGY_1	passive
+FORCE_POWER_RESIST_ENERGY_2	passive
+FORCE_POWER_RESIST_FORCE	passive

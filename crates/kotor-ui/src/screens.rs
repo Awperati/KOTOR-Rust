@@ -27,6 +27,8 @@ const SLOT_WORDS_FONT: &str = "dialogfont10x10";
 pub(crate) const GREYED: [u8; 4] = [0, 0, 0, 170];
 /// Round a power that is on: the yellow of what the HUD has chosen.
 const POWER_ON_LINE: [u8; 3] = [255, 255, 76];
+/// How strong a quick slot with nothing in it is. By eye from the owner's picture of the game.
+const EMPTY_SLOT_STRENGTH: f32 = 0.4;
 /// How thick that is, in layout units.
 const LINE_THICK: i32 = 2;
 /// The half-dark fills of the rounded buttons and panels: `BTN_LEVELUP`, `container.gui`, `confirm.gui`.
@@ -103,7 +105,7 @@ pub struct Ui<'a> {
     hud_party: usize,
     /// The game is paused, with the box at the top right if something paused it.
     paused: bool,
-    /// The party is not following: `TB_SOLO` shows.
+    /// The party is not following: `TB_SOLO` has a line round it.
     solo: bool,
     pause_note: String,
     /// Text in Noto Sans, and text boxes in the glowing style; and the font, once looked for.
@@ -144,8 +146,10 @@ pub struct CombatHud {
     pub hover: Option<(usize, String)>,
     /// The target is locked, and the first slot under its bar has ways to try it.
     pub locked: bool,
-    /// The three slots at the bottom right after the action's: what heals, what else the leader can use on themselves.
+    /// The three slots at the bottom right after the action's: consumables, shields, and the powers with a lasting effect.
     pub quick: [Option<SlotShown>; 3],
+    /// With no target to act on: the first of the four has the powers that work at once.
+    pub first: Option<SlotShown>,
     /// What the one under the cursor is called.
     pub quick_hover: Option<String>,
     /// The first of the four slots is the Pickup button.
@@ -253,6 +257,8 @@ const MINIMAP_ARROW: &str = "mm_barrow";
 pub struct Patch {
     /// Its words show at this share of their strength.
     pub faint: Option<f32>,
+    /// Its picture shows at this share of its strength.
+    pub faded: Option<f32>,
     /// Its picture upside down.
     pub flipped: bool,
     pub fill: Option<String>,
@@ -919,6 +925,9 @@ impl<'a> Ui<'a> {
             }
             return;
         }
+        let kept = patch
+            .faded
+            .map(|share| (cv.keep_box(r[0], r[1], r[2], r[3]), share));
         if self.glow_on && HUD_TEXT_BOXES.contains(&c.tag.as_str()) {
             crate::glow::boxed(cv, r);
         } else if patch.flipped {
@@ -933,6 +942,9 @@ impl<'a> Ui<'a> {
             }
         } else if c.kind != 11 {
             self.draw_border(cv, &c.border, r, patch.fill.as_deref());
+        }
+        if let Some((kept, share)) = kept {
+            cv.fade_to(&kept, share);
         }
         if patch.greyed {
             cv.fill_rect(r[0], r[1], r[2], r[3], GREYED);
@@ -1317,8 +1329,7 @@ impl<'a> Ui<'a> {
     ) -> HashMap<String, Patch> {
         let mut patches: HashMap<String, Patch> = HashMap::new();
         for tag in all_tags(&gui.panel) {
-            let solo = self.solo && tag == "TB_SOLO";
-            if !solo && tag != "LBL_MAPBORDER" && HUD_HIDDEN.iter().any(|p| tag.starts_with(p)) {
+            if tag != "LBL_MAPBORDER" && HUD_HIDDEN.iter().any(|p| tag.starts_with(p)) {
                 patches.insert(
                     tag,
                     Patch {
@@ -1390,6 +1401,7 @@ impl<'a> Ui<'a> {
             hide(&mut patches, "LBL_ARROW".to_string());
         }
         self.patch_combat(&mut patches);
+        patches.entry("TB_SOLO".to_string()).or_default().line = self.solo.then_some(POWER_ON_LINE);
         let blue = patches
             .entry(crate::touch::TOUCH_BUTTON.to_string())
             .or_default();
@@ -1532,14 +1544,30 @@ impl<'a> Ui<'a> {
             let picture = patches.entry("LBL_ACTION0".to_string()).or_default();
             picture.hidden = false;
             picture.fill = Some(PICKUP_PICTURE.to_string());
+        }
+        if combat.pickup || combat.first.is_some() {
             // Its name shows under the cursor, as the other three's do.
             for tag in ["LBL_ACTIONDESC", "LBL_ACTIONDESCBG"] {
                 patches.entry(tag.to_string()).or_default().hidden = true;
             }
         }
-        for (n, slot) in combat.quick.iter().enumerate() {
-            let Some(shown) = slot else { continue };
-            let n = n + 1;
+        let slots = std::iter::once(&combat.first).chain(combat.quick.iter());
+        for (n, slot) in slots.enumerate() {
+            let Some(shown) = slot else {
+                // One with nothing in it is dim, arrows and all, as in the owner's picture of the game.
+                if n > 0 {
+                    for tag in [
+                        format!("BTN_ACTION{n}"),
+                        format!("BTN_ACTIONUP{n}"),
+                        format!("BTN_ACTIONDOWN{n}"),
+                    ] {
+                        let frame = patches.entry(tag).or_default();
+                        frame.hidden = false;
+                        frame.faded = Some(EMPTY_SLOT_STRENGTH);
+                    }
+                }
+                continue;
+            };
             let picture = patches.entry(format!("LBL_ACTION{n}")).or_default();
             picture.hidden = false;
             picture.fill = Some(shown.picture.clone());
@@ -1547,11 +1575,10 @@ impl<'a> Ui<'a> {
             if shown.lit {
                 picture.line = Some(POWER_ON_LINE);
             }
-            if shown.more {
-                for arrow in ["UP", "DOWN"] {
-                    let tag = format!("BTN_ACTION{arrow}{n}");
-                    patches.entry(tag).or_default().hidden = false;
-                }
+            // On every slot with something in it, as in the owner's picture, with one thing or more.
+            for arrow in ["UP", "DOWN"] {
+                let tag = format!("BTN_ACTION{arrow}{n}");
+                patches.entry(tag).or_default().hidden = false;
             }
         }
         if let Some(words) = &combat.quick_hover {
@@ -1728,18 +1755,13 @@ impl<'a> Ui<'a> {
             "BTN_MINIMAP" => !self.minimap_off,
             "BTN_CHAR3" => self.hud_party >= 2,
             "BTN_CHAR2" => self.hud_party >= 3,
+            "BTN_ACTIONUP0" | "BTN_ACTIONDOWN0" => self.combat.first.is_some(),
             "BTN_ACTION1" => self.combat.quick[0].is_some(),
             "BTN_ACTION2" => self.combat.quick[1].is_some(),
             "BTN_ACTION3" => self.combat.quick[2].is_some(),
-            "BTN_ACTIONUP1" | "BTN_ACTIONDOWN1" => {
-                self.combat.quick[0].as_ref().is_some_and(|q| q.more)
-            }
-            "BTN_ACTIONUP2" | "BTN_ACTIONDOWN2" => {
-                self.combat.quick[1].as_ref().is_some_and(|q| q.more)
-            }
-            "BTN_ACTIONUP3" | "BTN_ACTIONDOWN3" => {
-                self.combat.quick[2].as_ref().is_some_and(|q| q.more)
-            }
+            "BTN_ACTIONUP1" | "BTN_ACTIONDOWN1" => self.combat.quick[0].is_some(),
+            "BTN_ACTIONUP2" | "BTN_ACTIONDOWN2" => self.combat.quick[1].is_some(),
+            "BTN_ACTIONUP3" | "BTN_ACTIONDOWN3" => self.combat.quick[2].is_some(),
             _ => true,
         };
         gui.panel
@@ -1942,7 +1964,7 @@ const MAP_GRID: f32 = 18.0;
 const MAP_GRID_LINE: [f32; 3] = [0.0, 70.0, 105.0];
 const MAP_GRID_BACK: [f32; 3] = [2.0, 4.0, 22.0];
 /// What the HUD does not show now: combat, notices, the action queue and the map's picture are not built.
-const HUD_HIDDEN: [&str; 26] = [
+const HUD_HIDDEN: [&str; 25] = [
     "LBL_CMBT",
     "LBL_COMBATBG",
     "LBL_MAP",
@@ -1964,7 +1986,6 @@ const HUD_HIDDEN: [&str; 26] = [
     "LBL_TARGET",
     "BTN_ACTIONUP",
     "BTN_ACTIONDOWN",
-    "TB_SOLO",
     "TB_STEALTH",
     "LBL_ACTION1",
     "LBL_ACTION2",
@@ -1973,7 +1994,7 @@ const HUD_HIDDEN: [&str; 26] = [
 /// Which of the file's three places each member has, in the party's order. The file's second place is the far one: the video
 /// has one companion right beside the leader at 7:30.
 const HUD_MEMBER_SLOTS: [usize; 3] = [1, 3, 2];
-const HUD_BUTTONS: [&str; 38] = [
+const HUD_BUTTONS: [&str; 40] = [
     crate::touch::TOUCH_BUTTON,
     "BTN_CHAR1",
     "BTN_ACTION1",
@@ -2012,6 +2033,8 @@ const HUD_BUTTONS: [&str; 38] = [
     "BTN_TARGETDOWN2",
     "BTN_OPT",
     "BTN_ACTION0",
+    "BTN_ACTIONUP0",
+    "BTN_ACTIONDOWN0",
 ];
 
 /// Lay the HUD's file over a screen `width` units wide and 480 high, keeping its proportions: the left half stays at the

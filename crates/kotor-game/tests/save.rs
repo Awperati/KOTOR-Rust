@@ -47,6 +47,24 @@ fn an_item_the_talk_table_names_with_a_tag_goes_by_its_kind_through_a_save_too()
 }
 
 #[test]
+fn a_save_keeps_the_charges_a_shield_has_used() {
+    let Some(mut w) = world() else { return };
+    let pc = w.pc;
+    let shield = w.spawn_item("g_i_frarmbnds01");
+    w.object_mut(shield).unwrap().charges_used = 3;
+    w.object_mut(pc).unwrap().inventory.push(shield);
+    let bytes = w.save_bytes("Shield").unwrap();
+    let mut back = fresh();
+    back.load_save(&bytes).unwrap();
+    let found = back
+        .objects
+        .values()
+        .find(|o| o.template == "g_i_frarmbnds01")
+        .expect("the shield");
+    assert_eq!(found.charges_used, 3);
+}
+
+#[test]
 fn a_save_keeps_the_quests_lost_to_a_killing() {
     let Some(mut w) = world() else { return };
     w.lost_quests

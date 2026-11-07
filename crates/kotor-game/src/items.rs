@@ -43,6 +43,8 @@ pub(crate) struct ItemTemplate {
     /// The row of `spells.2da` its `CastSpell` property runs.
     power: Option<i32>,
     pub(crate) properties: Vec<crate::gear::ItemProperty>,
+    /// How many uses its file gives it.
+    pub(crate) charges: i32,
 }
 
 /// What a screen shows about an item.
@@ -103,6 +105,7 @@ impl World {
                 .unwrap_or_default();
             out.model_variation = g.root.int("ModelVariation").unwrap_or(0);
             out.texture_variation = g.root.int("TextureVar").unwrap_or(0);
+            out.charges = g.root.int("Charges").unwrap_or(0) as i32;
             // Property 10 is `CastSpell` in `itempropdef.2da`.
             out.power = g
                 .root

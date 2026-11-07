@@ -608,6 +608,7 @@ impl World {
             ("Subrace", Value::Int(o.subrace)),
             ("Down", Value::Byte(o.down as u8)),
             ("Stack", Value::Int(o.stack)),
+            ("ChargesUsed", Value::Int(o.charges_used)),
             ("PlotFlag", Value::Byte(o.plot as u8)),
             ("Alignment", Value::Int(o.alignment)),
             ("Class", Value::Int(o.class)),
@@ -855,6 +856,7 @@ impl World {
             o.down = flag("Down");
             o.droppable = flag("Droppable");
             o.stack = e.int("Stack").unwrap_or(1) as i32;
+            o.charges_used = e.int("ChargesUsed").unwrap_or(0) as i32;
             o.plot = flag("PlotFlag");
             o.alignment = e.int("Alignment").unwrap_or(50) as i32;
             o.class = e.int("Class").unwrap_or(0) as i32;
