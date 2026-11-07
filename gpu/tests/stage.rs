@@ -1257,6 +1257,13 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         }
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
+        // FRAME_ARMOUR puts that item on the hero.
+        if let Ok(t) = std::env::var("FRAME_ARMOUR") {
+            let it = s.game.world.spawn_item(&t);
+            s.game.world.object_mut(pc).unwrap().feats.extend(0..300);
+            s.game.world.equip(pc, it, None).unwrap();
+            s.update(DT);
+        }
         // FRAME_STOCK shows the install's own paint, as with conventional underwear off; FRAME_NOHD leaves out the upscaled pictures.
         if std::env::var("FRAME_STOCK").is_ok() {
             s.set_conventional_underwear(false);
@@ -1644,5 +1651,38 @@ fn a_blaster_aims_down_at_someone_on_the_floor() {
     }
     for name in ["g2r1", "c2a1", "pause1", "walk"] {
         assert_eq!(s.aim_down_of(pc, &clip(name)), 0.0, "{name}");
+    }
+}
+
+/// Armour on the hero is drawn in its own model and picture: the class and the letter of its `baseitems.2da` row.
+#[test]
+fn armour_on_the_hero_is_drawn_in_its_own_model() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    s.game.world.object_mut(pc).unwrap().appearance = 92;
+    for (item, want) in [
+        ("g_a_clothes01", "PFBBM01"),
+        ("g_a_class4001", "PFBC01"),
+        ("g_a_class5003", "PFBD03"),
+        ("g_a_class6001", "PFBE01"),
+        ("g_a_class8001", "PFBG01"),
+        ("g_a_class9004", "PFBH04"),
+    ] {
+        let it = s.game.world.spawn_item(item);
+        s.game.world.equip(pc, it, None).unwrap();
+        for _ in 0..4 {
+            s.update(DT);
+        }
+        let worn: Vec<String> = s
+            .dynamic_scene()
+            .meshes
+            .iter()
+            .filter_map(|m| m.texture.clone())
+            .filter(|t| t.to_ascii_lowercase().starts_with("pfb"))
+            .collect();
+        assert!(
+            worn.iter().any(|t| t.eq_ignore_ascii_case(want)),
+            "{item}: {worn:?}"
+        );
     }
 }
