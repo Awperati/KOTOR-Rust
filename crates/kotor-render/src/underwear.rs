@@ -2288,8 +2288,14 @@ pub fn is_body_sheet(name: &str) -> bool {
     rest.len() == 2 && rest.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// The body sheets of a folder and those under it, to three levels, by lower-case name without the extension.
-fn collect_sheets(dir: &std::path::Path, depth: usize, out: &mut HashMap<String, PathBuf>) {
+/// The body sheets of a folder and those under it, to three levels, by lower-case name without the extension. Whether a model
+/// was met on the way: sheets that come with a mesh of their own are laid out for that mesh, not for this game's bodies.
+fn collect_sheets(
+    dir: &std::path::Path,
+    depth: usize,
+    out: &mut HashMap<String, PathBuf>,
+    own_mesh: &mut bool,
+) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
@@ -2298,9 +2304,16 @@ fn collect_sheets(dir: &std::path::Path, depth: usize, out: &mut HashMap<String,
     for path in entries {
         if path.is_dir() {
             if depth > 0 {
-                collect_sheets(&path, depth - 1, out);
+                collect_sheets(&path, depth - 1, out, own_mesh);
             }
             continue;
+        }
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("mdl"))
+        {
+            *own_mesh = true;
         }
         let is_tga = path
             .extension()
@@ -2332,8 +2345,12 @@ fn pack_sheets(id: &str) -> Option<Arc<HashMap<String, PathBuf>>> {
     }
     let dir = mods_root().join(name);
     let mut sheets = HashMap::new();
+    let mut own_mesh = false;
     if dir.is_dir() {
-        collect_sheets(&dir, 3, &mut sheets);
+        collect_sheets(&dir, 3, &mut sheets, &mut own_mesh);
+    }
+    if own_mesh {
+        sheets.clear();
     }
     let sheets = Arc::new(sheets);
     kept.insert(key, sheets.clone());
@@ -2362,9 +2379,9 @@ fn list_packs() -> Vec<UnderwearVariant> {
         })
         .filter_map(|e| {
             let name = e.file_name().into_string().ok()?;
-            let mut sheets = HashMap::new();
-            collect_sheets(&e.path(), 3, &mut sheets);
-            (!sheets.is_empty()).then(|| UnderwearVariant {
+            let (mut sheets, mut own_mesh) = (HashMap::new(), false);
+            collect_sheets(&e.path(), 3, &mut sheets, &mut own_mesh);
+            (!sheets.is_empty() && !own_mesh).then(|| UnderwearVariant {
                 id: format!("{PACK_PREFIX}{name}"),
                 name,
                 fits: true,
