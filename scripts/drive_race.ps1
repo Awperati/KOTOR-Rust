@@ -20,42 +20,44 @@ Shot "race_lights"
 Key $SPACE[0] $SPACE[1]
 $r = Race
 Report "Space before Go does not start it" ($r.speed -eq 0) "race=$($r.s.race)"
-$until = (Get-Date).AddSeconds(10)
-do { $r = Race } while ($r.gear -lt 0 -and (Get-Date) -lt $until)
+# How long a race's moments take, by its own clock.
+function RaceWait([scriptblock]$going, [int]$steps) {
+  $r = Race
+  $last = [int]$r.s.steps + $steps
+  $until = (Get-Date).AddSeconds($script:WALL_LIMIT)
+  while ((& $going $r) -and [int]$r.s.steps -lt $last -and (Get-Date) -lt $until) { $r = Race }
+  $r
+}
+Report "Space at the lights is no jump" ($r.s.air -ne "true") "air=$($r.s.air)"
+$r = RaceWait { param($o) $o.gear -lt 0 } 1800
 Report "The lights count down to gear 0" ($r.gear -eq 0) "race=$($r.s.race)"
 Key $SPACE[0] $SPACE[1]
-$until = (Get-Date).AddSeconds(3)
-do { $r = Race } while ($r.speed -le 5 -and (Get-Date) -lt $until)
+$r = RaceWait { param($o) $o.speed -le 5 } 300
 Report "Space at Go sets off" ($r.gear -eq 1 -and $r.speed -gt 5) "race=$($r.s.race)"
 Shot "race_gear1"
 # Space again when the meter is near full. Only above 60 does it shift.
 Key $SPACE[0] $SPACE[1]
 $r = Race
 Report "A shift too soon is refused" ($r.gear -eq 1 -or $r.speed -gt 60) "race=$($r.s.race)"
-$until = (Get-Date).AddSeconds(8)
-do { $r = Race } while ($r.speed -lt 65 -and (Get-Date) -lt $until)
+$r = RaceWait { param($o) $o.speed -lt 65 } 900
 Key $SPACE[0] $SPACE[1]
-$r = Race
+$r = RaceWait { param($o) $o.gear -lt 2 } 60
 Report "A shift at speed takes" ($r.gear -eq 2) "race=$($r.s.race)"
 # Hold D: it goes right. Hold A: back.
 $x0 = $r.x
-[void][Drv]::PostMessage($h, 0x100, [IntPtr]$D[0], [IntPtr](1 -bor ($D[1] -shl 16)))
-Start-Sleep -Milliseconds 400
-$r = Race
-$up = [long]0xC0000001 -bor ([long]$D[1] -shl 16)
-[void][Drv]::PostMessage($h, 0x101, [IntPtr]$D[0], [IntPtr][long]$up)
+KeyDown $D
+$r = RaceWait { param($o) $o.x -le $x0 + 1 } 120
+KeyUp $D
 Report "D steers right" ($r.x -gt $x0 + 1) "from $x0 race=$($r.s.race)"
 Shot "race_right"
 $x1 = $r.x
-[void][Drv]::PostMessage($h, 0x100, [IntPtr]$A[0], [IntPtr](1 -bor ($A[1] -shl 16)))
-Start-Sleep -Milliseconds 1500
-$r = Race
-$up = [long]0xC0000001 -bor ([long]$A[1] -shl 16)
-[void][Drv]::PostMessage($h, 0x101, [IntPtr]$A[0], [IntPtr][long]$up)
+KeyDown $A
+$r = RaceWait { param($o) $o.x -ge $x1 } 300
+KeyUp $A
 Report "A steers left" ($r.x -lt $x1) "from $x1 race=$($r.s.race)"
 # Shift whenever the meter allows, to the end.
 $gearAt = @(0, 0, 105, 156, 217)
-$until = (Get-Date).AddSeconds(90)
+$until = (Get-Date).AddSeconds($script:WALL_LIMIT)
 do {
   $r = Race
   if ($r.on -and $r.gear -ge 2 -and $r.gear -le 4 -and $r.speed -gt $gearAt[$r.gear]) { Key $SPACE[0] $SPACE[1] }
@@ -63,8 +65,7 @@ do {
 } while ($r.on -and (Get-Date) -lt $until -and $r.gear -lt 6)
 Report "The bike reaches the finish" ($r.gear -eq 6) "race=$($r.s.race)"
 Shot "race_finish"
-$until = (Get-Date).AddSeconds(10)
-do { $s = State } while ($s.module -ne "tar_m03af" -and (Get-Date) -lt $until)
+$s = UntilSteps { param($o) $o.module -eq "tar_m03af" } 1200
 Report "The race ends in the swoop module" ($s.module -eq "tar_m03af") "module=$($s.module) race=$($s.race)"
 Start-Sleep -Milliseconds 500
 Shot "race_after"

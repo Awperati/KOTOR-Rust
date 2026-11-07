@@ -25,8 +25,7 @@ if ($Shots) { [Drv]::Save($h, "$Shots\live_replies.png") }
 $said = [int]$s.said
 Click 220 578
 # The next line can take a few frames to be said, and a state line can be from before the click.
-$until = (Get-Date).AddSeconds(5)
-do { $s = State } while ([int]$s.said -le $said -and (Get-Date) -lt $until)
+$s = UntilSteps { param($o) [int]$o.said -gt $said } 300
 Report "Reply click" ([int]$s.said -gt $said) "said $said -> $($s.said)"
 
 # Through the rest of the talk with the 1 key and Space.
@@ -51,14 +50,12 @@ Report "Space closes it" ($s.opened -eq "false") "opened=$($s.opened)"
 
 # W runs ahead; D runs to the right.
 $a = State
-Key $W[0] $W[1] 300
-$b = State
+$b = HoldUntilMoved $W $a 0.3 60
 $moved = Moved $a $b
 Report "W moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
 if ($Shots) { [Drv]::Save($h, "$Shots\live_wasd.png") }
 $a = State
-Key $D[0] $D[1] 300
-$b = State
+$b = HoldUntilMoved $D $a 0.3 60
 $moved = Moved $a $b
 Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
 
@@ -73,8 +70,7 @@ Report "X pauses" ((Moved $a $b) -lt 0.05) "$($a.pc) -> $($b.pc)"
 Key $X[0] $X[1]
 [void](State)
 $a = State
-Key $W[0] $W[1] 300
-$b = State
+$b = HoldUntilMoved $W $a 0.3 60
 Report "X goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
 
 # A click on the floor walks there: look for one that lands.
@@ -84,8 +80,7 @@ foreach ($y in 600, 560, 520, 480, 640) {
     $a = State
     for ($k = 0; $k -lt 80 -and $a.dlg -eq "true"; $k++) { $a = Advance }
     Click $x $y
-    Start-Sleep -Milliseconds 250
-    $b = State
+    $b = UntilSteps { param($o) (Moved $a $o) -gt 0.3 -or $o.opened -eq "true" } 30
     $moved = Moved $a $b
     $detail = "click $x,$y $($a.pc) -> $($b.pc) clip=$($b.clip) opened=$($b.opened) dlg=$($b.dlg)"
     if ($b.opened -eq "true") { Key $SPACE[0] $SPACE[1] }

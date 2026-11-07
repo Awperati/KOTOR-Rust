@@ -37,10 +37,10 @@ foreach ($case in @(@($true, $false), @($true, $true), @($false, $false), @($fal
     $v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList $argv -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_look.err" -PassThru -NoNewWindow
     $h = WaitWindow $v; [Drv]::NeverActive($h)
     WaitLog
-    $until = (Get-Date).AddSeconds(30)
+    $until = (Get-Date).AddSeconds($script:WALL_LIMIT)
     do { $s = Advance } while ($s.dlg -eq "true" -and (Get-Date) -lt $until)
     # A scripted camera moves by itself. Measure once this one has stopped.
-    $until = (Get-Date).AddSeconds(30)
+    $until = (Get-Date).AddSeconds($script:WALL_LIMIT)
     do { $was = (State).lookdown; Start-Sleep -Milliseconds 300; $s = State } while (($s.lookdown -ne $was -or $s.dlg -eq "true" -or [double]$s.speed -gt 0.05) -and (Get-Date) -lt $until)
     MoveTo 640 300 0
     [void](State)

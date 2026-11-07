@@ -3749,6 +3749,47 @@ fn a_party_member_at_the_cameras_eye_is_not_drawn() {
     assert_eq!(place(&mut s, 0.2), far);
 }
 
+/// Both keys of the owner's A3 go through the Key Mapping page like any other: the jump on the movement page, and the pause
+/// on the game page. A key taken from the other swaps.
+#[test]
+fn the_jump_and_the_pause_are_rebound_on_the_key_page() {
+    let Some((mut s, _)) = in_game("jump_pause_keys") else {
+        return;
+    };
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    press(&mut s, "BTN_KEYMAP");
+    // Six rows fit, and the wheel brings up the rest.
+    let choose = |s: &mut Stage, row: usize, rows: usize| {
+        for _ in 0..rows {
+            s.menu_wheel(1.0);
+        }
+        for _ in 0..row.saturating_sub(5) {
+            s.menu_wheel(-1.0);
+        }
+        click_row(s, "LST_EventList", row);
+    };
+    let rows = s.menu_rows("LST_EventList");
+    let jump = rows
+        .iter()
+        .position(|r| r.text == "Jump: Space")
+        .expect("the jump's row");
+    choose(&mut s, jump, rows.len());
+    assert!(s.capture_key("KeyZ"));
+    assert_eq!(s.action_for_key("KeyZ"), Some("Jump"));
+    assert_eq!(s.action_for_key("Space"), None);
+    press(&mut s, "BTN_Filter_Game");
+    let rows = s.menu_rows("LST_EventList");
+    let pause = rows
+        .iter()
+        .position(|r| r.text.ends_with(": X"))
+        .expect("the pause's row");
+    choose(&mut s, pause, rows.len());
+    assert!(s.capture_key("KeyZ"));
+    assert_eq!(s.action_for_key("KeyZ"), Some("Pause"));
+    assert_eq!(s.action_for_key("KeyX"), Some("Jump"), "it swaps");
+}
+
 #[test]
 fn a_fresh_settings_file_has_invert_camera_off_and_the_mouse_going_down_looks_down() {
     let Some((mut s, dir)) = in_game("invert_fresh") else {

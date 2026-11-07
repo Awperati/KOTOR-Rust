@@ -79,10 +79,11 @@ function FocusReport {
 }
 function State {
   WatchFocus
-  # Wait until the window has reported twice since this call: what was posted before it has then been handled.
+  # Wait until the window has reported twice since this call: what was posted before it has then been handled. A loaded
+  # machine can take seconds over it, and a reading from before the key is a false failure: 1.5 s was not enough.
   $start = (Get-Item $script:stateFile).Length
   $line = $null
-  for ($t = 0; $t -lt 300; $t++) {
+  for ($t = 0; $t -lt 4000; $t++) {
     $now = (Get-Item $script:stateFile).Length
     if ($now -gt $start) {
       $tail = @(Get-Content $script:stateFile -Tail 3 | Where-Object { $_ -like "state *" })
@@ -140,9 +141,34 @@ function WaitFor([string]$name, [string]$want) {
   $s
 }
 function Moved($a, $b) { [Math]::Abs([double]($a.pc -split ',')[0] - [double]($b.pc -split ',')[0]) + [Math]::Abs([double]($a.pc -split ',')[1] - [double]($b.pc -split ',')[1]) }
+# The game's clock, sixty steps a second, is what a wait goes by: a slow machine runs it slower, and a sleep then proves
+# nothing. The wall clock only says when a window has stopped altogether.
+$script:WALL_LIMIT = 300
+function WaitSteps([int]$n) {
+  $start = [int](State).steps
+  $until = (Get-Date).AddSeconds($script:WALL_LIMIT)
+  do { Start-Sleep -Milliseconds 20 } while ([int](State).steps -lt $start + $n -and (Get-Date) -lt $until)
+}
+# State lines until `$done` says yes of one, or this many steps have gone by. Returns the last.
+function UntilSteps([scriptblock]$done, [int]$steps) {
+  $s = State
+  $last = [int]$s.steps + $steps
+  $until = (Get-Date).AddSeconds($script:WALL_LIMIT)
+  while (-not (& $done $s) -and [int]$s.steps -lt $last -and (Get-Date) -lt $until) { $s = State }
+  $s
+}
+function KeyDown($k) { WatchFocus; [void][Drv]::PostMessage($h, 0x100, [IntPtr]$k[0], [IntPtr](1 -bor ($k[1] -shl 16))) }
+function KeyUp($k) { [void][Drv]::PostMessage($h, 0x101, [IntPtr]$k[0], [IntPtr][long]([long]0xC0000001 -bor ([long]$k[1] -shl 16))) }
+# Hold a key until the player has moved this far from `$from`, or this many steps have gone by. Returns the last state.
+function HoldUntilMoved($k, $from, [double]$metres, [int]$steps) {
+  KeyDown $k
+  $s = UntilSteps { param($o) (Moved $from $o) -gt $metres } $steps
+  KeyUp $k
+  $s
+}
 function WaitLog {
   # The viewer writes its first state line once the window has drawn.
-  for ($t = 0; $t -lt 600; $t++) {
+  for ($t = 0; $t -lt 6000; $t++) {
     if ((Test-Path $script:stateFile) -and (Get-Item $script:stateFile).Length -gt 0) { return }
     Start-Sleep -Milliseconds 20
   }

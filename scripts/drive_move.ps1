@@ -27,12 +27,6 @@ function Open($name, $module, $extra) {
   do { $s = State } while ([double]$s.speed -gt 0.05 -and (Get-Date) -lt $until)
   $s
 }
-# Wait by the game's clock, sixty steps a second: a slow frame at 2160p can drop time, so a sleep is not enough.
-function WaitSteps([int]$n) {
-  $start = [int](State).steps
-  $until = (Get-Date).AddSeconds(60)
-  do { Start-Sleep -Milliseconds 20 } while ([int](State).steps -lt $start + $n -and (Get-Date) -lt $until)
-}
 function Close { Stop-Process -Id $script:v.Id -Force -ErrorAction SilentlyContinue }
 # Every state line from a size of the log on, as numbers.
 function Samples($from) {
