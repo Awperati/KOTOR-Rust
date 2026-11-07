@@ -118,16 +118,16 @@ A finger works without them too. On a screen or in a conversation it clicks, and
 
 In a window narrower than 4:3 the HUD and the conversation box are squeezed across to fit, as the menus always were, and pictures on them look tall.
 
-## Pause
-Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game goes back to the main menu with the game gone, and Close or Esc goes back to the game. Feedback and Auto-Pause are greyed and do nothing.
+## Pause menu
+Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game goes back to the main menu with the game gone, and Close or Esc goes back to the game. Feedback and Auto-Pause open their pages, as from Options.
 
 ## Options
 `optionsmain.gui` from the main menu, or straight from the pause menu. The choices are kept in `%LOCALAPPDATA%\kotor-rs\settings.txt`, and a `--skip-menu` run ignores that file.
 
 | Page | Works | Greyed or left out, because nothing behind it is built |
 |---|---|---|
-| Gameplay | difficulty, `CB_INVERTCAM` (tilts the camera the other way), Autosave (writes `autosave.sav` on each change of module, off by default) | Auto Level Up, Movement, Combat Movement, Key Mapping, Mouse Settings |
-| Graphics | Brightness, Screen Resolution (goes through 1280x720, 1920x1080, 2560x1440, 3840x2160) | Shadows, Grass, Advanced Options |
+| Gameplay | difficulty, Auto Level Up, Combat Movement, `CB_INVERTCAM` (called Invert Camera here: tilts the camera the other way), Autosave (writes `autosave.sav` on each change of module, off by default), the Movement box (Modern or Classic), the Combat box (Modern or Classic), Key Mapping, Controls (the file's Mouse Settings) | The Combat box while movement is Classic |
+| Graphics | Brightness, Screen Resolution (goes through 1280x720, 1920x1080, 2560x1440, 3840x2160), Advanced Options | Shadows, Grass |
 | Sound | music, voice and effects levels | Movie Volume and Advanced Options, left out |
 
 **Assumed, not compared with the game:** difficulty multiplies what the party takes by the `multiplier` of `difficultyopt.2da` (0.5, 1, 1.5), which is a table fact, but where the game applies it is a guess; left is easier; brightness is a layer in the overlay, an offset instead of the game's gamma; the label of `CB_INVERTCAM` reads "Mouse Look", and I went by its tag. Nobody has heard the sound levels.
