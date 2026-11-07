@@ -1389,7 +1389,11 @@ fn a_sonic_weapons_hit_sounds_like_a_blasters_when_its_own_is_missing() {
         damage: 1,
         target_hp: 10,
     });
-    let cues = s.update(DT);
+    // The shot leaves with the attack clip's kick, a little after the blow is dealt.
+    let mut cues = Vec::new();
+    for _ in 0..(2.0 / DT) as usize {
+        cues.extend(s.update(DT));
+    }
     let heard = |name: &str| {
         let want = wav(name);
         cues.iter()

@@ -54,11 +54,9 @@ impl World {
 
     /// A creature says something: a screen plays it where the creature is.
     pub(crate) fn say_from_soundset(&mut self, id: ObjId, slots: &[usize]) {
-        let slot = if slots.len() > 1 {
-            slots[(self.roll(slots.len() as i32) - 1) as usize]
-        } else {
-            slots[0]
-        };
+        // Not a roll of the combat's dice: a voice line must not change how a fight goes.
+        self.sound_turn = self.sound_turn.wrapping_add(1);
+        let slot = slots[self.sound_turn % slots.len()];
         if let Some(sound) = self.soundset_sound(id, slot) {
             self.sound_cues.push((id, sound));
         }

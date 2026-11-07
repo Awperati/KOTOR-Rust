@@ -496,6 +496,7 @@ pub struct World {
     /// Voice lines to be played where the creature is: who and the name of the wave file. A screen takes them.
     pub sound_cues: Vec<(ObjId, String)>,
     pub(crate) ssf_cache: BTreeMap<i32, Vec<u32>>,
+    pub(crate) sound_turn: usize,
     /// For a profiler: when on, where `World::step` spends its time. Each name has its count, total and worst, in milliseconds.
     pub step_profile: Option<BTreeMap<&'static str, (u32, f64, f64)>>,
     /// The template of the item being thrown, for the flight `cast_spell` starts.
@@ -651,6 +652,7 @@ impl World {
             flights: Vec::new(),
             sound_cues: Vec::new(),
             ssf_cache: BTreeMap::new(),
+            sound_turn: 0,
             step_profile: None,
             thrown_item: None,
             animations: Vec::new(),
