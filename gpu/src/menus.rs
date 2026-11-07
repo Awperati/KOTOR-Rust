@@ -639,6 +639,8 @@ pub(super) struct Menus {
     chargen_mist: Option<(Screen, crate::effects::Effects)>,
     /// The mist behind a figure, for a screen and an alignment.
     figure_mist: Option<(Screen, i32, crate::effects::Effects)>,
+    /// How the body on a figure screen was fitted to its hole.
+    figure_fit: Option<figure::FigureFit>,
     /// The main menu's scene, once loaded, and whether it could not be.
     main_scene: Option<mainscene::MainScene>,
     main_scene_failed: bool,

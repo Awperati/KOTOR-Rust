@@ -1,6 +1,6 @@
 //! The 3D figure on the character sheet and the level-up panel, as the reference video has it at 1:23:50: the screen
 //! leaves a hole in its picture, and behind it the renderer draws the leader alone, with a camera that puts them in the
-//! hole. **Assumed:** a figure about 1.9 m high. **Not built:** turning the figure. The party screen has one too, as at
+//! hole, measured once per body so that all of it stands inside. **Not built:** turning the figure. The party screen has one too, as at
 //! 3:12:00, of whoever is chosen: with nothing in their hands, as the video has them, and from their creature file if they
 //! are not here.
 //!
@@ -13,7 +13,7 @@
 use super::{Screen, Stage};
 use crate::effects::Effects;
 use kotor_core::ResType;
-use kotor_game::SLOT_BODY;
+use kotor_game::{Clip, SLOT_BODY};
 use kotor_gff::Gff;
 use kotor_render::{Camera, Rig, Scene};
 use std::rc::Rc;
@@ -24,9 +24,17 @@ const LEVEL_HOLE: [f32; 4] = [155.0, 89.0, 162.0, 186.0];
 const PARTY_HOLE: [f32; 4] = [326.0, 109.0, 258.0, 213.0];
 const CREATURE_FILE: ResType = ResType(2027);
 const ITEM_FILE: ResType = ResType(2025);
-const FIGURE_HEIGHT: f32 = 1.7;
-/// A little air over the head and under the feet: the video's figure fills about 92% of the hole at 22:17.
-const FIGURE_MARGIN: f32 = 1.08;
+/// A body no shorter than this is sized to fill the hole; a shorter one, such as T3-M4, stands at this scale and is not
+/// blown up to a Wookiee's height. **Assumed:** the video has no droid on these screens that I could measure.
+const FIGURE_HEIGHT: f32 = 1.75;
+/// Air on each side, of the hole's height and width. An idle body moves a little, and the owner asked for at least 3%. The
+/// video's figure fills about 92% of the hole at 22:17, and this leaves it 90%.
+const FIGURE_MARGIN: f32 = 0.05;
+/// How much of the idle is measured.
+const IDLE_SAMPLES: usize = 12;
+const IDLE_SAMPLE_SECONDS: f32 = 0.5;
+/// Steps to settle size and place: each moves the picture a little for the next.
+const FIT_STEPS: usize = 8;
 /// `charmain_light.mdl`'s `camerahook` stands this far in front of the figure, and looks level.
 const CAMERA_AWAY: f32 = 4.87;
 /// How far over the feet the mist's model goes. **Assumed:** by eye and by measure from the video at 22:17, which is bright
@@ -41,6 +49,75 @@ const MIST_BLUE_FROM: i32 = 60;
 const MIST_RED_FROM: i32 = 40;
 const ALIGNMENT_NEUTRAL: i32 = 50;
 
+/// How a camera puts a body in its hole, measured once a body so that its idling does not make the picture breathe.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::stage) struct FigureFit {
+    /// The screen, the body and the window's shape it was measured for.
+    key: (Screen, usize, u32),
+    place: FigurePlace,
+}
+
+/// The tangent of half the view; how far the look is turned from the figure, at its depth; and the eye's height over the feet.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct FigurePlace {
+    tan: f32,
+    across: f32,
+    down: f32,
+    middle: f32,
+}
+
+fn norm(a: [f32; 3]) -> [f32; 3] {
+    let l = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-6);
+    [a[0] / l, a[1] / l, a[2] / l]
+}
+
+fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// Where a point falls on a window, from -1 to 1 each way.
+fn on_window(camera: &Camera, aspect: f32, p: [f32; 3]) -> [f32; 2] {
+    let (e, t) = (camera.eye, camera.target);
+    let f = norm([t[0] - e[0], t[1] - e[1], t[2] - e[2]]);
+    let r = norm([f[1], -f[0], 0.0]);
+    let u = [
+        r[1] * f[2] - r[2] * f[1],
+        r[2] * f[0] - r[0] * f[2],
+        r[0] * f[1] - r[1] * f[0],
+    ];
+    let d = [p[0] - e[0], p[1] - e[1], p[2] - e[2]];
+    let tan = (camera.fov.to_radians() / 2.0).tan();
+    let z = dot(f, d).max(1e-3);
+    [dot(r, d) / z / (tan * aspect), dot(u, d) / z / tan]
+}
+
+/// The camera for a figure standing at `at`, facing `heading`.
+fn camera_at(at: [f32; 3], heading: f32, place: FigurePlace) -> Camera {
+    let (sin, cos) = heading.sin_cos();
+    let middle = at[2] + place.middle;
+    // The camera looks back along the way they face, so its right is the figure's left.
+    let right = [-sin, cos];
+    Camera {
+        eye: [at[0] + cos * CAMERA_AWAY, at[1] + sin * CAMERA_AWAY, middle],
+        target: [
+            at[0] - right[0] * place.across,
+            at[1] - right[1] * place.across,
+            middle - place.down,
+        ],
+        fov: 2.0 * place.tan.atan().to_degrees(),
+    }
+}
+
+/// A hole on the window, from -1 to 1 each way: left, right, bottom, top.
+fn hole_on_window([left, top, width, height]: [f32; 4]) -> [f32; 4] {
+    [
+        left / 320.0 - 1.0,
+        (left + width) / 320.0 - 1.0,
+        1.0 - (top + height) / 240.0,
+        1.0 - top / 240.0,
+    ]
+}
+
 impl Stage {
     fn figure_hole(&self) -> Option<[f32; 4]> {
         match self.top()? {
@@ -53,28 +130,109 @@ impl Stage {
 
     /// The camera for a screen that shows a figure.
     pub fn figure_camera(&self) -> Option<Camera> {
-        let [left, top, width, height] = self.figure_hole()?;
+        let hole = self.figure_hole()?;
         let w = &self.game.world;
         let at = w.object(w.pc)?.position;
-        let (sin, cos) = w.pc_mover.heading.sin_cos();
-        let depth = CAMERA_AWAY;
-        let tan = FIGURE_MARGIN * FIGURE_HEIGHT / (2.0 * depth * (height / 480.0));
+        let top = self.top()?;
+        let fitted = self
+            .menus
+            .figure_fit
+            .filter(|f| f.key.0 == top && f.key.2 == self.ui_width);
+        let place = fitted.map_or_else(|| self.standard_place(hole), |f| f.place);
+        Some(camera_at(at, w.pc_mover.heading, place))
+    }
+
+    /// Where a point falls on the window, seen by a figure's camera, from -1 to 1 each way.
+    pub fn figure_on_window(&self, camera: &Camera, p: [f32; 3]) -> [f32; 2] {
+        on_window(camera, self.ui_width as f32 / 480.0, p)
+    }
+
+    /// Where a body of the usual height goes in a hole.
+    fn standard_place(&self, hole: [f32; 4]) -> FigurePlace {
+        let [left, right, bottom, top] = hole_on_window(hole);
+        let fill = 1.0 - 2.0 * FIGURE_MARGIN;
+        let tan = FIGURE_HEIGHT / (CAMERA_AWAY * (top - bottom) * fill);
         let aspect = self.ui_width as f32 / 480.0;
-        // How far the middle of the hole is from the middle of the window, at that depth.
-        let across = ((left + width / 2.0) / 320.0 - 1.0) * depth * tan * aspect;
-        let down = (1.0 - (top + height / 2.0) / 240.0) * depth * tan;
-        let middle = at[2] + FIGURE_HEIGHT / 2.0;
-        // The camera looks back along the way they face, so its right is the figure's left.
-        let right = [-sin, cos];
-        Some(Camera {
-            eye: [at[0] + cos * depth, at[1] + sin * depth, middle],
-            target: [
-                at[0] - right[0] * across,
-                at[1] - right[1] * across,
-                middle - down,
-            ],
-            fov: 2.0 * tan.atan().to_degrees(),
-        })
+        FigurePlace {
+            tan,
+            // How far the middle of the hole is from the middle of the window, at that depth.
+            across: (left + right) / 2.0 * CAMERA_AWAY * tan * aspect,
+            down: (bottom + top) / 2.0 * CAMERA_AWAY * tan,
+            middle: FIGURE_HEIGHT / 2.0,
+        }
+    }
+
+    /// Measure a body that a figure screen has not had before, through the whole of its idle: all of it stands inside the
+    /// hole, with air on each side.
+    fn fit_figure(&mut self, rig: &Rc<Rig>, wear: &str) {
+        let (Some(top), Some(hole)) = (self.top(), self.figure_hole()) else {
+            return;
+        };
+        let key = (top, Rc::as_ptr(rig) as usize, self.ui_width);
+        if self.menus.figure_fit.is_some_and(|f| f.key == key) {
+            return;
+        }
+        let w = &self.game.world;
+        let Some(at) = w.object(w.pc).map(|o| o.position) else {
+            return;
+        };
+        let heading = w.pc_mover.heading;
+        let mut scene = Scene::default();
+        let idle = self.idling(0);
+        for k in 0..IDLE_SAMPLES {
+            let clip = idle.as_ref().map(|c| Clip {
+                time: k as f32 * IDLE_SAMPLE_SECONDS,
+                ..c.clone()
+            });
+            self.add_creature(&mut scene, rig, &[], &clip, at, heading, wear);
+        }
+        let points = || {
+            scene
+                .meshes
+                .iter()
+                .flat_map(|m| m.positions.iter().copied())
+        };
+        if points().next().is_none() {
+            return;
+        }
+        let aspect = self.ui_width as f32 / 480.0;
+        let [left, right, bottom, up] = hole_on_window(hole);
+        let (wide, high) = (
+            (right - left) * (1.0 - 2.0 * FIGURE_MARGIN),
+            (up - bottom) * (1.0 - 2.0 * FIGURE_MARGIN),
+        );
+        let usual = self.standard_place(hole);
+        let (low, tall) =
+            points().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p[2]), b.max(p[2])));
+        let mut place = FigurePlace {
+            middle: (low + tall) / 2.0 - at[2],
+            ..usual
+        };
+        for _ in 0..FIT_STEPS {
+            let camera = camera_at(at, heading, place);
+            let mut seen = [f32::MAX, f32::MIN, f32::MAX, f32::MIN];
+            for p in points() {
+                let [x, y] = on_window(&camera, aspect, p);
+                seen = [
+                    seen[0].min(x),
+                    seen[1].max(x),
+                    seen[2].min(y),
+                    seen[3].max(y),
+                ];
+            }
+            // Larger or smaller, but never past the usual scale for a short body.
+            let grow = ((seen[1] - seen[0]) / wide).max((seen[3] - seen[2]) / high);
+            let tan = (place.tan * grow).max(usual.tan);
+            let shrunk = place.tan / tan;
+            let off = [
+                (left + right) / 2.0 - (seen[0] + seen[1]) / 2.0 * shrunk,
+                (bottom + up) / 2.0 - (seen[2] + seen[3]) / 2.0 * shrunk,
+            ];
+            place.across = place.across * tan / place.tan + off[0] * CAMERA_AWAY * tan * aspect;
+            place.down = place.down * tan / place.tan + off[1] * CAMERA_AWAY * tan;
+            place.tan = tan;
+        }
+        self.menus.figure_fit = Some(FigureFit { key, place });
     }
 
     /// The alignment of whoever a figure screen shows.
@@ -193,6 +351,7 @@ impl Stage {
                 .map(|o| o.underwear.clone())
                 .unwrap_or_default();
             self.add_creature(&mut scene, &rig, &[], &clip, at, heading, &wear);
+            self.fit_figure(&rig, &wear);
         }
         scene
     }
@@ -229,6 +388,7 @@ impl Stage {
             pose.heading,
             &wear,
         );
+        self.fit_figure(&rig, &wear);
         scene
     }
 
@@ -271,9 +431,13 @@ impl Stage {
         {
             return (scene, camera, true);
         }
-        match self.figure_camera() {
-            Some(camera) => (self.figure_scene(), camera, true),
-            None => (self.dynamic_scene(), self.camera(), false),
+        if self.figure_hole().is_some() {
+            // The scene first: the camera is made to fit what is in it.
+            let scene = self.figure_scene();
+            if let Some(camera) = self.figure_camera() {
+                return (scene, camera, true);
+            }
         }
+        (self.dynamic_scene(), self.camera(), false)
     }
 }

@@ -2486,6 +2486,83 @@ fn the_sheet_and_the_level_panel_have_a_figure_behind_a_hole() {
     assert_eq!(o.rgba[((hy * o.width + hx) * 4 + 3) as usize], 0);
 }
 
+/// The owner's Nilbin had his head cut off by the top of the sheet's hole. Whatever the body, all of it stands inside, with
+/// at least 3% of the hole to spare on each side, at every size of window.
+#[test]
+fn every_body_stands_inside_the_hole_of_its_screen() {
+    let Some((mut s, _)) = in_game("figure_fits") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let inside = |s: &mut Stage, hole: [f32; 4], what: &str| {
+        let [left, top, width, height] = hole;
+        let (scene, camera, alone) = s.frame_scene();
+        assert!(alone && !scene.meshes.is_empty(), "{what}");
+        let (mut x0, mut x1, mut y0, mut y1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+        for p in scene.meshes.iter().flat_map(|m| &m.positions) {
+            let [x, y] = s.figure_on_window(&camera, *p);
+            // In the 640 by 480 that the holes are given in.
+            let (x, y) = ((x + 1.0) * 320.0, (1.0 - y) * 240.0);
+            (x0, x1, y0, y1) = (x0.min(x), x1.max(x), y0.min(y), y1.max(y));
+        }
+        let (mx, my) = (width * 0.03, height * 0.03);
+        assert!(
+            x0 >= left + mx && x1 <= left + width - mx && y0 >= top + my && y1 <= top + height - my,
+            "{what}: {x0:.1} to {x1:.1} and {y0:.1} to {y1:.1} in {hole:?}"
+        );
+        y1 - y0
+    };
+    // T3-M4, HK-47, Bastila, Canderous, Carth, Zaalbar, Mission, and the player's bodies, female and male, three sizes each.
+    let bodies = [2, 3, 4, 5, 6, 9, 10, 91, 92, 93, 136, 137, 138];
+    let mut sizes = Vec::new();
+    for size in [
+        (1280, 720),
+        (1920, 1080),
+        (2560, 1440),
+        (3840, 2160),
+        (1024, 768),
+    ] {
+        s.set_view(size);
+        s.open_character();
+        for &body in &bodies {
+            s.game.world.objects.get_mut(&pc).unwrap().appearance = body;
+            let what = format!("body {body} at {size:?}");
+            // The idle moves them about a little.
+            let mut high = 0.0f32;
+            for _ in 0..3 {
+                high = inside(&mut s, [55.0, 110.0, 259.0, 295.0], &what);
+                for _ in 0..40 {
+                    s.update(DT);
+                }
+            }
+            sizes.push((body, high));
+        }
+        s.escape();
+    }
+    // Everyone of a person's height nearly fills it, and a short one is not blown up to that.
+    let t3 = sizes.iter().find(|x| x.0 == 2).unwrap().1;
+    let zaalbar = sizes.iter().find(|x| x.0 == 9).unwrap().1;
+    assert!(t3 < zaalbar * 0.9, "{t3} {zaalbar}");
+
+    // The level-up panel, and the party screen.
+    s.set_view(SIZE);
+    s.game.world.objects.get_mut(&pc).unwrap().appearance = 138;
+    s.game.world.grant_xp(pc, 1000);
+    s.open_character();
+    press(&mut s, "BTN_LEVELUP");
+    inside(&mut s, [155.0, 89.0, 162.0, 186.0], "level-up");
+    s.escape();
+    s.escape();
+    s.game.world.available.insert(8, "p_zaalbar".to_string());
+    s.open_party();
+    press(&mut s, "BTN_NPC8");
+    inside(
+        &mut s,
+        [326.0, 109.0, 258.0, 213.0],
+        "Zaalbar on the party screen",
+    );
+}
+
 #[test]
 fn the_abilities_tab_lists_what_the_leader_has() {
     let Some((mut s, _)) = in_game("abilities") else {
