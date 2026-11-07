@@ -313,6 +313,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     let joined = s.game.world.seamless.attached.contains_key(&door_id);
+    if let Some(a) = s.game.world.seamless.attached.get(&door_id) {
+        // Creatures of the neighbour that walk a route, and how far from the player's start each one stands.
+        let near: Vec<String> = a
+            .scenery
+            .figures
+            .iter()
+            .filter(|f| !f.route.is_empty())
+            .map(|f| {
+                // The nearest the walker's route comes to the doorway, and where it stands to start with.
+                let closest = std::iter::once(f.at)
+                    .chain(f.route.iter().copied())
+                    .map(|p| dist(a.rigid.apply(p), site.at))
+                    .fold(f32::MAX, f32::min);
+                format!("{} {:.1} m", f.tag, closest)
+            })
+            .collect();
+        if !near.is_empty() {
+            println!("walkers in view of the start: {}", near.join(", "));
+        }
+    }
     r.check(
         "the area behind the door loads in the background",
         joined,
@@ -480,6 +500,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut seen,
         &out.join(format!("2_open_{name}.png")),
     );
+    // `DRIVE_WATCH=<seconds>`: stand at the open door and take a picture every half second, for watching the neighbour.
+    if let Some(secs) = std::env::var("DRIVE_WATCH").ok().and_then(|v| v.parse::<u32>().ok()) {
+        for n in 0..secs * 2 {
+            for _ in 0..30 {
+                step(&mut s);
+                sync(&mut gpu, &mut s, &mut seen, &mut uploads);
+            }
+            shot(
+                &mut gpu,
+                &mut s,
+                &mut seen,
+                &out.join(format!("watch_{n:03}_{name}.png")),
+            );
+        }
+    }
     // Through, the way the doorway faces.
     s.yaw = out_angle;
     s.steer = (1.0, 0.0, false);
