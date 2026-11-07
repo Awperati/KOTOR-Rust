@@ -1,0 +1,158 @@
+# THE JUMP. Edit this file, save it, and press F8 in the game. Then press Space.
+# Anything after a # is a note and is ignored. docs/MOVEMENT_POSE.md explains everything here.
+# A mistake? The game says so, writes it in pose_problems.txt beside this file, and uses its own jump until you fix it.
+# To start again, delete this file: the game writes a fresh one the next time it starts.
+# The game keeps a file you have edited. A file nobody edited is replaced when a new version of the game has a better one.
+#
+# EACH JOINT TAKES UP TO THREE ANGLES IN DEGREES: bend  out  twist
+#   bend    curls the joint in. Knee to the chest, heel to the bottom, chin to the chest, elbow closed.
+#   out     moves the limb away from the body, to the side. A minus brings it across the body.
+#   twist   turns the limb about its own length, its front going outward. A minus turns it inward.
+# Left and right work alike: to keep the body even, give both sides the same numbers.
+#
+#   JOINT                       WHAT IT IS         SAFE BEND    SAFE OUT    SAFE TWIST
+#   lthigh_g  rthigh_g          hip                -30 to 140   -30 to 60   -40 to 40
+#   lshin_g   rshin_g           knee                 0 to 150   do not use  do not use
+#   lfoot_g   rfoot_g           ankle              -50 to 35    -20 to 20   -30 to 30
+#   torso_g   torsoupr_g        lower, upper back  -30 to 50    -30 to 30   -40 to 40
+#   necklwr_g neck_g  head_g    neck and head      -30 to 45    -30 to 30   -60 to 60
+#   lcollar_g rcollar_g         shoulder blade     -20 to 20    -20 to 20   do not use
+#   lbicep_g  rbicep_g          shoulder           -60 to 170   -40 to 120  -70 to 70
+#   lforearm_g rforearm_g       elbow                0 to 145   do not use  -70 to 70
+#   lhand_g   rhand_g           wrist              -60 to 60    -20 to 20   do not use
+#   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
+# The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
+#
+version = 2            # which of the game's own jumps this began as. Leave it alone.
+
+# THE KEYS. Each one is a moment. The game moves from each key to the next.
+#   at     how far through the jump, 0 to 1. 0 is leaving the floor, 0.5 the top, and 1 is the feet touching.
+#          A jump lasts about 0.7 seconds. The landing that comes after it is in landing_pose.txt.
+#   ease   how it moves into this key: smooth, linear, in (starts slow) or out (ends slow).
+#   tuck   0 to 1. At 1 the running animation has gone.
+#   lower  how far the body sinks, in metres. In the air there is no floor to keep the feet on, so it is 0.
+# A joint a key does not name is at 0 in that key: standing as it was. Left and right differ here on purpose: a stride.
+
+[key]            # Leaving the floor, out of whatever the body was doing.
+at = 0
+tuck = 0
+lower = 0
+
+[key]            # The left knee drives up, the right leg pushes off, and the right arm goes forward.
+at = 0.22
+tuck = 0.85
+lower = 0
+#              bend  out  twist
+lthigh_g   =    48   -5    0
+rthigh_g   =   -10   -5    0
+lshin_g    =    60
+rshin_g    =    38
+lfoot_g    =    10
+rfoot_g    =    10
+torso_g    =     8
+lbicep_g   =   -22  -20    0
+rbicep_g   =    42  -20    0
+lforearm_g =    25
+rforearm_g =    48
+
+[key]            # The stride at its widest: one leg in front of the other, and the opposite arm.
+at = 0.36
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    60   -5    0
+rthigh_g   =   -14   -5    0
+lshin_g    =    75
+rshin_g    =    52
+lfoot_g    =    15
+rfoot_g    =    15
+torso_g    =    10
+lbicep_g   =   -28  -24    0
+rbicep_g   =    48  -22    0
+lforearm_g =    30
+rforearm_g =    58
+
+[key]            # The top, 0.35 seconds in the air. The paddling starts from here.
+at = 0.5
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    42   -5    0
+rthigh_g   =     0   -5    0
+lshin_g    =    58
+rshin_g    =    42
+lfoot_g    =    10
+rfoot_g    =    10
+torso_g    =    10
+lbicep_g   =   -12  -24    0
+rbicep_g   =    30  -24    0
+lforearm_g =    28
+rforearm_g =    48
+
+[key]            # Paddling: the legs and arms change over.
+at = 0.65
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    12   -5    0
+rthigh_g   =    34   -5    0
+lshin_g    =    38
+rshin_g    =    55
+lfoot_g    =     5
+rfoot_g    =    10
+torso_g    =    10
+lbicep_g   =    24  -24    0
+rbicep_g   =   -12  -24    0
+lforearm_g =    44
+rforearm_g =    28
+
+[key]            # And back, smaller.
+at = 0.8
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    30   -5    0
+rthigh_g   =    12   -5    0
+lshin_g    =    48
+rshin_g    =    38
+lfoot_g    =     8
+rfoot_g    =     5
+torso_g    =    12
+lbicep_g   =    -6  -28    0
+rbicep_g   =    18  -28    0
+lforearm_g =    28
+rforearm_g =    38
+
+[key]            # Legs reaching down for the floor.
+at = 0.93
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    22   -5    0
+rthigh_g   =    22   -5    0
+lshin_g    =    30
+rshin_g    =    30
+lfoot_g    =    -4
+rfoot_g    =    -4
+torso_g    =    12
+lbicep_g   =    10  -30    0
+rbicep_g   =    10  -30    0
+lforearm_g =    26
+rforearm_g =    26
+
+[key]            # The feet touch, and the landing takes over.
+at = 1
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    18   -5    0
+rthigh_g   =    18   -5    0
+lshin_g    =    25
+rshin_g    =    25
+lfoot_g    =    -8
+rfoot_g    =    -8
+torso_g    =    12
+lbicep_g   =    10  -32    0
+rbicep_g   =    10  -32    0
+lforearm_g =    20
+rforearm_g =    20

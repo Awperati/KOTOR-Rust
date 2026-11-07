@@ -6,7 +6,7 @@ The roll and the landing have no animation in the game's files, so they are buil
 
 `%LOCALAPPDATA%\kotor-rs\roll_pose.txt`, `landing_pose.txt` and `jump_pose.txt`, beside the settings file. The game writes them the first time it starts from its main menu. Paste the first path into the Windows Run box (Win+R) to open one.
 
-The jump has its left and right apart on purpose: a stride, and a little paddling after the top. Give both sides the same numbers for a jump with both legs together. The landing starts from the jump's last key.
+The jump has its left and right apart on purpose: a stride, which closes after the top. A file from before, with paddling in it, is replaced by this one if nobody edited it. Give both sides the same numbers for a jump with both legs together. The landing starts from the jump's last key.
 
 ## How to change a pose
 

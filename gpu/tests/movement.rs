@@ -1146,10 +1146,10 @@ fn the_camera_steps_aside_where_that_gives_it_room() {
     std::fs::remove_file(&file).ok();
 }
 
-/// The owner's words: "put one leg in front of the other and same with the respective upper limb", and "a little paddling
-/// motion with the legs and arms after being in the air for a certain amount of time".
+/// The owner's words: "put one leg in front of the other and same with the respective upper limb". The paddling after the
+/// top went: "Get rid of the paddling arms and legs part of the animation in the jump, it looks dumb".
 #[test]
-fn a_jump_strides_with_the_opposite_arm_and_then_paddles() {
+fn a_jump_strides_with_the_opposite_arm_and_closes_the_stride_with_no_paddling() {
     let Some((mut s, file)) = stage("stride", "") else {
         return;
     };
@@ -1167,27 +1167,25 @@ fn a_jump_strides_with_the_opposite_arm_and_then_paddles() {
     );
     assert!(knees > 0.25, "one leg in front of the other: {knees}");
     assert!(hands < -0.15, "the opposite arm forward: {hands}");
-    // Over the top the legs and arms change over, and back.
-    let moments = [0.5, 0.65, 0.8].map(|p| {
-        let j = at(p);
-        (
-            ahead(&j, "lshin_g", "rshin_g"),
-            ahead(&j, "lhand_g", "rhand_g"),
-        )
-    });
+    // Over the top and down, nothing changes over: the same knee stays in front, and the same hand behind, each closing in.
+    let moments: Vec<(f32, f32)> = (0..=9)
+        .map(|n| {
+            let j = at(0.5 + n as f32 * 0.05);
+            (
+                ahead(&j, "lshin_g", "rshin_g"),
+                ahead(&j, "lhand_g", "rhand_g"),
+            )
+        })
+        .collect();
+    for (legs, arms) in &moments {
+        assert!(*legs > -0.02, "the legs do not change over: {moments:?}");
+        assert!(*arms < 0.02, "the arms do not change over: {moments:?}");
+    }
     for pair in moments.windows(2) {
         assert!(
-            pair[0].0 * pair[1].0 < 0.0,
-            "the legs change over: {moments:?}"
+            pair[1].0 <= pair[0].0 + 0.02,
+            "the stride closes: {moments:?}"
         );
-        assert!(
-            pair[0].1 * pair[1].1 < 0.0,
-            "the arms change over: {moments:?}"
-        );
-    }
-    // In each, the arm goes against the leg.
-    for (legs, arms) in moments {
-        assert!(legs * arms < 0.0, "{moments:?}");
     }
     // Coming down, the feet are nearly under the body again.
     let down = at(1.0);
