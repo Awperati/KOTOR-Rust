@@ -348,6 +348,8 @@ pub struct World {
     pub journal: BTreeMap<String, i32>,
     /// Quest tags, the last changed first.
     pub journal_order: Vec<String>,
+    /// The one quest the compass points to, by its tag.
+    pub tracked_quest: Option<String>,
     /// `global.jrl`, once read.
     pub(crate) journal_file: Option<Rc<Gff>>,
     /// Party members besides the player, in join order.
@@ -699,6 +701,7 @@ impl World {
             pending: None,
             inside: HashSet::new(),
             journal: BTreeMap::new(),
+            tracked_quest: None,
             party: Vec::new(),
             npc_slots: HashMap::new(),
             transition_request: None,

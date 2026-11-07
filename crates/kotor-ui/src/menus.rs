@@ -60,6 +60,36 @@ pub struct Row {
     pub bar: bool,
     /// It picks from a list: its text at the left, and what is chosen between two arrows.
     pub choice: Option<String>,
+    /// A small button of its own at its right end, which a click on goes to as cell 0.
+    pub end_button: Option<EndButton>,
+}
+
+/// A small button at the end of a row.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EndButton {
+    pub words: String,
+    /// In yellow: it is on.
+    pub lit: bool,
+}
+
+/// That button's size and how far it stands from the row's edges, in layout units.
+const END_BUTTON_WIDE: i32 = 58;
+const END_BUTTON_HIGH: i32 = 22;
+const END_BUTTON_GAP: i32 = 4;
+const END_BUTTON_FONT: &str = "dialogfont10x10";
+const END_BUTTON_LINE: [u8; 3] = [0, 166, 247];
+const END_BUTTON_ON_LINE: [u8; 3] = [255, 225, 90];
+const END_BUTTON_WORDS: [f32; 3] = [0.0, 0.65, 0.97];
+const END_BUTTON_ON_WORDS: [f32; 3] = [1.0, 0.88, 0.35];
+
+/// Where that button is on a row.
+fn end_button_rect(r: [i32; 4]) -> [i32; 4] {
+    [
+        r[0] + r[2] - END_BUTTON_WIDE - END_BUTTON_GAP,
+        r[1] + (r[3] - END_BUTTON_HIGH) / 2,
+        END_BUTTON_WIDE,
+        END_BUTTON_HIGH,
+    ]
 }
 
 /// One picture of a row that has several, as a chain of feats does.
@@ -887,6 +917,17 @@ impl Ui<'_> {
             };
             let font = row.font.as_deref().unwrap_or(&t.font);
             let mut text_rect = text_rect;
+            if let Some(button) = &row.end_button {
+                text_rect[2] -= END_BUTTON_WIDE + END_BUTTON_GAP;
+                let at = end_button_rect(r);
+                let (line, words) = if button.lit {
+                    (END_BUTTON_ON_LINE, END_BUTTON_ON_WORDS)
+                } else {
+                    (END_BUTTON_LINE, END_BUTTON_WORDS)
+                };
+                thin_line(cv, at, line);
+                self.draw_text(cv, END_BUTTON_FONT, &button.words, at, 18, words);
+            }
             if let Some(chosen) = row.stepper {
                 text_rect[2] -= STEP_WIDTH;
                 self.draw_stepper(cv, view, (&list.tag, i), (chosen, row.count), r);
@@ -1047,6 +1088,9 @@ impl Ui<'_> {
                 let top = r0[1] + (i - first) as i32 * step;
                 let r = [r0[0], top, r0[2], r0[3]];
                 if inside(r) {
+                    if row.end_button.is_some() && inside(end_button_rect(r)) {
+                        return Some(Hit::Cell(c.tag.clone(), i, 0));
+                    }
                     if row.stepper.is_some() || row.choice.is_some() {
                         let [less, _, more] = if row.choice.is_some() {
                             choice_rects(r)
@@ -1122,6 +1166,26 @@ impl Ui<'_> {
             stepper_rects(place)
         };
         let at = if by < 0 { less } else { more };
+        Some((
+            (ox + at[0]) as f32 + at[2] as f32 / 2.0,
+            (oy + at[1]) as f32 + at[3] as f32 / 2.0,
+        ))
+    }
+
+    /// The layout point in the middle of the button at the end of a list's row.
+    pub fn menu_end_button_point(
+        &mut self,
+        view: &MenuView,
+        tag: &str,
+        row: usize,
+    ) -> Option<(f32, f32)> {
+        let gui = self.view_gui(view)?;
+        let (ox, oy) = self.panel_origin(&gui.panel);
+        let c = gui.find(tag)?;
+        let first = view.lists.get(tag).map_or(0, |l| l.1);
+        let (r0, step, _) = row_layout(c)?;
+        let top = r0[1] + row.checked_sub(first)? as i32 * step;
+        let at = end_button_rect([r0[0], top, r0[2], r0[3]]);
         Some((
             (ox + at[0]) as f32 + at[2] as f32 / 2.0,
             (oy + at[1]) as f32 + at[3] as f32 / 2.0,

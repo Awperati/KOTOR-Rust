@@ -3544,6 +3544,7 @@ impl Stage {
         let floats = self.floats_view();
         let pause = self.pause_view();
         let touch = self.touch_view();
+        let compass = self.compass_view();
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -3551,7 +3552,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{slots_percent}{cut}{combat:?}{notices:?}{pause:?}{minimap:?}{floats:?}{touch:?}",
+                "{}h{:?}{target:?}{target_at:?}{slots_percent}{cut}{combat:?}{notices:?}{pause:?}{minimap:?}{floats:?}{touch:?}{compass:?}",
                 self.module,
                 party
                     .iter()
@@ -3604,6 +3605,7 @@ impl Stage {
         self.ui.set_solo(self.game.world.solo_mode);
         self.ui.set_pause(pause.0, pause.1);
         self.ui.set_touch(touch);
+        self.ui.set_compass(compass);
         self.ui.set_combat(combat);
         self.hud_is_up = view.is_none();
         if part {
@@ -3857,6 +3859,7 @@ impl Stage {
         let chosen = self.container_chosen();
         let slotsize = self.ui.slots_percent();
         let touch = self.touch_state();
+        let compass = self.compass_state();
         let blue = at(self.hud_pixel(kotor_ui::TOUCH_BUTTON, layout));
         let inventory = at(self.hud_pixel("BTN_INV", layout));
         let mode = self.game.world.attack_mode();
@@ -3879,7 +3882,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} armed={armed} thrower={thrower} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} lineat={line_at} {touch} blue={blue} inventory={inventory} mode={mode} target={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} armed={armed} thrower={thrower} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} lineat={line_at} {touch} {compass} blue={blue} inventory={inventory} mode={mode} target={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,

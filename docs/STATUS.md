@@ -285,5 +285,9 @@ The owner: the place's name "should only be used for the save if the player pres
 
 The owner: "Make X attack mode and B the Pause button rather". The two default keys changed places. A settings file with no `key_defaults=2` line goes over when it is read, for a key the player never moved, and only if the new key is free. One with that line stays as it is, so a player who puts them back keeps them.
 
+## Compass
+
+The owner: "Add a compass at the top middle of the screen which shows nearby locations, basically taking inspiration from Skyrim's compass but it uses its own UI and design". `crates/kotor-ui/src/compass.rs` places and draws it, with ten icons of our own drawn in code, and `gpu/src/compassscreen.rs` says what is on it. Each quest in the journal has a Track button. `World::next_step` in `crates/kotor-game/src/quest_route.rs` says where a tracked quest goes next, and has nothing to say while its index builds on a first run, so no pin shows then. **Not used:** the Save icon, as the game has no save points. Frames: `gpu/examples/compass_shots.rs`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

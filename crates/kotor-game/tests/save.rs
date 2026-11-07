@@ -131,6 +131,20 @@ fn a_save_keeps_attack_mode_and_what_the_law_knows() {
 }
 
 #[test]
+fn a_save_keeps_the_quest_being_tracked() {
+    let Some(mut w) = world() else { return };
+    w.tracked_quest = Some("k_swg_helena".to_string());
+    let bytes = w.save_bytes("tracked").unwrap();
+    w.tracked_quest = None;
+    w.load_save(&bytes).unwrap();
+    assert_eq!(w.tracked_quest.as_deref(), Some("k_swg_helena"));
+    // One from before it, or with none, tracks none.
+    let clean = fresh().save_bytes("clean").unwrap();
+    w.load_save(&clean).unwrap();
+    assert_eq!(w.tracked_quest, None);
+}
+
+#[test]
 fn a_save_keeps_the_leader_the_hero_and_who_cannot_fall() {
     let Some(mut w) = world() else { return };
     let hero = w.pc;

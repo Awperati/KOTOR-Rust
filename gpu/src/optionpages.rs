@@ -14,7 +14,7 @@ const FEEDBACK: [(u32, u32); 5] = [
     (42285, 42291),
 ];
 /// The owner's rows after those: their names when on and off, and their words. Not in the talk table.
-const STYLE_ROWS: [(&str, &str, &str); 22] = [
+const STYLE_ROWS: [(&str, &str, &str); 24] = [
     (
         "Game font: Noto Sans",
         "Game font: Original",
@@ -125,11 +125,23 @@ const STYLE_ROWS: [(&str, &str, &str); 22] = [
         "Respawning creatures: Off",
         "An enemy you killed in a fight comes back to where it began after about five minutes, once you are 60 metres from there and cannot see the place. Not story characters, not bosses, not anyone a cutscene killed; they pay half the experience. docs/respawn.tsv has the numbers and the list. Off: they stay dead.",
     ),
+    (
+        "Compass: On",
+        "Compass: Off",
+        "A strip at the top middle of the screen, with what is near marked on it and the quest being tracked.",
+    ),
+    (
+        "Quest arrow: On",
+        "Quest arrow: Off",
+        "An arrow on the screen to the next step of the quest being tracked, when it is not in front of you.",
+    ),
 ];
 /// What the Pickup radius goes round, in metres.
 const PICKUP_RADII: [i32; 5] = [2, 3, 4, 5, 8];
+/// What the Compass size goes round, in per cent.
+const COMPASS_SIZES: [i32; 4] = [75, 100, 125, 150];
 /// The rows after those that go round a list of values.
-const VALUE_ROWS: [(&str, &str); 6] = [
+const VALUE_ROWS: [(&str, &str); 7] = [
     (
         "Nameplate range",
         "How far away an enemy gets a plate, in metres.",
@@ -150,6 +162,10 @@ const VALUE_ROWS: [(&str, &str); 6] = [
     (
         "Motion blur",
         "Smears the picture along the way the camera moved. Off, Subtle, Moderate or Intense. It follows the camera only, not the menus, and stops on loading screens and while the game is paused.",
+    ),
+    (
+        "Compass size",
+        "How big the compass at the top of the screen is, in per cent.",
     ),
 ];
 /// The rows after those, under a heading: the folders of the player's own content, what each row says, and what it is for.
@@ -264,6 +280,8 @@ fn feedback_flag(s: &mut Settings, row: usize) -> Option<&mut bool> {
         24 => &mut s.extended_story,
         25 => &mut s.ground_finishers,
         26 => &mut s.respawn,
+        27 => &mut s.compass,
+        28 => &mut s.quest_arrow,
         _ => return None,
     })
 }
@@ -432,6 +450,11 @@ impl Stage {
             ..Row::default()
         });
         rows.push(Row {
+            text: format!("{}: {} %", VALUE_ROWS[6].0, settings.compass_size),
+            selected: true,
+            ..Row::default()
+        });
+        rows.push(Row {
             text: CUSTOM_HEADING.to_string(),
             dim: true,
             ..Row::default()
@@ -569,9 +592,10 @@ impl Stage {
             Some(3) => s.pickup_radius = next_of(&PICKUP_RADII, s.pickup_radius),
             Some(4) => s.anti_aliasing = (s.anti_aliasing + 1) % 4,
             Some(5) => s.motion_blur = (s.motion_blur + 1) % 4,
-            Some(7) => self.menus.folder_to_open = crate::texture_override::folder(),
-            Some(8) => self.menus.folder_to_open = Stage::anim_folder(),
-            Some(9) => self.menus.folder_to_open = Stage::mesh_folder(),
+            Some(6) => s.compass_size = next_of(&COMPASS_SIZES, s.compass_size),
+            Some(8) => self.menus.folder_to_open = crate::texture_override::folder(),
+            Some(9) => self.menus.folder_to_open = Stage::anim_folder(),
+            Some(10) => self.menus.folder_to_open = Stage::mesh_folder(),
             _ => {}
         }
         self.settings_changed();

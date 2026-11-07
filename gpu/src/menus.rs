@@ -33,6 +33,7 @@ mod galaxyscreen;
 #[path = "keyscreen.rs"]
 mod keyscreen;
 pub(in crate::stage) use keyscreen::force_row;
+mod compassscreen;
 #[path = "notices.rs"]
 mod notices;
 #[path = "optionpages.rs"]
@@ -72,6 +73,10 @@ pub(super) fn slot_is_pickup(action: Option<&str>) -> bool {
 
 /// How strong the name a save is offered is. The owner: "about 75% more transparent".
 const NAME_OFFERED_STRENGTH: f32 = 0.25;
+
+/// What a quest's button in the journal says.
+const TRACK_WORD: &str = "Track";
+const TRACKED_WORD: &str = "Tracked";
 
 /// A container's top two buttons, as the owner named them. The file's words are "Get Items" and "Switch To".
 const TAKE_ALL: &str = "Take All";
@@ -349,6 +354,10 @@ pub struct Settings {
     pub touch_controls: bool,
     /// How fast the look stick turns the camera, 0 to 1; a half is about what the keys do.
     pub look_stick_speed: f32,
+    /// The strip at the top middle of the HUD, how big in per cent, and the arrow to a tracked step off the screen.
+    pub compass: bool,
+    pub compass_size: i32,
+    pub quest_arrow: bool,
     /// The install's `Override` folder is read first. Takes hold at the next start, as all of these do.
     pub override_folder: bool,
     /// And of it: compiled scripts, tables, and a talk table in place of the game's.
@@ -412,6 +421,9 @@ impl Default for Settings {
             pickup_radius: 3,
             touch_controls: false,
             look_stick_speed: 0.5,
+            compass: true,
+            compass_size: 100,
+            quest_arrow: true,
             override_folder: false,
             override_scripts: false,
             override_tables: false,
@@ -427,7 +439,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\ncompass={}\ncompass_size={}\nquest_arrow={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -477,6 +489,9 @@ impl Settings {
             self.pickup_radius,
             self.touch_controls,
             self.look_stick_speed,
+            self.compass,
+            self.compass_size,
+            self.quest_arrow,
             self.override_folder,
             self.override_scripts,
             self.override_tables,
@@ -549,6 +564,9 @@ impl Settings {
                 "pickup_radius" => s.pickup_radius = v.parse().unwrap_or(s.pickup_radius),
                 "touch_controls" => s.touch_controls = v == "true",
                 "look_stick_speed" => s.look_stick_speed = level(v, s.look_stick_speed),
+                "compass" => s.compass = v == "true",
+                "compass_size" => s.compass_size = v.parse().unwrap_or(s.compass_size),
+                "quest_arrow" => s.quest_arrow = v == "true",
                 "override_folder" => s.override_folder = v == "true",
                 "override_scripts" => s.override_scripts = v == "true",
                 "override_tables" => s.override_tables = v == "true",
@@ -739,6 +757,7 @@ pub(super) struct Menus {
     name_offered: String,
     fight: fightscreen::Fight,
     touch: touchscreen::Fingers,
+    compass: compassscreen::Compass,
     /// A shop, while one is open.
     shop: storescreen::Shop,
     /// Pazaak, while it is up.
@@ -1156,10 +1175,23 @@ impl Stage {
         let rows = quests
             .iter()
             .enumerate()
-            .map(|(i, q)| Row {
-                text: q.name.clone(),
-                selected: selected == Some(i),
-                ..Row::default()
+            .map(|(i, q)| {
+                let tracked = self
+                    .game
+                    .world
+                    .tracked_quest
+                    .as_deref()
+                    .is_some_and(|t| t.eq_ignore_ascii_case(&q.tag));
+                Row {
+                    text: q.name.clone(),
+                    selected: selected == Some(i),
+                    // What is done has nowhere to go.
+                    end_button: (!q.completed).then(|| kotor_ui::EndButton {
+                        words: if tracked { TRACKED_WORD } else { TRACK_WORD }.to_string(),
+                        lit: tracked,
+                    }),
+                    ..Row::default()
+                }
             })
             .collect();
         v.lists
@@ -2260,8 +2292,10 @@ impl Stage {
             }
             Some(Hit::Cell(_, row, cell)) => {
                 self.effect(SOUND_CLICK);
-                if let Some(screen) = self.top() {
-                    self.level_cell(screen, row, cell);
+                match self.top() {
+                    Some(Screen::Journal) => self.journal_track_row(row),
+                    Some(screen) => self.level_cell(screen, row, cell),
+                    None => {}
                 }
             }
             Some(Hit::Step(_, row, by)) => {
@@ -2830,6 +2864,18 @@ impl Stage {
     ) -> Option<(f32, f32)> {
         let view = self.menu_view()?;
         let (x, y) = self.ui.menu_step_point(&view, tag, row, by)?;
+        Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
+    }
+
+    /// The point on a window of `size` in the middle of the button at the end of a list's row.
+    pub fn menu_row_end_pixel(
+        &mut self,
+        tag: &str,
+        row: usize,
+        size: (u32, u32),
+    ) -> Option<(f32, f32)> {
+        let view = self.menu_view()?;
+        let (x, y) = self.ui.menu_end_button_point(&view, tag, row)?;
         Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
     }
 

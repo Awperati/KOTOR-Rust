@@ -6,6 +6,7 @@
 //! dialogue panel so text reads over any scene; the speaker's name is drawn in yellow above the panel.
 
 use crate::canvas::{Canvas, Orient};
+use crate::compass::CompassView;
 use crate::font::Font;
 use crate::gui::{Border, Control, Gui};
 use crate::touch::TouchView;
@@ -117,6 +118,8 @@ pub struct Ui<'a> {
     words_too_big: Vec<String>,
     /// What the on-screen controls show: `touch.rs`.
     pub(crate) touch: TouchView,
+    /// What the compass shows: `compass.rs`.
+    pub(crate) compass: CompassView,
 }
 
 /// What a slot under an enemy's bar shows now.
@@ -179,6 +182,7 @@ struct HudDrawn {
     paused: bool,
     pause_note: String,
     touch: TouchView,
+    compass: CompassView,
 }
 
 /// The lines rising words can wrap to.
@@ -343,6 +347,7 @@ impl<'a> Ui<'a> {
             crosshair: None,
             slots_above_bar: false,
             touch: TouchView::default(),
+            compass: CompassView::default(),
             slots_percent: 100,
             hud_party: 1,
             paused: false,
@@ -610,7 +615,8 @@ impl<'a> Ui<'a> {
                 .or_else(|| load_texture(self.inst, &key))
                 .or_else(|| self.second_game_icon(&key))
                 .or_else(|| (key == PICKUP_PICTURE).then(pickup_picture))
-                .or_else(|| crate::touch::touch_picture(&key));
+                .or_else(|| crate::touch::touch_picture(&key))
+                .or_else(|| crate::compass::compass_picture(&key));
             if let (Some(i), true) = (img.as_mut(), additive(self.inst, &key)) {
                 brightness_to_alpha(i);
             }
@@ -1211,6 +1217,7 @@ impl<'a> Ui<'a> {
             || was.paused != self.paused
             || was.pause_note != self.pause_note
             || was.touch.on != self.touch.on
+            || was.compass.on != self.compass.on
         {
             return None;
         }
@@ -1243,6 +1250,9 @@ impl<'a> Ui<'a> {
         if was.touch != now.touch {
             boxes.extend(self.touch_changes(&gui.panel, &was.touch, &now.touch));
         }
+        if was.compass != now.compass {
+            boxes.extend(self.compass_changes(&gui.panel, &was.compass, &now.compass));
+        }
         let mut cv = self.hud_canvas_over(picture);
         let mut changed = None;
         for b in merged_boxes(boxes) {
@@ -1271,6 +1281,7 @@ impl<'a> Ui<'a> {
             paused: self.paused,
             pause_note: self.pause_note.clone(),
             touch: self.touch.clone(),
+            compass: self.compass.clone(),
         }
     }
 
@@ -1299,6 +1310,7 @@ impl<'a> Ui<'a> {
         let slots = (self.slots_above_bar, self.slots_percent, self.combat.locked);
         place_hud(&mut gui.panel, self.width, target_at, slots);
         self.place_for_touch(&mut gui.panel);
+        self.place_for_compass(&mut gui.panel);
         Some(gui)
     }
 
@@ -1435,7 +1447,7 @@ impl<'a> Ui<'a> {
             }
         }
         if self.paused && !self.pause_note.is_empty() {
-            self.draw_pause_note(cv);
+            self.draw_pause_note(cv, &gui.panel);
         }
         // Under the cursor a slot says its key, where the video has it at 6:05.
         if let Some(n) = self.combat.hover.as_ref().map(|h| h.0) {
@@ -1453,6 +1465,7 @@ impl<'a> Ui<'a> {
             let r = [f.x - 60, f.y, 120, 20];
             self.draw_text(cv, FLOAT_FONT, &f.text, r, 18, f.color);
         }
+        self.draw_compass(cv, &gui.panel);
         self.draw_touch(cv, &gui.panel);
     }
 
@@ -1634,7 +1647,7 @@ impl<'a> Ui<'a> {
     }
 
     /// The box at the top right, under the menu buttons.
-    fn draw_pause_note(&mut self, cv: &mut Canvas) {
+    fn draw_pause_note(&mut self, cv: &mut Canvas, panel: &Control) {
         let lines: Vec<String> = self.pause_note.lines().map(str::to_string).collect();
         let step = 16;
         let (w, h) = (PAUSE_NOTE_WIDTH, lines.len() as i32 * step + 8);
@@ -1643,6 +1656,7 @@ impl<'a> Ui<'a> {
         } else {
             32
         };
+        let top = top.max(self.compass_bottom(panel).map_or(0, |b| b + 3));
         // Left of the blue button.
         let (x, y) = (self.width as i32 - w - 6 - self.blue_button_wide(), top);
         if self.glow_on {

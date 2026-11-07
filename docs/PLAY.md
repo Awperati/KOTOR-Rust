@@ -88,6 +88,11 @@ From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A clic
 
 A settings file from before X and B changed places goes over to them when it is read, if its two keys were never moved. A key the player moved stays.
 
+## Compass
+A strip at the top middle of the screen shows north, east, south and west sliding by as the camera turns, with what is near marked on it: shops, ways out of the area, elevators, people to talk to, containers with something in them, the party, and enemies you have seen. A mark fades and shrinks with distance. Options, Feedback has a Compass row, a Compass size row and a Quest arrow row.
+
+In the journal each quest that is not done has a Track button at the end of its row. One quest is tracked at a time. Its line shows under the compass, and a yellow pin on the compass points to its next step: the door, the elevator or the person to go to next, not where the quest ends. When that step is not in front of you, a yellow arrow on the screen points to it. A save keeps which quest is tracked.
+
 ## On-screen controls
 The blue button with a gamepad on it, in the top right corner under the menu keys, turns them on and off, as does the box on Options, Gameplay, Controls. They are off at first, and the settings file keeps the choice. They work with a finger or the mouse, and with several fingers at once.
 

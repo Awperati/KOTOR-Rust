@@ -362,6 +362,10 @@ impl World {
                 ),
                 ("SoloMode", Value::Byte(self.solo_mode as u8)),
                 ("AttackMode", Value::Byte(self.attack_mode as u8)),
+                (
+                    "TrackedQuest",
+                    Value::String(self.tracked_quest.clone().unwrap_or_default()),
+                ),
                 ("LawWanted", Value::Byte(self.law.wanted)),
                 ("LawCrimeSeen", Value::Byte(self.law.crime_seen as u8)),
                 (
@@ -1070,6 +1074,11 @@ impl World {
         // Globals, journal, party.
         self.solo_mode = globals.root.int("SoloMode").unwrap_or(0) != 0;
         self.attack_mode = globals.root.int("AttackMode").unwrap_or(0) != 0;
+        self.tracked_quest = globals
+            .root
+            .str("TrackedQuest")
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
         self.law = Default::default();
         self.law.wanted = globals.root.int("LawWanted").unwrap_or(0) as u8;
         self.law.crime_seen = globals.root.int("LawCrimeSeen").unwrap_or(0) != 0;

@@ -148,12 +148,12 @@ pub(crate) fn touch_picture(name: &str) -> Option<Image> {
 }
 
 /// How much of a pixel a shape covers, from how far inside it the pixel is: the edge is smoothed over one pixel.
-fn cover(inside: f32) -> f32 {
+pub(crate) fn cover(inside: f32) -> f32 {
     (inside + 0.5).clamp(0.0, 1.0)
 }
 
 /// How far inside a capsule between two points a point is.
-fn in_capsule(p: (f32, f32), a: (f32, f32), b: (f32, f32), radius: f32) -> f32 {
+pub(crate) fn in_capsule(p: (f32, f32), a: (f32, f32), b: (f32, f32), radius: f32) -> f32 {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let along =
         (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / (dx * dx + dy * dy).max(1e-6)).clamp(0.0, 1.0);
@@ -245,7 +245,7 @@ impl Ui<'_> {
     }
 
     /// A box of layout units about a point of pixels, this many pixels across, round on the screen.
-    fn round_box(&self, middle: (f32, f32), across: f32) -> [i32; 4] {
+    pub(crate) fn round_box(&self, middle: (f32, f32), across: f32) -> [i32; 4] {
         let (x, y) = (self.hud_across(), self.scale);
         [
             ((middle.0 - across / 2.0) / x).round() as i32,
@@ -257,6 +257,9 @@ impl Ui<'_> {
 
     /// The HUD's own controls for the layer: the blue button always, and with the layer on bigger menu keys and slots.
     pub(crate) fn place_for_touch(&self, panel: &mut Control) {
+        // As low as the keys come as the file has them, in a narrow window, whether they are big now or not.
+        let file_row_bottom =
+            find(panel, TOUCH_BUTTON_FROM).map_or(ROW_TOP, |c| c.extent.top + c.extent.height);
         let (across, down) = (self.hud_across(), self.scale);
         let side = self.touch_side();
         let wide = self.width as i32;
@@ -306,7 +309,7 @@ impl Ui<'_> {
         if let Some(mut blue) = find(panel, TOUCH_BUTTON_FROM).cloned() {
             blue.tag = TOUCH_BUTTON.to_string();
             blue.extent.left = wide - ROW_TOP - key.0;
-            blue.extent.top = self.touch_row_bottom() + BLUE_GAP;
+            blue.extent.top = self.touch_row_bottom().max(file_row_bottom) + BLUE_GAP;
             blue.extent.width = key.0;
             blue.extent.height = key.1;
             panel.children.push(blue);
@@ -534,20 +537,33 @@ impl Ui<'_> {
         let dim = self.touch.dim.contains(&key);
         self.draw_picture(cv, if on { DISC_LIT_PICTURE } else { DISC_PICTURE }, e);
         let word = self.touch.word(key).to_string();
-        // The same size of letters for the button's size, whichever way the window is squeezed.
-        let k = self.touch_side() * WORD_SHARE / WORD_FONT_UNITS;
         let (across, down) = (self.hud_across(), self.scale);
-        let r = [
-            (e[0] as f32 * across / k).round() as i32,
-            (e[1] as f32 * down / k).round() as i32,
-            (e[2] as f32 * across / k).round() as i32,
-            (e[3] as f32 * down / k).round() as i32,
+        let place = [
+            e[0] as f32 * across,
+            e[1] as f32 * down,
+            e[2] as f32 * across,
+            e[3] as f32 * down,
         ];
+        let color = if dim { WORD_DIM_COLOR } else { WORD_COLOR };
+        let line = self.touch_side() * WORD_SHARE;
+        self.draw_even_words(cv, &word, place, line, color);
+    }
+
+    /// Words in the middle of a box of pixels, with a line this many pixels high, whichever way the window is squeezed.
+    pub(crate) fn draw_even_words(
+        &mut self,
+        cv: &mut Canvas,
+        words: &str,
+        place: [f32; 4],
+        line: f32,
+        color: [f32; 3],
+    ) {
+        let k = line / WORD_FONT_UNITS;
+        let r = place.map(|v| (v / k).round() as i32);
         let kept = (cv.scale, cv.scale_x);
         (cv.scale, cv.scale_x) = (k, k);
         self.measure_evenly();
-        let color = if dim { WORD_DIM_COLOR } else { WORD_COLOR };
-        self.draw_text(cv, WORD_FONT, &word, r, 18, color);
+        self.draw_text(cv, WORD_FONT, words, r, 18, color);
         (cv.scale, cv.scale_x) = kept;
         self.measure_for_hud();
     }
