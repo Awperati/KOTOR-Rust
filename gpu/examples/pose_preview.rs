@@ -1,4 +1,4 @@
-//! Pictures of the roll and the landing from the pose files, with no window and no screen capture: six moments from the
+//! Pictures of the roll, the landing and the jump from the pose files, with no window and no screen capture: six moments from the
 //! front, the side and above, for looking at after an edit. See `docs/MOVEMENT_POSE.md`.
 //!
 //!   cargo run --offline --release --manifest-path gpu\Cargo.toml --example pose_preview -- [out_dir] [--folder pose_folder]
@@ -23,11 +23,13 @@ const LOOK_AT: f32 = 0.85;
 const FOV: f32 = 45.0;
 const ROLL_MOMENTS: [f32; 6] = [0.08, 0.2, 0.35, 0.5, 0.65, 0.85];
 const LANDING_MOMENTS: [f32; 6] = [0.0, 0.15, 0.3, 0.5, 0.7, 0.9];
+const JUMP_MOMENTS: [f32; 6] = [0.05, 0.2, 0.35, 0.5, 0.7, 0.95];
 
 #[derive(Clone, Copy)]
 enum Move {
     Roll,
     Landing,
+    Jump,
 }
 
 fn tile(frame: &Image) -> Image {
@@ -84,6 +86,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(folder) = folder {
         s.use_pose_folder(folder);
     }
+    // Clips, from a folder named for them: without one it leaves the player's folder alone.
+    if std::env::var_os("KOTOR_RS_ANIMS").is_some() {
+        s.reload_custom_clips();
+    }
     for p in s.pose_problems() {
         println!("mistake: {p}");
     }
@@ -115,6 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let moves = [
         ("roll", Move::Roll, ROLL_MOMENTS),
         ("landing", Move::Landing, LANDING_MOMENTS),
+        ("jump", Move::Jump, JUMP_MOMENTS),
     ];
     for (what, kind, moments) in moves {
         for (view, way, high) in views {
@@ -132,6 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match kind {
                     Move::Roll => s.preview_roll(p),
                     Move::Landing => s.preview_landing(p),
+                    Move::Jump => s.preview_jump(p),
                 }
                 let body = s.dynamic_scene();
                 let frame = gpu.render(&body, &mut |n| s.texture(n), &cam)?;

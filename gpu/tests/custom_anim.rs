@@ -115,5 +115,52 @@ fn a_clip_of_his_is_played_replaces_a_stock_clip_and_a_bad_file_is_named() {
         s.update(DT);
     }
     assert_ne!(shape(&mut s), replaced);
+
+    // Clips named for the moves take the place of their pose files. The example file, under another name.
+    let wave = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../docs/examples/wave.anim.txt"
+    ))
+    .unwrap();
+    let arm = |s: &mut Stage| s.bent_joints().unwrap()["rhand_g"];
+    type Preview = fn(&mut Stage, f32);
+    let moves: [(&str, Preview); 3] = [
+        ("jump", Stage::preview_jump),
+        ("roll", Stage::preview_roll),
+        ("landing", Stage::preview_landing),
+    ];
+    for (name, preview) in moves {
+        preview(&mut s, 0.5);
+        let from_file = arm(&mut s);
+        let file = folder.join(format!("{name}.anim.txt"));
+        std::fs::write(
+            &file,
+            wave.replace("name = wave", &format!("name = {name}")),
+        )
+        .unwrap();
+        s.reload_custom_clips();
+        assert!(
+            s.anim_problems().iter().all(|p| !p.contains(name)),
+            "{:?}",
+            s.anim_problems()
+        );
+        let from_clip = arm(&mut s);
+        let moved = (0..3)
+            .map(|k| (from_clip[k] - from_file[k]).abs())
+            .fold(0.0, f32::max);
+        assert!(moved > 0.1, "{name}: the hand moved {moved} m");
+        // Its first frame is what the body was doing, and not a jump to the clip.
+        preview(&mut s, 0.0);
+        let start = arm(&mut s);
+        preview(&mut s, 0.5);
+        assert!(
+            (0..3).any(|k| (start[k] - from_clip[k]).abs() > 0.05),
+            "{name} comes in"
+        );
+        // Gone, and the file is back.
+        std::fs::remove_file(&file).unwrap();
+        s.reload_custom_clips();
+        assert_eq!(arm(&mut s), from_file, "{name}");
+    }
     let _ = std::fs::remove_dir_all(&folder);
 }

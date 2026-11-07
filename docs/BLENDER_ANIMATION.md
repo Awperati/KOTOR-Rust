@@ -46,7 +46,8 @@ The game's own files are only read.
 - A bone you do not key stays as the body rests.
 - Root motion: the game moves the body, so the sideways and forward movement of `rootdummy` is not played; its height is. Walk in place.
 - Only places and turns are played, not scale.
-- A clip named like one of the game's (`pause1` the standing idle, `g8r1` the fists-up stance, `walk`, `run`, `listen`, `tlknorm`, ...) **replaces** it for every character that has the clip. Any other name is a clip of its own, to play with F9. (The roll and the landing are made from `roll_pose.txt` and `landing_pose.txt`, see `docs/MOVEMENT_POSE.md`, not from clips.)
+- A clip named like one of the game's (`pause1` the standing idle, `g8r1` the fists-up stance, `walk`, `run`, `listen`, `tlknorm`, ...) **replaces** it for every character that has the clip. Any other name is a clip of its own, to play with F9. 
+- A clip named `jump`, `roll` or `landing` takes the place of that move's pose file (`jump_pose.txt` and the others, see `docs/MOVEMENT_POSE.md`), in Modern movement. Its whole length is stretched to the move, however long the move takes: a jump is about 0.7 s, a roll 0.55 s, a landing up to 0.45 s. It comes in from what the body was doing over the first eighth. A roll still turns over by `turns` in `roll_pose.txt`, so make only the tuck, or set `turns = 0` and key the turn on `rootdummy` yourself. Delete the file and press F8 to go back to the pose file.
 
 ## 4. Play it in the game
 

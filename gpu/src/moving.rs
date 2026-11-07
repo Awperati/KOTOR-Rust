@@ -286,6 +286,11 @@ impl Stage {
     }
 
     /// Draw the player in the landing, this share of the way through. For the preview and a test.
+    pub fn preview_jump(&mut self, p: f32) {
+        self.body_poses.preview = Some(Bend::Jump(p));
+    }
+
+    /// Hold the player `p` of the way through the landing, for a picture of it.
     pub fn preview_landing(&mut self, p: f32) {
         self.body_poses.preview = Some(Bend::Land(p));
     }
@@ -559,12 +564,26 @@ impl Stage {
         let stand = rig.bind_pose();
         // A clip that was playing shows through as the bend comes and goes.
         let pose = sampled.unwrap_or_else(|| stand.clone());
-        let (file, p, roll) = match bend {
-            Bend::Roll(p) => (&self.body_poses.roll, p, true),
-            Bend::Land(p) => (&self.body_poses.landing, p, false),
-            Bend::Jump(p) => (&self.body_poses.jump, p, false),
+        let (file, p, roll, own_clip) = match bend {
+            Bend::Roll(p) => (&self.body_poses.roll, p, true, ROLL_CLIP),
+            Bend::Land(p) => (&self.body_poses.landing, p, false, LANDING_CLIP),
+            Bend::Jump(p) => (&self.body_poses.jump, p, false, JUMP_CLIP),
         };
         let keys = file.sample(p);
+        // The owner's own clip of the move takes the place of the file's joints. It is stretched to the move, whatever its
+        // length, and comes in from what the body was doing. A roll still turns over by the file's `turns`.
+        if let Some(c) = kotor_render::custom_clip::get(own_clip) {
+            let own = rig.sample(own_clip, p.min(0.999) * c.length)?;
+            let last = matches!(bend, Bend::Jump(_)).then_some(1.0);
+            let share =
+                smooth(p / OWN_CLIP_BLEND).min(last.unwrap_or(smooth((1.0 - p) / OWN_CLIP_BLEND)));
+            let pose = kotor_model::blend(&pose, &own, share);
+            return Some(if roll {
+                (pose, somersault(p) * TAU * file.turns, keys.tuck.sqrt())
+            } else {
+                (pose, 0.0, 0.0)
+            });
+        }
         // The clip's swing goes as the bend comes, or the legs would scissor in the tuck.
         let mut pose = kotor_model::blend(&pose, &stand, keys.tuck);
         turn_joints(&mut pose, rig, &keys.angles);
@@ -675,6 +694,13 @@ impl Stage {
         Some(pose.position[2] - lowest)
     }
 }
+
+/// What an `*.anim.txt` clip is called to stand in for a move's pose file.
+const ROLL_CLIP: &str = "roll";
+const LANDING_CLIP: &str = "landing";
+const JUMP_CLIP: &str = "jump";
+/// How much of a move, 0 to 1, the owner's clip takes to come in and go out. Assumed.
+const OWN_CLIP_BLEND: f32 = 0.12;
 
 /// What the player's body is doing: how far through a roll, a landing or a jump, 0 to 1.
 #[derive(Clone, Copy)]
