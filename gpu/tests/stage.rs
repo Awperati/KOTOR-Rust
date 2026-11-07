@@ -498,6 +498,10 @@ fn a_footlocker_opens_and_gives_up_its_items() {
     assert_eq!(s.game.world.opened, Some(locker), "the locker opened");
     let items = s.game.world.container_items();
     assert!(!items.is_empty(), "the opening script fills this locker");
+    let count: i32 = items
+        .iter()
+        .map(|i| s.game.world.container_count(i.0))
+        .sum();
     let before = s.game.world.object(pc).unwrap().inventory.len();
     s.update(DT);
     // The row list is on screen: a click on the first row chooses it, and the middle button takes it.
@@ -523,7 +527,7 @@ fn a_footlocker_opens_and_gives_up_its_items() {
         .iter()
         .map(|i| s.game.world.object(*i).unwrap().stack)
         .sum();
-    assert_eq!(carried as usize, before + items.len());
+    assert_eq!(carried as usize, before + count as usize);
     s.continue_line();
     assert_eq!(s.game.world.opened, None);
 }
@@ -644,12 +648,19 @@ fn every_resolution_gets_the_interface_pixel_for_pixel() {
         let alpha = |x: u32, y: u32| o.rgba[((y * o.width + x) * 4 + 3) as usize];
         assert_eq!(alpha(0, size.1 - 2), 0, "{size:?}");
         assert!(alpha(size.0 / 2, size.1 / 3) > 0, "{size:?}");
-        let before = s.game.world.container_items().len();
+        let count = |s: &Stage| -> i32 {
+            let w = &s.game.world;
+            w.container_items()
+                .iter()
+                .map(|i| w.container_count(i.0))
+                .sum()
+        };
+        let before = count(&s);
         let row = s.menu_pixel("LB_ITEMS", Some(0), size).unwrap();
         s.click(row, size);
         let take = s.menu_pixel("BTN_GIVEITEMS", None, size).unwrap();
         s.click(take, size);
-        assert_eq!(s.game.world.container_items().len(), before - 1, "{size:?}");
+        assert_eq!(count(&s), before - 1, "{size:?}");
     }
 }
 

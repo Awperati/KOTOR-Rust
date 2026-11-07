@@ -1434,7 +1434,7 @@ fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_
     let credits = stack(w, 0, "g_i_credits001", 50);
     let sword = stack(w, 1, "g_w_lngswrd01", 1);
     let medpacs = stack(w, 2, "g_i_medeqpmnt01", 3);
-    let other = stack(w, 3, "g_w_shortswrd01", 1);
+    let other = stack(w, 3, "g_a_class4001", 1);
     let everything = s.game.world.container_items().len();
     let gold = s.game.world.gold;
     let chosen = |s: &mut Stage| -> Vec<bool> {

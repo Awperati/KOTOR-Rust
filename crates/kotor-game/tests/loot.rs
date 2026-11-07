@@ -194,7 +194,10 @@ fn a_creature_leaves_what_is_marked_droppable_on_its_body() {
     assert!(w.click(foe));
     assert_eq!(w.opened, Some(foe));
     let taken = w.container_items();
-    assert_eq!(taken.len(), items.len());
+    // Two of a kind are one row.
+    let counted: i32 = taken.iter().map(|i| w.container_count(i.0)).sum();
+    let held: i32 = items.iter().map(|i| w.object(*i).unwrap().stack).sum();
+    assert_eq!(counted, held);
     let bytes = w.save_bytes("Body").unwrap();
     for (id, _) in taken {
         w.take_item(id);
