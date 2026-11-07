@@ -623,6 +623,7 @@ impl App {
                         "Jump" => self.stage.jump_key(),
                         "Pause" => self.stage.pause_key(),
                         "CancelCombat" => self.stage.hud_disengage(),
+                        "Pickup" => self.stage.pickup(),
                         "SoloMode" => self.stage.solo_key(),
                         "Roll" => self.stage.roll_key(),
                         _ => {}

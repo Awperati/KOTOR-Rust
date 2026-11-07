@@ -26,6 +26,8 @@ const SLOT_WORDS_FONT: &str = "dialogfont10x10";
 const GREYED: [u8; 4] = [0, 0, 0, 170];
 /// What a slot does and what the cursor is on: the HUD's text boxes.
 const HUD_TEXT_BOXES: [&str; 1] = ["LBL_ACTIONDESCBG"];
+/// The Pickup button's picture: see [`pickup_picture`].
+const PICKUP_PICTURE: &str = "kotorrs_pickup";
 /// How many words that do not fit are kept for whoever asks.
 const MOST_TOO_BIG: usize = 64;
 /// The words of a conversation, as the reference video has them at 2:30: the file's are white.
@@ -116,6 +118,8 @@ pub struct CombatHud {
     pub quick: [Option<SlotShown>; 3],
     /// What the one under the cursor is called.
     pub quick_hover: Option<String>,
+    /// The first of the four slots is the Pickup button.
+    pub pickup: bool,
 }
 
 /// One control as the HUD last drew it.
@@ -528,7 +532,8 @@ impl<'a> Ui<'a> {
             let mut img = self
                 .hd_picture(&key)
                 .or_else(|| load_texture(self.inst, &key))
-                .or_else(|| self.second_game_icon(&key));
+                .or_else(|| self.second_game_icon(&key))
+                .or_else(|| (key == PICKUP_PICTURE).then(pickup_picture));
             if let (Some(i), true) = (img.as_mut(), additive(self.inst, &key)) {
                 brightness_to_alpha(i);
             }
@@ -1369,6 +1374,15 @@ impl<'a> Ui<'a> {
                 patches.entry(format!("LBL_QUEUE{n}")).or_default().fill = Some(icon.clone());
             }
         }
+        if combat.pickup {
+            let picture = patches.entry("LBL_ACTION0".to_string()).or_default();
+            picture.hidden = false;
+            picture.fill = Some(PICKUP_PICTURE.to_string());
+            // Its name shows under the cursor, as the other three's do.
+            for tag in ["LBL_ACTIONDESC", "LBL_ACTIONDESCBG"] {
+                patches.entry(tag.to_string()).or_default().hidden = true;
+            }
+        }
         for (n, slot) in combat.quick.iter().enumerate() {
             let Some(shown) = slot else { continue };
             let n = n + 1;
@@ -2009,6 +2023,37 @@ fn additive(inst: &mut Install, name: &str) -> bool {
         .ok()
         .and_then(|d| kotor_image::parse_tpc(&d).ok())
         .is_some_and(|t| t.txi.to_ascii_lowercase().contains("blending additive"))
+}
+
+/// The Pickup button's picture, drawn here as the game has none: an arrow coming down into a ring, the reach around the player.
+fn pickup_picture() -> Image {
+    const SIZE: u32 = 128;
+    const RING: f32 = 50.0;
+    const RING_THICK: f32 = 6.0;
+    const SHAFT_HALF: f32 = 8.0;
+    const HEAD_TOP: f32 = 12.0;
+    const HEAD_HALF: f32 = 26.0;
+    const TIP: f32 = 36.0;
+    let centre = SIZE as f32 / 2.0;
+    let mut rgba = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (dx, dy) = (x as f32 + 0.5 - centre, y as f32 + 0.5 - centre);
+            // How far inside each shape: the edge is smoothed over one pixel, for when it is scaled.
+            let ring = RING_THICK - (dx.hypot(dy) - RING).abs();
+            let shaft = (SHAFT_HALF - dx.abs()).min(HEAD_TOP - dy).min(dy + TIP);
+            let across = HEAD_HALF * (TIP - dy) / (TIP - HEAD_TOP);
+            let head = (across - dx.abs()).min(dy - HEAD_TOP).min(TIP - dy);
+            let inside = ring.max(shaft).max(head);
+            let alpha = (inside + 0.5).clamp(0.0, 1.0);
+            rgba.extend_from_slice(&[225, 240, 255, (alpha * 255.0) as u8]);
+        }
+    }
+    Image {
+        width: SIZE,
+        height: SIZE,
+        rgba,
+    }
 }
 
 /// Make an added picture drawable as a plain one: how bright a pixel is becomes how much of it shows.

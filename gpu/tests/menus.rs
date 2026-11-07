@@ -637,6 +637,177 @@ fn a_container_opens_its_own_window_over_the_scene() {
     assert_eq!(s.menu_name(), "pause");
 }
 
+/// A creature's remains here, holding this template.
+fn remains_at(s: &mut Stage, at: [f32; 3], template: &str, count: i32) -> (u32, u32) {
+    let w = &mut s.game.world;
+    let body = w.spawn_creature("n_calonord", at);
+    let item = w.spawn_item(template);
+    w.object_mut(item).unwrap().stack = count;
+    let o = w.object_mut(body).unwrap();
+    o.dead = true;
+    o.useable = true;
+    o.inventory = vec![item];
+    o.equipped.clear();
+    (body, item)
+}
+
+#[test]
+fn every_pile_of_credits_in_a_container_is_one_row_with_their_sum() {
+    let Some((mut s, _)) = in_game("credit_piles") else {
+        return;
+    };
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    s.game.world.click(locker);
+    let w = &mut s.game.world;
+    let before = w.container_items().len();
+    let piles: Vec<u32> = [10, 20, 30]
+        .into_iter()
+        .map(|count| {
+            let item = w.spawn_item("g_i_credits001");
+            w.object_mut(item).unwrap().stack = count;
+            w.object_mut(locker).unwrap().inventory.insert(0, item);
+            item
+        })
+        .collect();
+    assert_eq!(s.game.world.container_items().len(), before + 1);
+    let rows = s.menu_rows("LB_ITEMS");
+    assert_eq!(rows[0].count, 60, "{}", rows[0].text);
+    assert_eq!(rows[0].stepper, Some(1));
+
+    // The stepper goes up to the sum, and what is left is still one row.
+    let gold = s.game.world.gold;
+    click_row(&mut s, "LB_ITEMS", 0);
+    let step = s.menu_step_pixel("LB_ITEMS", 0, 1, SIZE).unwrap();
+    s.set_shift(true);
+    for _ in 0..4 {
+        s.click(step, SIZE);
+    }
+    s.set_shift(false);
+    assert_eq!(s.menu_rows("LB_ITEMS")[0].stepper, Some(41));
+    press(&mut s, "BTN_GIVEITEMS");
+    assert_eq!(s.game.world.gold, gold + 41);
+    assert_eq!(s.game.world.container_items().len(), before + 1);
+    assert_eq!(s.menu_rows("LB_ITEMS")[0].count, 19);
+
+    // Take All gives the rest, and no pile is left behind.
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.game.world.gold, gold + 60);
+    for pile in piles {
+        assert!(s.game.world.object(pile).is_none(), "pile {pile}");
+    }
+    let o = s.game.world.object(locker).unwrap();
+    assert!(o.inventory.is_empty());
+}
+
+#[test]
+fn pickup_opens_what_is_near_as_one_container_and_what_is_taken_leaves_its_own() {
+    let Some((mut s, dir)) = in_game("pickup") else {
+        return;
+    };
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    assert!(s.stand_near("end_locker01"));
+    s.update(DT);
+    let pc = s.game.world.pc;
+    let here = s.game.world.object(pc).unwrap().position;
+    // Clear of everything else near: only what the test puts here counts.
+    let others: Vec<u32> = s.game.world.objects.values().map(|o| o.id).collect();
+    for id in others.into_iter().filter(|i| *i != pc && *i != locker) {
+        let o = s.game.world.object_mut(id).unwrap();
+        if matches!(
+            o.kind,
+            kotor_game::Kind::Creature | kotor_game::Kind::Placeable
+        ) {
+            o.useable = false;
+        }
+    }
+    // A spot in sight at 3.5 m, past the reach.
+    let far_at = (0..16)
+        .map(|n| (n as f32 * std::f32::consts::TAU / 16.0).sin_cos())
+        .map(|(y, x)| [here[0] + 3.5 * x, here[1] + 3.5 * y, here[2]])
+        .find(|at| s.game.world.can_see_along(here, *at))
+        .expect("somewhere in sight");
+    let (body, medpac) = remains_at(
+        &mut s,
+        [here[0] + 0.5, here[1], here[2]],
+        "g_i_medeqpmnt01",
+        2,
+    );
+    let (far, sword) = remains_at(&mut s, far_at, "g_w_lngswrd01", 1);
+
+    // The slot is the Pickup button, with its name under the cursor.
+    let slot = s.hud_pixel("BTN_ACTION0", SIZE).unwrap();
+    s.hover(slot, SIZE);
+    assert_eq!(s.combat_words().as_deref(), Some("Pickup"));
+
+    // A click: the locker and the near remains are one panel, and the far ones stay out of it.
+    s.click(slot, SIZE);
+    assert_eq!(s.menu_name(), "container");
+    let w = &s.game.world;
+    assert_eq!(w.open_sources().len(), 2, "{:?}", w.open_sources());
+    let listed: Vec<u32> = w.container_items().iter().map(|i| i.0).collect();
+    assert!(listed.contains(&medpac));
+    assert!(!listed.contains(&sword), "out of reach");
+    let locker_had = w.object(locker).unwrap().inventory.clone();
+    assert!(!locker_had.is_empty(), "this footlocker has its own things");
+    assert!(locker_had.iter().all(|i| listed.contains(i)));
+
+    // What is taken leaves where it was.
+    let row = listed.iter().position(|i| *i == medpac).unwrap();
+    click_row(&mut s, "LB_ITEMS", row);
+    let step = s.menu_step_pixel("LB_ITEMS", row, 1, SIZE).unwrap();
+    s.click(step, SIZE);
+    press(&mut s, "BTN_GIVEITEMS");
+    let w = &s.game.world;
+    assert!(w.object(body).unwrap().inventory.is_empty());
+    assert_eq!(w.object(locker).unwrap().inventory, locker_had);
+    assert!(w.object(pc).unwrap().inventory.iter().any(|i| {
+        w.object(*i)
+            .is_some_and(|o| o.template == "g_i_medeqpmnt01" && o.stack >= 2)
+    }));
+
+    // Take All empties the rest, and all of it shuts.
+    press(&mut s, "BTN_OK");
+    let w = &s.game.world;
+    assert!(w.object(locker).unwrap().inventory.is_empty());
+    assert!(w.opened.is_none() && w.opened_too.is_empty());
+    assert_eq!(w.object(far).unwrap().inventory, vec![sword], "left alone");
+
+    // Nothing left in reach: a word over the player, and no panel.
+    s.update(DT);
+    s.pickup();
+    assert_eq!(s.menu_name(), "-");
+    assert!(s.floats_shown().iter().any(|f| f == "Nothing nearby"));
+
+    // The reach is a setting.
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("settings.txt"), "pickup_radius=4\n").unwrap();
+    s.use_settings_file(dir.join("settings.txt"));
+    s.pickup();
+    assert_eq!(s.menu_name(), "container");
+    assert_eq!(s.game.world.open_sources(), vec![far]);
+    s.game.world.close_container();
+
+    // What is locked stays shut, and the log says so.
+    let w = &mut s.game.world;
+    let again = w.spawn_item("g_w_lngswrd01");
+    let l = w.object_mut(locker).unwrap();
+    l.locked = true;
+    l.inventory = vec![again];
+    w.events.clear();
+    s.pickup();
+    let w = &s.game.world;
+    assert_eq!(w.open_sources(), vec![far]);
+    assert!(
+        w.events
+            .iter()
+            .any(|e| e.contains("is locked: Pickup left it")),
+        "{:?}",
+        w.events
+    );
+}
+
 #[test]
 fn a_container_takes_the_rows_chosen_with_control_in_the_numbers_their_steppers_say() {
     let Some((mut s, _)) = in_game("take_selected") else {
@@ -2327,7 +2498,8 @@ fn the_keys_can_be_changed_kept_and_put_back() {
         ("KeyW", "MoveForward"),
         ("KeyS", "MoveBack"),
         ("KeyR", "Use"),
-        ("KeyF", "CancelCombat"),
+        // F is Cancel Combat too, in a fight: see the end of this test.
+        ("KeyF", "Pickup"),
         ("KeyO", "Options"),
         ("KeyU", "Equip"),
         ("KeyI", "Inventory"),
@@ -2360,8 +2532,10 @@ fn the_keys_can_be_changed_kept_and_put_back() {
         .spawn_creature("n_calonord", [p[0] + 3.0, p[1], p[2]]);
     s.game.world.combat.target.insert(pc, foe);
     s.update(DT);
+    assert_eq!(s.action_for_key("KeyF"), Some("CancelCombat"));
     s.hud_disengage();
     assert_eq!(s.game.world.combat.target.get(&pc), None);
+    assert_eq!(s.action_for_key("KeyF"), Some("Pickup"));
 }
 
 #[test]

@@ -475,6 +475,8 @@ pub struct World {
     pub difficulty: i32,
     /// The container the player has open.
     pub opened: Option<ObjId>,
+    /// What the Pickup button opened along with it, shown as one container.
+    pub opened_too: Vec<ObjId>,
     /// Who last took something out of a container and what, and who last closed one.
     pub last_disturbed_by: ObjId,
     pub disturbed_item: ObjId,
@@ -528,7 +530,7 @@ pub struct World {
     pub(crate) effect_spell: HashMap<u32, i32>,
     /// What is left of each `GetFirstObjectInShape` walk, by size and mask.
     pub(crate) shape_walks: HashMap<(u32, i32), std::collections::VecDeque<ObjId>>,
-    tables: HashMap<String, Option<Rc<TwoDa>>>,
+    pub(crate) tables: HashMap<String, Option<Rc<TwoDa>>>,
     /// The first row of `feat.2da` that came from the second game.
     pub(crate) second_game_feats: Option<usize>,
     /// Which placeable templates have an inventory, once asked.
@@ -727,6 +729,7 @@ impl World {
             route_speed: 0.0,
             difficulty: 1,
             opened: None,
+            opened_too: Vec::new(),
             last_disturbed_by: OBJECT_INVALID,
             disturbed_item: OBJECT_INVALID,
             last_closed_by: OBJECT_INVALID,

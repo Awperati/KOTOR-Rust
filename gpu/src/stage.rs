@@ -888,7 +888,7 @@ impl Stage {
         self.play_world_sounds(dt_game);
         self.fire_on_frames(dt_game);
         self.play_effects_at();
-        if let Some(id) = self.game.world.opened {
+        for id in self.game.world.open_sources() {
             self.lids.entry(id).or_insert(0.0);
         }
         for t in self.lids.values_mut() {
@@ -1642,8 +1642,10 @@ impl Stage {
         if let Some(tag) = self.ui.hud_hit(x, y) {
             self.hud_click_sound(&tag);
             if tag == "BTN_ACTION0" {
-                if let Some(id) = self.target() {
-                    self.use_thing(id);
+                let action = self.target_view_action();
+                match self.target().filter(|_| !menus::slot_is_pickup(action)) {
+                    Some(id) => self.use_thing(id),
+                    None => self.pickup(),
                 }
             } else if let Some(slot) = menus::target_slot(&tag) {
                 if self.use_slot(slot) {
@@ -3146,7 +3148,7 @@ impl Stage {
             .container_items()
             .iter()
             .filter_map(|(i, _)| w.object(*i))
-            .map(|o| format!("{}*{}", o.template, o.stack))
+            .map(|o| format!("{}*{}", o.template, w.container_count(o.id)))
             .collect::<Vec<_>>()
             .join(",");
         let here = self.pc_position();
@@ -3270,6 +3272,10 @@ impl Stage {
     }
 
     /// The thing under the cursor, else the nearest in reach: name, hit points, and what using it does.
+    fn target_view_action(&self) -> Option<&'static str> {
+        self.target_view().map(|t| t.3)
+    }
+
     fn target_view(&self) -> Option<(String, i32, i32, &'static str)> {
         let w = &self.game.world;
         let id = self.target()?;

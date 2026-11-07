@@ -305,6 +305,11 @@ impl Stage {
         self.menus.fight.hover = tag;
     }
 
+    /// The cursor is on the first of the four slots at the bottom right.
+    pub(super) fn over_first_action_slot(&self) -> bool {
+        self.menus.fight.hover.as_deref() == Some("BTN_ACTION0")
+    }
+
     /// The cursor is on one of the slots under an enemy's bar.
     pub(in crate::stage) fn over_target_slots(&self) -> bool {
         let tag = self.menus.fight.hover.as_deref().unwrap_or("");
@@ -724,6 +729,12 @@ impl Stage {
             .fight
             .rising
             .retain(|r| time - r.born < FLOAT_SECONDS);
+    }
+
+    /// What the name bar says of the slot under the cursor, for a test.
+    pub fn combat_words(&mut self) -> Option<String> {
+        let action = self.target_view_action();
+        self.combat_view(action).quick_hover
     }
 
     /// The rising words where they are now.

@@ -86,8 +86,10 @@ const STYLE_ROWS: [(&str, &str, &str); 14] = [
         "What has nothing left has no label, or says so in grey.",
     ),
 ];
+/// What the Pickup radius goes round, in metres.
+const PICKUP_RADII: [i32; 5] = [2, 3, 4, 5, 8];
 /// The rows after those that go round a list of values.
-const VALUE_ROWS: [(&str, &str); 3] = [
+const VALUE_ROWS: [(&str, &str); 4] = [
     (
         "Nameplate range",
         "How far away an enemy gets a plate, in metres.",
@@ -96,6 +98,10 @@ const VALUE_ROWS: [(&str, &str); 3] = [
     (
         "Cel shading",
         "Light in steps and a thin dark outline round characters and props, in the manner of a cartoon. Off, Subtle or Strong. F7 turns it off and on.",
+    ),
+    (
+        "Pickup radius",
+        "How far the Pickup button and its key reach, in metres.",
     ),
 ];
 /// What the Cel shading row says.
@@ -317,6 +323,11 @@ impl Stage {
             selected: settings.cel_shading > 0,
             ..Row::default()
         });
+        rows.push(Row {
+            text: format!("{}: {} m", VALUE_ROWS[3].0, settings.pickup_radius),
+            selected: true,
+            ..Row::default()
+        });
         // More rows than fit: the wheel brings up the rest.
         v.lists
             .insert("LB_OPTIONS".to_string(), (rows, self.menus.first));
@@ -418,6 +429,7 @@ impl Stage {
                 s.cel_shading = (s.cel_shading + 1) % 3;
                 s.cel_last = s.cel_shading.max(1);
             }
+            Some(3) => s.pickup_radius = next_of(&PICKUP_RADII, s.pickup_radius),
             _ => {}
         }
         self.settings_changed();

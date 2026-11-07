@@ -35,6 +35,7 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 21] = [
     ("Options", 48052, 1, "KeyO"),
     ("Pause", 48019, 1, "KeyX"),
     ("CancelCombat", 48315, 1, "KeyF"),
+    ("Pickup", NOT_IN_TALK_TABLE, 1, "KeyF"),
     ("SoloMode", 48035, 1, "KeyV"),
 ];
 /// Each action's name in `keymap.2da`. Not Pause: the table's key for it is Space, which jumps here, as the owner asked.
@@ -149,8 +150,15 @@ impl Stage {
 
     /// What a key does in the game, by `winit`'s name for it.
     pub fn action_for_key(&self, key: &str) -> Option<&'static str> {
-        let keys = &self.menus.keys.0;
-        keys.iter().find(|(_, k)| *k == key).map(|(a, _)| *a)
+        let mut on_key = self.menus.keys.0.iter().filter(|(_, k)| *k == key);
+        let first = on_key.next().map(|(a, _)| *a)?;
+        // F stops a fight, as it does in the game, and picks up when there is no fight to stop.
+        let shared = first == "CancelCombat" && on_key.any(|(a, _)| *a == "Pickup");
+        Some(if shared && !self.party_blocked() {
+            "Pickup"
+        } else {
+            first
+        })
     }
 
     /// A key was pressed. If the page is waiting for one it takes it, and Esc gives up waiting.

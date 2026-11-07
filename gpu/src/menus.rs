@@ -47,6 +47,16 @@ mod workbenchscreen;
 
 /// Longest name a save can be given, and the characters the interface font has.
 const SAVE_NAME_MAX: usize = 32;
+/// What the first action slot says when it is the Pickup button, and what it says when it finds nothing. Neither is in the
+/// talk table: the button is not in the game.
+const PICKUP_WORDS: &str = "Pickup";
+const NOTHING_NEARBY: &str = "Nothing nearby";
+
+/// The first action slot is the Pickup button, unless the target has something else to do: attack, talk, a door.
+pub(super) fn slot_is_pickup(action: Option<&str>) -> bool {
+    action.is_none_or(|a| a == "Use")
+}
+
 /// A container's top two buttons, as the owner named them. The file's words are "Get Items" and "Switch To".
 const TAKE_ALL: &str = "Take All";
 const TAKE_SELECTED: &str = "Take Selected";
@@ -304,6 +314,8 @@ pub struct Settings {
     pub cel_shading: i32,
     /// The level the F7 key brings back after it turned the shading off. Not kept in the settings file.
     pub cel_last: i32,
+    /// How far the Pickup button reaches, in metres.
+    pub pickup_radius: i32,
 }
 
 impl Default for Settings {
@@ -351,6 +363,7 @@ impl Default for Settings {
             nameplate_size: 100,
             cel_shading: 1,
             cel_last: 1,
+            pickup_radius: 3,
         }
     }
 }
@@ -361,7 +374,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\ncel_shading={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\ncel_shading={}\npickup_radius={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -401,7 +414,8 @@ impl Settings {
             self.hide_empty,
             self.nameplate_range,
             self.nameplate_size,
-            self.cel_shading
+            self.cel_shading,
+            self.pickup_radius
         )
     }
 
@@ -458,6 +472,7 @@ impl Settings {
                     s.cel_shading = v.parse().unwrap_or(s.cel_shading).clamp(0, 2);
                     s.cel_last = s.cel_shading.max(1);
                 }
+                "pickup_radius" => s.pickup_radius = v.parse().unwrap_or(s.pickup_radius),
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -1466,6 +1481,7 @@ impl Stage {
         }
         let mut rows = self.item_rows();
         for (row, item) in rows.iter_mut().zip(&items) {
+            row.count = self.game.world.container_count(*item);
             row.selected = self.menus.take_chosen.contains(item);
             row.bar = row.selected;
             row.stepper = (row.count > 1).then(|| self.take_count(*item));
@@ -1500,7 +1516,7 @@ impl Stage {
         let Some(item) = self.listed_items().get(row).copied() else {
             return;
         };
-        let most = self.game.world.object(item).map_or(1, |o| o.stack.max(1));
+        let most = self.game.world.container_count(item).max(1);
         let by = if self.menus.shift {
             by * STEP_WITH_SHIFT
         } else {
@@ -1525,7 +1541,7 @@ impl Stage {
         for item in chosen {
             let count = self.take_count(item);
             let w = &mut self.game.world;
-            if w.object(item).is_some_and(|o| o.stack > 1) {
+            if w.container_count(item) > 1 {
                 w.take_some(item, count);
             } else {
                 w.take_item(item);
@@ -1572,6 +1588,17 @@ impl Stage {
         if self.game.world.opened.is_none() {
             self.menus.take_chosen.clear();
             self.menus.take_counts.clear();
+        }
+    }
+
+    /// The Pickup button and its key: what is near opens as one container, or the player says there is nothing.
+    pub fn pickup(&mut self) {
+        if self.menu_open() || self.choice_view().is_some() {
+            return;
+        }
+        let radius = self.menus.settings.pickup_radius as f32;
+        if self.game.world.proximity_pickup(radius) == 0 {
+            self.say_over_player(NOTHING_NEARBY.to_string());
         }
     }
 
@@ -1778,10 +1805,13 @@ impl Stage {
         let locked = !hostile && self.target_has_a_way_in();
         let (slots, hover) = self.slots_view(hostile || locked, &mut queue);
         let (quick, quick_hover) = self.quick_view();
+        let pickup = slot_is_pickup(action);
+        let on_pickup = pickup && self.over_first_action_slot();
         CombatHud {
             locked,
             quick,
-            quick_hover,
+            quick_hover: on_pickup.then(|| PICKUP_WORDS.to_string()).or(quick_hover),
+            pickup,
             engaged: self.party_blocked(),
             message: self.ui.strref(STR_COMBAT_MODE),
             queue,

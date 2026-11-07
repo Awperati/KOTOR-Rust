@@ -207,5 +207,9 @@ Routines answering a fixed value on these modules, all others being real: `GetAt
 
 A change of what is under the cursor drew the whole picture again, 20 ms at 2160p, and sent all 33 MB of it to the card. Now `Ui::menu_part` draws only the controls that differ, and only that box goes to the card. Anything else about the screen changing draws the whole, as before. Test: the part is the same, pixel for pixel, as the whole on the main menu, Inventory and Equipment.
 
+## Credits and Pickup
+
+All the credits in a container are one row with their sum. The capsule in the first action slot is now a Pickup button, with F and a radius in the Options (3 m): everything open in reach is one panel, and what is taken leaves its own container. Tests: `every_pile_of_credits_in_a_container_is_one_row_with_their_sum`, `pickup_opens_what_is_near_as_one_container_and_what_is_taken_leaves_its_own`. Frames from `pickup_shots`.
+
 ## Next, in order
 Owner tries the window (`docs/PLAY.md`) and listens to the sound -> attack animations and the cutscene camera -> equipment on bodies -> owner test sheet.

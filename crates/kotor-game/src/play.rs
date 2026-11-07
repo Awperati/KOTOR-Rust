@@ -342,7 +342,7 @@ impl World {
         match o.kind {
             Kind::Creature if o.dead => {
                 self.last_used_by = self.pc;
-                self.opened = Some(target);
+                self.mark_open(target, Vec::new());
             }
             Kind::Creature => {
                 self.talk_to(target);
@@ -1090,22 +1090,7 @@ impl World {
     /// **Measured over the 117 modules:** 408 of 1,467 placeable templates have `HasInventory`, 354 have an `ItemList`
     /// and 45 are locked.
     fn open_container(&mut self, id: ObjId) {
-        let Some(template) = self.objects.get(&id).map(|o| o.template.clone()) else {
-            return;
-        };
-        let utp = self
-            .inst
-            .read(&template, ResType(2044))
-            .ok()
-            .and_then(|b| kotor_gff::Gff::parse(&b).ok());
-        let has = utp
-            .as_ref()
-            .is_some_and(|g| g.root.int("HasInventory").is_some_and(|h| h != 0));
-        let holds = self
-            .objects
-            .get(&id)
-            .is_some_and(|o| !o.inventory.is_empty());
-        if !has && !holds {
+        if !self.can_hold_things(id) {
             return;
         }
         if self.objects.get(&id).is_some_and(|o| o.locked) {
@@ -1116,34 +1101,189 @@ impl World {
             self.run_event(id, "OnFailToOpen");
             return;
         }
-        if self.filled.insert(id) {
-            // One opened before its first heartbeat has its treasure too.
-            self.run_event(id, "OnHeartbeat");
-            let names: Vec<String> = utp
-                .as_ref()
-                .and_then(|g| g.root.list("ItemList"))
-                .unwrap_or_default()
-                .iter()
-                .filter_map(|i| i.str("InventoryRes").map(str::to_string))
-                .collect();
-            for n in names {
-                let item = self.spawn_item(&n);
-                if let Some(o) = self.objects.get_mut(&id) {
-                    o.inventory.push(item);
-                }
-            }
-        }
-        self.opened = Some(id);
+        self.fill_container(id);
+        self.mark_open(id, Vec::new());
         self.last_opened_by = self.pc;
         self.run_event(id, "OnOpen");
     }
 
-    /// Close what is open: its `OnClosed` script runs.
+    /// The template of a placeable says it has an inventory, or it holds something anyway.
+    fn can_hold_things(&mut self, id: ObjId) -> bool {
+        let Some(o) = self.objects.get(&id) else {
+            return false;
+        };
+        if !o.inventory.is_empty() {
+            return true;
+        }
+        let template = o.template.clone();
+        self.container_file(&template)
+            .is_some_and(|g| g.root.int("HasInventory").is_some_and(|h| h != 0))
+    }
+
+    fn container_file(&mut self, template: &str) -> Option<kotor_gff::Gff> {
+        let bytes = self.inst.read(template, ResType(2044)).ok()?;
+        kotor_gff::Gff::parse(&bytes).ok()
+    }
+
+    /// The first time a placeable is opened its `ItemList` goes into it.
+    fn fill_container(&mut self, id: ObjId) {
+        if !self.filled.insert(id) {
+            return;
+        }
+        // One opened before its first heartbeat has its treasure too.
+        self.run_event(id, "OnHeartbeat");
+        let template = self.objects.get(&id).map(|o| o.template.clone());
+        let file = template.and_then(|t| self.container_file(&t));
+        let names: Vec<String> = file
+            .as_ref()
+            .and_then(|g| g.root.list("ItemList"))
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|i| i.str("InventoryRes").map(str::to_string))
+            .collect();
+        for n in names {
+            let item = self.spawn_item(&n);
+            if let Some(o) = self.objects.get_mut(&id) {
+                o.inventory.push(item);
+            }
+        }
+    }
+
+    /// These are open now. Which items are credits is read from a table, so it is loaded here.
+    fn mark_open(&mut self, first: ObjId, others: Vec<ObjId>) {
+        let _ = self.table("baseitems");
+        self.opened = Some(first);
+        self.opened_too = others;
+    }
+
+    /// What is open: one container, or all that the Pickup button gathered.
+    pub fn open_sources(&self) -> Vec<ObjId> {
+        let Some(first) = self.opened else {
+            return Vec::new();
+        };
+        std::iter::once(first)
+            .chain(self.opened_too.iter().copied())
+            .collect()
+    }
+
+    /// The Pickup button: every container and set of remains within `radius` metres and in sight opens as one, and how many
+    /// did is returned. What is locked stays shut, with a line in the log. A placeable that talks is not a container.
+    ///
+    /// **Measured:** this game has no items lying loose on the ground, as what a creature drops stays on its body.
+    pub fn proximity_pickup(&mut self, radius: f32) -> usize {
+        let Some(here) = self.objects.get(&self.pc).map(|o| o.position) else {
+            return 0;
+        };
+        let mut near: Vec<(f32, ObjId)> = self
+            .objects
+            .values()
+            .filter(|o| {
+                let inside = match o.kind {
+                    Kind::Creature => o.dead && !o.inventory.is_empty(),
+                    Kind::Placeable => {
+                        o.conversation.is_empty()
+                            && (!o.inventory.is_empty() || !self.filled.contains(&o.id))
+                    }
+                    _ => false,
+                };
+                inside && o.id != self.pc && !o.party_member && o.useable
+            })
+            .map(|o| (dist2d(o.position, here), o.id))
+            .filter(|(d, _)| *d <= radius)
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut sources = Vec::new();
+        for (_, id) in near {
+            let Some((kind, locked, at)) = self
+                .objects
+                .get(&id)
+                .map(|o| (o.kind, o.locked, o.position))
+            else {
+                continue;
+            };
+            if !self.clear_line(here, at) {
+                continue;
+            }
+            if kind == Kind::Placeable {
+                if !self.can_hold_things(id) {
+                    continue;
+                }
+                if locked {
+                    self.events
+                        .push(format!("{} is locked: Pickup left it", self.describe(id)));
+                    continue;
+                }
+                self.last_used_by = self.pc;
+                self.run_event(id, "OnUsed");
+                self.fill_container(id);
+            }
+            if self
+                .objects
+                .get(&id)
+                .is_some_and(|o| !o.inventory.is_empty())
+            {
+                sources.push(id);
+            }
+        }
+        let Some((&first, others)) = sources.split_first() else {
+            return 0;
+        };
+        self.mark_open(first, others.to_vec());
+        self.last_opened_by = self.pc;
+        for id in &sources {
+            self.run_event(*id, "OnOpen");
+        }
+        sources.len()
+    }
+
+    /// Close what is open: the `OnClosed` script of each runs.
     pub fn close_container(&mut self) {
-        if let Some(id) = self.opened.take() {
+        let open = self.open_sources();
+        self.opened = None;
+        self.opened_too.clear();
+        for id in open {
             self.last_closed_by = self.pc;
             self.run_event(id, "OnClosed");
         }
+    }
+
+    /// Whether this item is credits. The table is loaded by the time anything is open.
+    fn is_credits(&self, item: ObjId) -> bool {
+        let Some(Some(table)) = self.tables.get("baseitems") else {
+            return false;
+        };
+        self.objects
+            .get(&item)
+            .is_some_and(|o| table.get(o.base_item.max(0) as usize, "label") == Some("Credits"))
+    }
+
+    /// Every item in what is open, in order.
+    fn open_items(&self) -> Vec<ObjId> {
+        self.open_sources()
+            .iter()
+            .filter_map(|c| self.objects.get(c))
+            .flat_map(|c| c.inventory.iter().copied())
+            .collect()
+    }
+
+    /// The credits in what is open: they show as one row, under the first of them.
+    fn open_credits(&self) -> Vec<ObjId> {
+        self.open_items()
+            .into_iter()
+            .filter(|i| self.is_credits(*i))
+            .collect()
+    }
+
+    /// How many a row of the open container stands for: all the credits for the row of credits, or the stack.
+    pub fn container_count(&self, item: ObjId) -> i32 {
+        let stack = |i: &ObjId| self.objects.get(i).map_or(0, |o| o.stack.max(1));
+        if self.is_credits(item) {
+            let credits = self.open_credits();
+            if credits.contains(&item) {
+                return credits.iter().map(stack).sum();
+            }
+        }
+        stack(&item)
     }
 
     /// A body that has something left on it. Those can be clicked and opened.
@@ -1203,22 +1343,22 @@ impl World {
         }
     }
 
-    /// The items in the open container: id and name, with the count of a stack.
+    /// The items in the open container: id and name, with the count of a stack. All its credits are one row.
     pub fn container_items(&self) -> Vec<(ObjId, String)> {
-        let Some(c) = self.opened.and_then(|id| self.objects.get(&id)) else {
-            return Vec::new();
-        };
-        c.inventory
-            .iter()
-            .filter_map(|i| self.objects.get(i))
+        let credits = self.open_credits();
+        self.open_items()
+            .into_iter()
+            .filter(|i| credits.first() == Some(i) || !credits.contains(i))
+            .filter_map(|i| self.objects.get(&i))
             .map(|o| {
                 let name = if o.name.is_empty() {
                     o.template.clone()
                 } else {
                     o.name.clone()
                 };
-                let shown = if o.stack > 1 {
-                    format!("{name} ({})", o.stack)
+                let count = self.container_count(o.id);
+                let shown = if count > 1 {
+                    format!("{name} ({count})")
                 } else {
                     name
                 };
@@ -1227,34 +1367,72 @@ impl World {
             .collect()
     }
 
-    /// Move an item from the open container to the player: its `OnInvDisturbed` script runs, which may destroy the
-    /// container.
+    /// The open container that holds an item.
+    fn source_of(&self, item: ObjId) -> Option<ObjId> {
+        self.open_sources().into_iter().find(|c| {
+            self.objects
+                .get(c)
+                .is_some_and(|o| o.inventory.contains(&item))
+        })
+    }
+
+    /// Move an item from the open container that holds it to the player: its `OnInvDisturbed` script runs, which may destroy
+    /// the container. The row of credits is all of them.
     pub fn take_item(&mut self, item: ObjId) {
-        let Some(from) = self.opened else { return };
+        let all = self.is_credits(item).then(|| self.open_credits());
+        for one in all.filter(|c| c.contains(&item)).unwrap_or(vec![item]) {
+            self.take_one(one);
+        }
+    }
+
+    fn take_one(&mut self, item: ObjId) {
+        let Some(from) = self.source_of(item) else {
+            return;
+        };
         if let Some(c) = self.objects.get_mut(&from) {
             c.inventory.retain(|i| *i != item);
         }
         self.hand_over(from, item);
     }
 
-    /// Move `count` of a stack in the open container to the player, and the rest stays. All of it is [`World::take_item`].
+    /// Move `count` of a row of the open container to the player, and the rest stays. All of it is [`World::take_item`].
+    /// Credits come from each pile in turn, so what is left stays where it was.
     pub fn take_some(&mut self, item: ObjId, count: i32) {
-        let Some((stack, template)) = self
-            .objects
-            .get(&item)
-            .map(|o| (o.stack, o.template.clone()))
-        else {
-            return;
-        };
-        if count >= stack {
+        if count >= self.container_count(item) {
             return self.take_item(item);
         }
-        let Some(from) = self.opened.filter(|_| count > 0) else {
+        let credits = self.open_credits();
+        let piles = if credits.contains(&item) {
+            credits
+        } else {
+            vec![item]
+        };
+        let mut left = count;
+        for pile in piles {
+            if left <= 0 {
+                break;
+            }
+            let stack = self.objects.get(&pile).map_or(0, |o| o.stack.max(1));
+            if stack <= left {
+                self.take_one(pile);
+            } else {
+                self.split_off(pile, left);
+            }
+            left -= stack;
+        }
+    }
+
+    /// Some of a stack in an open container goes to the player, and the rest stays.
+    fn split_off(&mut self, item: ObjId, count: i32) {
+        let Some(from) = self.source_of(item) else {
             return;
         };
-        if let Some(o) = self.objects.get_mut(&item) {
+        let Some(template) = self.objects.get_mut(&item).map(|o| {
             o.stack -= count;
-        }
+            o.template.clone()
+        }) else {
+            return;
+        };
         let some = self.spawn_item(&template);
         if let Some(o) = self.objects.get_mut(&some) {
             o.stack = count;
@@ -1270,16 +1448,21 @@ impl World {
         self.run_event(from, "OnInvDisturbed");
         self.carry_acquired(pc, item);
         if !self.objects.contains_key(&from) {
-            self.opened = None;
+            // A script destroyed it: what else is open stays open.
+            self.opened_too.retain(|c| *c != from);
+            if self.opened == Some(from) {
+                self.opened = (!self.opened_too.is_empty()).then(|| self.opened_too.remove(0));
+            }
+            return;
         }
         // `k_pend_chest02` moves the tutorial on from here.
-        if let Some(c) = self.opened {
+        if self.open_sources().contains(&from) {
             if let Some(s) = self
                 .objects
-                .get(&c)
+                .get(&from)
                 .and_then(|o| o.scripts.get("OnInvDisturbed").cloned())
             {
-                let _ = self.run_script(&s, c);
+                let _ = self.run_script(&s, from);
             }
         }
     }

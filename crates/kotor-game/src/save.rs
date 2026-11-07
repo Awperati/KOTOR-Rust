@@ -973,6 +973,7 @@ impl World {
         self.conv = None;
         self.conversation = None;
         self.opened = None;
+        self.opened_too.clear();
         self.filled.clear();
         self.steer = None;
         self.combat = crate::combat::CombatState::new();
