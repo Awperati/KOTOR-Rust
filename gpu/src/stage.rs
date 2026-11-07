@@ -457,6 +457,11 @@ pub struct Stage {
     /// The owner's folder of textures that stand in for the game's, and what was wrong with the pictures in it.
     texture_folder: Option<std::path::PathBuf>,
     texture_problems: Vec<String>,
+    /// What was wrong with the owner's animation files when last read (`anim_problems.txt` has it too).
+    anim_problems: Vec<String>,
+    /// Which of the owner's clips the debug key has the player in, if any.
+    shown_clip: Option<usize>,
+    forced_at: f32,
     /// Camera direction in radians (0 = looking along +x) and distance behind the player.
     pub yaw: f32,
     pub distance: f32,
@@ -638,6 +643,9 @@ impl Stage {
             textures: HashMap::new(),
             texture_folder: crate::texture_override::folder().filter(|d| d.is_dir()),
             texture_problems: Vec::new(),
+            anim_problems: Vec::new(),
+            shown_clip: None,
+            forced_at: 0.0,
             yaw: 0.0,
             distance: CAMERA_BEHIND,
             turn: 0.0,
@@ -1254,6 +1262,7 @@ impl Stage {
     /// Hold creature `id` in the clip `name` (or let go, with `None`): for looking at a stance or a gesture, as the viewer's drivers do.
     pub fn force_clip(&mut self, id: ObjId, name: Option<&str>) {
         self.forced_clip = name.map(|n| (id, &*Box::leak(n.to_string().into_boxed_str())));
+        self.forced_at = self.idle_clock;
     }
 
     /// How far the mouth of creature `id` is open while it says the line on now, from 0 to 1, with the clock of its talking
@@ -1940,6 +1949,87 @@ impl Stage {
                 folder.join("texture_problems.txt"),
                 "No problems found so far: the game is using your pictures.\n",
             );
+        }
+    }
+
+    /// The owner's animation folder: `KOTOR_RS_ANIMS`, else `%LOCALAPPDATA%\kotor-rs\anims`.
+    fn anim_folder() -> Option<std::path::PathBuf> {
+        if let Some(d) = std::env::var_os("KOTOR_RS_ANIMS") {
+            return Some(std::path::PathBuf::from(d));
+        }
+        let base = std::env::var_os("LOCALAPPDATA")?;
+        Some(
+            std::path::PathBuf::from(base)
+                .join("kotor-rs")
+                .join("anims"),
+        )
+    }
+
+    /// F8: read the owner's `*.anim.txt` files again. A clip named like a stock one stands in for it; any other name is a clip
+    /// of its own, which F9 plays on the player. What is wrong goes to `anim_problems.txt` in the folder.
+    pub fn reload_custom_clips(&mut self) {
+        self.anim_problems.clear();
+        self.shown_clip = None;
+        let Some(folder) = Self::anim_folder().filter(|d| d.is_dir()) else {
+            kotor_render::custom_clip::set_all(Vec::new());
+            return;
+        };
+        // The player's own body names the bones a clip may key.
+        let pc = self.game.world.pc;
+        let bones: Vec<String> = self
+            .rig_of(pc)
+            .map(|r| {
+                let mut v = Vec::new();
+                r.body_model()
+                    .root
+                    .walk(&mut |n| v.push(n.name.to_ascii_lowercase()));
+                v
+            })
+            .unwrap_or_default();
+        let (clips, problems) = kotor_render::custom_clip::load_folder(&folder, &bones);
+        let mut text = if problems.is_empty() {
+            format!(
+                "No problems: the game is using {} animation file(s).\n",
+                clips.len()
+            )
+        } else {
+            String::from("Problems with your animation files (a file named here is not used, or part of it):\n")
+        };
+        for p in &problems {
+            text.push_str(p);
+            text.push('\n');
+        }
+        // Only a help to the reader: the game goes on without it.
+        let _ = std::fs::write(folder.join("anim_problems.txt"), text);
+        self.anim_problems = problems;
+        kotor_render::custom_clip::set_all(clips);
+    }
+
+    /// What was wrong with the owner's animation files when last read.
+    pub fn anim_problems(&self) -> &[String] {
+        &self.anim_problems
+    }
+
+    /// F9: the player plays the next of the owner's clips, and after the last, goes back to what the game has.
+    pub fn cycle_custom_clip(&mut self) {
+        let names = kotor_render::custom_clip::names();
+        let next = match self.shown_clip {
+            None => 0,
+            Some(i) => i + 1,
+        };
+        let pc = self.game.world.pc;
+        if let Some(name) = names.get(next) {
+            self.shown_clip = Some(next);
+            self.force_clip(pc, Some(name));
+            self.say_over_player(format!("Your clip: {name}"));
+        } else {
+            self.shown_clip = None;
+            self.force_clip(pc, None);
+            self.say_over_player(if names.is_empty() {
+                "No animation files of yours were found".to_string()
+            } else {
+                "Back to the game's own".to_string()
+            });
         }
     }
 
@@ -2687,7 +2777,7 @@ impl Stage {
                     let clip = match self.forced_clip {
                         Some((id, name)) if id == pose.id => Some(Clip {
                             name,
-                            time: self.idle_clock,
+                            time: (self.idle_clock - self.forced_at).max(0.0),
                             fade: None,
                         }),
                         _ => self.dialogue_clip(pose.id).or_else(|| pose.clip.clone()),

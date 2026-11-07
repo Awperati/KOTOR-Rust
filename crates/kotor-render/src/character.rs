@@ -189,6 +189,10 @@ impl Rig {
 
     /// Length in seconds of a named animation of the supermodel.
     pub fn animation_length(&self, name: &str) -> Option<f32> {
+        // The owner's own clip of the name comes first.
+        if let Some(c) = crate::custom_clip::get(name) {
+            return Some(c.length);
+        }
         let name = self.clip_name(name)?;
         self.models()
             .find_map(|m| m.animation(name))
@@ -258,6 +262,9 @@ impl Rig {
 
     /// A named animation sampled at `t`, from the nearest supermodel that has it.
     pub fn sample(&self, name: &str, t: f32) -> Option<kotor_model::Pose> {
+        if let Some(c) = crate::custom_clip::get(name) {
+            return Some(c.sample(t, &self.body.bind_pose()));
+        }
         let name = self.clip_name(name)?;
         self.models().find_map(|m| {
             m.animation(name)

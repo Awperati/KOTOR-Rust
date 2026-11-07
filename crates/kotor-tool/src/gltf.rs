@@ -616,15 +616,31 @@ pub fn export(
     for (key, png) in &out.pngs {
         std::fs::write(dir.join("textures").join(format!("{key}.png")), png)?;
     }
+    // The skeleton the add-on builds its own armature from, so that a bone's frame in Blender is the game's: name, parent,
+    // then the bone's place and turn (w x y z) relative to its parent at rest. The root has `-` for a parent.
     let mut bones = String::from(
-        "# Bones as the game names them (lower case), parent first. Keep these names in Blender.\n",
+        "# Bones as the game names them (lower case), parents first: name, parent, place x y z, turn w x y z, at rest.\n",
     );
-    for (i, s) in out.nodes.iter().enumerate().skip(1) {
-        if s.name.ends_with(".mesh") {
+    for s in out.nodes.iter().skip(1) {
+        if s.name.ends_with(".mesh") || s.name.starts_with("head.") {
             continue;
         }
-        let parent = s.parent.map_or("-", |p| out.nodes[p].name.as_str());
-        let _ = writeln!(bones, "{i}\t{}\t{parent}", s.name);
+        let parent = s
+            .parent
+            .filter(|p| *p != 0)
+            .map_or("-", |p| out.nodes[p].name.as_str());
+        let _ = writeln!(
+            bones,
+            "{}\t{parent}\t{} {} {}\t{} {} {} {}",
+            s.name,
+            s.translation[0],
+            s.translation[1],
+            s.translation[2],
+            s.rotation[3],
+            s.rotation[0],
+            s.rotation[1],
+            s.rotation[2]
+        );
     }
     std::fs::write(dir.join("bones.txt"), bones)?;
     Ok(format!(

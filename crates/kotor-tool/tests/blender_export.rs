@@ -69,6 +69,15 @@ fn a_character_is_exported_with_its_bones_skins_textures_and_clips() {
         "{pngs:?}"
     );
     let bones = std::fs::read_to_string(dir.join("bones.txt")).unwrap();
-    assert!(bones.contains("\ttorso_g\t"));
+    assert!(
+        bones
+            .lines()
+            .any(|l| l.starts_with("torso_g\ttorso") || l.starts_with("torso_g\t")),
+        "{bones}"
+    );
+    assert!(
+        bones.lines().any(|l| l.starts_with("pfbam\t-\t")),
+        "the root has no parent"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

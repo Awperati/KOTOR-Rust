@@ -3,6 +3,7 @@
 //! reference image for a later GPU renderer.
 
 mod character;
+pub mod custom_clip;
 mod objects;
 mod scene;
 mod soft;

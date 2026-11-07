@@ -641,7 +641,9 @@ impl App {
             KeyCode::F8 if pressed => {
                 self.stage.reload_poses();
                 self.stage.reload_textures();
+                self.stage.reload_custom_clips();
             }
+            KeyCode::F9 if pressed => self.stage.cycle_custom_clip(),
             _ if pressed && digit > 0 => self.stage.number_pressed(digit),
             _ => {}
         }
@@ -827,6 +829,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(folder) = opt("--pose-folder") {
         stage.use_pose_folder(folder.into());
     }
+    stage.reload_custom_clips();
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);
     if flag("--no-hd") {
         stage.no_hd();

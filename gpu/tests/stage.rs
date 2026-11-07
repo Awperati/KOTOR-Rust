@@ -1223,6 +1223,8 @@ fn a_chosen_underwear_is_what_the_hero_wears() {
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
         if let Ok(clip) = std::env::var("FRAME_CLIP") {
+            // The owner's clips, if KOTOR_RS_ANIMS names a folder of them.
+            s.reload_custom_clips();
             s.force_clip(pc, Some(&clip));
         }
         for _ in 0..5 {
