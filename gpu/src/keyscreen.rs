@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 /// The roll and the jump are not in the game, so they have no words in the talk table.
 const NOT_IN_TALK_TABLE: u32 = 0;
 /// An action: what it is called, the talk table's name for it, its page, and its key by `winit`'s name for it.
-const KEY_ACTIONS: [(&str, u32, usize, &str); 21] = [
+const KEY_ACTIONS: [(&str, u32, usize, &str); 22] = [
     ("MoveForward", 48025, 0, "KeyW"),
     ("MoveBack", 48027, 0, "KeyS"),
     ("MoveLeft", 48029, 0, "KeyA"),
