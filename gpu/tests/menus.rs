@@ -7822,6 +7822,13 @@ fn page_fits(s: &mut Stage, found: &mut Vec<String>) -> Vec<String> {
     tags
 }
 
+/// The page's help keeps in from its box as Gameplay's does from its frame: the owner, by Top Dog, "give the help text a
+/// small inner margin on Feedback, Controls, Graphics and Advanced to match Gameplay".
+fn help_margin(s: &mut Stage, list: &str) {
+    let inset = s.menu_words_inset(list);
+    assert!(inset >= 5, "{} {list}: {inset}", s.menu_name());
+}
+
 /// A finger at 2160p on what the page calls `tag`, as a touch screen has it.
 fn tap(s: &mut Stage, tag: &str, row: Option<usize>) {
     s.set_view(BIG);
@@ -7870,6 +7877,7 @@ fn every_option_page_fits_and_answers_the_mouse_and_a_finger_at_720p_and_2160p()
     tap_then_click(&mut s, "CB_AUTOSAVE", None);
     tap(&mut s, "BTN_MOUSE", None);
     page_fits(&mut s, &mut found);
+    help_margin(&mut s, "LB_DESC");
     tap_then_click(&mut s, "CB_REVBUTTONS", None);
     press(&mut s, "BTN_BACK");
     tap(&mut s, "BTN_KEYMAP", None);
@@ -7898,18 +7906,46 @@ fn every_option_page_fits_and_answers_the_mouse_and_a_finger_at_720p_and_2160p()
         "the gameplay page's help on the feedback page"
     );
     page_fits(&mut s, &mut found);
+    help_margin(&mut s, "LB_DESC");
 
     tap_then_click(&mut s, "LB_OPTIONS", Some(0));
+    // The Detection bars row says it is on, a finger turns it off and says so, and the mouse turns it on again.
+    let rows = s.menu_rows("LB_OPTIONS");
+    let bars = rows
+        .iter()
+        .position(|r| r.text.starts_with("Detection bars"))
+        .unwrap();
+    assert_eq!(rows[bars].text, "Detection bars: On");
+    to_list_top(&mut s, rows.len());
+    for _ in 0..bars.saturating_sub(5) {
+        s.menu_wheel(-1.0);
+    }
+    let p = s.menu_pixel("LB_OPTIONS", Some(bars), SIZE).unwrap();
+    assert_eq!(
+        s.menu_hit_at(p, SIZE),
+        Some(Hit::Row("LB_OPTIONS".to_string(), bars))
+    );
+    s.hover(p, SIZE);
+    assert!(help(&mut s).starts_with("A small arrow round the middle"));
+    tap(&mut s, "LB_OPTIONS", Some(bars));
+    assert!(!s.settings().detection_bars);
+    assert_eq!(s.menu_rows("LB_OPTIONS")[bars].text, "Detection bars: Off");
+    click_row(&mut s, "LB_OPTIONS", bars);
+    assert!(s.settings().detection_bars);
+    to_list_top(&mut s, rows.len());
     press(&mut s, "BTN_BACK");
     tap(&mut s, "BTN_AUTOPAUSE", None);
     page_fits(&mut s, &mut found);
+    help_margin(&mut s, "LB_DETAILS");
     tap_then_click(&mut s, "CB_ENDROUND", None);
     press(&mut s, "BTN_BACK");
     tap(&mut s, "BTN_GRAPHICS", None);
     page_fits(&mut s, &mut found);
+    help_margin(&mut s, "LB_DESC");
     tap_then_click(&mut s, "BTN_MODPACKS", None);
     tap(&mut s, "BTN_ADVANCED", None);
     page_fits(&mut s, &mut found);
+    help_margin(&mut s, "LB_DESC");
     tap_then_click(&mut s, "CB_VSYNC", None);
     press(&mut s, "BTN_BACK");
     press(&mut s, "BTN_BACK");

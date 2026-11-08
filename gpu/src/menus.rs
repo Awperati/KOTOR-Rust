@@ -1944,6 +1944,13 @@ impl Stage {
         words.or_else(|| v.top.as_ref()?.patches.get(tag)?.text.clone())
     }
 
+    /// How far a control's words keep in from its sides, in layout units, for a test.
+    pub fn menu_words_inset(&mut self, tag: &str) -> i32 {
+        self.menu_view()
+            .and_then(|v| v.patches.get(tag).map(|p| p.inset))
+            .unwrap_or(0)
+    }
+
     /// Nothing stays chosen once a container is shut.
     pub(super) fn forget_container_choices(&mut self) {
         if self.game.world.opened.is_none() {

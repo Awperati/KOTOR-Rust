@@ -82,9 +82,26 @@ pub(super) struct PlateState {
     heads: HashMap<ObjId, f32>,
 }
 
-/// A door still named the toolset's "static", like TarisDoor3 in tar_m02af, has no name to show.
-pub(super) fn nameless_door(o: &kotor_game::Object) -> bool {
-    o.kind == kotor_game::Kind::Door && o.name.trim().eq_ignore_ascii_case("static")
+/// A name the toolset left, not one for the player, so there is none to show: "static" on 33 doors (TarisDoor3 in tar_m02af
+/// and the Leviathan's), a template's "<Word(s)> Door <number>" ("Taris Door 1", "Yavin Door 3"), and the "CutStart"
+/// markers of the cutscene modules. A plain "Door" is a name.
+pub(super) fn nameless(o: &kotor_game::Object) -> bool {
+    let name = o.name.trim();
+    match o.kind {
+        kotor_game::Kind::Door => name.eq_ignore_ascii_case("static") || numbered_door(name),
+        kotor_game::Kind::Placeable => name.eq_ignore_ascii_case("cutstart"),
+        _ => false,
+    }
+}
+
+/// "Taris Door 1": words, then "Door", then a number.
+fn numbered_door(name: &str) -> bool {
+    let words: Vec<&str> = name.split_whitespace().collect();
+    matches!(
+        words.as_slice(),
+        [_, .., door, number]
+            if door.eq_ignore_ascii_case("door") && number.chars().all(|c| c.is_ascii_digit())
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -262,7 +279,7 @@ impl Stage {
                         | kotor_game::Kind::Placeable
                 ),
             );
-            if !kind_ok || nameless_door(o) {
+            if !kind_ok || nameless(o) {
                 continue;
             }
             let far = (at[0] - here[0]).hypot(at[1] - here[1]);

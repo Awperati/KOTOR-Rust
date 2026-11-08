@@ -534,6 +534,7 @@ impl Stage {
         v.text(LOOK_LABEL, LOOK_WORDS.to_string());
         v.copy_control("SLI_MOUSESEN", LOOK_SLIDER, LOOK_SLIDER_AT);
         v.value(LOOK_SLIDER, (s.look_stick_speed * 100.0) as i32, 100);
+        v.patches.entry("LB_DESC".to_string()).or_default().inset = super::optionpages::HELP_MARGIN;
         match &self.menus.hover {
             Some(kotor_ui::Hit::Slider(t, _)) if t == LOOK_SLIDER => {
                 v.text("LB_DESC", LOOK_ABOUT.to_string());

@@ -471,40 +471,90 @@ fn plates_stack_and_stay_out_of_menus() {
     assert!(s.plates_shown().is_empty());
 }
 
+/// A thing of the module with labels like `kinds`, moved 4 metres ahead of the player.
+fn labelled_ahead(s: &mut Stage, kinds: &[ObjectLabel]) -> Option<ObjId> {
+    let w = &mut s.game.world;
+    let ids: Vec<ObjId> = w.objects.keys().copied().collect();
+    let id = ids
+        .into_iter()
+        .find(|id| w.object_label(*id).is_some_and(|l| kinds.contains(&l)))?;
+    w.object_mut(id).unwrap().position = [
+        SPOT[0] + FACING.cos() * 4.0,
+        SPOT[1] + FACING.sin() * 4.0,
+        SPOT[2],
+    ];
+    Some(id)
+}
+
+/// Each of `names` gives `id` a plate, and each of `none` gives it none, on the plates or on the target bar.
+fn named(s: &mut Stage, id: ObjId, names: &[&str], none: &[&str]) {
+    for name in names {
+        s.game.world.object_mut(id).unwrap().name = name.to_string();
+        s.update(DT);
+        assert!(plate_of(s, id).is_some(), "{name:?} is a name");
+    }
+    for name in none {
+        s.game.world.object_mut(id).unwrap().name = name.to_string();
+        s.update(DT);
+        assert!(plate_of(s, id).is_none(), "{name:?}");
+        let low = name.trim().to_ascii_lowercase();
+        assert!(!s
+            .plates_drawn()
+            .iter()
+            .any(|p| p.text.to_ascii_lowercase().contains(&low)));
+        assert!(!target_name(s).to_ascii_lowercase().contains(&low));
+    }
+}
+
 #[test]
 fn a_door_still_named_static_has_no_plate() {
     let Some(mut s) = stage("static", "door_labels=true\n") else {
         return;
     };
+    let Some(door) = labelled_ahead(&mut s, &[ObjectLabel::Door]) else {
+        return;
+    };
+    // TarisDoor3 in tar_m02af is named "static" in the game's own files.
+    named(&mut s, door, &["Gate"], &["static", " Static "]);
+}
+
+#[test]
+fn a_door_with_a_templates_numbered_name_has_no_plate() {
+    let Some(mut s) = stage("numbered", "door_labels=true\n") else {
+        return;
+    };
+    let Some(door) = labelled_ahead(&mut s, &[ObjectLabel::Door]) else {
+        return;
+    };
+    // The game's own: TarisDoor1 in tar_m02ae, liv_m99aa's, the Star Forge's in stunt_19.
+    named(
+        &mut s,
+        door,
+        &["Door", "Docking Bay 26-A", "Sith Academy"],
+        &["Taris Door 1", "Yavin Door 3", "Star Forge Door 1"],
+    );
+}
+
+#[test]
+fn a_cutscene_start_marker_has_no_plate() {
+    let Some(mut s) = stage("cutstart", "") else {
+        return;
+    };
+    // The module's things are scenery: one is made usable, as the markers are.
     let w = &mut s.game.world;
-    let ids: Vec<ObjId> = w.objects.keys().copied().collect();
-    let Some(door) = ids
-        .iter()
-        .copied()
-        .find(|id| w.object_label(*id) == Some(ObjectLabel::Door))
+    let Some(bench) = w
+        .objects
+        .values_mut()
+        .find(|o| o.kind == kotor_game::Kind::Placeable && o.template == "plc_bench")
     else {
         return;
     };
-    let o = w.object_mut(door).unwrap();
-    o.position = [
-        SPOT[0] + FACING.cos() * 4.0,
-        SPOT[1] + FACING.sin() * 4.0,
-        SPOT[2],
-    ];
-    o.name = "Gate".to_string();
-    s.update(DT);
-    assert!(plate_of(&s, door).is_some(), "a named door has its plate");
-    // TarisDoor3 in tar_m02af is named "static" in the game's own files.
-    for name in ["static", " Static "] {
-        s.game.world.object_mut(door).unwrap().name = name.to_string();
-        s.update(DT);
-        assert!(plate_of(&s, door).is_none(), "{name:?}");
-        assert!(!s
-            .plates_drawn()
-            .iter()
-            .any(|p| p.text.to_ascii_lowercase().contains("static")));
-        assert!(!target_name(&mut s).to_ascii_lowercase().contains("static"));
-    }
+    bench.useable = true;
+    let Some(thing) = labelled_ahead(&mut s, &[ObjectLabel::Usable]) else {
+        panic!("a usable bench has a label");
+    };
+    // invisible001 in the stunt_ modules, clickable and named "CutStart".
+    named(&mut s, thing, &["Crate"], &["CutStart", "cutstart"]);
 }
 
 #[test]

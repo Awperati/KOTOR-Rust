@@ -203,7 +203,7 @@ const BLUR_BUTTON_AT: [i32; 4] = [60, 285, 240, 22];
 /// The player's own mod packs, under them: Top Dog for the owner, "Mod packs: Off/On, default Off".
 pub(super) const MOD_PACKS_BUTTON: &str = "BTN_MODPACKS";
 const MOD_PACKS_BUTTON_AT: [i32; 4] = [60, 320, 240, 22];
-const MOD_PACKS_WORDS: &str = "On: skyboxes, saber beams, and character and weapon texture packs are read from your mods folder while the game runs. Nothing is copied into the game. It takes hold at the next start.";
+const MOD_PACKS_WORDS: &str = "On: skyboxes, saber beams, character textures, weapon models, Twi'lek heads and the playable Jawa are read from your mods folder while the game runs. Nothing is copied into the game. It takes hold at the next start.";
 /// The Advanced page's own Anti-Aliasing button and its arrows.
 const AA_ADVANCED: [&str; 3] = ["BTN_ANTIALIAS", "BTN_ANTIALIASLEFT", "BTN_ANTIALIASRIGHT"];
 /// A box on the Auto-Pause page, and its words.
@@ -230,6 +230,9 @@ const COMBAT_WORDS: &str = "Ticked, Modern: a crosshair, aimed shots, sabre chai
 /// The box for Click to move: the owner, "Add a click to move toggleable setting in the menu settings".
 pub(super) const CLICK_BOX: &str = "CB_CLICK_TO_MOVE";
 pub(super) const CLICK_BOX_AT: [i32; 4] = [338, 180, 240, 34];
+/// How far an option page's help keeps in from its box, in layout units: as far as Gameplay's is from its frame. The
+/// owner, by Top Dog: "give the help text a small inner margin on Feedback, Controls, Graphics and Advanced to match Gameplay".
+pub(super) const HELP_MARGIN: i32 = 5;
 /// The Gameplay page laid out again: the owner, "The gameplay options menu needs a revamp to fit all of the buttons properly".
 /// Two columns under headings: the game's own rules on the left, with the two pages of keys under them, and how you move and
 /// fight on the right, in the frame the page's picture has there, with what the cursor is on under them in the same frame. Rows
@@ -360,6 +363,10 @@ impl Stage {
         if self.menus.option_words_page != page {
             self.menus.option_words = None;
             self.menus.option_reason = None;
+        }
+        // Gameplay's box is placed in from its frame; the others' words would touch theirs.
+        if page != Some(Screen::Gameplay) {
+            v.patches.entry(list.to_string()).or_default().inset = HELP_MARGIN;
         }
         match (self.menus.option_words, self.menus.option_reason) {
             (Some(words), reason) => {
