@@ -8,3 +8,34 @@ gpu/target/
 
 # Frames from the reference video: local viewing only, never committed.
 /cache/
+
+# The game's own file formats: game data never goes into the repository. Tests and tools read the owner's install.
+*.uti
+*.utc
+*.utd
+*.utp
+*.ute
+*.utm
+*.uts
+*.utw
+*.utt
+*.are
+*.ifo
+*.dlg
+*.ncs
+*.mdl
+*.mdx
+*.tpc
+*.2da
+*.bif
+*.key
+*.erf
+*.rim
+*.mod
+*.tlk
+*.wok
+*.lyt
+*.vis
+*.jrl
+*.ssf
+*.lip
