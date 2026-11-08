@@ -1129,8 +1129,14 @@ impl Ui<'_> {
             })
             .map(|c| {
                 let e = &c.extent;
-                let dx = x - (e.left + e.width / 2) as f32;
-                let dy = y - (e.top + e.height / 2) as f32;
+                // A control a screen has moved is nearest from where it is now.
+                let [left, top, wide, high] = view
+                    .patches
+                    .get(&c.tag)
+                    .and_then(|p| p.place)
+                    .unwrap_or([e.left, e.top, e.width, e.height]);
+                let dx = x - (left + wide / 2) as f32;
+                let dy = y - (top + high / 2) as f32;
                 let hit = if c.kind == SLIDER {
                     let along = (x - e.left as f32) / e.width.max(1) as f32;
                     Hit::Slider(c.tag.clone(), along.clamp(0.0, 1.0))
@@ -1257,7 +1263,10 @@ impl Ui<'_> {
             }
             None => {
                 let e = &c.extent;
-                [e.left, e.top, e.width, e.height]
+                view.patches
+                    .get(tag)
+                    .and_then(|p| p.place)
+                    .unwrap_or([e.left, e.top, e.width, e.height])
             }
         };
         Some((

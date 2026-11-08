@@ -532,7 +532,8 @@ fn a_tap_is_a_click_and_a_drag_is_not_and_only_the_right_half_turns_the_camera()
     s.finger_up(1, (560.0, 300.0), SIZE);
     assert_eq!(s.yaw, yaw);
 
-    // A tap on the floor walks there, as a click does. A finger shakes a little.
+    // A tap on the floor walks there, as a click does, with Click to move on. A finger shakes a little.
+    s.set_click_to_move(true);
     s.finger_down(1, floor, SIZE);
     s.finger_moved(1, (floor.0 + 3.0, floor.1 + 2.0), SIZE);
     s.finger_up(1, (floor.0 + 3.0, floor.1 + 2.0), SIZE);
