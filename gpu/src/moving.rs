@@ -338,9 +338,17 @@ impl Stage {
             && (looking || self.aiming() || self.turret_on() || (free && self.mouse_looks()))
     }
 
-    /// The mouse turns the camera by itself: Modern, with Caps Lock not giving the cursor back, in play.
+    /// Modern mode, the Single Player choice: Modern movement and Modern combat both, as the menus builder's `GameMode`
+    /// bridge has it until the world's own flag is on master. Classic is the game as it was: tank controls, its pauses.
+    /// The owner: "Modern mode does not feature pauseable gameplay, the only way you can pause in singeplayer on modern is
+    /// by pressing the escape key".
+    pub fn modern_mode(&self) -> bool {
+        self.modern_combat()
+    }
+
+    /// The mouse turns the camera by itself: Modern mode, with Caps Lock not giving the cursor back, in play.
     pub fn mouse_looks(&self) -> bool {
-        self.settings().movement_modern
+        self.modern_mode()
             && !self.free_cursor
             && !self.touch_on()
             && !self.game.world.in_race()
@@ -349,7 +357,7 @@ impl Stage {
 
     /// Caps Lock: the cursor comes back, or goes again. Modern only. It says which, over the player.
     pub fn caps_lock_key(&mut self) {
-        if !self.settings().movement_modern {
+        if !self.modern_mode() {
             return;
         }
         self.free_cursor = !self.free_cursor;

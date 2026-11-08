@@ -44,7 +44,8 @@ fn the_look_button_holds_the_cursor_and_a_menu_replies_or_lost_focus_let_it_go()
         s.update(DT);
     }
     assert!(!s.game.world.in_dialogue());
-    // Modern, the default: the mouse looks by itself, held with no button, and only with the window in use.
+    // Modern mode, movement and combat both: the mouse looks by itself, held with no button, only with the window in use.
+    s.set_combat_modern(true);
     assert!(s.cursor_held(false, true), "Modern: no button needed");
     assert!(s.cursor_held(true, true));
     assert!(

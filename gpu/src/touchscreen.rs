@@ -180,6 +180,10 @@ impl Stage {
             dim.push(TouchKey::Jump);
         }
         let modern = self.modern_combat();
+        // Modern mode has no pause in play: only Escape.
+        if self.modern_mode() {
+            dim.push(TouchKey::Pause);
+        }
         if modern {
             if self.lock_on.is_some() {
                 lit.push(TouchKey::Lock);

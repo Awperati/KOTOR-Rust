@@ -664,6 +664,10 @@ impl Stage {
 
     /// The pause key, or the hourglass on the HUD.
     pub fn toggle_pause(&mut self) {
+        // Modern mode has no pause in play, only Escape's menu: a pause left on from before can still be lifted.
+        if self.modern_mode() && !self.menus.paused {
+            return;
+        }
         if self.started && !self.menu_open() && !self.game.world.in_dialogue() {
             self.menus.paused = !self.menus.paused;
             self.menus.pause_note.clear();
@@ -672,6 +676,10 @@ impl Stage {
 
     /// Pause with a title over how to go on.
     fn pause_for(&mut self, title: u32) {
+        // Modern mode never pauses by itself.
+        if self.modern_mode() {
+            return;
+        }
         let line = self.ui.strref(STR_ENEMY_SIGHTED);
         let go_on = line
             .lines()

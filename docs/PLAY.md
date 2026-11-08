@@ -166,6 +166,9 @@ B or the HUD's hourglass pauses and goes on, outside conversations and with no c
 ## Fights
 An enemy under the cursor has a red bar and three slots: the attack, a feat and a Force power. The arrows go through what each has, and a click attacks with it next. Feats are Power Attack, Power Blast, Critical Strike, Sniper Shot, Flurry and Rapid Shot, at the strongest level known and for the weapon held. The numbers are the talk table's words for each. Blows show over the target, with Floating Numbers on. The Attack mode button stops attacking when it is lit; see `ATTACK_MODE.md`. A weaker power under a stronger one of its line that is on, such as Force Aura under Force Armour, is not cast and costs nothing: the game's own script would put nothing on.
 
+## Classic and Modern
+Classic is the game's own controls: left and right turn the body and the camera behind it, with no strafe, forward and back go along the facing, and there is no roll or jump. The pause key, the hourglass and the auto-pauses pause as ever. Modern, with Modern movement and Modern combat both on, has no pause in play: the pause key, the hourglass and the on-screen Pause do nothing and nothing pauses by itself. Only Escape holds the world, with its menu. In both, every screen holds the world: the inventory, the character, the journal, the map, the options, a conversation, an open container, a shop and levelling up. **Assumed:** Classic turns at 2.6 radians a second, and stepping back walks toward the camera, facing it.
+
 ## Modern combat
 The Combat box on the Gameplay page turns it on, with Modern movement. Classic is the default, and enemies and party members fight the same either way.
 

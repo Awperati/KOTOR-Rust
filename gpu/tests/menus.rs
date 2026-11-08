@@ -689,11 +689,11 @@ fn a_container_opens_its_own_window_over_the_scene() {
     s.update(DT);
     let o = s.overlay().unwrap();
     assert_eq!(o.rgba[3], 0, "the scene shows around the panel");
-    // The game runs on behind it, unlike the other screens.
+    // The game holds behind it, as behind every screen. The owner: "The entire menu/inventory, etc should all pause the game".
     let t = s.game.world.time;
     s.update(DT);
     s.update(DT);
-    assert!(s.game.world.time > t);
+    assert_eq!(s.game.world.time, t);
     // The keys for the game do not reach it: I, U and E do nothing, and Esc closes the window before it pauses.
     s.open_inventory();
     s.open_equip();

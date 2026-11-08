@@ -91,6 +91,8 @@ const RIGHT_HAND_SLOT: i32 = 4;
 const LEFT_HAND_SLOT: i32 = 5;
 /// Metres within which the E key finds something to use.
 const USE_REACH: f32 = 2.5;
+/// How fast Classic's left and right keys turn the body, in radians a second. **Assumed.**
+const TANK_TURN: f32 = 2.6;
 /// How far off the E key goes for what the camera faces, walking up to it. **Assumed.**
 const USE_FAR: f32 = 8.0;
 const CAMERA_BEHIND: f32 = 3.3;
@@ -957,7 +959,14 @@ impl Stage {
         self.aim_tick(dt);
         self.lock_tick(dt);
         self.blow_tick();
-        if self.menu_open() && !self.container_up() {
+        // Every screen holds the world, an open container's too. The owner: "The entire menu/inventory, etc should all pause
+        // the game because you're effectively within a menu and paused".
+        // A scripted player loots and goes on with the container still open, as it always has: its route does not move.
+        let pilot_loots = self.container_up() && self.pilot.is_some();
+        if self.menu_open() && !pilot_loots {
+            if self.container_up() {
+                self.lids_tick(dt * self.speed);
+            }
             // The module a screen is about to start loads meanwhile.
             self.preload_tick();
             self.refresh_overlay();
@@ -978,7 +987,14 @@ impl Stage {
         self.turret_tick(dt);
         self.thrower_tick();
         self.race_input();
-        let (ahead, right, walk) = self.steer;
+        let (ahead, mut right, walk) = self.steer;
+        // Classic movement is the game's own tank controls: left and right turn the body and the camera behind it, and
+        // there is no strafe. A scripted player keeps its own walk.
+        if !self.settings().movement_modern && self.pilot.is_none() {
+            self.yaw -= right * TANK_TURN * dt;
+            right = 0.0;
+        }
+        self.steer.1 = right;
         let steer_yaw = self.keys_yaw(dt);
         let (cos, sin) = (steer_yaw.cos(), steer_yaw.sin());
         let dir = [cos * ahead + sin * right, sin * ahead - cos * right];
@@ -1044,12 +1060,7 @@ impl Stage {
         self.play_world_sounds(dt_game);
         self.fire_on_frames(dt_game);
         self.play_effects_at();
-        for id in self.game.world.open_sources() {
-            self.lids.entry(id).or_insert(0.0);
-        }
-        for t in self.lids.values_mut() {
-            *t += dt_game;
-        }
+        self.lids_tick(dt_game);
         let eye = self.camera().eye;
         self.effects.update(dt_game, eye);
         self.update_line(dt_game);
@@ -1569,9 +1580,9 @@ impl Stage {
             Some(o) if o.id != w.pc => {
                 Some((o.position[1] - here[1]).atan2(o.position[0] - here[0]))
             }
-            // Not while the mouse is looking: it decides where the camera goes. In Modern the keys go by the camera,
-            // so a camera that followed them would turn a strafe into a circle.
-            _ if self.looking || (w.movement == MovementMode::Modern && w.steer.is_some()) => None,
+            // Not while the mouse is looking: it decides where the camera goes. The keys go by the camera, so a camera
+            // that followed them would turn a strafe into a circle, or in Classic's tank controls a step back into a turn.
+            _ if self.looking || w.steer.is_some() => None,
             _ => w.pc_walking().then_some(w.pc_mover.heading),
         };
         if let Some(a) = wanted {
@@ -1957,6 +1968,16 @@ impl Stage {
             let h = f.height(p[0], p[1], p[2] + 0.1)?;
             (p[2] <= h + 0.05).then_some([p[0], p[1], h])
         })
+    }
+
+    /// An opened container's lid swings open, with the world held by its screen too: it is the screen's own picture.
+    fn lids_tick(&mut self, dt: f32) {
+        for id in self.game.world.open_sources() {
+            self.lids.entry(id).or_insert(0.0);
+        }
+        for t in self.lids.values_mut() {
+            *t += dt;
+        }
     }
 
     /// Key `n` (1-9): take that reply.
