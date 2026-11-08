@@ -132,8 +132,12 @@ pub struct Game {
 
 /// Attack and flinch clips last 1.47 to 1.5 s and dodges 0.3 to 0.43 s in the humanoid supermodels (measured).
 const COMBAT_CLIP_SECONDS: f32 = 1.5;
-/// How long the `getupdead` clip plays when a push or knockdown ends. **Assumed**, not read from the model.
-const GET_UP_SECONDS: f32 = 3.0;
+/// How long the `getupdead` clip plays when a push or knockdown ends: its 3.00 s (measured in `S_Male02`), played faster.
+const GET_UP_SECONDS: f32 = 3.0 / crate::force::GET_UP_RATE;
+/// A thrown body falls as it flies: its `die` clip starts here, past the stagger and the kneel it plays first. Measured in
+/// `S_Male02`: the head is at standing height until 0.9 s, the body kneels from 1.0 s to 1.8 s and is flat at 2.1 s. So from
+/// 1.7 s it is flat 0.4 s into the throw, before an 8 m throw lands.
+const KNOCK_FALL_FROM: f32 = 1.7;
 /// Where in its fall a body is when it is first seen already down: past the end of any clip, so it lies in the last frame.
 const LIES_AT: f32 = 1000.0;
 const DODGE_CLIP_SECONDS: f32 = 0.43;
@@ -355,6 +359,11 @@ impl Game {
                     .unwrap_or("pause1")
             };
             let dt = self.dt;
+            let dying = self
+                .world
+                .objects
+                .get(&id)
+                .is_some_and(|o| o.dead || o.down);
             // A body already down when it is first seen (an area entered, a game loaded, a corpse the module placed) lies in the last
             // frame of its fall: it does not fall again. The clip's time is held at its end by the screen.
             let c = self.clips.entry(id).or_insert(Clip {
@@ -384,6 +393,8 @@ impl Game {
                     (self.world.pc_body.speed() / WALK_CLIP_SPEED).clamp(0.6, 1.5)
                 } else if id == pc && self.blow_clip.is_some_and(|b| b.0 == want) {
                     self.blow_clip.map_or(1.0, |b| b.1)
+                } else if want == "getupdead" {
+                    crate::force::GET_UP_RATE
                 } else {
                     1.0
                 };
@@ -397,7 +408,11 @@ impl Game {
                 });
                 *c = Clip {
                     name: want,
-                    time: 0.0,
+                    time: if want == "die" && knocked && !dying {
+                        KNOCK_FALL_FROM
+                    } else {
+                        0.0
+                    },
                     fade,
                 };
             }

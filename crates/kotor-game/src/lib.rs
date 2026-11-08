@@ -85,7 +85,10 @@ pub use dialogue::{Chooser, FirstReply, Line, LineKind};
 pub use earlyforce::FORCE_PUSH;
 pub use flight::{Flight, InFlight, RELEASE_SECONDS, THROW_SPEED};
 pub use follow::{CREATURE_RADIUS, FOLLOW_START, FOLLOW_STOP, REPLAN_SECONDS};
-pub use force::{push_metres, Thud};
+pub use force::{
+    push_metres, push_reach, Shove, Thud, PUSH_AIR_PART, PUSH_LIFT_MOST, PUSH_LIFT_PER_METRE,
+    PUSH_REBOUND_SECONDS, PUSH_SECONDS_PER_METRE, PUSH_SLIDE_SECONDS,
+};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use galaxy::{GalaxyOpen, PlanetLine};
 pub use game::item_use_clip as item_use_clip_for_test;

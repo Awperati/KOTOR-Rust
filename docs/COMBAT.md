@@ -42,7 +42,7 @@ Spire battle with the player (blaster pistol) against a Sith soldier and prints 
 All sizes below are my assumptions, not measured from the game.
 | What | Rule | Where |
 |---|---|---|
-| Force Push (bug 36) | `EffectForcePushed` throws the target 3 m away from the caster over 0.5 s (stopped by walls, closed doors and creatures) and leaves it down for at least 3 s. The power's own script gives only 0.1 s | `force.rs`, `Shove`, `update_shoves` |
+| Force Push (bug 36) | `EffectForcePushed` throws the target away from the caster: Force Push 8 m, Force Wave 10 m, and 0.1 m more for each caster level over the first (2 m more at most). The body flies (0.06 m up for each metre, 0.6 m at most), falls flat in the air, lands two thirds of the way and skids to a stop. Against a wall it hits at speed, still in the air, and drops 0.35 m back off it. Down 3 s, then `getupdead` at 1.5 times its speed; it cannot act for the first 1.6 s of that, until it stands. Walls, closed doors and creatures stop a throw; see `RAILS.md` for edges. The power's own script gives only 0.1 s | `force.rs`, `Shove::at`, `push_reach`; `game.rs` `KNOCK_FALL_FROM` |
 | Party doors (bug 39) | Followers and chasing enemies route through unlocked shut doors and open them within 1.6 m | `follow.rs`, `combat.rs` `chase` |
 | Teammates (bug 21) | The player and party never attack one another. A party member with no target takes the leader's | `combat.rs` `assist_leader`, `attack` |
 | Knocked out (GAPS 5) | `GetIsDead` is true for someone down. Downed creatures are not attacked. A fight lasts while an enemy still notices a standing party member | `host.rs`, `combat.rs`, `rules.rs` `fight_is_over` |

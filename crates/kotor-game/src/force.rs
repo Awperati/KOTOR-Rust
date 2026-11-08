@@ -84,10 +84,31 @@ pub fn push_metres(spell: i32) -> f32 {
         _ => 6.0,
     }
 }
+/// How far a power throws when this caster casts it: the power's own reach (Force Push 8 m, Force Wave 10 m), and 0.1 m more
+/// for each level of the caster over the first, 2 m more at the most. A first-level caster throws the power's own reach.
+/// **Assumed:** the owner gave the reach of each power, not of each level.
+pub fn push_reach(spell: i32, caster_level: i32) -> f32 {
+    push_metres(spell) + (0.1 * (caster_level - 1).max(0) as f32).min(PUSH_LEVEL_MOST_METRES)
+}
+/// The most the caster's level adds to a throw.
+pub const PUSH_LEVEL_MOST_METRES: f32 = 2.0;
 /// A throw takes this long and this much longer for each metre.
 pub const PUSH_SLIDE_SECONDS: f32 = 0.3;
 pub const PUSH_SECONDS_PER_METRE: f32 = 0.07;
 pub const PUSH_DOWN_SECONDS: f32 = 3.0;
+/// How high a thrown body rises for each metre of the throw, and at the most. 8 m lifts it 0.48 m. **Assumed.**
+pub const PUSH_LIFT_PER_METRE: f32 = 0.06;
+pub const PUSH_LIFT_MOST: f32 = 0.6;
+/// In the open the body is in the air for this part of the throw, then lands and skids to a stop.
+pub const PUSH_AIR_PART: f32 = 0.65;
+/// Against a wall the body hits it at speed and bounces back this far (half the throw at the most), over this long.
+pub const PUSH_REBOUND_METRES: f32 = 0.35;
+pub const PUSH_REBOUND_SECONDS: f32 = 0.25;
+/// The `getupdead` clip plays this much faster than its 3.00 s, so a body is up in 2 s.
+pub const GET_UP_RATE: f32 = 1.5;
+/// A body that was knocked down cannot act for this long after the knockdown ends: until it is on its feet. Measured: in
+/// `getupdead` the head is at nine tenths of its standing height 2.4 s in, which is 1.6 s at [`GET_UP_RATE`].
+pub const GET_UP_READY_SECONDS: f32 = 1.6;
 
 /// A creature sliding from `from` to `to` after a push, begun at `start` (game seconds).
 #[derive(Clone, Copy, Debug)]
@@ -104,6 +125,50 @@ pub struct Shove {
     pub by: ObjId,
     /// It went over an edge and falls: how far, in metres, or `FALL_VOID` into nothing.
     pub fall: Option<f32>,
+    /// How long the flight takes until it lands or hits the wall. Against a wall the bounce back follows, to `back`.
+    pub hit: f32,
+    /// Where a body that hit a wall comes to rest after bouncing off it. `to` where it did not.
+    pub back: [f32; 3],
+    /// How high the body rises in its flight.
+    pub lift: f32,
+    /// The wall has been hit and the landing heard.
+    pub landed: bool,
+}
+
+impl Shove {
+    /// Where the body is `since` seconds into the throw: in the air, then on the floor. Against a wall it goes at speed until it
+    /// hits, still off the floor, and drops back from it. In the open it slows to a stop, landing part way.
+    pub fn at(&self, since: f32) -> [f32; 3] {
+        let lerp = |a: [f32; 3], b: [f32; 3], e: f32| [0, 1, 2].map(|i| a[i] + (b[i] - a[i]) * e);
+        if self.fall.is_some() {
+            // Over an edge: it slows along the way, and the height goes late as a fall speeds up.
+            let t = (since / self.seconds).clamp(0.0, 1.0);
+            let mut at = lerp(self.from, self.to, 1.0 - (1.0 - t).powi(2));
+            at[2] = self.from[2] + (self.to[2] - self.from[2]) * t * t;
+            return at;
+        }
+        if self.wall {
+            let u = (since / self.hit).clamp(0.0, 1.0);
+            if u < 1.0 {
+                // Nearly as fast at the wall as at the start, and still rising off the floor when it gets there.
+                let mut at = lerp(self.from, self.to, u * (1.2 - 0.2 * u));
+                at[2] += self.lift * (std::f32::consts::PI * 0.8 * u).sin();
+                return at;
+            }
+            let v = ((since - self.hit) / (self.seconds - self.hit).max(1e-3)).clamp(0.0, 1.0);
+            let top = self.lift * (std::f32::consts::PI * 0.8).sin();
+            let mut at = lerp(self.to, self.back, 1.0 - (1.0 - v).powi(2));
+            // It drops from where it struck to the floor.
+            at[2] += top * (1.0 - v * v);
+            return at;
+        }
+        let t = (since / self.seconds).clamp(0.0, 1.0);
+        let mut at = lerp(self.from, self.to, 1.0 - (1.0 - t).powi(2));
+        if t < PUSH_AIR_PART {
+            at[2] += self.lift * (std::f32::consts::PI * t / PUSH_AIR_PART).sin();
+        }
+        at
+    }
 }
 
 /// How far a creature falls when there is no floor under the edge it was thrown over: it is lost.
@@ -228,6 +293,10 @@ impl World {
 
     /// Whether an active effect stops the creature acting.
     pub fn is_disabled(&self, id: ObjId) -> bool {
+        // Getting up after a knockdown: not on its feet yet.
+        if self.rising.get(&id).is_some_and(|t| self.time < *t) {
+            return true;
+        }
         self.objects.get(&id).is_some_and(|o| {
             o.effects
                 .iter()
@@ -449,7 +518,8 @@ impl World {
             .map(|o| [o.position[0], o.position[1]])
             .collect();
         let mut at = b;
-        let metres = push_metres(self.spell.id);
+        let level = self.objects.get(&from).map_or(1, |o| o.level);
+        let metres = push_reach(self.spell.id, level);
         let mut wall = false;
         // Past a low barrier, in the air: the last place on the floor, and where the flight has got to.
         let mut air: Option<[f32; 3]> = None;
@@ -520,17 +590,32 @@ impl World {
         let drop = fall.map_or(0.0, |f| {
             (if f.is_finite() { f } else { VOID_DEPTH }) * FALL_SECONDS_PER_METRE
         });
+        let hit =
+            PUSH_SLIDE_SECONDS + PUSH_SECONDS_PER_METRE * length + drop.min(FALL_MOST_SECONDS);
+        // Off a wall it bounces back along its own way, onto the floor it crossed.
+        let mut back = at;
+        let mut seconds = hit;
+        if wall && fall.is_none() {
+            let r = PUSH_REBOUND_METRES.min(length * 0.5);
+            let (x, y) = (at[0] - dx * r, at[1] - dy * r);
+            if let Some(z) = nav.height_at(x, y, at[2] + 0.4) {
+                back = [x, y, z];
+            }
+            seconds += PUSH_REBOUND_SECONDS;
+        }
         self.shoves.push(Shove {
             who: target,
             from: b,
             to: at,
             start: self.time,
-            seconds: PUSH_SLIDE_SECONDS
-                + PUSH_SECONDS_PER_METRE * length
-                + drop.min(FALL_MOST_SECONDS),
+            seconds,
             wall,
             by: from,
             fall,
+            hit,
+            back,
+            lift: (PUSH_LIFT_PER_METRE * length).min(PUSH_LIFT_MOST),
+            landed: false,
         });
         if let Some(o) = self.objects.get_mut(&target) {
             o.facing = (-dy).atan2(-dx).to_degrees();
@@ -541,31 +626,27 @@ impl World {
     pub(crate) fn update_shoves(&mut self) {
         let now = self.time;
         let shoves = std::mem::take(&mut self.shoves);
-        for s in shoves {
-            let t = ((now - s.start) / s.seconds).clamp(0.0, 1.0);
-            // Fast at first, slowing to a stop.
-            let e = 1.0 - (1.0 - t).powi(2);
-            let mut at = [0, 1, 2].map(|i| s.from[i] + (s.to[i] - s.from[i]) * e);
-            // A fall speeds up: the height goes late.
-            if s.fall.is_some() {
-                at[2] = s.from[2] + (s.to[2] - s.from[2]) * t * t;
-            }
+        for mut s in shoves {
+            let since = now - s.start;
+            let at = s.at(since);
             if let Some(o) = self.objects.get_mut(&s.who) {
                 o.position = at;
             }
             if s.who == self.pc {
                 self.pc_mover.pos = at;
             }
-            if t < 1.0 {
-                self.shoves.push(s);
-            } else {
+            // The landing is heard when the body hits the wall, or comes to rest.
+            if !s.landed && (since >= s.seconds || (s.wall && since >= s.hit)) {
+                s.landed = true;
                 self.thuds.push(Thud {
                     who: s.who,
                     wall: s.wall,
                 });
-                if let Some(height) = s.fall {
-                    self.land_after_fall(s.by, s.who, height);
-                }
+            }
+            if since < s.seconds {
+                self.shoves.push(s);
+            } else if let Some(height) = s.fall {
+                self.land_after_fall(s.by, s.who, height);
             }
         }
     }
@@ -621,12 +702,34 @@ impl World {
             .filter(|(_, t)| **t <= now)
             .map(|(h, _)| *h)
             .collect();
+        self.rising.retain(|_, t| *t > now);
         for h in gone {
             self.effect_expiry.remove(&h);
+            let knock = self
+                .effects
+                .get(h.wrapping_sub(1) as usize)
+                .is_some_and(|e| {
+                    matches!(e.name.as_str(), "EffectForcePushed" | "EffectKnockdown")
+                });
+            let mut rise = Vec::new();
             for o in self.objects.values_mut() {
+                if knock && !o.dead && o.effects.contains(&h) {
+                    rise.push(o.id);
+                }
                 o.effects.retain(|e| *e != h);
             }
+            // A knockdown is over: the body gets up, and cannot act until it is on its feet.
+            for id in rise {
+                if !self.is_knocked_down(id) {
+                    self.rising.insert(id, now + GET_UP_READY_SECONDS);
+                }
+            }
         }
+    }
+
+    /// Whether the creature is getting up after a knockdown, and cannot act until it stands.
+    pub fn is_getting_up(&self, id: ObjId) -> bool {
+        self.rising.get(&id).is_some_and(|t| self.time < *t)
     }
 
     /// Force point cost and reach of a power, from `spells.2da` and `ranges.2da`.

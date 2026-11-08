@@ -419,6 +419,8 @@ pub struct World {
     pub shoves: Vec<crate::force::Shove>,
     /// Thrown creatures that have come down since a screen last looked: for the sounds of a wall and the floor.
     pub thuds: Vec<crate::force::Thud>,
+    /// Creatures getting up after a knockdown, and the time they stand (`force.rs`).
+    pub(crate) rising: HashMap<ObjId, f32>,
     /// Creatures an encounter brought out (`GetIsEncounterCreature`).
     pub encounter_creatures: BTreeSet<ObjId>,
     /// `SetPartyAIStyle`: 0 aggressive, 1 defensive, 2 passive (`PARTY_AISTYLE_*`).
@@ -788,6 +790,7 @@ impl World {
             effect_expiry: HashMap::new(),
             shoves: Vec::new(),
             thuds: Vec::new(),
+            rising: HashMap::new(),
             encounter_creatures: BTreeSet::new(),
             party_ai_style: 0,
             game_over: false,
