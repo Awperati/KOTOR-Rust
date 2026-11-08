@@ -60,6 +60,10 @@ kor33_findstarmap	20	korr_m33ab	talk	k33_academyguard	Get into the Sith academy
 kor33_findstarmap	30	korr_m39aa	door	k39_door_starmap	Enter the tomb in the valley
 kor35_findingdustil	10	korr_m35aa	area	k35_way_dustil	Find Carth's son in the academy
 tar_meetcand	1	tar_m03ae	area		Meet Canderous in the cantina
+tar_party	1	tar_m02ad	area	tar02_mnsarnas	Go to the Sith party in the north apartments
+k_swg_helenatalk	10	tat_m17af	area		Find Bastila's mother in the Anchorhead cantina
+k_swg_helenatalk	20	tat_m18ac	area		Look for the holocron near the krayt dragon's lair
+k_swg_helenatalk	30	tat_m17af	area		Bring the holocron to Bastila's mother
 tat17ae_swoopracing	10	tat_m17ae	talk	tat17_04race_01	Race on the swoop track
 tat17ae_swoopracing	20	tat_m17ae	talk	tat17_04race_01	Race on the swoop track
 tat17ae_swoopracing	30	tat_m17ae	talk	tat17_04race_01	Race on the swoop track
