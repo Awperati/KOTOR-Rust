@@ -979,3 +979,71 @@ fn every_aimed_shot_plays_the_firing_clip_and_a_kick_over_the_aim() {
     assert!(s.game.shot_age(pc).is_none());
     std::fs::remove_file(&file).ok();
 }
+
+/// A shot on the move: the legs keep their walk under the aim and the arms fire. With `FRAME_SHOT` set to a folder, frames are
+/// written there.
+#[test]
+fn a_shot_while_aim_walking_fires_with_the_arms_and_the_legs_keep_walking() {
+    let Some((mut s, file)) = stage("walkshot", "") else {
+        return;
+    };
+    if !blaster_in_hand(&mut s) {
+        return;
+    }
+    aim_at(&mut s);
+    let pc = s.game.world.pc;
+    for _ in 0..40 {
+        s.steer = (1.0, 0.0, false);
+        s.update(DT);
+    }
+    assert!(s.aim_legs_now().is_some(), "walking under the aim");
+    // The legs: the lower body's meshes, below the hips.
+    let legs = |s: &mut Stage| -> Vec<[f32; 3]> {
+        let at = s.game.world.object(pc).unwrap().position;
+        s.dynamic_scene()
+            .meshes
+            .iter()
+            .flat_map(|m| m.positions.iter().copied())
+            .filter(|p| (p[0] - at[0]).hypot(p[1] - at[1]) < 0.8 && p[2] < at[2] + 0.5)
+            .map(|p| [p[0] - at[0], p[1] - at[1], p[2] - at[2]])
+            .collect()
+    };
+    s.click((320.0, 180.0), SIZE);
+    s.steer = (1.0, 0.0, false);
+    s.update(DT);
+    assert!(s.game.shot_age(pc).is_some());
+    let a = legs(&mut s);
+    for _ in 0..8 {
+        s.steer = (1.0, 0.0, false);
+        s.update(DT);
+    }
+    let b = legs(&mut s);
+    assert_ne!(a, b, "the legs go on walking through the shot");
+    assert!(s.aim_legs_now().is_some());
+    if let Ok(dir) = std::env::var("FRAME_SHOT") {
+        let heading = s.game.world.pc_mover.heading;
+        let mut gpu = kotor_gpu::GpuRenderer::new(480, 640).unwrap();
+        for n in 0..3 {
+            for _ in 0..4 {
+                s.steer = (1.0, 0.0, false);
+                s.update(DT);
+            }
+            let at = s.game.world.object(pc).unwrap().position;
+            let cam = kotor_render::Camera {
+                eye: [
+                    at[0] - heading.sin() * 2.6,
+                    at[1] + heading.cos() * 2.6,
+                    at[2] + 1.2,
+                ],
+                target: [at[0], at[1], at[2] + 0.95],
+                fov: 40.0,
+            };
+            let still = s.static_scene().clone();
+            gpu.set_static_scene(&still, &mut |n| s.texture(n));
+            let moving = s.dynamic_scene();
+            let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+            std::fs::write(format!("{dir}/walkshot-{n}.png"), kotor_image::to_png(&img)).unwrap();
+        }
+    }
+    std::fs::remove_file(&file).ok();
+}
