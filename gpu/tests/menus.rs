@@ -4284,9 +4284,7 @@ fn the_body_sliders_reshape_the_figure_cancel_puts_them_back_and_ok_keeps_them()
     // The rows past the page's end are reached with the wheel, and their arrows work.
     let legs = row_of(&mut s, "Legs");
     assert!(s.menu_step_pixel("LB_OPTIONS", legs, 1, SIZE).unwrap().1 > 400.0);
-    for _ in 0..10 {
-        s.menu_wheel(-1.0);
-    }
+    bring_row(&mut s, legs);
     let at = s.menu_step_pixel("LB_OPTIONS", legs, 1, SIZE).unwrap();
     assert!(at.1 < 380.0 * SIZE.1 as f32 / 480.0, "{at:?}");
     s.click(at, SIZE);
@@ -4347,7 +4345,8 @@ fn the_face_sliders_bring_the_view_to_the_head_and_reshape_it() {
             .meshes
             .iter()
             .flat_map(|m| m.positions.iter())
-            .filter(|p| p[2] > 1.3)
+            // The head, above the chest.
+            .filter(|p| p[2] > 1.5)
             .fold(f32::MIN, |a, p| a.max(-p[1]))
     };
     let before = front(&mut s);
