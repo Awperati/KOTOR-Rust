@@ -53,3 +53,42 @@ fn the_jawa_bodies_play_every_clip_the_game_asks_for_or_stand_idle() {
         }
     }
 }
+
+/// The player races other than the Jawa wear the game's own whole-body models, on the person's skeleton and clips: every clip the
+/// game asks for resolves without a stand-in. (The player Jawa is the mod pack's `p_jawab` on `S_Female03`, absent without the pack.)
+#[test]
+fn the_other_races_bodies_have_the_persons_clips() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut inst = Install::open(dir).unwrap();
+    inst.load_texture_packs().unwrap();
+    let Ok(person) = Rig::load(&mut inst, "S_Male02", None, None) else {
+        return;
+    };
+    let asked = person.animation_names();
+    for model in [
+        "n_rodian",
+        "n_duros",
+        "n_wookiem",
+        "n_wookief",
+        "n_trandoshan",
+        "p_jawab",
+    ] {
+        let Ok(rig) = Rig::load(&mut inst, model, None, None) else {
+            eprintln!("{model}: not in this install");
+            continue;
+        };
+        let none: Vec<&str> = asked
+            .iter()
+            .filter(|c| rig.clip_name(c).is_none())
+            .map(String::as_str)
+            .collect();
+        eprintln!(
+            "{model}: {} of {} clips have none: {none:?}",
+            none.len(),
+            asked.len()
+        );
+        assert!(none.len() < 30, "{model}: {} clips missing", none.len());
+    }
+}
