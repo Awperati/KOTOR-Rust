@@ -454,6 +454,8 @@ fn the_camera_finds_trask_when_he_talks_and_scripts_can_walk_him() {
 fn wasd_runs_relative_to_the_camera_and_stops_at_walls() {
     let Some(mut s) = stage() else { return };
     past_the_talk(&mut s);
+    // Modern movement's way: the game's default, Classic, turns on the spot.
+    s.set_movement_modern(true);
     let pc = s.game.world.pc;
     s.yaw = 0.0;
     let start = s.game.world.object(pc).unwrap().position;

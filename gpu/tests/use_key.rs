@@ -1,5 +1,5 @@
 //! The use key after Trask's talk: it opens the footlocker the camera faces, though Trask stands a hand's width nearer, and the
-//! keys move and pause as ever. `scripts\drive_window.ps1` does the same through the window.
+//! keys move and pause as ever, in Classic. `scripts\drive_window.ps1` does the same through the window.
 use kotor_gpu::stage::Stage;
 
 const DT: f32 = 1.0 / 60.0;
@@ -63,17 +63,16 @@ fn after_trask_s_talk_e_opens_the_footlocker_in_view_and_w_d_and_b_work() {
     s.escape();
     s.game.world.opened = None;
     run(&mut s, 5, (0.0, 0.0));
-    // W and D move.
-    for steer in [(1.0, 0.0), (0.0, 1.0)] {
-        let a = s.game.world.pc_mover.pos;
-        run(&mut s, 40, steer);
-        let b = s.game.world.pc_mover.pos;
-        assert!(
-            (a[0] - b[0]).hypot(a[1] - b[1]) > 0.3,
-            "{steer:?}: {a:?} {b:?}"
-        );
-        run(&mut s, 30, (0.0, 0.0));
-    }
+    // W moves. In Classic, the game's default and the drive's, D turns the hero where they stand.
+    let a = s.game.world.pc_mover.pos;
+    run(&mut s, 40, (1.0, 0.0));
+    let b = s.game.world.pc_mover.pos;
+    assert!((a[0] - b[0]).hypot(a[1] - b[1]) > 0.3, "W: {a:?} {b:?}");
+    run(&mut s, 30, (0.0, 0.0));
+    let yaw = s.yaw;
+    run(&mut s, 40, (0.0, 1.0));
+    assert!((s.yaw - yaw).abs() > 0.3, "D turns: {yaw} {}", s.yaw);
+    run(&mut s, 30, (0.0, 0.0));
     // B pauses and goes on.
     s.pause_key();
     s.update(DT);

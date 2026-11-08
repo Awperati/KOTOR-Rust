@@ -18,6 +18,11 @@ fn stage_in(module: &str, name: &str, settings: &str) -> Option<(Stage, std::pat
     let file = std::env::temp_dir().join(format!("kotor_move_{name}_{}.txt", std::process::id()));
     std::fs::write(&file, settings).unwrap();
     s.use_settings_file(file.clone());
+    // These are tests of Modern movement, unless the file says Classic. The game's own default is Classic, Modern movement
+    // and combat go together for the player, and here the movement is set alone, with Classic's combat and pause as before.
+    if !settings.contains("movement_modern=") {
+        s.set_movement_modern(true);
+    }
     s.set_view(SIZE);
     s.update(DT);
     // The opening conversation first.
@@ -67,7 +72,10 @@ fn clear_way(s: &mut Stage) -> f32 {
 }
 
 #[test]
-fn modern_is_the_default_and_classic_is_a_setting() {
+fn classic_is_the_default_and_modern_movement_has_the_roll() {
+    // The game's own default is Classic: the tank walk and rounds. Single Player asks for each new game.
+    let default = kotor_gpu::stage::Settings::default();
+    assert!(!default.movement_modern && !default.combat_modern);
     let Some((mut s, file)) = stage("default", "") else {
         return;
     };

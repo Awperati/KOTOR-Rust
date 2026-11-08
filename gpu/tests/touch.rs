@@ -27,6 +27,8 @@ fn on_floor(name: &str) -> Option<Stage> {
     s.set_saves_dir(dir.join("saves"));
     let _ = std::fs::remove_file(dir.join("settings.txt"));
     s.use_settings_file(dir.join("settings.txt"));
+    // The stick and its buttons as they were made, with Modern movement: the game's default is Classic.
+    s.set_movement_modern(true);
     s.set_view(SIZE);
     for _ in 0..12000 {
         s.update(DT);

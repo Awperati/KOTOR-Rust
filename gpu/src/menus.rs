@@ -416,7 +416,8 @@ impl Default for Settings {
             vsync: true,
             noto_font: true,
             glow_boxes: true,
-            movement_modern: true,
+            // One game mode, Classic: the game's own tank walk and rounds. Single Player asks for each new game.
+            movement_modern: false,
             combat_modern: false,
             click_to_walk: false,
             australian_english: true,
@@ -604,6 +605,10 @@ impl Settings {
                 _ => {}
             }
         }
+        // One game mode: Modern is Modern movement and combat together, and anything else is Classic, its tank walk and
+        // rounds. A file from before the mode had Modern movement with Classic combat: that was Classic, and is now wholly.
+        let modern = s.movement_modern && s.combat_modern;
+        (s.movement_modern, s.combat_modern) = (modern, modern);
         s
     }
 }
@@ -1511,15 +1516,29 @@ impl Stage {
         self.menus.settings
     }
 
-    /// Modern or Classic movement for this run, without touching the settings file. For a test driver.
+    /// The game's mode for this run, without touching the settings file: Classic's tank walk and rounds, or Modern's
+    /// directional movement and combat. For a test or a driver.
+    pub fn set_game_mode(&mut self, mode: kotor_game::GameMode) {
+        let modern = mode == kotor_game::GameMode::Modern;
+        let s = &mut self.menus.settings;
+        (s.movement_modern, s.combat_modern) = (modern, modern);
+        self.game.world.game_mode = mode;
+    }
+
+    /// Modern or Classic movement alone for this run, without touching the settings file. For a test of the movement: the
+    /// player has no way to part it from the combat, which [`Stage::set_game_mode`] sets with it.
     pub fn set_movement_modern(&mut self, modern: bool) {
         self.menus.settings.movement_modern = modern;
         self.game.world.game_mode = self.mode_of_settings();
     }
 
-    /// Modern or Classic combat for this run, without touching the settings file. For a test.
+    /// Modern or Classic combat for this run, without touching the settings file. For a test, as above. Modern combat needs
+    /// Modern movement, so it brings it.
     pub fn set_combat_modern(&mut self, modern: bool) {
         self.menus.settings.combat_modern = modern;
+        if modern {
+            self.menus.settings.movement_modern = true;
+        }
         self.game.world.game_mode = self.mode_of_settings();
     }
 
@@ -2572,12 +2591,6 @@ impl Stage {
             (Screen::Gameplay, optionpages::CLICK_BOX) => {
                 let on = !self.menus.settings.click_to_walk;
                 self.set_click_to_move(on);
-            }
-            (Screen::Gameplay, optionpages::COMBAT_BOX) => {
-                if self.menus.settings.movement_modern {
-                    self.menus.settings.combat_modern = !self.menus.settings.combat_modern;
-                    self.settings_changed();
-                }
             }
             (Screen::Gameplay, "CB_LEVELUP") => {
                 self.menus.settings.auto_level = !self.menus.settings.auto_level;

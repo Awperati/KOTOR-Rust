@@ -2073,9 +2073,9 @@ fn the_option_pages_change_what_they_say_and_keep_it() {
     press(&mut s, "CB_INVERTCAM");
     s.update(DT);
     assert_ne!(s.overlay().unwrap().rgba, ticked.rgba, "the box is ticked");
-    // The mode box: Modern movement with Classic combat to begin with is Classic; once pressed, Modern, both kept in the file;
-    // and pressed again, Classic, with Classic movement.
-    assert!(s.settings().movement_modern && !s.settings().combat_modern);
+    // The mode box: Classic to begin with, its movement and combat both; once pressed, Modern, both kept in the file; and
+    // pressed again, Classic, with Classic movement.
+    assert!(!s.settings().movement_modern && !s.settings().combat_modern);
     press(&mut s, "CB_REVERSE");
     assert!(s.settings().movement_modern && s.settings().combat_modern);
     assert!(std::fs::read_to_string(&file)
@@ -2431,9 +2431,10 @@ fn the_mouse_going_down_looks_down_and_invert_camera_flips_it() {
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("settings.txt");
     for (text, flipped) in [
-        ("movement_modern=true\n", false),
+        // Modern, then Classic.
+        ("movement_modern=true\ncombat_modern=true\n", false),
         ("movement_modern=false\n", false),
-        ("invert_y=true\nmovement_modern=true\n", true),
+        ("invert_y=true\nmovement_modern=true\ncombat_modern=true\n", true),
         ("invert_y=true\nmovement_modern=false\n", true),
         // What an old file calls the box does nothing.
         ("invert_camera=true\n", false),

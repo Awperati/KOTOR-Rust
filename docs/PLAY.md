@@ -130,7 +130,7 @@ Esc in the game opens `optionsingame.gui` and stops the game's clock. Exit Game 
 
 | Page | Works | Greyed or left out, because nothing behind it is built |
 |---|---|---|
-| Gameplay | difficulty, Auto Level Up, Combat Movement, `CB_INVERTCAM` (called Invert Camera here: tilts the camera the other way), Autosave (writes `autosave.sav` on each change of module, off by default), the Movement box (Modern or Classic), the Combat box (Modern or Classic), Key Mapping, Controls (the file's Mouse Settings) | The Combat box while movement is Classic |
+| Gameplay | difficulty, Auto Level Up, Combat Movement, `CB_INVERTCAM` (called Invert Camera here: tilts the camera the other way), Autosave (writes `autosave.sav` on each change of module, off by default), the Game mode box (Modern or Classic, movement and combat together), Key Mapping, Controls (the file's Mouse Settings) | |
 | Graphics | Brightness, Screen Resolution (goes through 1280x720, 1920x1080, 2560x1440, 3840x2160), Advanced Options | Shadows, Grass |
 | Sound | music, voice and effects levels | Movie Volume and Advanced Options, left out |
 
@@ -182,7 +182,7 @@ Classic is the game's own controls: left and right turn the body and the camera 
 `scripts\drive_modes.ps1` checks these rows in a hidden window, in each mode.
 
 ## Modern combat
-The Combat box on the Gameplay page turns it on, with Modern movement. Classic is the default, and enemies and party members fight the same either way.
+The Game mode box on the Gameplay page turns it on, with Modern movement: the two go together, and there is no box for either alone. Classic, its tank walk and rounds, is the default for a new settings file and for an old one that had only Modern movement. Enemies and party members fight the same either way. A driver of the viewer chooses with `--classic` or `--modern`.
 
 | Input | What it does in Modern combat |
 |---|---|

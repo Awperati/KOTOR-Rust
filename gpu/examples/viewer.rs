@@ -1021,9 +1021,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Stage::menu(&module, original)?
     };
-    if flag("--classic-movement") {
-        stage.set_movement_modern(false);
-    }
     if let Some(folder) = opt("--pose-folder") {
         stage.use_pose_folder(folder.into());
     }
@@ -1068,6 +1065,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(file) if !plain_driver => stage.use_settings_file(file),
         None if !flag("--skip-menu") && !flag("--autopilot") => stage.use_saved_settings(),
         _ => {}
+    }
+    // The game's mode for the run, over the settings: `--classic` (or the older `--classic-movement`), the tank walk and
+    // rounds, or `--modern`, directional movement and Modern combat. With neither, the settings' mode, Classic by default.
+    if flag("--modern") {
+        stage.set_game_mode(kotor_game::GameMode::Modern);
+    } else if flag("--classic") || flag("--classic-movement") {
+        stage.set_game_mode(kotor_game::GameMode::Classic);
     }
     // A click on the floor walks there, as Options' Click to move does: a driver's way to turn it on for the run.
     if flag("--click-to-move") && driver {

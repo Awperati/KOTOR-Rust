@@ -1,13 +1,14 @@
 # Drive the viewer through its OWN window handle with posted messages. No global mouse or keyboard, and no focus.
 # It sleeps on the wall clock between real key presses, so its checks hold only at 1x: see docs/FASTTEST.md.
-param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }), [string]$Shots, [int]$Speed = 1)
+param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } else { "1280x720" }), [string]$Shots, [int]$Speed = 1, [ValidateSet("classic", "modern")][string]$Mode = "classic")
 # Run from the repo root after building the viewer example. -Shots is a folder for pictures of the window.
+# -Mode is the game's mode for the run: classic (the default, as for a new player), the tank walk and rounds, or modern.
 # It writes one save to a folder of its own with --saves, deletes it through the screen, and never touches the player's saves.
 . "$PSScriptRoot\drive_common.ps1"
 $script:ClickScale = [double]($Size -split "x")[1] / 720.0
 $savesDir = Join-Path $scratch "kotor_window_saves_$PID"
 New-Item -ItemType Directory -Force $savesDir | Out-Null
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--click-to-move","--saves",$savesDir,"--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--click-to-move","--saves",$savesDir,"--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed","--$Mode") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 $h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
@@ -58,7 +59,7 @@ Key $SPACE[0] $SPACE[1]
 $s = State
 Report "Space closes it" ($s.opened -eq "false") "opened=$($s.opened)"
 
-# W runs ahead; D runs to the right.
+# W runs ahead. D runs to the right in Modern, and in Classic's tank walk turns the hero right where they stand.
 $a = State
 $b = HoldUntilMoved $W $a 0.3 60
 $moved = Moved $a $b
@@ -67,9 +68,16 @@ if ($Shots) { [Drv]::Save($h, "$Shots\live_wasd.png") }
 $a = State
 $b = HoldUntilMoved $D $a 0.3 60
 $moved = Moved $a $b
-Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
+if ($Mode -eq "modern") {
+    Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
+} else {
+    $turned = [Math]::Abs([double]$b.heading - [double]$a.heading) % (2 * [Math]::PI)
+    $turned = [Math]::Min($turned, 2 * [Math]::PI - $turned)
+    Report "D turns" ($turned -gt 0.3) "heading $($a.heading) -> $($b.heading)"
+}
 
-# B pauses out of a conversation: W does nothing until B again.
+# B pauses out of a conversation: W does nothing until B again. Modern has no pause but Escape's menu, so not there.
+if ($Mode -eq "classic") {
 $PAUSE = @(0x42, 0x30)
 Key $PAUSE[0] $PAUSE[1]
 [void](State)
@@ -82,6 +90,7 @@ Key $PAUSE[0] $PAUSE[1]
 $a = State
 $b = HoldUntilMoved $W $a 0.3 60
 Report "B goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
+}
 
 # A click on the floor walks there, with Click to move on for the run (--click-to-move): look for one that lands.
 $ok = $false; $detail = ""
@@ -107,7 +116,7 @@ Get-Content "$scratch\kotor_drive.err" -Tail 4
 # The second run: from the main menu, through a save and two loads, to Exit. A 640x480 screen fills this 1280x720
 # window, so a control at layout (x, y) is at (2x, 1.5y).
 $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--click-to-move","--saves",$savesDir,"--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--click-to-move","--saves",$savesDir,"--frames","200000","--$Mode") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 $h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"

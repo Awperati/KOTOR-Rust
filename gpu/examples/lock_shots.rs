@@ -51,6 +51,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .find(|d| w.lock_can_be_picked(*d))
         .expect("a door");
+    for o in w.objects.values().filter(|o| o.kind == kotor_game::Kind::Door) {
+        println!(
+            "door {:?}: tag {:?}, template {:?}, locked {}, clickable {}{}",
+            o.name,
+            o.tag,
+            o.template,
+            o.locked,
+            w.clickable(o.id),
+            if o.id == door { ", the one shown" } else { "" }
+        );
+    }
     let at = w.object(w.pc).unwrap().position;
     for o in w.objects.values_mut() {
         o.useable = false;
