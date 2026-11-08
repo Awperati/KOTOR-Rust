@@ -5,6 +5,7 @@
 mod character;
 pub mod custom_clip;
 pub mod custom_mesh;
+pub mod face;
 mod json;
 mod objects;
 mod scene;

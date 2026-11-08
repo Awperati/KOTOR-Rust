@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stages 0 and 1 are built, and stage 2 but its skin tone; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, and stage 3 but its eye colour; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -66,6 +66,10 @@ For a finger, a choice row's arrows answer over the row's whole height and a lit
 **Stage 2.** Seven rows of sliders on the Appearance page: Height, Shoulders, Chest, Waist, Hips, Arms and Legs, from -100 to +100 in steps of 10, kept in the look by their names (`height` and so on) only when not 0. The list is longer than the page now, and the wheel or a finger's drag goes down it. [shape.rs](../crates/kotor-render/src/shape.rs) moves the vertices of the body at rest by the bones that carry them, once for each look: the arms' and legs' bones push their vertices out from or in to the line down the bone, the shoulders take the arms and the top of the torso out, and the chest, waist and hips are bands of the torso round the skeleton's own heights. It works on every body of the player, bare or in armour, as they share one skeleton, and the head is left as it is. Height scales the whole posed figure about the feet, from 0.92 to 1.08, only for how it looks: doors, walking and fights keep their sizes. In the game the player's body is shaped by the look the save keeps, on the screens' figures too. The page's whole view is framed for the tallest body, so that a taller one is seen to be taller.
 
 **Not built in stage 2:** skin tone. The game ties the skin to the head: the A, B and C heads are its tones. A tone of its own would recolour the body's and head's skin in their textures. **Assumed:** each slider's size at its ends, by eye from frames: shoulders 3.5 cm each side, chest 3 cm forward, waist 16%, hips 12%, arms 25% and legs 20% thicker or thinner. Checked on the bare bodies only, not on each armour.
+
+**Stage 3.** Six more slider rows: Brow, Nose, Jaw, Cheeks, Eyes and Mouth, -100 to +100 as the body's. The heads have no morph targets and no bones of a face to shape by, but each carries the game's own points of its face, the `f_*_g` nodes: the brows, the nostrils, the mouth's middle and corners, the jaw and under each eye. [face.rs](../crates/kotor-render/src/face.rs) moves the head's vertices near those points at rest: the brow forward and up, the nose out and wider, the jaw wider and the chin forward, fading out under the chin so that the neck still meets the body, the cheeks out, the eyes and their lids wider apart, the mouth wider. A face slider brings the view from the whole body to the head. The head row stays the 15 of the chosen sex, which with the other sex's are the 30.
+
+**Not built in stage 3:** eye colour. The eyes are painted in the head's own texture, and a colour of their own would need a texture made at run time for them. **Assumed:** each face slider's size at its ends, a few millimetres, by eye from frames of one head, `PFHA01`. Not checked on the other 29.
 
 ## What each stage must not break
 

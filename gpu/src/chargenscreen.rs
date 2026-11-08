@@ -13,7 +13,8 @@ use crate::effects::{Effects, ParticleBatch};
 use kotor_game::{
     attribute_cost, BodySize, CharacterLook, CharacterSpec, Clip, ATTRIBUTE_BASE, POINT_POOL,
 };
-use kotor_render::shape::{BodyShape, BODY_SLIDERS, SLIDER_MOST, SLIDER_STEP};
+use kotor_render::face::FaceShape;
+use kotor_render::shape::{BodyShape, SLIDER_MOST, SLIDER_STEP};
 use kotor_render::underwear::{list_underwear_variants, UnderwearVariant};
 use kotor_render::{Camera, Rig, Scene};
 use kotor_ui::{Hit, MenuView, Row};
@@ -91,23 +92,32 @@ const LIGHTS: [(&str, f32, f32); 4] = [
     ("Side", -1.03, 1.0),
     ("Low", 0.0, 0.6),
 ];
-/// The body's sliders' words, in the order of `BODY_SLIDERS`.
-const SLIDER_WORDS: [&str; 7] = [
-    "Height",
-    "Shoulders",
-    "Chest",
-    "Waist",
-    "Hips",
-    "Arms",
-    "Legs",
+/// The sliders of the page: the name a look keeps each by, its words, and whether it is of the face. In the order of
+/// `kotor_render::shape::BODY_SLIDERS` and then `kotor_render::face::FACE_SLIDERS`.
+const SLIDERS: [(&str, &str, bool); 13] = [
+    ("height", "Height", false),
+    ("shoulders", "Shoulders", false),
+    ("chest", "Chest", false),
+    ("waist", "Waist", false),
+    ("hips", "Hips", false),
+    ("arms", "Arms", false),
+    ("legs", "Legs", false),
+    ("brow", "Brow", true),
+    ("nose", "Nose", true),
+    ("jaw", "Jaw", true),
+    ("cheeks", "Cheeks", true),
+    ("eyes", "Eyes", true),
+    ("mouth", "Mouth", true),
 ];
+/// The view a face slider brings the figure to, from the whole body.
+const FACE_VIEW: usize = 2;
 /// One row of that page.
 #[derive(Clone, Copy, PartialEq)]
 enum LookRow {
     Head,
     Body,
     Underwear,
-    /// A body slider, by its place in `BODY_SLIDERS`.
+    /// A slider, by its place in `SLIDERS`.
     Slider(usize),
     View,
     Pose,
@@ -710,7 +720,7 @@ impl Stage {
         if choice {
             rows.push(LookRow::Underwear);
         }
-        rows.extend((0..BODY_SLIDERS.len()).map(LookRow::Slider));
+        rows.extend((0..SLIDERS.len()).map(LookRow::Slider));
         rows.extend([LookRow::View, LookRow::Pose, LookRow::Light]);
         rows
     }
@@ -754,13 +764,13 @@ impl Stage {
                             .map_or(String::new(), |u| u.name.clone()),
                     ),
                     LookRow::Slider(n) => {
-                        let v = slider(&d.spec.look, BODY_SLIDERS[n]);
+                        let v = slider(&d.spec.look, SLIDERS[n].0);
                         let words = if v == 0 {
                             "0".to_string()
                         } else {
                             format!("{v:+}")
                         };
-                        (SLIDER_WORDS[n].to_string(), words)
+                        (SLIDERS[n].1.to_string(), words)
                     }
                     LookRow::View => ("View".to_string(), VIEWS[d.view].0.to_string()),
                     LookRow::Pose => ("Pose".to_string(), POSES[d.pose].0.to_string()),
@@ -794,7 +804,11 @@ impl Stage {
             }
             Some(LookRow::Slider(n)) => {
                 if let Some(d) = self.menus.chargen.as_mut() {
-                    let name = BODY_SLIDERS[*n];
+                    let (name, _, face) = SLIDERS[*n];
+                    // A face is shaped where it can be seen: from the whole body, the view comes to the head.
+                    if face && d.view == 0 {
+                        d.view = FACE_VIEW;
+                    }
                     let v = (slider(&d.spec.look, name) + by * SLIDER_STEP)
                         .clamp(-SLIDER_MOST, SLIDER_MOST);
                     if v == 0 {
@@ -1381,7 +1395,8 @@ impl Stage {
     /// A body reshaped by a look's sliders, kept for the last body and look asked for: a slider's arrow reshapes it once.
     fn shaped_rig(&mut self, rig: Rc<Rig>, look: &CharacterLook) -> Rc<Rig> {
         let shape = body_shape(look);
-        if shape.is_plain() {
+        let face = FaceShape::from_sliders(|name| slider(look, name));
+        if shape.is_plain() && face.is_plain() {
             return rig;
         }
         let key = Rc::as_ptr(&rig) as usize;
@@ -1390,7 +1405,7 @@ impl Stage {
                 return shaped.clone();
             }
         }
-        let shaped = Rc::new(rig.shaped(&shape));
+        let shaped = Rc::new(rig.shaped(&shape, &face));
         self.menus.shaped = Some((key, look.sliders.clone(), shaped.clone()));
         shaped
     }

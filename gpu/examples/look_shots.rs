@@ -149,5 +149,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let n = row(&mut s, slider);
         println!("{slider}: {:?}", s.menu_rows("LB_OPTIONS")[n].choice);
     }
+
+    // Stage 3: the face's sliders, seen close, from the front and a little turned. A face slider brings the view to the head.
+    let face = ["Brow", "Nose", "Jaw", "Cheeks", "Eyes", "Mouth"];
+    let turn = |s: &mut Stage, by: f32| {
+        s.mouse_down_on_layer(middle, size);
+        s.mouse_moved_on_layer((middle.0 + width as f32 * by, middle.1), size);
+        s.mouse_up_on_layer();
+    };
+    // Back to the front.
+    turn(&mut s, -0.06);
+    let view = row(&mut s, "View");
+    step(&mut s, view);
+    step(&mut s, view);
+    shot(&mut s, "look_face_plain");
+    turn(&mut s, 0.04);
+    shot(&mut s, "look_face_plain_turned");
+    turn(&mut s, -0.04);
+    for (name, by) in [("look_face_most", 1), ("look_face_least", -1)] {
+        for slider in face {
+            let n = row(&mut s, slider);
+            bring(&mut s, n);
+            for _ in 0..20 {
+                if let Some(p) = s.menu_step_pixel("LB_OPTIONS", n, by, size) {
+                    s.hover(p, size);
+                    s.click(p, size);
+                }
+            }
+        }
+        shot(&mut s, name);
+        turn(&mut s, 0.04);
+        shot(&mut s, &format!("{name}_turned"));
+        turn(&mut s, -0.04);
+    }
+    for slider in face {
+        let n = row(&mut s, slider);
+        println!("{slider}: {:?}", s.menu_rows("LB_OPTIONS")[n].choice);
+    }
+    println!("{:?}", s.look_preview());
     Ok(())
 }

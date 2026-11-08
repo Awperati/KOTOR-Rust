@@ -142,10 +142,13 @@ impl Rig {
         }
     }
 
-    /// This body reshaped at rest by character creation's sliders: see [`crate::shape`].
-    pub fn shaped(&self, shape: &crate::shape::BodyShape) -> Rig {
+    /// This body and head reshaped at rest by character creation's sliders: see [`crate::shape`] and [`crate::face`].
+    pub fn shaped(&self, shape: &crate::shape::BodyShape, face: &crate::face::FaceShape) -> Rig {
         let mut rig = self.clone();
         crate::shape::shape_body(&mut rig.body, shape);
+        if let Some(head) = rig.head.as_mut() {
+            crate::face::shape_face(head, face);
+        }
         rig
     }
 

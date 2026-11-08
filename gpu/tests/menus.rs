@@ -4322,6 +4322,58 @@ fn the_body_sliders_reshape_the_figure_cancel_puts_them_back_and_ok_keeps_them()
 }
 
 #[test]
+fn the_face_sliders_bring_the_view_to_the_head_and_reshape_it() {
+    let Some(mut s) = at_chargen("face_sliders") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let names: Vec<String> = s
+        .menu_rows("LB_OPTIONS")
+        .iter()
+        .map(|r| r.text.clone())
+        .collect();
+    for name in ["Brow", "Nose", "Jaw", "Cheeks", "Eyes", "Mouth"] {
+        assert!(names.iter().any(|n| n == name), "{name}: {names:?}");
+    }
+    let nose = names.iter().position(|n| n == "Nose").unwrap();
+    bring_row(&mut s, nose);
+    // The front of the face at rest: the furthest forward point of the figure, near the top.
+    let front = |s: &mut Stage| {
+        let (scene, _, _) = s.frame_scene();
+        scene
+            .meshes
+            .iter()
+            .flat_map(|m| m.positions.iter())
+            .filter(|p| p[2] > 1.3)
+            .fold(f32::MIN, |a, p| a.max(-p[1]))
+    };
+    let before = front(&mut s);
+    let at = s.menu_step_pixel("LB_OPTIONS", nose, 1, SIZE).unwrap();
+    for _ in 0..10 {
+        s.click(at, SIZE);
+    }
+    assert_eq!(
+        s.menu_rows("LB_OPTIONS")[nose].choice.as_deref(),
+        Some("+100")
+    );
+    assert_eq!(
+        s.look_preview().unwrap().1,
+        "Head",
+        "the view came to the head"
+    );
+    let after = front(&mut s);
+    assert!(
+        after > before + 0.003,
+        "the nose is longer: {before} {after}"
+    );
+    let w = &s.game.world;
+    assert_eq!(w.object(w.pc).unwrap().look.sliders.get("nose"), Some(&100));
+}
+
+#[test]
 fn a_players_look_shapes_their_body_in_the_game_and_their_height_is_drawn() {
     let Some((mut s, _)) = in_game("body_in_game") else {
         return;
