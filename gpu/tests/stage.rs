@@ -1819,8 +1819,16 @@ fn a_stored_weapon_hangs_at_its_holster() {
         let before = count(&mut s);
         let gun = s.game.world.spawn_item(item);
         // FRAME_SLOT=5 puts it in the left hand.
-        let slot: i32 = std::env::var("FRAME_SLOT").ok().and_then(|v| v.parse().ok()).unwrap_or(4);
-        s.game.world.object_mut(pc).unwrap().equipped.insert(slot, gun);
+        let slot: i32 = std::env::var("FRAME_SLOT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(4);
+        s.game
+            .world
+            .object_mut(pc)
+            .unwrap()
+            .equipped
+            .insert(slot, gun);
         s.update(DT);
         let stored = count(&mut s);
         assert_eq!(stored, before + 1, "{item}: its holster is drawn");
@@ -1928,4 +1936,58 @@ fn attack_mode_draws_and_holsters_the_weapon() {
     }
     assert!(left < 3000, "the weapon goes back");
     assert!(!s.game.weapons_drawn(pc));
+}
+
+/// A soldier that is attacked draws its weapon, as the player does. With `FRAME_NPC` set to a folder, frames of the draw are written there.
+#[test]
+fn a_soldier_draws_its_weapon_when_a_fight_starts() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    let Some(foe) = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003")
+        .map(|o| o.id)
+    else {
+        return;
+    };
+    let at = s.game.world.object(foe).unwrap().position;
+    s.game.world.teleport(pc, [at[0] - 3.0, at[1], at[2]]);
+    for _ in 0..10 {
+        s.update(DT);
+    }
+    assert!(
+        !s.game.weapon_ready(foe),
+        "its weapon is away before the fight"
+    );
+    s.game.world.attack(foe, pc);
+    let mut reached = false;
+    for i in 0..(1.0 / DT) as usize {
+        s.update(DT);
+        reached |= s.game.draw_progress(foe).is_some_and(|p| p > 0.9);
+        if let Ok(dir) = std::env::var("FRAME_NPC") {
+            if i % 10 == 5 && i < 60 {
+                let at = s.game.world.object(foe).unwrap().position;
+                let cam = kotor_render::Camera {
+                    eye: [at[0] - 2.6, at[1], at[2] + 1.5],
+                    target: [at[0], at[1], at[2] + 1.0],
+                    fov: 40.0,
+                };
+                let mut gpu = GpuRenderer::new(480, 640).unwrap();
+                let still = s.static_scene().clone();
+                gpu.set_static_scene(&still, &mut |n| s.texture(n));
+                let moving = s.dynamic_scene();
+                let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+                std::fs::write(
+                    format!("{dir}/soldier-{i:02}.png"),
+                    kotor_image::to_png(&img),
+                )
+                .unwrap();
+            }
+        }
+    }
+    assert!(reached, "the soldier's hand reaches for its weapon");
+    assert!(s.game.weapon_ready(foe));
 }

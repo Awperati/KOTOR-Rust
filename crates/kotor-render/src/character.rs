@@ -57,6 +57,38 @@ pub const MOUTH_RATE: f32 = 0.3;
 /// Steps of a voice's loudness in a second (see `mouth_at`).
 pub const VOICE_STEPS: f32 = 50.0;
 
+/// Syllables for each second of voice that the clip's speed times `MOUTH_RATE` suits (a voice of 4.5 syllables a second is on for about three quarters of it): a voice that has more of them than this moves the loop faster,
+/// one that has fewer slower, so that a mouth shape goes by for each syllable of the line, whatever its speaker's pace.
+pub const NOMINAL_SYLLABLES: f32 = 6.0;
+
+/// Syllables a second of voice in a line: the swells of its loudness over the time it is voiced, from 3 to 9, for each second the voice is on.
+fn syllable_rate(energy: &[f32]) -> f32 {
+    let smooth: Vec<f32> = (0..energy.len())
+        .map(|i| {
+            let lo = i.saturating_sub(2);
+            let hi = (i + 3).min(energy.len());
+            energy[lo..hi].iter().sum::<f32>() / (hi - lo) as f32
+        })
+        .collect();
+    // A syllable is the loudness rising through two thirds of its top after it has been below a third.
+    let top = smooth.iter().cloned().fold(0.0, f32::max);
+    let mut up = false;
+    let mut peaks = 0;
+    for v in &smooth {
+        if !up && *v > top * 0.66 {
+            up = true;
+            peaks += 1;
+        } else if up && *v < top * 0.33 {
+            up = false;
+        }
+    }
+    let voiced = energy.iter().filter(|e| **e > 0.0).count() as f32 / VOICE_STEPS;
+    if voiced < 0.3 || peaks == 0 {
+        return NOMINAL_SYLLABLES;
+    }
+    (peaks as f32 / voiced).clamp(3.0, 9.0)
+}
+
 /// How far the mouth is open at `t` seconds into a line, from 0 to 1, and the clock of the `talk` loop, for a voice whose loudness
 /// is `energy` (`VOICE_STEPS` a second, 0 in a pause between words). The mouth opens and shuts with the voice's own syllables, and
 /// the loop's clock runs only while the voice does, so that the mouth does not keep moving through a pause, and moves through the
@@ -81,7 +113,13 @@ pub fn mouth_at(energy: &[f32], t: f32, said: f32) -> (f32, f32) {
         let upto = ((t * VOICE_STEPS) as usize).min(energy.len());
         energy[..upto].iter().filter(|e| **e > 0.0).count() as f32 / VOICE_STEPS
     };
-    (open * edge, clock * MOUTH_RATE)
+    // The loop turns at the line's own pace: a fast speaker's mouth is not drawn at a slow one's rate.
+    let rate = if energy.is_empty() {
+        MOUTH_RATE
+    } else {
+        MOUTH_RATE * syllable_rate(energy) / NOMINAL_SYLLABLES
+    };
+    (open * edge, clock * rate)
 }
 
 /// How much further than the `talk` clip the mouth goes at full voice: the clip's jaw turns about three degrees, which a head
