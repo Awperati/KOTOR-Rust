@@ -1794,6 +1794,7 @@ fn a_stored_weapon_hangs_at_its_holster() {
         ("g_w_blstrpstl001", "holster hip_holster"),
         ("g_w_blstrrfl001", "holster sling"),
         ("g_w_lngswrd01", "holster sheath"),
+        ("g_w_stunbaton01", "holster hip_holster"),
     ] {
         if std::env::var("FRAME_ITEM").is_ok_and(|w| w != item) {
             continue;
@@ -1817,7 +1818,9 @@ fn a_stored_weapon_hangs_at_its_holster() {
         };
         let before = count(&mut s);
         let gun = s.game.world.spawn_item(item);
-        s.game.world.object_mut(pc).unwrap().equipped.insert(4, gun);
+        // FRAME_SLOT=5 puts it in the left hand.
+        let slot: i32 = std::env::var("FRAME_SLOT").ok().and_then(|v| v.parse().ok()).unwrap_or(4);
+        s.game.world.object_mut(pc).unwrap().equipped.insert(slot, gun);
         s.update(DT);
         let stored = count(&mut s);
         assert_eq!(stored, before + 1, "{item}: its holster is drawn");
@@ -1871,7 +1874,7 @@ fn a_stored_weapon_hangs_at_its_holster() {
             s.update(DT);
         }
         assert_eq!(count(&mut s), before, "{item}: no holster in the hand");
-        s.game.world.object_mut(pc).unwrap().equipped.remove(&4);
+        s.game.world.object_mut(pc).unwrap().equipped.remove(&slot);
     }
 }
 
