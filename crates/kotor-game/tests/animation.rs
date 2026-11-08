@@ -449,6 +449,9 @@ fn a_blow_waits_for_the_draw_and_then_lands() {
     }
     assert!(!g.weapon_ready(pc));
     g.world.attack(pc, foe);
+    // The soldier draws too, and its shots wait as well.
+    g.world.attack(foe, pc);
+    let pc_hp = g.world.object(pc).unwrap().hp;
     let draw = (kotor_game::DRAW_SECONDS / g.dt) as usize;
     let mut waited = true;
     for i in 0..draw - 4 {
@@ -458,6 +461,11 @@ fn a_blow_waits_for_the_draw_and_then_lands() {
             g.world.object(foe).unwrap().hp,
             900,
             "no blow lands during the draw (step {i})"
+        );
+        assert_eq!(
+            g.world.object(pc).unwrap().hp,
+            pc_hp,
+            "nor does the soldier's (step {i})"
         );
     }
     assert!(waited, "the draw holds the blows back");
