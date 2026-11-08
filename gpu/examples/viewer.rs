@@ -1033,6 +1033,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => 1.0,
         });
     }
+    stage.set_door_dip(if flag("--no-dip") { 0.0 } else { 0.3 });
     stage.reload_custom_clips();
     stage.reload_custom_meshes();
     stage.orbit = opt("--orbit").and_then(|v| v.parse().ok()).unwrap_or(0.0);

@@ -397,6 +397,8 @@ pub struct World {
     pub(crate) pc_pressed: f32,
     /// A lift ride that is going on: see `lift.rs`.
     pub lift_ride: Option<crate::lift::LiftRide>,
+    /// Seconds of the dip to black at a door to another module that is not joined: 0 for none, the default; a window sets it.
+    pub door_dip: f32,
     /// How long each walker has pressed on people it cannot get round, getting no nearer: past `PRESSED_SECONDS` it walks through.
     pub(crate) walker_pressed: BTreeMap<ObjId, f32>,
     /// For each walker that went round something solid: the side it went (1 or -1), and how long it has been held by it.
@@ -773,6 +775,7 @@ impl World {
             exptable: Vec::new(),
             pc_pressed: 0.0,
             lift_ride: None,
+            door_dip: 0.0,
             walker_pressed: BTreeMap::new(),
             walker_steer: BTreeMap::new(),
             left_modules: BTreeMap::new(),

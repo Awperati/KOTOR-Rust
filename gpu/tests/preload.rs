@@ -249,3 +249,41 @@ fn a_planet_chosen_on_the_map_is_loaded_before_the_player_reaches_the_ramp() {
         assert_eq!(m, "tat_m17ab");
     }
 }
+
+#[test]
+fn the_module_of_the_save_chosen_on_the_load_screen_is_loaded_while_the_player_looks_at_it() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let size = (1280, 720);
+    let dir = std::env::temp_dir().join(format!("kotor_loadpre_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // A save made in the Lower City.
+    {
+        let s = opened("tar_m03aa");
+        s.game
+            .world
+            .save_to(&dir.join("save_0001.sav"), "Lower")
+            .unwrap();
+    }
+    let mut s = Stage::menu("end_m01aa", true).unwrap();
+    s.set_saves_dir(dir.clone());
+    s.use_settings_file(dir.join("settings.txt"));
+    let load = s.menu_pixel("BTN_LOADGAME", None, size).unwrap();
+    s.hover(load, size);
+    s.click(load, size);
+    assert_eq!(s.menu_name(), "load");
+    for _ in 0..30 {
+        s.update(DT);
+    }
+    assert!(s.preloaded().is_none(), "nothing chosen, nothing loaded");
+    let row = s.menu_pixel("LB_GAMES", Some(0), size).unwrap();
+    s.hover(row, size);
+    s.click(row, size);
+    assert_eq!(s.selected_save_name().as_deref(), Some("Lower"));
+    let Some(m) = wait_for_any(&mut s) else {
+        // Memory short on this machine: nothing to check.
+        return;
+    };
+    assert_eq!(m, "tar_m03aa", "the save's own module");
+}

@@ -30,6 +30,8 @@ pub struct LiftRide {
     pub way: LiftWay,
     pub elapsed: f32,
     pub seconds: f32,
+    /// Not a lift: a door's short dip to black while the module behind it is put up (`World::door_dip`).
+    pub dip: bool,
 }
 
 impl LiftRide {
@@ -94,6 +96,37 @@ impl World {
         let (to, waypoint) = (o.link_module.clone(), o.link_to.clone());
         let (way, seconds) = ride_between(&self.module, &to);
         self.events.push(format!("the lift starts ({way:?})"));
+        self.start_ride(door, to, waypoint, way, seconds, false);
+        true
+    }
+
+    /// A door to a module that is not joined: a short dip to black over `door_dip` seconds, as the module behind it is put up,
+    /// so that no frame is seen to freeze. False when dips are off (the default), or a ride is going on.
+    pub(crate) fn begin_door_dip(&mut self, door: ObjId) -> bool {
+        if self.door_dip <= 0.0 || self.lift_ride.is_some() {
+            return false;
+        }
+        let Some(o) = self.objects.get(&door) else {
+            return false;
+        };
+        if o.link_module.is_empty() || o.link_module.eq_ignore_ascii_case(&self.module) {
+            return false;
+        }
+        let (to, waypoint) = (o.link_module.clone(), o.link_to.clone());
+        let seconds = self.door_dip;
+        self.start_ride(door, to, waypoint, LiftWay::Level, seconds, true);
+        true
+    }
+
+    fn start_ride(
+        &mut self,
+        door: ObjId,
+        to: String,
+        waypoint: String,
+        way: LiftWay,
+        seconds: f32,
+        dip: bool,
+    ) {
         self.pc_mover.stop();
         self.pending = None;
         self.lift_ride = Some(LiftRide {
@@ -103,8 +136,8 @@ impl World {
             way,
             elapsed: 0.0,
             seconds,
+            dip,
         });
-        true
     }
 
     /// Time goes on in the lift; at the end of the ride the module changes, as the door would have changed it.
@@ -117,7 +150,9 @@ impl World {
             return;
         }
         if let Some(r) = self.lift_ride.take() {
-            self.events.push("the lift arrives".to_string());
+            if !r.dip {
+                self.events.push("the lift arrives".to_string());
+            }
             self.transition_request = Some((r.to, r.waypoint));
         }
     }

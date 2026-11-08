@@ -414,7 +414,7 @@ impl World {
         // A door whose neighbour is joined just opens: the player walks through, see `update_seamless`.
         if !d.link_module.is_empty() && !self.seamless.attached.contains_key(&id) {
             // A lift is a ride, not a jump: see `lift.rs`.
-            if self.begin_lift_ride(id) {
+            if self.begin_lift_ride(id) || self.begin_door_dip(id) {
                 return;
             }
             let Some(d) = self.objects.get(&id) else {

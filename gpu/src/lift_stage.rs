@@ -12,6 +12,8 @@ use kotor_image::Image;
 const FADE_OUT_SHARE: f32 = 0.15;
 /// Seconds the screen takes to come back after arriving.
 const FADE_IN_SECONDS: f32 = 0.9;
+/// Seconds a door's dip takes to come back from black.
+const DIP_IN_SECONDS: f32 = 0.2;
 /// Seconds between one hum and the next.
 const HUM_EVERY: f32 = 1.8;
 /// Metres a ride rises or falls in a second. Assumed: the install does not say how far apart the levels are.
@@ -28,6 +30,10 @@ pub(crate) struct LiftStage {
     /// Seconds since the last hum, and how many there were.
     hum: f32,
     hums: usize,
+    /// The ride going on, or the one just over, is a door's dip: no hum, no shake, a quicker fade.
+    dip: bool,
+    /// Seconds of the dip to black at doors to modules that are not joined: 0 for none (the default, as in tests).
+    dip_seconds: f32,
     /// Seconds of fade-in left after arriving.
     after: f32,
     /// The picture of the arrival is up, with its slide: how far, which way.
@@ -39,7 +45,14 @@ pub(crate) struct LiftStage {
 }
 
 impl Stage {
+    /// Dip to black for this long when a door leads to a module that is not joined, as the module behind is put up. 0 turns it
+    /// off, which is how a stage starts.
+    pub fn set_door_dip(&mut self, seconds: f32) {
+        self.lift.dip_seconds = seconds.max(0.0);
+    }
+
     pub(super) fn lift_tick(&mut self, dt: f32) {
+        self.game.world.door_dip = self.lift.dip_seconds;
         let riding = self.game.world.lift_ride().is_some();
         if riding {
             if !self.lift.was {
@@ -50,7 +63,9 @@ impl Stage {
             }
             self.lift.clock += dt;
             self.lift.hum += dt;
-            if self.lift.hum >= HUM_EVERY {
+            let dip = self.game.world.lift_ride().is_some_and(|r| r.dip);
+            self.lift.dip = dip;
+            if !dip && self.lift.hum >= HUM_EVERY {
                 self.lift.hum = 0.0;
                 let n = self.lift.hums % 5 + 1;
                 self.lift.hums += 1;
@@ -61,6 +76,8 @@ impl Stage {
             // Arrived: the screen has been dark, and comes back.
             self.lift.after = if self.lift.placed.is_some() {
                 0.0
+            } else if self.lift.dip {
+                DIP_IN_SECONDS
             } else {
                 FADE_IN_SECONDS
             };
@@ -140,18 +157,24 @@ impl Stage {
             return 0.0;
         }
         if let Some(r) = self.game.world.lift_ride() {
-            return (r.progress() / FADE_OUT_SHARE).min(1.0);
+            let share = if r.dip { 0.6 } else { FADE_OUT_SHARE };
+            return (r.progress() / share).min(1.0);
         }
         if self.lift.was {
             // The ride ended this frame and the module changes now: still black.
             return 1.0;
         }
-        (self.lift.after / FADE_IN_SECONDS).clamp(0.0, 1.0)
+        let total = if self.lift.dip {
+            DIP_IN_SECONDS
+        } else {
+            FADE_IN_SECONDS
+        };
+        (self.lift.after / total).clamp(0.0, 1.0)
     }
 
     /// The shake of the camera, metres up and down.
     pub fn lift_camera_shake(&self) -> f32 {
-        if self.game.world.lift_ride().is_none() {
+        if self.game.world.lift_ride().is_none_or(|r| r.dip) {
             return 0.0;
         }
         let t = self.lift.clock;
