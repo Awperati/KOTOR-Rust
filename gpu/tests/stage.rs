@@ -1786,3 +1786,70 @@ fn the_sith_armour_draws_its_wearer_as_a_sith_soldier() {
         );
     }
 }
+
+/// A weapon that is not in the hand hangs at its holster place, and in a fight it is in the hand (`docs/HOLSTERS.md`, stage 1).
+#[test]
+fn a_stored_weapon_hangs_at_its_holster() {
+    for (item, shape) in [
+        ("g_w_blstrpstl001", "holster hip_holster"),
+        ("g_w_blstrrfl001", "holster sling"),
+        ("g_w_lngswrd01", "holster sheath"),
+    ] {
+        if std::env::var("FRAME_ITEM").is_ok_and(|w| w != item) {
+            continue;
+        }
+        let Some(mut s) = stage() else { return };
+        let pc = s.game.world.pc;
+        s.game.world.object_mut(pc).unwrap().appearance = 92;
+        // Only the hero's: holsters of other creatures come and go as they walk about.
+        let count = |s: &mut Stage| {
+            let at = s.game.world.object(pc).unwrap().position;
+            s.dynamic_scene()
+                .meshes
+                .iter()
+                .filter(|m| m.name == shape)
+                .filter(|m| m.positions.iter().all(|p| (p[0] - at[0]).hypot(p[1] - at[1]) < 0.6))
+                .count()
+        };
+        let before = count(&mut s);
+        let gun = s.game.world.spawn_item(item);
+        s.game.world.object_mut(pc).unwrap().equipped.insert(4, gun);
+        s.update(DT);
+        let stored = count(&mut s);
+        assert_eq!(stored, before + 1, "{item}: its holster is drawn");
+        // FRAME_HOLSTER is a folder: a front, side and back frame of the weapon stored and then drawn.
+        if let Ok(dir) = std::env::var("FRAME_HOLSTER") {
+            for state in ["stored", "drawn"] {
+                if state == "drawn" {
+                    s.game.hold_stance(pc);
+                    s.update(DT);
+                }
+                let at = s.game.world.object(pc).unwrap().position;
+                let heading = s.game.world.pc_mover.heading;
+                for (view, side, away) in [("front", 1.0, false), ("side", 1.0, true), ("back", -1.0, false)] {
+                    let (dx, dy) = if away {
+                        (-heading.sin(), heading.cos())
+                    } else {
+                        (heading.cos(), heading.sin())
+                    };
+                    let cam = kotor_render::Camera {
+                        eye: [at[0] + dx * 2.2 * side, at[1] + dy * 2.2 * side, at[2] + 1.1],
+                        target: [at[0], at[1], at[2] + 0.95],
+                        fov: 40.0,
+                    };
+                    let mut gpu = GpuRenderer::new(480, 640).unwrap();
+                    let still = s.static_scene().clone();
+                    gpu.set_static_scene(&still, &mut |n| s.texture(n));
+                    let moving = s.dynamic_scene();
+                    let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+                    std::fs::write(format!("{dir}/{item}-{state}-{view}.png"), kotor_image::to_png(&img)).unwrap();
+                }
+            }
+            continue;
+        }
+        s.game.hold_stance(pc);
+        s.update(DT);
+        assert_eq!(count(&mut s), before, "{item}: no holster in the hand");
+        s.game.world.object_mut(pc).unwrap().equipped.remove(&4);
+    }
+}

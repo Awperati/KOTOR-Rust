@@ -3125,20 +3125,32 @@ impl Stage {
         if self.hides_equipment(id) {
             return Vec::new();
         }
-        let items: Vec<(&'static str, ObjId)> = self
+        let items: Vec<(&'static str, ObjId, bool)> = self
             .game
             .world
             .object(id)
             .map(|o| {
                 [(RIGHT_HAND_SLOT, "rhand"), (LEFT_HAND_SLOT, "lhand")]
                     .iter()
-                    .filter_map(|(slot, node)| Some((*node, *o.equipped.get(slot)?)))
+                    .filter_map(|(slot, node)| Some((*node, *o.equipped.get(slot)?, *node == "rhand")))
                     .collect()
             })
             .unwrap_or_default();
+        // A weapon is in the hand in a fight and on the body (a holster, a sling, a sheath) outside one, and in a conversation.
+        let drawn = self.game.weapons_drawn(id) && !self.game.world.in_dialogue();
         let mut held: Vec<(&'static str, Rc<Model>)> = items
             .into_iter()
-            .filter_map(|(node, item)| Some((node, self.item_model(item)?)))
+            .filter_map(|(node, item, right)| {
+                let model = self.item_model(item)?;
+                if drawn {
+                    return Some((node, model));
+                }
+                let base = self.game.world.object(item)?.base_item;
+                let wield: i32 = self.baseitem(base as usize, "weaponwield")?.parse().ok()?;
+                let key = kotor_render::holster::class_of(wield)
+                    .and_then(|class| kotor_render::holster::key_for(class, right));
+                Some((key.unwrap_or(node), model))
+            })
             .collect();
         // The grenade being thrown is in the right hand until it is let go.
         if let Some(template) = self.game.world.grenade_in_hand(id).map(str::to_string) {

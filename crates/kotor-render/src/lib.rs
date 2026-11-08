@@ -6,6 +6,7 @@ mod character;
 pub mod custom_clip;
 pub mod custom_mesh;
 pub mod face;
+pub mod holster;
 mod json;
 pub mod marks;
 mod objects;

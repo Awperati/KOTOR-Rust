@@ -399,7 +399,19 @@ impl Rig {
         node: &str,
         item: &Model,
     ) {
-        if let Some(at) = find(&self.body.world_matrices(pose), node) {
+        let mats = self.body.world_matrices(pose);
+        // A weapon that is not in the hand: at its place on the body (`holster::by_key`), with the plain holster beside it.
+        if let Some(h) = crate::holster::by_key(node) {
+            if let Some(at) = find(&mats, &h.node) {
+                let xf = mat_mul(&at, &h.local);
+                scene.add_model_with(item, None, &xf, &[], None, None);
+                if let Some(shape) = crate::holster::shape_mesh(&h.shape, &xf) {
+                    scene.meshes.push(shape);
+                }
+            }
+            return;
+        }
+        if let Some(at) = find(&mats, node) {
             scene.add_model_with(item, None, &at, &[], None, None);
         }
     }

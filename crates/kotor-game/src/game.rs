@@ -643,6 +643,13 @@ impl Game {
         }
     }
 
+    /// Whether creature `id` has its weapons in its hands: it is in a fight, or its stance from the last one holds. Until the combat
+    /// mode flag is merged (`docs/HOLSTERS.md`, stage 3) this is the fight stance.
+    pub fn weapons_drawn(&self, id: ObjId) -> bool {
+        self.ready_until.get(&id).is_some_and(|u| *u > self.steps)
+            || self.world.combat.target.contains_key(&id)
+    }
+
     /// The clip an object is playing right now.
     pub fn clip(&self, id: ObjId) -> Option<&Clip> {
         self.clips.get(&id)
