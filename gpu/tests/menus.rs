@@ -1,5 +1,6 @@
 //! The screens over the game, driven headless through the same clicks a window sends.
 use kotor_gpu::stage::{Cue, Stage};
+use kotor_ui::Hit;
 
 const DT: f32 = 1.0 / 30.0;
 const SIZE: (u32, u32) = (1280, 720);
@@ -7709,4 +7710,237 @@ fn the_force_page_lists_every_power_with_no_key_and_takes_a_key_with_alt() {
     press(&mut s, "BTN_Cancel");
     assert_eq!(s.action_for_key("KeyG"), None);
     std::fs::remove_file(&file).ok();
+}
+
+/// The owner's check of the option pages: at 720p and at 2160p, with the mouse and with a finger.
+const OPTION_SIZES: [(u32, u32); 2] = [(1280, 720), (3840, 2160)];
+const BIG: (u32, u32) = OPTION_SIZES[1];
+
+/// The buttons and sliders of the screen up, and its lists, found by a sweep of the cursor over it.
+fn page_controls(s: &mut Stage) -> (Vec<String>, Vec<String>) {
+    let (mut tags, mut lists) = (Vec::new(), Vec::new());
+    for y in (1..96).map(|n| n as f32 * 5.0) {
+        for x in (1..128).map(|n| n as f32 * 5.0) {
+            let p = (x * SIZE.0 as f32 / 640.0, y * SIZE.1 as f32 / 480.0);
+            let (found, t) = match s.menu_hit_at(p, SIZE) {
+                Some(Hit::Button(t) | Hit::Slider(t, _)) => (&mut tags, t),
+                Some(Hit::Row(t, _) | Hit::Cell(t, ..) | Hit::Step(t, ..)) => (&mut lists, t),
+                None => continue,
+            };
+            if !found.contains(&t) {
+                found.push(t);
+            }
+        }
+    }
+    (tags, lists)
+}
+
+/// The wheel turns a list a line at a time, whatever it is given.
+fn to_list_top(s: &mut Stage, count: usize) {
+    for _ in 0..=count {
+        s.menu_wheel(1.0);
+    }
+}
+
+/// The cursor at `p`: the words have to stay in their boxes, its help included.
+fn hover_words(
+    s: &mut Stage,
+    p: (f32, f32),
+    size: (u32, u32),
+    what: String,
+    found: &mut Vec<String>,
+) {
+    s.words_fit();
+    s.hover(p, size);
+    s.update(0.0);
+    s.overlay();
+    let (_, big) = s.words_fit();
+    found.extend(big.iter().map(|b| format!("{what}: {b}")));
+}
+
+/// At each size, every control's middle and every row's is inside the window and is that control for the cursor and a
+/// finger alike, and the words fit with the cursor on each. A list is scrolled until each of its rows has had its turn.
+fn page_fits(s: &mut Stage, found: &mut Vec<String>) -> Vec<String> {
+    let page = s.menu_name();
+    let (tags, lists) = page_controls(s);
+    assert!(tags.len() > 1, "{page}: {tags:?}");
+    for size in OPTION_SIZES {
+        s.set_view(size);
+        let inside =
+            |p: (f32, f32)| p.0 > 0.0 && p.1 > 0.0 && p.0 < size.0 as f32 && p.1 < size.1 as f32;
+        for t in &tags {
+            let Some(p) = s.menu_pixel(t, None, size) else {
+                found.push(format!("{page} {size:?}: {t} has no middle"));
+                continue;
+            };
+            if !inside(p) {
+                found.push(format!("{page} {size:?}: {t} is off the window at {p:?}"));
+            }
+            match s.menu_hit_at(p, size) {
+                Some(Hit::Button(u) | Hit::Slider(u, _)) if &u == t => {}
+                other => found.push(format!("{page} {size:?}: the middle of {t} is {other:?}")),
+            }
+            hover_words(s, p, size, format!("{page} {size:?} on {t}"), found);
+        }
+        for list in &lists {
+            let count = s.menu_rows(list).len();
+            let mut seen = vec![false; count];
+            to_list_top(s, count);
+            for _ in 0..=count {
+                for (row, done) in seen.iter_mut().enumerate() {
+                    let Some(p) = s.menu_pixel(list, Some(row), size) else {
+                        continue;
+                    };
+                    let on = s.menu_hit_at(p, size);
+                    if *done || !inside(p) || on != Some(Hit::Row(list.clone(), row)) {
+                        continue;
+                    }
+                    *done = true;
+                    hover_words(
+                        s,
+                        p,
+                        size,
+                        format!("{page} {size:?} on {list} row {row}"),
+                        found,
+                    );
+                }
+                if seen.iter().all(|d| *d) {
+                    break;
+                }
+                s.menu_wheel(-1.0);
+            }
+            let missed: Vec<usize> = (0..count).filter(|r| !seen[*r]).collect();
+            if !missed.is_empty() {
+                found.push(format!(
+                    "{page} {size:?}: {list} rows {missed:?} are never on the window"
+                ));
+            }
+            to_list_top(s, count);
+        }
+    }
+    s.set_view(SIZE);
+    tags
+}
+
+/// A finger at 2160p on what the page calls `tag`, as a touch screen has it.
+fn tap(s: &mut Stage, tag: &str, row: Option<usize>) {
+    s.set_view(BIG);
+    let p = s
+        .menu_pixel(tag, row, BIG)
+        .unwrap_or_else(|| panic!("no {tag} on {}", s.menu_name()));
+    s.finger_down(7, p, BIG);
+    s.finger_up(7, p, BIG);
+    s.update(DT);
+    s.set_view(SIZE);
+}
+
+/// A finger at 2160p changes a setting with `tag`, and the mouse at 720p puts it back.
+fn tap_then_click(s: &mut Stage, tag: &str, row: Option<usize>) {
+    let page = s.menu_name();
+    let before = s.settings();
+    tap(s, tag, row);
+    assert!(
+        s.settings() != before,
+        "{page}: a finger on {tag} {row:?} changes nothing"
+    );
+    match row {
+        Some(r) => click_row(s, tag, r),
+        None => press(s, tag),
+    }
+    s.update(DT);
+    assert!(
+        s.settings() == before,
+        "{page}: the mouse on {tag} {row:?} does not put it back"
+    );
+}
+
+#[test]
+fn every_option_page_fits_and_answers_the_mouse_and_a_finger_at_720p_and_2160p() {
+    let Some(mut s) = at_menu() else {
+        return;
+    };
+    temp_saves(&mut s, "option_pages");
+    let mut found = Vec::new();
+    // Each page is gone into with a finger at 2160p, and left with the mouse at 720p.
+    tap(&mut s, "BTN_OPTIONS", None);
+    assert_eq!(s.menu_name(), "options");
+    page_fits(&mut s, &mut found);
+    tap(&mut s, "BTN_GAMEPLAY", None);
+    page_fits(&mut s, &mut found);
+    tap_then_click(&mut s, "CB_AUTOSAVE", None);
+    tap(&mut s, "BTN_MOUSE", None);
+    page_fits(&mut s, &mut found);
+    tap_then_click(&mut s, "CB_REVBUTTONS", None);
+    press(&mut s, "BTN_BACK");
+    tap(&mut s, "BTN_KEYMAP", None);
+    page_fits(&mut s, &mut found);
+    let rows = s.menu_rows("LST_EventList");
+    tap(&mut s, "BTN_Filter_Game", None);
+    assert!(
+        s.menu_rows("LST_EventList") != rows,
+        "a finger on the game keys' filter"
+    );
+    press(&mut s, "BTN_Cancel");
+    assert_eq!(s.menu_name(), "gameplay");
+    // A page's help goes with it when Escape leaves it, as when Close does.
+    let help = |s: &mut Stage| s.menu_button_words("LB_DESC").unwrap_or_default();
+    let p = s.menu_pixel("CB_CLICK_TO_MOVE", None, SIZE).unwrap();
+    s.hover(p, SIZE);
+    let click_words = help(&mut s);
+    assert!(click_words.starts_with("On: a left click"), "{click_words}");
+    s.escape();
+    assert_eq!(s.menu_name(), "options");
+    tap(&mut s, "BTN_FEEDBACK", None);
+    let p = s.menu_pixel("BTN_DEFAULT", None, SIZE).unwrap();
+    s.hover(p, SIZE);
+    assert!(
+        help(&mut s) != click_words,
+        "the gameplay page's help on the feedback page"
+    );
+    page_fits(&mut s, &mut found);
+
+    tap_then_click(&mut s, "LB_OPTIONS", Some(0));
+    press(&mut s, "BTN_BACK");
+    tap(&mut s, "BTN_AUTOPAUSE", None);
+    page_fits(&mut s, &mut found);
+    tap_then_click(&mut s, "CB_ENDROUND", None);
+    press(&mut s, "BTN_BACK");
+    tap(&mut s, "BTN_GRAPHICS", None);
+    page_fits(&mut s, &mut found);
+    tap_then_click(&mut s, "BTN_MODPACKS", None);
+    tap(&mut s, "BTN_ADVANCED", None);
+    page_fits(&mut s, &mut found);
+    tap_then_click(&mut s, "CB_VSYNC", None);
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_BACK");
+    tap(&mut s, "BTN_SOUND", None);
+    page_fits(&mut s, &mut found);
+    // A finger near the start of the music's slider turns it down, and the mouse near its end turns it up.
+    let music = s.settings().music;
+    s.set_view(BIG);
+    let (x, y) = s.menu_pixel("SLI_MUSIC", None, BIG).unwrap();
+    let mut low = x;
+    while matches!(s.menu_hit_at((low - 8.0, y), BIG), Some(Hit::Slider(..))) {
+        low -= 8.0;
+    }
+    s.finger_down(7, (low + 16.0, y), BIG);
+    s.finger_up(7, (low + 16.0, y), BIG);
+    s.set_view(SIZE);
+    let down = s.settings().music;
+    assert!(down < 0.2, "{music} then {down}");
+    let (x, y) = s.menu_pixel("SLI_MUSIC", None, SIZE).unwrap();
+    let mut high = x;
+    while matches!(s.menu_hit_at((high + 4.0, y), SIZE), Some(Hit::Slider(..))) {
+        high += 4.0;
+    }
+    s.hover((high - 6.0, y), SIZE);
+    s.click((high - 6.0, y), SIZE);
+    assert!(
+        s.settings().music > 0.8,
+        "{down} then {}",
+        s.settings().music
+    );
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "options");
+    assert!(found.is_empty(), "{}", found.join("\n"));
 }

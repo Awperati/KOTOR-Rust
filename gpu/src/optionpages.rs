@@ -349,6 +349,18 @@ fn autopause_flag<'a>(s: &'a mut Settings, tag: &str) -> Option<&'a mut bool> {
 impl Stage {
     /// The words of what the cursor last rested on, in a page's list for them.
     fn option_words(&mut self, v: &mut MenuView, list: &str) {
+        // Words are of the page they were found on: one left by Escape, not Close, does not say them on the next.
+        let page = self
+            .menus
+            .stack
+            .iter()
+            .rev()
+            .find(|s| **s != Screen::Tutorial)
+            .copied();
+        if self.menus.option_words_page != page {
+            self.menus.option_words = None;
+            self.menus.option_reason = None;
+        }
         match (self.menus.option_words, self.menus.option_reason) {
             (Some(words), reason) => {
                 let text = self.ui.strref(words);
@@ -579,6 +591,14 @@ impl Stage {
 
     /// The cursor moved over an option page: what is under it says its words.
     pub(super) fn option_hover(&mut self, screen: Screen) {
+        let before = (self.menus.option_words, self.menus.option_reason);
+        self.option_hover_words(screen);
+        if (self.menus.option_words, self.menus.option_reason) != before {
+            self.menus.option_words_page = Some(screen);
+        }
+    }
+
+    fn option_hover_words(&mut self, screen: Screen) {
         if let (Screen::Graphics | Screen::GraphicsAdvanced, Some(Hit::Button(tag))) =
             (screen, &self.menus.hover)
         {

@@ -811,6 +811,8 @@ pub(super) struct Menus {
     option_words: Option<u32>,
     /// Why that option is greyed.
     option_reason: Option<&'static str>,
+    /// The page those words are of.
+    option_words_page: Option<Screen>,
     /// V-Sync when its page opened, and what it should become.
     vsync_before: bool,
     /// The anti-aliasing level the Advanced Graphics page found, for its Cancel.
@@ -3066,6 +3068,13 @@ impl Stage {
         let view = self.menu_view()?;
         let (x, y) = self.ui.menu_point(&view, tag, row)?;
         Some((x * size.0 as f32 / 640.0, y * size.1 as f32 / 480.0))
+    }
+
+    /// What the cursor or a finger at `pixel` of a window of `size` would be on, for a test or a driver.
+    pub fn menu_hit_at(&mut self, pixel: (f32, f32), size: (u32, u32)) -> Option<Hit> {
+        let view = self.menu_view()?;
+        let (x, y) = self.menu_layout_point(pixel, size);
+        self.ui.menu_hit(&view, x, y)
     }
 
     /// The point on a window of `size` in the middle of an arrow of a row's stepper: `by` is -1 or 1.
