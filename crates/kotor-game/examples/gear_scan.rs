@@ -5,13 +5,14 @@
 //!   cargo run --release -p kotor-game --example gear_scan -- [word]
 use kotor_archive::Install;
 use kotor_core::ResType;
-use kotor_gff::Gff;
 use kotor_game::World;
+use kotor_gff::Gff;
 use kotor_tables::TwoDa;
 
 /// `itempropdef.2da` rows that `gear.rs` reads (plus 10, cast spell, read by `items.rs`).
 const READ: [i64; 26] = [
-    0, 1, 5, 8, 10, 11, 12, 13, 15, 19, 20, 21, 26, 27, 28, 33, 34, 36, 38, 41, 43, 44, 45, 49, 57, 29,
+    0, 1, 5, 8, 10, 11, 12, 13, 15, 19, 20, 21, 26, 27, 28, 33, 34, 36, 38, 41, 43, 44, 45, 49, 57,
+    29,
 ];
 
 fn main() {
@@ -21,12 +22,27 @@ fn main() {
     let mut two = |n: &str| TwoDa::parse(&inst.read(n, ResType::TWODA).unwrap()).unwrap();
     let (props, base) = (two("itempropdef"), two("baseitems"));
     if word == "--columns" {
-        for c in ["maxdex", "dexbonus", "maxdexbonus", "armorcheckpen", "arcanespellfailure", "damageflags", "baseac", "acenchantment"] {
+        for c in [
+            "maxdex",
+            "dexbonus",
+            "maxdexbonus",
+            "armorcheckpen",
+            "arcanespellfailure",
+            "damageflags",
+            "baseac",
+            "acenchantment",
+        ] {
             println!("baseitems {c}: {:?}", base.column_index(c));
         }
         for r in 0..base.row_count() {
             if base.int(r, "baseac").unwrap_or(0) > 0 {
-                println!("{r} {} baseac {} dexbonus {:?} armorcheckpen {:?}", base.get(r, "label").unwrap_or("?"), base.int(r, "baseac").unwrap_or(0), base.int(r, "dexbonus"), base.int(r, "armorcheckpen"));
+                println!(
+                    "{r} {} baseac {} dexbonus {:?} armorcheckpen {:?}",
+                    base.get(r, "label").unwrap_or("?"),
+                    base.int(r, "baseac").unwrap_or(0),
+                    base.int(r, "dexbonus"),
+                    base.int(r, "armorcheckpen")
+                );
             }
         }
         return;
@@ -52,8 +68,10 @@ fn main() {
             let pn = props.get(n.max(0) as usize, "label").unwrap_or("?");
             let sub = p.int("Subtype").unwrap_or(0);
             let cv = p.int("CostValue").unwrap_or(0);
-            let up = p.int("UpgradeType").map_or(String::new(), |u| format!(" upgrade{u}"));
-            let flag = if READ.contains(&(n as i64)) { "" } else { " NOT-READ" };
+            let up = p
+                .int("UpgradeType")
+                .map_or(String::new(), |u| format!(" upgrade{u}"));
+            let flag = if READ.contains(&n) { "" } else { " NOT-READ" };
             shown.push(format!("{pn}({n}) sub{sub} cost{cv}{up}{flag}"));
         }
         println!("{name}\t{label}\t{kind} baseac {ac}\t{}", shown.join("; "));
