@@ -151,16 +151,20 @@ fn placement(p: [f32; 3], angle: f32) -> Mat {
     ]
 }
 
-/// `placement`, with the body laid flat on its back first.
-fn placement_flat(p: [f32; 3], angle: f32) -> Mat {
+/// `placement`, with the body fallen back `over` of the way (0 upright, 1 laid flat on its back) first.
+fn placement_flat(p: [f32; 3], angle: f32, over: f32) -> Mat {
     let (s, c) = angle.sin_cos();
+    let (so, co) = (over * std::f32::consts::FRAC_PI_2).sin_cos();
     [
-        [c, 0.0, s, p[0]],
-        [s, 0.0, -c, p[1]],
-        [0.0, 1.0, 0.0, p[2] + 0.15],
+        [c, -s * co, s * so, p[0]],
+        [s, c * co, -c * so, p[1]],
+        [0.0, so, co, p[2] + 0.15 * so],
         [0.0, 0.0, 0.0, 1.0],
     ]
 }
+
+/// How long a body with no death clip takes to fall back, in seconds.
+const FALL_SECONDS: f32 = 0.5;
 
 /// Steps of `Stage::voice_energy` in a second.
 const VOICE_RATE: f32 = kotor_render::VOICE_STEPS;
@@ -3750,7 +3754,8 @@ impl Stage {
         } else {
             ("pause1", rig.animation_length("pause1"))
         };
-        let t = clip.as_ref().map_or(0.0, |c| c.time);
+        let clip_time = clip.as_ref().map_or(0.0, |c| c.time);
+        let t = clip_time;
         let t = len
             .filter(|l| *l > 0.0)
             .map_or(0.0, |l| if name == "die" { t.min(l) } else { t % l });
@@ -3798,7 +3803,7 @@ impl Stage {
         // A player's choice of underwear: the bare body and the head's neck go by another name, which `texture` knows.
         wear_underwear(&mut body, 0, underwear);
         let xf = if flat {
-            placement_flat(at, angle)
+            placement_flat(at, angle, (clip_time / FALL_SECONDS).clamp(0.0, 1.0))
         } else {
             placement(at, angle)
         };
@@ -4534,5 +4539,25 @@ fn wear_underwear(scene: &mut Scene, from: usize, underwear: &str) {
             }
             m.texture = Some(name);
         }
+    }
+}
+
+#[cfg(test)]
+mod fall_tests {
+    use super::placement_flat;
+
+    /// A body with no death clip falls back over half a second: upright at the start, level at the end, in between on the way.
+    #[test]
+    fn a_body_with_no_death_clip_falls_back_instead_of_lying_down_at_once() {
+        let up = placement_flat([1.0, 2.0, 3.0], 0.7, 0.0);
+        // Its own up stays up, and its place is where it stood.
+        assert_eq!([up[0][3], up[1][3], up[2][3]], [1.0, 2.0, 3.0]);
+        assert!((up[2][2] - 1.0).abs() < 1e-5);
+        let half = placement_flat([1.0, 2.0, 3.0], 0.7, 0.5);
+        assert!(half[2][2] > 0.5 && half[2][2] < 0.9, "{}", half[2][2]);
+        let flat = placement_flat([1.0, 2.0, 3.0], 0.7, 1.0);
+        // Laid flat: its up now runs along the ground, and it lies a little over the floor.
+        assert!(flat[2][2].abs() < 1e-5);
+        assert!((flat[2][3] - 3.15).abs() < 1e-5);
     }
 }

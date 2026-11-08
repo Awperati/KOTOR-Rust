@@ -32,6 +32,17 @@ fn the_jawa_bodies_play_every_clip_the_game_asks_for_or_stand_idle() {
             stand_in,
             none.len()
         );
+        // A fight's clips stand in with something that moves: a ready stance idles, a blow is a taunt or a victory, a hit is a turn.
+        for (clip, own) in [
+            ("g1r1", "cpause1"),
+            ("g5r1", "cpause1"),
+            ("c2a1", "ctaunt"),
+            ("b5a1", "ctaunt"),
+            ("g1g1", "chturnl"),
+            ("g2d1", "cpause2"),
+        ] {
+            assert_eq!(rig.clip_name(clip), Some(own), "{model}: {clip}");
+        }
         // The ones a conversation, a walk and an idle ask for always resolve.
         for clip in ["pause1", "walk", "run", "tlknorm", "listen", "greeting"] {
             assert!(rig.clip_name(clip).is_some(), "{model}: {clip}");

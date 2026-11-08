@@ -235,11 +235,22 @@ impl Rig {
             (0..10).find_map(|d| has(&format!("{letter}{d}{doing}{}", b[3] as char)))
         };
         match doing {
-            'r' => other_digit('g').or_else(|| has("creadyr")),
-            'g' => other_digit('g').or_else(|| has("cdamages")),
-            'd' => other_digit('g').or_else(|| has("cdodgeg")),
+            // A body with none of these (a Jawa has a walk, an idle, a few gestures) moves in what it has: a ready stance idles, a
+            // blow is a taunt or a victory, a hit or a dodge a turn of the head or the second idle.
+            'r' => other_digit('g')
+                .or_else(|| has("creadyr"))
+                .or_else(|| has("cpause1")),
+            'g' => other_digit('g')
+                .or_else(|| has("cdamages"))
+                .or_else(|| has("chturnl"))
+                .or_else(|| has("cpause2")),
+            'd' => other_digit('g')
+                .or_else(|| has("cdodgeg"))
+                .or_else(|| has("cpause2")),
             'a' => other_digit(stance)
-                .or_else(|| ['g', 'b', 'c', 'm'].iter().find_map(|l| other_digit(*l))),
+                .or_else(|| ['g', 'b', 'c', 'm'].iter().find_map(|l| other_digit(*l)))
+                .or_else(|| has("ctaunt"))
+                .or_else(|| has("cvictory")),
             _ => None,
         }
     }
