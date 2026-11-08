@@ -143,6 +143,8 @@ impl World {
         self.stance.queues.retain(|id, _| party.contains(id));
         let auto = self.stance.auto_enabled;
         let live = self.stance.live;
+        // Nobody out there has noticed the party, even a little: the fight is over.
+        let watched = self.is_watched();
         for id in std::iter::once(self.pc).chain(party) {
             if self.objects.get(&id).is_none_or(|o| o.dead) {
                 continue;
@@ -156,6 +158,8 @@ impl World {
                     s.auto = true;
                 }
                 s.fought = s.on;
+            } else if watched {
+                s.calm = 0.0;
             } else {
                 // Out of a fight: a hold ends after a few seconds, and a mode that fought goes off after ten.
                 s.calm += dt;

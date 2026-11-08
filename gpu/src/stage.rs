@@ -3872,6 +3872,7 @@ impl Stage {
         let pause = self.pause_view();
         let touch = self.touch_view();
         let compass = self.compass_view();
+        let detection = self.detection_view();
         let cut = self.beat_camera().is_some();
         let key = match &view {
             Some(v) => format!(
@@ -3879,7 +3880,7 @@ impl Stage {
                 self.module, v.speaker, v.replies, v.subtitle, v.selected
             ),
             None => format!(
-                "{}h{:?}{target:?}{target_at:?}{slots_percent}{cut}{combat:?}{notices:?}{pause:?}{minimap:?}{floats:?}{touch:?}{compass:?}",
+                "{}h{:?}{target:?}{target_at:?}{slots_percent}{cut}{combat:?}{notices:?}{pause:?}{minimap:?}{floats:?}{touch:?}{compass:?}{detection:?}",
                 self.module,
                 party
                     .iter()
@@ -3934,6 +3935,7 @@ impl Stage {
         self.ui.set_pause(pause.0, pause.1);
         self.ui.set_touch(touch);
         self.ui.set_compass(compass);
+        self.ui.set_detection(detection);
         self.ui.set_combat(combat);
         self.hud_is_up = view.is_none();
         if part {

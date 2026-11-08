@@ -9,6 +9,7 @@ mod chargen;
 mod combat;
 mod combat_actions;
 mod cutscene;
+mod detection;
 mod dialogue;
 mod earlyforce;
 mod encounters;
@@ -33,6 +34,7 @@ mod slots;
 mod soundset;
 pub use medication::{MedicationTable, Sickness, UseOutcome, UseRequest};
 mod stance;
+pub use detection::DetectionMark;
 mod story_branches;
 pub use story_branches::{
     StoryState, ABANDONED_CLIP, BANDON_BLOWS, BANDON_FULL_HEALTH, BANDON_HEALTH, STORY_POINTS,

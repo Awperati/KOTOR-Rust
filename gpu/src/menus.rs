@@ -342,6 +342,8 @@ pub struct Settings {
     pub respawn: bool,
     /// Attack mode goes on with a fight for the leader and each companion, and off a few seconds after it.
     pub auto_attack_mode: bool,
+    /// Bars round the middle of the screen, one for each enemy that has noticed the party.
+    pub detection_bars: bool,
     /// A name and health bar over each enemy in sight, and the rest of what the F6 key turns off.
     pub nameplates: bool,
     /// The same all the time for neutral creatures and for friends, and not only when the cursor is on them.
@@ -423,6 +425,7 @@ impl Default for Settings {
             ground_finishers: true,
             respawn: true,
             auto_attack_mode: true,
+            detection_bars: true,
             nameplates: true,
             nameplates_neutral: false,
             nameplates_friendly: false,
@@ -456,8 +459,7 @@ impl Settings {
             .size
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
-            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}
-auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\ncompass={}\ncompass_size={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\nmod_packs={}\n",
+            "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}\nauto_attack_mode={}\ndetection_bars={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\ncompass={}\ncompass_size={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\nmod_packs={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -502,6 +504,7 @@ auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_ra
             self.ground_finishers,
             self.respawn,
             self.auto_attack_mode,
+            self.detection_bars,
             self.cel_shading,
             self.anti_aliasing,
             self.motion_blur,
@@ -564,6 +567,7 @@ auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_ra
                 "ground_finishers" => s.ground_finishers = v == "true",
                 "respawn" => s.respawn = v == "true",
                 "auto_attack_mode" => s.auto_attack_mode = v == "true",
+                "detection_bars" => s.detection_bars = v == "true",
                 "australian_english" => s.australian_english = v == "true",
                 "nameplates" => s.nameplates = v == "true",
                 "nameplates_neutral" => s.nameplates_neutral = v == "true",

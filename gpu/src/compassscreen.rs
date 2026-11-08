@@ -7,7 +7,7 @@
 
 use super::Stage;
 use kotor_game::{Kind, ObjId, ObjectLabel};
-use kotor_ui::{wrapped, CompassIcon, CompassMark, CompassView};
+use kotor_ui::{wrapped, CompassIcon, CompassMark, CompassView, DetectionMarkView, DetectionView};
 
 /// How often the world is looked through for what is near, and for the tracked quest, in seconds.
 const LOOK_SECONDS: f32 = 0.25;
@@ -22,6 +22,8 @@ const MOST_MARKS: usize = 24;
 const ENEMY_LIKING: i32 = 10;
 /// A compass moves on by whole steps of these, so that it is not drawn again for a turn nobody could see.
 const ANGLE_STEP: f32 = 0.01;
+/// Bars on the screen at most: the most alerted enemies.
+const MOST_BARS: usize = 8;
 const NEAR_STEP: f32 = 0.1;
 const ELEVATOR_WORD: &str = "elevator";
 
@@ -134,6 +136,38 @@ impl Stage {
     }
 
     /// What the HUD draws of the compass.
+    /// The detection bars: a mark for each enemy that has noticed the party, at most `MOST_BARS` of the most alerted, and
+    /// the way it lies from where the camera looks. Steps of a degree, so that walking does not redraw them each frame.
+    pub(in crate::stage) fn detection_view(&mut self) -> DetectionView {
+        if !self.settings().detection_bars {
+            return DetectionView::default();
+        }
+        let here = self.pc_position();
+        let facing = self.yaw;
+        let mut marks = self.game.world.detection_marks();
+        marks.sort_by(|a, b| b.fill.total_cmp(&a.fill));
+        marks.truncate(MOST_BARS);
+        DetectionView {
+            on: !marks.is_empty(),
+            size: 100,
+            marks: marks
+                .into_iter()
+                .map(|m| {
+                    let bearing = (m.position[1] - here[1]).atan2(m.position[0] - here[0]);
+                    DetectionMarkView {
+                        right: stepped(wrapped(facing - bearing), ANGLE_STEP),
+                        fill: (m.fill * 50.0).round() / 50.0,
+                        fade: if m.sees {
+                            1.0
+                        } else {
+                            (m.fill * 25.0).round() / 25.0
+                        },
+                    }
+                })
+                .collect(),
+        }
+    }
+
     pub(in crate::stage) fn compass_view(&mut self) -> CompassView {
         let s = self.settings();
         if !s.compass {

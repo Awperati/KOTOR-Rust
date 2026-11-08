@@ -557,6 +557,8 @@ pub struct World {
     pub medication: BTreeMap<ObjId, crate::medication::Sickness>,
     /// What a medical item being used heals, as a share of its full heal.
     pub(crate) heal_scale: f32,
+    /// How far each enemy has noticed the party, 0 to 1: the detection bars.
+    pub detection: BTreeMap<ObjId, f32>,
     /// For a test driver: this creature stays at this place, and the player at this other, while this item still has at least this
     /// many in its stack.
     pub hold_in_place: Option<HoldInPlace>,
@@ -742,6 +744,7 @@ impl World {
             stance: Default::default(),
             medication: BTreeMap::new(),
             heal_scale: 1.0,
+            detection: BTreeMap::new(),
             hold_in_place: None,
             law: Default::default(),
             lost_quests: Vec::new(),

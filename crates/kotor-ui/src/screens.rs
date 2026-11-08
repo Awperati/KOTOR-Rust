@@ -120,6 +120,8 @@ pub struct Ui<'a> {
     pub(crate) touch: TouchView,
     /// What the compass shows: `compass.rs`.
     pub(crate) compass: CompassView,
+    /// What the detection bars show: `detection.rs`.
+    pub(crate) detection: crate::detection::DetectionView,
 }
 
 /// What a slot under an enemy's bar shows now.
@@ -188,6 +190,7 @@ struct HudDrawn {
     pause_note: String,
     touch: TouchView,
     compass: CompassView,
+    detection: crate::detection::DetectionView,
 }
 
 /// The lines rising words can wrap to.
@@ -359,6 +362,7 @@ impl<'a> Ui<'a> {
             slots_above_bar: false,
             touch: TouchView::default(),
             compass: CompassView::default(),
+            detection: Default::default(),
             slots_percent: 100,
             hud_party: 1,
             paused: false,
@@ -1239,6 +1243,7 @@ impl<'a> Ui<'a> {
             || was.pause_note != self.pause_note
             || was.touch.on != self.touch.on
             || was.compass.on != self.compass.on
+            || was.detection.on != self.detection.on
         {
             return None;
         }
@@ -1274,6 +1279,9 @@ impl<'a> Ui<'a> {
         if was.compass != now.compass {
             boxes.extend(self.compass_changes(&gui.panel, &was.compass, &now.compass));
         }
+        if was.detection != now.detection {
+            boxes.extend(self.detection_changes(&was.detection, &now.detection));
+        }
         let mut cv = self.hud_canvas_over(picture);
         let mut changed = None;
         for b in merged_boxes(boxes) {
@@ -1303,6 +1311,7 @@ impl<'a> Ui<'a> {
             pause_note: self.pause_note.clone(),
             touch: self.touch.clone(),
             compass: self.compass.clone(),
+            detection: self.detection.clone(),
         }
     }
 
@@ -1488,6 +1497,7 @@ impl<'a> Ui<'a> {
             self.draw_text(cv, FLOAT_FONT, &f.text, r, 18, f.color);
         }
         self.draw_compass(cv, &gui.panel);
+        self.draw_detection(cv);
         self.draw_touch(cv, &gui.panel);
     }
 

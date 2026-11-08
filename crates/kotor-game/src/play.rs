@@ -917,6 +917,7 @@ impl World {
         self.timed("followers", |w| w.update_followers(dt));
         self.timed("combat", |w| w.update_combat(dt));
         self.update_law();
+        self.update_detection(dt);
         self.update_stance(dt);
         self.update_respawn();
         if let Some(h) = self.hold_in_place {

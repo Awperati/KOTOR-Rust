@@ -3,6 +3,7 @@
 
 mod canvas;
 mod compass;
+mod detection;
 mod font;
 pub mod glow;
 mod gui;
@@ -15,6 +16,7 @@ mod ttf;
 
 pub use canvas::{Canvas, Orient};
 pub use compass::{wrapped, CompassIcon, CompassMark, CompassView, COMPASS_ICONS};
+pub use detection::{detection_color, DetectionMarkView, DetectionView};
 pub use font::{flip_rows, parse_font_txi, Font, Glyph};
 pub use gui::{Border, Control, Extent, Gui, GuiText};
 pub use menus::{Cell, EndButton, Hit, Mark, MenuView, Notice, Row};
