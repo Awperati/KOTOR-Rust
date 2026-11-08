@@ -11,6 +11,9 @@ tar_bastsearch	55	tar_m03af	talk	RaceAnnoun031	Enter the swoop race
 tar_escape	10	tar_m03ae	area		Meet Canderous in the cantina
 tar_escape	20	tar_m09ab	kill	DarkJediap091	Recover the departure codes
 tar_escape	25	tar_m03ae	area		Bring the codes to Canderous
+tar_escape	30	tar_m03ae	area		Meet Canderous in the cantina
+tar_escape	50	tar_m08aa	item	Ramp	Board the Ebon Hawk
+dan_council	20	danm13	talk	dan13_vandar	Hear what the Council says
 dan_trials	30	danm14ac	talk	dan14_juhani	Find the fallen student in the grove
 dan_trials	45	danm13	talk	dan13_zhar	Tell the Council what happened in the grove
 dan_ruins	10	danm15	talk	dan15_ancientdrd	Explore the ruins
@@ -22,6 +25,10 @@ tat17_starmap	40	tat_m18ac	talk	tat18_11komad_01	Search the Eastern Dune Sea
 tat17_starmap	50	tat_m18ac	talk	tat18_11komad_01	Search the Eastern Dune Sea
 tat17_starmap	60	tat_m18ac	talk	tat18_11komad_01	Ask the hunter about the dragon
 tat17_starmap	80	tat_m18ac	item	K_TAT_STAR_MAP	Search the dragon's lair
+tat18ac_dragonhunt	10	tat_m18ac	talk	tat18_11komad_01	Talk to the hunter
+tat18ac_dragonhunt	40	tat_m18ac	area	WP_tat18_bantha1_01	Find the banthas
+tat18ac_dragonhunt	50	tat_m18ac	area	tat18_wp_kraytmv	Lead the banthas to the lair
+tat18ac_dragonhunt	60	tat_m18ac	area	tat18_wp_kraytmv	Wait by the lair
 kas22_starmap	10	kas_m23ad	talk	kas23_chuunda_01	See the chieftain in Rwookrrorro
 kas22_starmap	20	kas_m24aa	talk	Jolee	Find a way past the force field
 kas22_starmap	30	kas_m24aa	talk	Jolee	Find a way past the force field
@@ -51,3 +58,4 @@ kor33_enteracademy	45	korr_m33aa	area	k33_way_yuthura	Show the medallion to the 
 kor33_enteracademy	46	korr_m33aa	area	k33_way_yuthura	Show the medallion to the Sith Master
 kor33_findstarmap	20	korr_m33ab	talk	k33_academyguard	Get into the Sith academy
 kor33_findstarmap	30	korr_m39aa	door	k39_door_starmap	Enter the tomb in the valley
+kor35_findingdustil	10	korr_m35aa	area	k35_way_dustil	Find Carth's son in the academy

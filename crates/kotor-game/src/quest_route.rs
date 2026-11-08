@@ -28,7 +28,7 @@ const ROUTINE_JOURNAL: u16 = 367;
 const ROUTINE_NEW_MODULE: u16 = 509;
 /// How far before a call its constants are looked for.
 const ARGUMENTS_WITHIN: usize = 10;
-const INDEX_VERSION: u32 = 1;
+const INDEX_VERSION: u32 = 2;
 /// Where another planet is reached from.
 const THE_SHIP: &str = "ebo_m12aa";
 /// On the ship: the galaxy map, and the way out onto the planet it stands on.
@@ -463,28 +463,45 @@ fn scan_module(inst: &mut Install, module: &str, index: &mut QuestIndex) -> Opti
             }
         }
     }
-    let mut set_by_a_node: BTreeSet<String> = BTreeSet::new();
-    for (name, ty) in &resources {
-        if *ty != ResType::DLG {
-            continue;
+    let dialogs: Vec<(&String, Dialog)> = resources
+        .iter()
+        .filter(|(_, ty)| *ty == ResType::DLG)
+        .filter_map(|(name, _)| {
+            let d = inst
+                .read(name, ResType::DLG)
+                .ok()
+                .and_then(|b| Gff::parse(&b).ok())
+                .and_then(|g| Dialog::from_gff(&g).ok())?;
+            Some((name, d))
+        })
+        .collect();
+    // A script the module's talks or objects run but that the game keeps for all of them, as Anchorhead's gate guard's
+    // `k_ptat_dunesea` to the Dune Sea.
+    let wanted: BTreeSet<String> = dialogs
+        .iter()
+        .flat_map(|(_, d)| d.entries.iter().chain(&d.replies))
+        .filter_map(|n| n.script.as_deref())
+        .map(str::to_ascii_lowercase)
+        .chain(users.keys().cloned())
+        .filter(|s| !s.is_empty() && !facts.contains_key(s))
+        .collect();
+    let mut shared: BTreeMap<String, ScriptFacts> = BTreeMap::new();
+    for name in wanted {
+        if let Ok(b) = inst.read(&name, ResType::NCS) {
+            shared.insert(name, script_facts(&b));
         }
-        let Some(d) = inst
-            .read(name, ResType::DLG)
-            .ok()
-            .and_then(|b| Gff::parse(&b).ok())
-            .and_then(|g| Dialog::from_gff(&g).ok())
-        else {
-            continue;
-        };
+    }
+    let mut set_by_a_node: BTreeSet<String> = BTreeSet::new();
+    for (name, d) in &dialogs {
         let nobody = vec![(String::new(), StepKind::Area)];
-        let who = owners.get(name).unwrap_or(&nobody);
+        let who = owners.get(*name).unwrap_or(&nobody);
         for n in d.entries.iter().chain(&d.replies) {
             for (tag, kind) in who {
                 if let Some((q, state)) = node_quest(n) {
                     index.add_setter(&q, state, module, tag, *kind);
                 }
                 let script = n.script.as_deref().unwrap_or_default().to_ascii_lowercase();
-                if let Some(f) = facts.get(&script) {
+                if let Some(f) = facts.get(&script).or_else(|| shared.get(&script)) {
                     set_by_a_node.insert(script.clone());
                     for (q, state) in &f.journal {
                         index.add_setter(q, *state, module, tag, *kind);
@@ -511,6 +528,17 @@ fn scan_module(inst: &mut Install, module: &str, index: &mut QuestIndex) -> Opti
         if who.is_none() && !set_by_a_node.contains(script) {
             for (q, state) in &f.journal {
                 index.add_setter(q, *state, module, "", StepKind::Area);
+            }
+        }
+    }
+    // A shared script counts only where an object here runs it.
+    for (script, f) in &shared {
+        for (tag, kind) in users.get(script).into_iter().flatten() {
+            for (q, state) in &f.journal {
+                index.add_setter(q, *state, module, tag, *kind);
+            }
+            for to in &f.goes_to {
+                index.add_link(module, tag, scripted_exit(*kind, tag), to);
             }
         }
     }
@@ -818,6 +846,8 @@ fn exit_label(exit: &Link, o: &Object) -> String {
         StepKind::Elevator => "Take the elevator".to_string(),
         StepKind::Door if !o.name.is_empty() => format!("Go through {}", o.name),
         StepKind::Door => "Go through this door".to_string(),
+        // A way out by a talk, as Anchorhead's gate guard to the Dune Sea.
+        StepKind::Talk if !o.name.is_empty() => format!("Talk to {}", o.name),
         _ => "Leave this way".to_string(),
     }
 }

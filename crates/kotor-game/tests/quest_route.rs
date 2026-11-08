@@ -205,6 +205,10 @@ fn from_each_landing_the_main_quests_lead_on_towards_their_row() {
         ("manm26ad", "man26_starmap", 30),
         ("korr_m33aa", "kor33_findstarmap", 20),
         ("korr_m33aa", "kor33_findstarmap", 30),
+        // The Dune Sea is reached by a talk with Anchorhead's gate guard, whose script is the game's shared one.
+        ("tat_m17ab", "tat17_starmap", 30),
+        ("tat_m17ab", "tat18ac_dragonhunt", 40),
+        ("manm26ad", "man_planet", 40),
     ];
     for (landing, quest, state) in cases {
         let row = rows
@@ -224,7 +228,27 @@ fn from_each_landing_the_main_quests_lead_on_towards_their_row() {
             .values()
             .find(|o| step.id.ends_with(&o.tag.to_ascii_lowercase()));
         assert!(exit.is_some(), "{quest} {state}: {step:?}");
+        // A place on this planet is never by way of the ship.
+        let to_the_ship = w.objects.values().any(|o| {
+            step.id
+                .ends_with(&format!("/{}", o.tag.to_ascii_lowercase()))
+                && o.link_module.eq_ignore_ascii_case("ebo_m12aa")
+        });
+        assert!(!to_the_ship, "{quest} {state}: {step:?}");
     }
+}
+
+/// Anchorhead's way to the Dune Sea is a talk with the gate guard: the step is that person, and says so.
+#[test]
+fn a_way_out_by_a_talk_points_at_the_person() {
+    let Some(mut w) = at("tat_m17aa") else {
+        return;
+    };
+    in_state(&mut w, "tat17_starmap", 30);
+    let step = w.next_step("tat17_starmap").expect("a step");
+    assert_eq!(step.kind, StepKind::Talk, "{step:?}");
+    assert!(step.label.starts_with("Talk to "), "{step:?}");
+    assert_eq!(step.final_module, "tat_m18ac");
 }
 
 /// On the ship, a quest on another planet is the galaxy map; on the planet the ship stands on, the way out.
