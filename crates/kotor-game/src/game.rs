@@ -695,6 +695,13 @@ impl Game {
                 self.hand_state.insert(id, (was, t + dt));
             }
         }
+        // Blows wait for an armed creature's draw: the hand is not yet at the weapon.
+        let waits = armed && !down && !self.weapon_ready(id);
+        if waits {
+            self.world.combat.drawing.insert(id);
+        } else {
+            self.world.combat.drawing.remove(&id);
+        }
     }
 
     /// How far the hand is through its reach to the holster, 0 to 1 and back to 0, while a draw or a holster takes place.

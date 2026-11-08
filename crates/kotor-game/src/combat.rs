@@ -122,6 +122,8 @@ pub struct CombatState {
     swings: Vec<(f32, ObjId, ObjId, i32)>,
     /// Who is attacking whom (set by `ActionAttack`, cleared when the target dies or the actions are cleared).
     pub target: BTreeMap<ObjId, ObjId>,
+    /// Who is still drawing a weapon (or has it holstered): their blows wait (`Game::weapon_ready`, set by the game each step).
+    pub drawing: BTreeSet<ObjId>,
     /// (watcher, watched) pairs that have already been noticed.
     pub perceived: BTreeSet<(ObjId, ObjId)>,
     pub last_attacker: BTreeMap<ObjId, ObjId>,
@@ -620,6 +622,10 @@ impl World {
         slot: i32,
         penalty: i32,
     ) {
+        // A weapon being drawn cannot fire or strike yet: the round passes and nothing is spent.
+        if self.combat.drawing.contains(&attacker) {
+            return;
+        }
         let weapon = self.hand_weapon(attacker, slot).unwrap_or(Weapon::UNARMED);
         let bonus = self.attack_bonus_of(attacker, slot)
             + penalty

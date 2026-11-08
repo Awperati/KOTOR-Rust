@@ -421,3 +421,53 @@ fn a_body_already_down_lies_still_and_one_that_falls_now_falls() {
         falls.time
     );
 }
+
+/// A weapon being drawn cannot fire yet: the blows wait for the draw, then land (`docs/HOLSTERS.md`).
+#[test]
+fn a_blow_waits_for_the_draw_and_then_lands() {
+    let Some(mut g) = game() else { return };
+    let pc = g.world.pc;
+    let Some(foe) = g
+        .world
+        .objects
+        .values()
+        .find(|o| o.template == "n_sithsoldier003")
+        .map(|o| o.id)
+    else {
+        return;
+    };
+    let at = g.world.object(foe).unwrap().position;
+    g.world.teleport(pc, [at[0] - 1.2, at[1], at[2]]);
+    g.world.object_mut(pc).unwrap().min_one_hp = true;
+    let f = g.world.object_mut(foe).unwrap();
+    (f.hp, f.max_hp) = (900, 900);
+    let it = g.world.spawn_item("g_w_lngswrd01");
+    g.world.equip(pc, it, Some(4)).unwrap();
+    // Some steps out of a fight, so the sword is on the back.
+    for _ in 0..10 {
+        g.step_once();
+    }
+    assert!(!g.weapon_ready(pc));
+    g.world.attack(pc, foe);
+    let draw = (kotor_game::DRAW_SECONDS / g.dt) as usize;
+    let mut waited = true;
+    for i in 0..draw - 4 {
+        g.step_once();
+        waited &= g.world.combat.drawing.contains(&pc) || i == 0;
+        assert_eq!(
+            g.world.object(foe).unwrap().hp,
+            900,
+            "no blow lands during the draw (step {i})"
+        );
+    }
+    assert!(waited, "the draw holds the blows back");
+    let mut landed = false;
+    for _ in 0..(8.0 / g.dt) as usize {
+        g.step_once();
+        landed |= g.world.object(foe).unwrap().hp < 900;
+    }
+    assert!(
+        g.weapon_ready(pc) && landed,
+        "after the draw the blows land"
+    );
+}

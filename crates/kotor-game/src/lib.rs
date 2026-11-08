@@ -87,7 +87,7 @@ pub use force::{push_metres, Thud};
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use galaxy::{GalaxyOpen, PlanetLine};
 pub use game::item_use_clip as item_use_clip_for_test;
-pub use game::{Clip, Game, Pose};
+pub use game::{Clip, Game, Pose, DRAW_SECONDS};
 pub use game_mode::GameMode;
 pub use host::RoutineStatus;
 pub use items::{
