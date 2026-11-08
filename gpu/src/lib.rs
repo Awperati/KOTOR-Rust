@@ -1773,7 +1773,10 @@ impl GpuRenderer {
                 pass.set_bind_group(0, g, &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
-                pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
+                pass.set_index_buffer(
+                    d.indices.slice(d.index_bytes.clone()),
+                    wgpu::IndexFormat::Uint32,
+                );
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             let mut parts: Vec<(&Draw, usize)> = Vec::new();
@@ -1809,7 +1812,10 @@ impl GpuRenderer {
                 pass.set_bind_group(0, bind_of(*k), &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
-                pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
+                pass.set_index_buffer(
+                    d.indices.slice(d.index_bytes.clone()),
+                    wgpu::IndexFormat::Uint32,
+                );
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             if self.cel > 0 {
@@ -1819,7 +1825,10 @@ impl GpuRenderer {
                     pass.set_bind_group(0, bind_of(g_moving), &[]);
                     pass.set_bind_group(1, &d.bind, &[]);
                     pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
-                    pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
+                    pass.set_index_buffer(
+                        d.indices.slice(d.index_bytes.clone()),
+                        wgpu::IndexFormat::Uint32,
+                    );
                     pass.draw_indexed(0..d.count, 0, 0..1);
                 }
                 // The figures of the area seen through a doorway, in the doorway's view only.
@@ -1828,7 +1837,10 @@ impl GpuRenderer {
                         pass.set_bind_group(0, bind_of(g_portal), &[]);
                         pass.set_bind_group(1, &d.bind, &[]);
                         pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
-                        pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
+                        pass.set_index_buffer(
+                            d.indices.slice(d.index_bytes.clone()),
+                            wgpu::IndexFormat::Uint32,
+                        );
                         pass.draw_indexed(0..d.count, 0, 0..1);
                     }
                 }
@@ -1848,7 +1860,10 @@ impl GpuRenderer {
                 pass.set_bind_group(0, bind_of(k), &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
                 pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
-                pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
+                pass.set_index_buffer(
+                    d.indices.slice(d.index_bytes.clone()),
+                    wgpu::IndexFormat::Uint32,
+                );
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             pass.set_bind_group(0, &globals_bind, &[]);

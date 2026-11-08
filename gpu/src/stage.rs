@@ -1005,7 +1005,11 @@ impl Stage {
         phase!(self, "take_party_request", self.take_party_request());
         phase!(self, "take_galaxy_request", self.take_galaxy_request());
         phase!(self, "take_pazaak_request", self.take_pazaak_request());
-        phase!(self, "forget_container_choices", self.forget_container_choices());
+        phase!(
+            self,
+            "forget_container_choices",
+            self.forget_container_choices()
+        );
         phase!(self, "slots_tick", self.slots_tick());
         phase!(self, "notices_tick", self.notices_tick());
         phase!(self, "aim_tick", self.aim_tick(dt));
