@@ -368,7 +368,7 @@ pub struct Settings {
     pub override_screens: bool,
     pub override_talk: bool,
     /// The packs in the player's own mods folder (`KOTOR_MODS_ROOT`) are used: skyboxes, saber beams, character pictures, weapon
-    /// models. Read from there at run time. Takes hold at the next start. Kept in the settings file only: no row of the menu yet.
+    /// models. Read from there at run time. Takes hold at the next start. Options, Graphics has its button.
     pub mod_packs: bool,
 }
 
@@ -2497,9 +2497,10 @@ impl Stage {
                     (d.brightness, d.anti_aliasing, d.motion_blur);
                 self.settings_changed();
             }
-            (Screen::Graphics, optionpages::AA_BUTTON | optionpages::BLUR_BUTTON) => {
-                self.graphics_effect_press(tag)
-            }
+            (
+                Screen::Graphics,
+                optionpages::AA_BUTTON | optionpages::BLUR_BUTTON | optionpages::MOD_PACKS_BUTTON,
+            ) => self.graphics_effect_press(tag),
             (Screen::Graphics, "BTN_ADVANCED") => self.open_graphics_advanced(),
             (Screen::GraphicsAdvanced, _) => self.graphics_advanced_press(tag),
             (Screen::Graphics, "BTN_RESOLUTION") => {

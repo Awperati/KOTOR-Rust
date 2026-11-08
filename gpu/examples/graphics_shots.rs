@@ -56,6 +56,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut s, "graphics_page");
     hover(&mut s, "BTN_AA");
     shot(&mut s, "graphics_page_aa");
+    hover(&mut s, "BTN_MODPACKS");
+    shot(&mut s, "graphics_page_modpacks");
     click(&mut s, "BTN_ADVANCED");
     hover(&mut s, "BTN_ANTIALIAS");
     shot(&mut s, "graphics_advanced");

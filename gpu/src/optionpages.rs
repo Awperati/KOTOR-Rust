@@ -194,8 +194,12 @@ pub(super) const BLUR_NAMES: [&str; 4] = ["Off", "Subtle", "Moderate", "Intense"
 /// looked for them there. They are copies of that button, and a click goes on to the next level, as Screen Resolution does.
 pub(super) const AA_BUTTON: &str = "BTN_AA";
 pub(super) const BLUR_BUTTON: &str = "BTN_MOTIONBLUR";
-const AA_BUTTON_AT: [i32; 4] = [60, 280, 240, 22];
-const BLUR_BUTTON_AT: [i32; 4] = [60, 315, 240, 22];
+const AA_BUTTON_AT: [i32; 4] = [60, 276, 240, 22];
+const BLUR_BUTTON_AT: [i32; 4] = [60, 302, 240, 22];
+/// The player's own mod packs, under them: Top Dog for the owner, "Mod packs: Off/On, default Off".
+pub(super) const MOD_PACKS_BUTTON: &str = "BTN_MODPACKS";
+const MOD_PACKS_BUTTON_AT: [i32; 4] = [60, 328, 240, 22];
+const MOD_PACKS_WORDS: &str = "On: skyboxes, saber beams, and character and weapon texture packs are read from your mods folder while the game runs. Nothing is copied into the game. It takes hold at the next start.";
 /// The Advanced page's own Anti-Aliasing button and its arrows.
 const AA_ADVANCED: [&str; 3] = ["BTN_ANTIALIAS", "BTN_ANTIALIASLEFT", "BTN_ANTIALIASRIGHT"];
 /// A box on the Auto-Pause page, and its words.
@@ -352,6 +356,9 @@ impl Stage {
         let s = self.menus.settings;
         v.copy_control("BTN_ADVANCED", AA_BUTTON, AA_BUTTON_AT);
         v.copy_control("BTN_ADVANCED", BLUR_BUTTON, BLUR_BUTTON_AT);
+        v.copy_control("BTN_ADVANCED", MOD_PACKS_BUTTON, MOD_PACKS_BUTTON_AT);
+        let packs = if s.mod_packs { "On" } else { "Off" };
+        v.text(MOD_PACKS_BUTTON, format!("Mod packs: {packs}"));
         let aa = AA_NAMES[s.anti_aliasing.clamp(0, 3) as usize];
         let blur = BLUR_NAMES[s.motion_blur.clamp(0, 3) as usize];
         v.text(AA_BUTTON, format!("Anti-aliasing: {aa}"));
@@ -364,6 +371,7 @@ impl Stage {
         match tag {
             AA_BUTTON => s.anti_aliasing = (s.anti_aliasing + 1) % 4,
             BLUR_BUTTON => s.motion_blur = (s.motion_blur + 1) % 4,
+            MOD_PACKS_BUTTON => s.mod_packs = !s.mod_packs,
             _ => return,
         }
         self.settings_changed();
@@ -559,6 +567,8 @@ impl Stage {
                 Some(VALUE_ROWS[4].1)
             } else if tag == BLUR_BUTTON {
                 Some(VALUE_ROWS[5].1)
+            } else if tag == MOD_PACKS_BUTTON {
+                Some(MOD_PACKS_WORDS)
             } else {
                 None
             };

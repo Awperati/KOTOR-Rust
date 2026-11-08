@@ -3573,6 +3573,38 @@ fn vsync_is_the_advanced_graphics_box_that_works_and_the_rest_say_why_not() {
 }
 
 #[test]
+fn the_graphics_page_turns_mod_packs_on_for_the_next_start() {
+    let Some((mut s, dir)) = in_game("mod_packs") else {
+        return;
+    };
+    let file = dir.join("settings.txt");
+    let _ = std::fs::remove_file(&file);
+    s.use_settings_file(file.clone());
+    s.escape();
+    press(&mut s, "BTN_GRAPHICS");
+    s.update(DT);
+    let words = |s: &mut Stage| s.menu_button_words("BTN_MODPACKS").unwrap_or_default();
+    assert_eq!(words(&mut s), "Mod packs: Off", "off at first");
+    let (_, too_big) = s.words_fit();
+    assert!(too_big.is_empty(), "{too_big:?}");
+    press(&mut s, "BTN_MODPACKS");
+    assert!(s.settings().mod_packs);
+    assert_eq!(words(&mut s), "Mod packs: On");
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("mod_packs=true"));
+    // The cursor on it says what it does; the other buttons still answer where they are.
+    let plain = frame(&mut s);
+    let at = s.menu_pixel("BTN_MODPACKS", None, SIZE).unwrap();
+    s.hover(at, SIZE);
+    assert!(frame(&mut s) != plain);
+    press(&mut s, "BTN_MOTIONBLUR");
+    assert_eq!(s.motion_blur(), 2);
+    press(&mut s, "BTN_MODPACKS");
+    assert!(!s.settings().mod_packs);
+}
+
+#[test]
 fn the_gameplay_page_has_click_to_move_off_at_first() {
     let Some((mut s, dir)) = in_game("click_row") else {
         return;
