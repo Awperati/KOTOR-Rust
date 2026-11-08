@@ -324,6 +324,10 @@ impl World {
         ) else {
             return;
         };
+        // A body stays where it fell.
+        if self.objects.get(&target).is_some_and(|o| o.dead) {
+            return;
+        }
         let Some(nav) = self.nav.as_ref() else {
             return;
         };

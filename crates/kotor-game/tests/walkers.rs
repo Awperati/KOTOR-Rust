@@ -367,3 +367,23 @@ fn a_walker_held_up_by_a_person_in_the_way_does_not_shudder_against_them_for_goo
         }
     }
 }
+/// Owner, 8 Nov: "Dead bodies randomly start trailing and sliding and dont stay fixed to their death spot". A creature killed on
+/// its way kept its walk and went on with it. A body stays where it fell, and a Force push does not move it.
+#[test]
+fn a_body_stays_where_it_fell() {
+    let Some(mut g) = at("tar_m02aa") else {
+        return;
+    };
+    let walker = the(&g, "Ithorian");
+    let far = walked(&mut g, &[walker], 20)[0];
+    assert!(far > 1.0, "it walks: {far}");
+    let pc = g.world.pc;
+    let hp = g.world.object(walker).unwrap().hp.max(1);
+    g.world.hurt(pc, walker, hp + 100);
+    assert!(g.world.object(walker).unwrap().dead);
+    let lies = here(&g, walker);
+    let after = walked(&mut g, &[walker], 6)[0];
+    assert!(after < 0.01, "the body slid {after} m");
+    assert_eq!(here(&g, walker), lies);
+    assert!(g.world.object(walker).unwrap().actions.is_empty());
+}

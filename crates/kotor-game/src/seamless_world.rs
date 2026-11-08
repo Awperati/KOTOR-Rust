@@ -454,6 +454,7 @@ impl World {
         for (f, p) in walkers {
             let near = |o: &crate::world::Object| {
                 o.kind == Kind::Creature
+                    && !o.dead
                     && o.tag.eq_ignore_ascii_case(&f.tag)
                     && (o.position[0] - f.at[0]).hypot(o.position[1] - f.at[1]) < 0.75
             };
