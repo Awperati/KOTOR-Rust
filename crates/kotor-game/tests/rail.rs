@@ -23,6 +23,11 @@ fn world(module: &str) -> Option<World> {
 
 /// A ledge with 3 m of floor behind it for the one who pushes, and no wall of the walkmesh in the way.
 fn find_ledge(w: &World) -> Option<Ledge> {
+    find_ledge_near(w, None)
+}
+
+/// The same, within `radius` metres of a point if one is given.
+fn find_ledge_near(w: &World, near: Option<([f32; 2], f32)>) -> Option<Ledge> {
     let nav = w.nav.as_ref()?;
     let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
     for o in w.objects.values() {
@@ -33,6 +38,10 @@ fn find_ledge(w: &World) -> Option<Ledge> {
     while x < hi[0] + 60.0 {
         let mut y = lo[1] - 60.0;
         while y < hi[1] + 60.0 {
+            if near.is_some_and(|(c, r)| (c[0] - x).hypot(c[1] - y) > r) {
+                y += 1.0;
+                continue;
+            }
             for z in [10.0_f32, 4.0, 0.0, -5.0, -20.0] {
                 let Some(fz) = nav.walkable_at(x, y, z) else {
                     continue;
@@ -175,4 +184,17 @@ fn the_player_keeps_the_wall_at_the_edge() {
         o.position
     );
     assert_eq!(o.hp, 900, "and is not hurt by a fall");
+}
+
+#[test]
+fn the_listed_rails_of_upper_city_south_send_a_creature_over() {
+    let Some(mut w) = world("tar_m02ac") else {
+        return;
+    };
+    // The first row of docs/rails.tsv for this module: no rail is added here.
+    let Some(ledge) = find_ledge_near(&w, Some(([139.0, 107.2], 20.0))) else {
+        panic!("no open edge in the listed stretch of tar_m02ac");
+    };
+    let (victim, _) = push_at_ledge(&mut w, &ledge, false);
+    assert!(w.object(victim).unwrap().dead, "over the rail and lost");
 }

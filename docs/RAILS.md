@@ -18,7 +18,7 @@ in [force.rs](../crates/kotor-game/src/force.rs). Tests: [rail.rs](../crates/kot
 The walkmesh has no object for a railing: the floor just ends. Most rooms have model walls that the walkmesh does not mark, so every
 floor edge cannot be made a rail without sending creatures through visible walls. `cargo run --release -p kotor-game --example rail_scan
 -- <module>` counts the open edges of a module. In Taris's modules every floor edge over nothing is at the same height as the rest of
-the floor, so the walkway in the owner's frame cannot be told by its height. Give the module and a point on its barrier, and it is a row.
+the floor, so the walkway in the owner's frame cannot be told by its height. `rails.tsv` has three rows for `tar_m02ac` (Upper City South), marked GUESSED: the three longest unbroken edges over nothing, found with `rail_scan`. The owner edits the file. Frames of a push there: `cargo run --release --example rail_shots` in `gpu/`.
 
 ## Assumed
 

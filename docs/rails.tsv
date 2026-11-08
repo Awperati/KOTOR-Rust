@@ -1,4 +1,7 @@
-module	x	y	radius
+module	x	y	radius	note
 # Edges of the floor in a module that are only a low barrier over nothing: a creature pushed at them goes over and is lost.
 # A barrier over another floor needs no row: the creature falls to that floor. One row per stretch: the module, a point on the
-# edge, and how far the stretch reaches from it, in metres. Delete this note line when you add rows.
+# edge, and how far the stretch reaches from it, in metres. A row marked GUESSED is a candidate found by `rail_scan`, not checked against the owner's frame.
+tar_m02ac	139.0	107.2	45	GUESSED: Upper City South, the 83 m unbroken edge north of the street. The owner edits this file.
+tar_m02ac	150.0	89.3	32	GUESSED: Upper City South, the 59 m edge south of the street.
+tar_m02ac	195.0	94.5	18	GUESSED: Upper City South, the 32 m edge to the east.
