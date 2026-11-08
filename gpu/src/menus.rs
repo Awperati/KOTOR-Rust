@@ -203,6 +203,8 @@ pub(super) enum Screen {
     Main,
     /// Single Player's first question: Classic or Modern, on a panel over the main menu.
     ModeChoice,
+    /// The question before a medical item causes Medication Sickness.
+    MedicationWarning,
     /// The Multiplayer button's panel: not built yet.
     Multiplayer,
     Pause,
@@ -650,6 +652,7 @@ impl Screen {
         match self {
             Screen::Main => "main",
             Screen::ModeChoice => "mode_choice",
+            Screen::MedicationWarning => "medication_warning",
             Screen::Multiplayer => "multiplayer",
             Screen::Pause => "pause",
             Screen::Saves(Mode::Load) => "load",
@@ -823,6 +826,8 @@ pub(super) struct Menus {
     mode_choice_on: bool,
     /// The mode the new game is to have, once chosen.
     pub(super) new_game_mode: Option<kotor_game::GameMode>,
+    /// The medical item the Medication Sickness question is about.
+    medication_asked: Option<kotor_game::ObjId>,
     pub(super) early_force_on: bool,
     chargen: Option<chargenscreen::Draft>,
     new_character: Option<kotor_game::CharacterSpec>,
@@ -1070,6 +1075,7 @@ impl Stage {
             Screen::Galaxy => self.galaxy_view(),
             Screen::Pazaak => self.pazaak_view(),
             Screen::Solo => self.solo_view(),
+            Screen::MedicationWarning => self.medication_warning_view(),
             Screen::GameOver => self.game_over_view(),
             Screen::BenchKinds => self.bench_kinds_view(),
             Screen::BenchItems => self.bench_items_view(),
@@ -2491,6 +2497,9 @@ impl Stage {
             (Screen::Galaxy, _) => self.galaxy_press(tag),
             (Screen::Pazaak, _) => self.pazaak_press(tag),
             (Screen::Solo, _) => self.solo_press(tag),
+            (Screen::MedicationWarning, "BTN_OK" | "BTN_CANCEL") => {
+                self.medication_warning_press(tag)
+            }
             (Screen::GameOver, _) => self.game_over_press(tag),
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, BTN_TAKE_SELECTED) => self.take_selected(),
@@ -2752,6 +2761,7 @@ impl Stage {
             }
             Some(Screen::Tutorial) => self.tutorial_next(),
             Some(Screen::KeyMap) => self.cancel_key_map(),
+            Some(Screen::MedicationWarning) => self.medication_warning_press("BTN_CANCEL"),
             Some(Screen::Party) => {
                 self.party_press("BTN_BACK");
                 self.menus.hover = None;

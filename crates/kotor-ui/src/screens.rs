@@ -132,6 +132,9 @@ pub struct SlotShown {
     pub greyed: bool,
     /// A power it shows is on now: a line round it.
     pub lit: bool,
+    /// How much of a medical item's cooldown is left, 0 to 1: a white square over that share of the slot, from its foot. The
+    /// owner's Medication Sickness: full at a use, and its top comes down as the cooldown ends.
+    pub veil: f32,
 }
 
 /// What the HUD shows of a fight, as the reference video has it at 5:50 and 6:05.
@@ -257,6 +260,8 @@ pub struct MiniMap {
 /// The picture a small map is cut from is written for this many units across, and the arrow's picture.
 const MINIMAP_FILE_WIDTH: f32 = 512.0;
 const MINIMAP_ARROW: &str = "mm_barrow";
+/// The medication cooldown's square: white, and see-through enough that the item shows under it.
+const VEIL: [u8; 4] = [255, 255, 255, 80];
 
 /// Per-control changes a screen applies on top of the file: replacement fill, text, bar value, or hiding.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -265,6 +270,8 @@ pub struct Patch {
     pub faint: Option<f32>,
     /// Its picture shows at this share of its strength.
     pub faded: Option<f32>,
+    /// A see-through white square over this share of its height, from its foot.
+    pub veil: Option<f32>,
     /// Its picture upside down.
     pub flipped: bool,
     pub fill: Option<String>,
@@ -959,6 +966,10 @@ impl<'a> Ui<'a> {
         if patch.greyed {
             cv.fill_rect(r[0], r[1], r[2], r[3], GREYED);
         }
+        if let Some(share) = patch.veil {
+            let high = (r[3] as f32 * share.clamp(0.0, 1.0)).round() as i32;
+            cv.fill_rect(r[0], r[1] + r[3] - high, r[2], high, VEIL);
+        }
         if let Some([red, green, blue]) = patch.line {
             let c = [red, green, blue, 255];
             let t = LINE_THICK;
@@ -1599,6 +1610,7 @@ impl<'a> Ui<'a> {
             picture.hidden = false;
             picture.fill = Some(shown.picture.clone());
             picture.greyed = shown.greyed;
+            picture.veil = (shown.veil > 0.0).then_some(shown.veil);
             if shown.lit {
                 picture.line = Some(POWER_ON_LINE);
             }

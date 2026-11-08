@@ -4,9 +4,9 @@
 //! it. **Assumed:** words last `FLOAT_SECONDS` and rise `FLOAT_RISE`: not measured. **Assumed:** a throwable goes at once
 //! and is not queued.
 
-use super::Stage;
+use super::{Screen, Stage};
 use kotor_game::{CombatAction, CombatChoice, Kind, ObjId, PowerSlot};
-use kotor_ui::{Float, SlotShown};
+use kotor_ui::{Float, MenuView, SlotShown};
 
 const STR_MISS: u32 = 42134;
 /// The video's box: "ENEMY SIGHTED!", then how to go on.
@@ -99,6 +99,13 @@ const FAR_LEFT: usize = 3;
 
 /// What the quick slots show: the last three on the screen, the first, and the name of the one under the cursor.
 type QuickView = ([Option<SlotShown>; 3], Option<SlotShown>, Option<String>);
+
+/// The owner's words, when a medical item would cause Medication Sickness.
+pub(super) const MEDICATION_WARNING: &str =
+    "warning, continuing will cause medication sickness. Are you sure you would like to continue?";
+/// How far up the question's words go, for its two lines, and the steps the cooldown's square moves in.
+const WARNING_RISE: i32 = 10;
+const VEIL_STEP: f32 = 0.02;
 
 /// What `--grenadier` hands out.
 const GRENADIER_COUNT: i32 = 5;
@@ -246,12 +253,21 @@ impl Stage {
                 continue;
             }
             let pick = &choices[self.menus.fight.quick_picks[slot] % choices.len()];
-            let w = &self.game.world;
+            let w = &mut self.game.world;
+            let pc = w.pc;
+            // A medical item shows its cooldown, in steps, so that the HUD is not drawn again each frame for it.
+            let veil = match pick.does {
+                SlotDoes::Throw(item) if w.is_medical(item) => {
+                    (w.medication_cooldown(pc) / VEIL_STEP).ceil() * VEIL_STEP
+                }
+                _ => 0.0,
+            };
             *shown = Some(SlotShown {
                 picture: pick.icon.clone(),
                 more: choices.len() > 1,
                 greyed: !pick.usable,
-                lit: matches!(pick.does, SlotDoes::OnSelf(p) if w.power_active(w.pc, p)),
+                lit: matches!(pick.does, SlotDoes::OnSelf(p) if w.power_active(pc, p)),
+                veil,
             });
             let tag = format!("BTN_ACTION{}", (slot + 1) % 4);
             if over.as_deref() == Some(tag.as_str()) {
@@ -285,6 +301,14 @@ impl Stage {
         let w = &mut self.game.world;
         let pc = w.pc;
         match choices[self.menus.fight.quick_picks[slot] % choices.len()].does {
+            // A medical item while its cooldown runs asks first, once a cooldown: Medication Sickness.
+            SlotDoes::Throw(item) if w.is_medical(item) => {
+                if w.use_consumable(pc, item, false) == kotor_game::UseOutcome::NeedsConfirm {
+                    self.menus.medication_asked = Some(item);
+                    self.menus.stack.push(Screen::MedicationWarning);
+                    self.menus.hover = None;
+                }
+            }
             SlotDoes::Throw(item) => {
                 let _ = w.use_item_on(pc, item, pc);
             }
@@ -295,6 +319,44 @@ impl Stage {
             }
             _ => {}
         }
+    }
+
+    /// The question before a medical item is used again while its cooldown runs.
+    pub(super) fn medication_warning_view(&mut self) -> MenuView {
+        let mut v = MenuView::new("confirm");
+        v.text("LB_MESSAGE", MEDICATION_WARNING);
+        v.font("LB_MESSAGE", "fnt_d16x16");
+        let message = v.patches.entry("LB_MESSAGE".to_string()).or_default();
+        message.rise = WARNING_RISE;
+        v.text("BTN_OK", "Yes");
+        v.text("BTN_CANCEL", "No");
+        v.over_scene = true;
+        v
+    }
+
+    /// Yes uses the item, and the sickness comes; No, or Escape, leaves it.
+    pub(super) fn medication_warning_press(&mut self, tag: &str) {
+        let item = self.menus.medication_asked.take();
+        self.menus.stack.pop();
+        self.menus.hover = None;
+        if let (Some(item), "BTN_OK") = (item, tag) {
+            let w = &mut self.game.world;
+            let pc = w.pc;
+            let _ = w.use_consumable(pc, item, true);
+        }
+    }
+
+    /// The question's answer from the keyboard: Y or Enter for Yes, N for No. Whether the key was the question's.
+    pub(super) fn medication_warning_key(&mut self, key: &str) -> bool {
+        if self.top() != Some(Screen::MedicationWarning) {
+            return false;
+        }
+        match key {
+            "KeyY" | "Enter" | "NumpadEnter" => self.medication_warning_press("BTN_OK"),
+            "KeyN" => self.medication_warning_press("BTN_CANCEL"),
+            _ => return false,
+        }
+        true
     }
 
     /// What a quick slot shows, for a test.
@@ -396,6 +458,7 @@ impl Stage {
                 more: choices.len() > 1,
                 greyed: !shown.usable,
                 lit: false,
+                veil: 0.0,
             });
             if over.as_deref().and_then(target_slot) == Some(slot) {
                 hover = Some((slot, shown.name.clone()));

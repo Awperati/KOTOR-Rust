@@ -371,6 +371,9 @@ impl Stage {
 
     /// A key was pressed. If the page is waiting for one it takes it, and Esc gives up waiting.
     pub fn capture_key(&mut self, key: &str) -> bool {
+        if self.medication_warning_key(key) {
+            return true;
+        }
         let Some(action) = self.menus.key_capture else {
             return false;
         };

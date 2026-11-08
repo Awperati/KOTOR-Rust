@@ -734,6 +734,77 @@ fn a_container_opens_its_own_window_over_the_scene() {
 }
 
 #[test]
+fn a_medpac_in_its_cooldown_asks_first_and_its_slot_shows_the_cooldown() {
+    let Some((mut s, _)) = in_game("medication") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let w = &mut s.game.world;
+    let packs: Vec<u32> = (0..4).map(|_| w.spawn_item("g_i_medeqpmnt01")).collect();
+    let o = w.object_mut(pc).unwrap();
+    o.inventory.extend(packs.iter().copied());
+    o.hp = 1;
+    s.update(DT);
+    let count = |s: &Stage| {
+        let w = &s.game.world;
+        w.object(pc)
+            .unwrap()
+            .inventory
+            .iter()
+            .filter(|i| {
+                w.object(**i)
+                    .is_some_and(|o| o.template == "g_i_medeqpmnt01")
+            })
+            .map(|i| w.object(*i).map_or(1, |o| o.stack.max(1)))
+            .sum::<i32>()
+    };
+    let had = count(&s);
+    let shown = s
+        .quick_slot_shown(0)
+        .expect("the medpac in the consumables slot");
+    assert_eq!(shown.veil, 0.0, "no cooldown yet");
+    let slot = s.hud_pixel("BTN_ACTION1", SIZE).unwrap();
+
+    // The first use asks nothing, and the square is full.
+    s.hover(slot, SIZE);
+    s.click(slot, SIZE);
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(count(&s), had - 1);
+    assert!(s.quick_slot_shown(0).unwrap().veil > 0.95);
+    // Half the cooldown later, about half. The clock goes on by itself: Trask would start talking in ten seconds of play.
+    s.game.world.time += 10.0;
+    let half = s.quick_slot_shown(0).unwrap().veil;
+    assert!((0.4..0.62).contains(&half), "{half}");
+
+    // Another use now asks first. No leaves the medpac, by key or by button.
+    s.click(slot, SIZE);
+    assert_eq!(s.menu_name(), "medication_warning");
+    assert!(s.capture_key("KeyN"));
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(count(&s), had - 1);
+    s.click(slot, SIZE);
+    assert_eq!(s.menu_name(), "medication_warning");
+    let (_, too_big) = s.words_fit();
+    assert!(too_big.is_empty(), "{too_big:?}");
+    press(&mut s, "BTN_CANCEL");
+    assert_eq!(count(&s), had - 1);
+    s.click(slot, SIZE);
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(count(&s), had - 1);
+    // Yes uses it, and the sickness comes.
+    s.click(slot, SIZE);
+    press(&mut s, "BTN_OK");
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(count(&s), had - 2);
+    assert_eq!(s.game.world.medication_stack(pc), 1);
+    // Once a cooldown: the next use in it does not ask again.
+    s.click(slot, SIZE);
+    assert_eq!(s.menu_name(), "-");
+    assert_eq!(count(&s), had - 3);
+}
+
+#[test]
 fn a_power_for_oneself_is_in_the_fourth_slot_and_a_click_turns_it_on_and_off() {
     let Some((mut s, _)) = in_game("self_powers") else {
         return;
