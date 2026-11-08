@@ -205,7 +205,8 @@ fn motion_blur_grows_with_the_level_and_needs_movement() {
     let levels: Vec<f32> = (1..=3u8)
         .map(|l| mean_diff(&sharp, &turning(&mut gpu, l, 60.0, 90.0)))
         .collect();
-    assert!(levels[0] > 0.2, "subtle blurs: {}", levels[0]);
+    // Subtle is half what it was, as the owner asked ("Make the subtle motion blur more subtle"): still a blur.
+    assert!(levels[0] > 0.06, "subtle blurs: {}", levels[0]);
     assert!(levels[1] > levels[0] && levels[2] > levels[1], "{levels:?}");
     // A camera that does not move is not blurred, at any level.
     for l in 1..=3u8 {
