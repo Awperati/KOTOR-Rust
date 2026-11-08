@@ -1,6 +1,8 @@
 //! Frames of the button for a lock, plain and with its arrows. Offscreen: no window, no screen capture, no saves.
 //!
 //!   cargo run --release --example lock_shots -- [out_dir] [WxH ...]
+//!
+//! In `LOCK_MODULE`, else the Endar Spire.
 use kotor_gpu::stage::Stage;
 use kotor_gpu::{composite, GpuRenderer};
 
@@ -25,7 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         asked
     };
 
-    let mut s = Stage::open("end_m01aa", true)?;
+    // `LOCK_MODULE=tar_m02aa` for another place: Taris's upper city.
+    let module = std::env::var("LOCK_MODULE").unwrap_or_else(|_| "end_m01aa".to_string());
+    let mut s = Stage::open(&module, true)?;
     s.enable_tutorials(false);
     s.enable_auto_pause(false);
     for _ in 0..(50.0 / DT) as usize {

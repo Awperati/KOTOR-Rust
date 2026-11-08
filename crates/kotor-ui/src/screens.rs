@@ -50,6 +50,8 @@ const LOCK_FROM: &str = "isk_security";
 /// How much of that picture is frame on each side, in 32nds of it: clear, black, white, black.
 const LOCK_FRAME: u32 = 6;
 const LOCK_FRAME_OF: u32 = 32;
+/// The brightest of the picture's dark ground, out of 255: darker is not drawn, and it fades in over as much again.
+const LOCK_DARK: f32 = 48.0;
 /// The button is this share of the slots' size. The owner: "about 25% smaller".
 const LOCK_BUTTON_PERCENT: i32 = 75;
 /// How far under the name it goes.
@@ -244,6 +246,11 @@ pub struct Float {
 const COMBAT_RED: [f32; 3] = [1.0, 0.16, 0.1];
 const HOSTILE_SLOT: &str = "lbl_miscroll_h";
 const HOVER_SLOT: &str = "lbl_miscroll_hi";
+/// The slot's own picture, as the HUD file has it.
+const SLOT: &str = "lbl_miscroll_f";
+/// A lock's button: the slot's pictures without their dark middle, see [`slot_without_band`].
+const LOCK_SLOT: &str = "kotorrs_lock_slot";
+const LOCK_SLOT_HOVER: &str = "kotorrs_lock_slot_hi";
 const FLOAT_FONT: &str = "fnt_d16x16";
 const PAUSE_MARK: [u8; 4] = [255, 255, 76, 255];
 const PAUSE_NOTE_WIDTH: i32 = 300;
@@ -629,6 +636,12 @@ impl<'a> Ui<'a> {
         if key == LOCK_PICTURE && !self.textures.contains_key(&key) {
             let glyph = self.texture_shared(LOCK_FROM).map(|i| lock_glyph(&i));
             self.textures.insert(key.clone(), glyph.map(Rc::new));
+        }
+        for (made, from) in [(LOCK_SLOT, SLOT), (LOCK_SLOT_HOVER, HOVER_SLOT)] {
+            if key == made && !self.textures.contains_key(&key) {
+                let slot = self.texture_shared(from).map(|i| slot_without_band(&i));
+                self.textures.insert(key.clone(), slot.map(Rc::new));
+            }
         }
         if !self.textures.contains_key(&key) {
             let mut img = self
@@ -1671,6 +1684,17 @@ impl<'a> Ui<'a> {
                     Some(HOVER_SLOT.to_string());
                 patches.entry("LBL_NAME".to_string()).or_default().text = Some(words.clone());
             }
+            // A lock's button has no dark band behind the lock: see `slot_without_band`.
+            let lock = combat
+                .slots
+                .first()
+                .and_then(|s| s.as_ref())
+                .is_some_and(|s| s.picture == LOCK_PICTURE);
+            if lock {
+                let hover = combat.hover.as_ref().is_some_and(|(n, _)| *n == 0);
+                patches.entry("BTN_TARGET0".to_string()).or_default().fill =
+                    Some(if hover { LOCK_SLOT_HOVER } else { LOCK_SLOT }.to_string());
+            }
         }
         if combat.attack.is_some() {
             patches.entry("LBL_NAME".to_string()).or_default().color = Some(COMBAT_RED);
@@ -2356,7 +2380,9 @@ fn pickup_picture() -> Image {
     }
 }
 
-/// The Security skill's picture without the frame round it: what is left is the lock, with nothing round it to see.
+/// The Security skill's picture without the frame round it: what is left is the lock, with nothing round it to see. The
+/// picture's dark ground round the lock and in its shackle is let through too, so the world shows there, as round the name
+/// above it. The owner had seen "a dark band behind the lock".
 fn lock_glyph(from: &Image) -> Image {
     let edge = from.width * LOCK_FRAME / LOCK_FRAME_OF;
     let (width, height) = (from.width - 2 * edge, from.height - 2 * edge);
@@ -2365,11 +2391,41 @@ fn lock_glyph(from: &Image) -> Image {
         let start = ((y * from.width + edge) * 4) as usize;
         rgba.extend_from_slice(&from.rgba[start..start + (width * 4) as usize]);
     }
+    for p in rgba.chunks_mut(4) {
+        let most = p[0].max(p[1]).max(p[2]) as f32;
+        let shown = ((most - LOCK_DARK) / LOCK_DARK).clamp(0.0, 1.0);
+        p[3] = (p[3] as f32 * shown).round() as u8;
+    }
     Image {
         width,
         height,
         rgba,
     }
+}
+
+/// An enemy's slot picture for a lock's button: the slot has a dark band across its middle, where an enemy's picture goes,
+/// and the owner saw "a dark band behind the lock". The band takes the slot's own see-through fill, which is above and below
+/// it, so the lock sits in one clear slot over the world.
+fn slot_without_band(from: &Image) -> Image {
+    let bright = |p: &[u8]| p[0].max(p[1]).max(p[2]) as f32;
+    // The see-through fill: its mean colour and how much of it shows.
+    let fill: Vec<&[u8]> = from
+        .rgba
+        .chunks(4)
+        .filter(|p| (64..=192).contains(&p[3]) && bright(p) >= LOCK_DARK)
+        .collect();
+    let mut img = from.clone();
+    if fill.is_empty() {
+        return img;
+    }
+    let mean = |i: usize| (fill.iter().map(|p| p[i] as u32).sum::<u32>() / fill.len() as u32) as u8;
+    let seen = [mean(0), mean(1), mean(2), mean(3)];
+    for p in img.rgba.chunks_mut(4) {
+        if p[3] > 192 && bright(p) < LOCK_DARK {
+            p.copy_from_slice(&seen);
+        }
+    }
+    img
 }
 
 /// Make an added picture drawable as a plain one: how bright a pixel is becomes how much of it shows.
@@ -2426,5 +2482,38 @@ mod tests {
             glyph.rgba.chunks(4).all(|p| p[0] == 90),
             "none of the frame"
         );
+    }
+
+    #[test]
+    fn no_dark_band_is_drawn_behind_the_lock() {
+        // The lock's picture: its black ground is not drawn, its white lock is.
+        let mut rgba = Vec::new();
+        for i in 0..32 * 32 {
+            rgba.extend_from_slice(&if i % 2 == 0 {
+                [0, 0, 0, 255]
+            } else {
+                [255, 255, 255, 255]
+            });
+        }
+        let glyph = lock_glyph(&Image {
+            width: 32,
+            height: 32,
+            rgba,
+        });
+        assert!(glyph
+            .rgba
+            .chunks(4)
+            .all(|p| if p[0] == 0 { p[3] == 0 } else { p[3] == 255 }));
+        // The slot: a see-through fill above and below, a dark band between, and a clear outside. The band takes the fill.
+        let fill = [60, 80, 130, 128];
+        let rows: [[u8; 4]; 4] = [[0, 0, 0, 4], fill, [16, 16, 20, 217], fill];
+        let slot = Image {
+            width: 1,
+            height: 4,
+            rgba: rows.concat(),
+        };
+        let made = slot_without_band(&slot);
+        assert_eq!(made.rgba[..4], [0, 0, 0, 4], "the outside stays clear");
+        assert_eq!(made.rgba[8..12], fill, "the band is the fill");
     }
 }

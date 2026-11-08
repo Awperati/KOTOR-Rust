@@ -2314,6 +2314,25 @@ fn the_button_for_a_lock_is_small_and_in_the_middle_under_the_name_and_its_arrow
     let corner = &lock.rgba[..4];
     assert_eq!(corner[3], 0, "no frame at its corner");
     assert_eq!((lock.width, lock.height), (20, 20));
+    // Nor the picture's dark ground: the owner saw "a dark band behind the lock". The lock itself is drawn.
+    let dark = lock
+        .rgba
+        .chunks(4)
+        .filter(|p| p[3] > 0 && p[0].max(p[1]).max(p[2]) < 48)
+        .count();
+    assert_eq!(dark, 0, "dark texels drawn round the lock");
+    // And the slot behind it: an enemy's slot is dark across its middle, a lock's is not.
+    for slot in ["kotorrs_lock_slot", "kotorrs_lock_slot_hi"] {
+        let slot = s.ui_texture_for_test(slot).unwrap();
+        let band = slot
+            .rgba
+            .chunks(4)
+            .filter(|p| p[3] > 192 && p[0].max(p[1]).max(p[2]) < 48)
+            .count();
+        assert_eq!(band, 0, "dark texels across the lock's slot");
+    }
+    let shown = lock.rgba.chunks(4).filter(|p| p[3] > 128).count();
+    assert!(shown > 100, "{shown} texels of the lock");
 
     // With a spike, the arrows.
     carrying(&mut s, "g_i_secspike02");
