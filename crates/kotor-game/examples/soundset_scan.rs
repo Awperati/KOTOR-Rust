@@ -29,8 +29,10 @@ fn main() {
         with_ssf += 1;
         let off = u32::from_le_bytes([b[8], b[9], b[10], b[11]]) as usize;
         let slots: Vec<u32> = b[off..]
-            .chunks_exact(4)
-            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| u32::from_le_bytes(*c))
             .collect();
         let heard = |slot: usize| {
             let s = *slots.get(slot).unwrap_or(&u32::MAX);
