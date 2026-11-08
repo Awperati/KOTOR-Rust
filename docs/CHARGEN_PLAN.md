@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, stage 7, stage 5 for women, stage 4 without pictures, and stage 8; stage 6 is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, stage 7, stage 5 for women, stage 4 without pictures, stage 8, and stage 6's hair colour; hair and beard pieces are not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -80,6 +80,8 @@ For a finger, a choice row's arrows answer over the row's whole height and a lit
 **Found in stage 4:** the heads' textures are mirrored, so one half of the picture paints both sides of the face. A scar on one side shows on both. So every mark is the same on both sides, or on the middle line. The game's points of the face are not all at the features: the jaw's is its hinge, and the mouth's middle is above the lips. The marks go by the brows, the points under the eyes and the mouth's corners. **Assumed:** each mark's shape, place and colour, by eye from frames of `PFHA01`. Not checked on the other 29 heads.
 
 **Stage 8.** A player whose face sliders or marks are moved gets a portrait made from their face. The game's window draws the head once, off the screen with the figure alone, and the stage keeps the square in the middle of that picture, 128 pixels across, as `kotorrs_face_` and a number from the face. The HUD, the character sheet and the other screens that show the player's picture use it from then on. A changed face is drawn again. Body sliders alone keep the game's portrait, as a portrait does not show them. Until the window has drawn it, and in tests with no window, the game's portrait stands in. **Assumed:** the camera's view, the head's turn and the picture's size, by eye. The light is the renderer's one lamp, so the picture is darker than the game's painted portraits.
+
+**Stage 6, hair colour.** A Hair colour row after Body and Underwear: the head's own, Black, Dark brown, Brown, Auburn, Red, Blonde, Platinum, Grey and White. A look keeps it as `hair_colour`, a place in that list, and it goes on the head's texture with the marks. A texel is hair when its colour is nearer the crown of the head than the cheeks, by hue and light, on the top and back of the head and on the brows. Each keeps how light it is against the hair's mean, so the strands keep their shading. Its arrows bring the view to the head. Checked on four heads by frames. **Known:** a see-through fringe hanging below the brows keeps its own colour, as hair is not looked for below the brows, to keep the eyes' lashes. **Not built:** hair and beard pieces, which need new art.
 
 ## What each stage must not break
 

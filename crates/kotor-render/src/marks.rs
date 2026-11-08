@@ -35,6 +35,33 @@ pub const MARKS: [(&str, &str); 9] = [
     ("paint_cheeks", "Make-up: cheeks"),
 ];
 
+/// The hair's colour, kept in a look by this name as a place in `HAIR_COLOURS`: 0 is the head's own.
+pub const HAIR_KEY: &str = "hair_colour";
+/// The hair's colours: words for the page, and the colour of hair of middling light.
+pub const HAIR_COLOURS: [(&str, [f32; 3]); 10] = [
+    ("The head's own", [0.0; 3]),
+    ("Black", [30.0, 26.0, 26.0]),
+    ("Dark brown", [66.0, 44.0, 30.0]),
+    ("Brown", [108.0, 72.0, 44.0]),
+    ("Auburn", [124.0, 54.0, 34.0]),
+    ("Red", [160.0, 56.0, 30.0]),
+    ("Blonde", [206.0, 170.0, 104.0]),
+    ("Platinum", [226.0, 218.0, 196.0]),
+    ("Grey", [136.0, 134.0, 132.0]),
+    ("White", [236.0, 236.0, 232.0]),
+];
+/// Hair is told from skin by which it is nearer: the cheeks' colour or the crown's, the top of the head. Hue counts this many
+/// times more than light. A texel is some hair from the first share of the way to the crown's colour, and all hair from
+/// the second.
+const HAIR_HUE: f32 = 4.0;
+const HAIR_APART: (f32, f32) = (0.45, 0.62);
+/// How far under the top of the head the crown is sampled, in metres.
+const HAIR_CROWN: f32 = 0.03;
+/// How far under the brow's point hair goes on the face: the brows are hair, the eyes' lashes are not.
+const HAIR_BELOW_BROW: f32 = 0.012;
+/// How dark and how light a texel of new hair goes, as a share of the colour, so that strands keep their shading.
+const HAIR_SHADE: (f32, f32) = (0.25, 1.8);
+
 /// What goes between a texture's name and its marks.
 const MARKS_MARK: char = '#';
 
@@ -55,13 +82,22 @@ const LIP_COVER: f32 = 0.6;
 const BLUSH: [f32; 3] = [208.0, 96.0, 96.0];
 const BLUSH_COVER: f32 = 0.32;
 
-/// A head's marks for its texture's name: empty for none, else `#` and each mark's name and strength.
+/// A head's marks for its texture's name: empty for none, else `#` and each mark's name and strength, the hair's colour
+/// first.
 pub fn marks_suffix(get: impl Fn(&str) -> i32) -> String {
-    let marks: Vec<String> = MARKS
-        .iter()
-        .map(|(name, _)| (name, get(name).clamp(0, MARK_MOST)))
-        .filter(|(_, v)| *v > 0)
-        .map(|(name, v)| format!("{name}={v}"))
+    let hair = get(HAIR_KEY);
+    let hair = (1..HAIR_COLOURS.len() as i32)
+        .contains(&hair)
+        .then(|| format!("{HAIR_KEY}={hair}"));
+    let marks: Vec<String> = hair
+        .into_iter()
+        .chain(
+            MARKS
+                .iter()
+                .map(|(name, _)| (name, get(name).clamp(0, MARK_MOST)))
+                .filter(|(_, v)| *v > 0)
+                .map(|(name, v)| format!("{name}={v}")),
+        )
         .collect();
     if marks.is_empty() {
         String::new()
@@ -77,7 +113,7 @@ pub fn split_marks(name: &str) -> (&str, &str) {
         .map(|(at, _)| at)
         .find(|at| {
             let rest = &name[at + 1..];
-            MARKS.iter().any(|(mark, _)| rest.starts_with(mark))
+            rest.starts_with(HAIR_KEY) || MARKS.iter().any(|(mark, _)| rest.starts_with(mark))
         })
         .map_or((name, ""), |at| (&name[..at], &name[at + 1..]))
 }
@@ -94,6 +130,111 @@ fn strengths(marks: &str) -> [f32; 9] {
         }
     }
     out
+}
+
+/// The hair's colour from a texture name's marks: a place in `HAIR_COLOURS`, 0 for the head's own.
+fn hair_choice(marks: &str) -> usize {
+    marks
+        .split(',')
+        .filter_map(|part| part.split_once('='))
+        .find(|(name, _)| *name == HAIR_KEY)
+        .and_then(|(_, v)| v.parse::<usize>().ok())
+        .filter(|v| *v < HAIR_COLOURS.len())
+        .unwrap_or(0)
+}
+
+fn light(c: [f32; 3]) -> f32 {
+    0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
+}
+
+/// The hair in a head's texture in another colour. Hair is what is nearer in colour to the crown of the head than to the
+/// cheeks, on the top and back of the head and on the brows, so the lips, the eyes and the skin round them keep theirs.
+/// Each texel keeps how light it is against the hair's mean, so the strands keep their shading.
+fn recolour_hair(img: &mut Image, points: &[Option<[f32; 3]>], at: &Places, colour: [f32; 3]) {
+    let texel = |img: &Image, n: usize| [0, 1, 2].map(|k| img.rgba[n * 4 + k] as f32);
+    let mean_of = |img: &Image, keep: &dyn Fn([f32; 3]) -> bool| {
+        let mut sum = [0.0f32; 3];
+        let mut count = 0.0;
+        for (n, p) in points.iter().enumerate() {
+            if p.is_some_and(keep) {
+                let c = texel(img, n);
+                for k in 0..3 {
+                    sum[k] += c[k];
+                }
+                count += 1.0;
+            }
+        }
+        (count > 0.0).then(|| sum.map(|v| v / count))
+    };
+    // The skin: the mean of the cheeks. The hair: the mean of the crown.
+    let on_cheek = |p: [f32; 3]| {
+        p[1] > at.front
+            && (0..2).any(|e| {
+                (p[0] - at.out_to(e, 1.2)).abs() < 0.012
+                    && (p[2] - (at.eyes[e][1] - 0.02)).abs() < 0.012
+            })
+    };
+    let top = points
+        .iter()
+        .flatten()
+        .fold(f32::MIN, |top, p| top.max(p[2]));
+    let (Some(skin), Some(crown)) = (
+        mean_of(img, &on_cheek),
+        mean_of(img, &|p: [f32; 3]| p[2] > top - HAIR_CROWN),
+    ) else {
+        return;
+    };
+    // Hue, so many times over, and light.
+    let feature = |c: [f32; 3]| {
+        let sum = (c[0] + c[1] + c[2]).max(1.0);
+        [
+            c[0] / sum * HAIR_HUE,
+            c[1] / sum * HAIR_HUE,
+            c[2] / sum * HAIR_HUE,
+            light(c) / 255.0,
+        ]
+    };
+    let apart =
+        |a: [f32; 4], b: [f32; 4]| (0..4).map(|k| (a[k] - b[k]).powi(2)).sum::<f32>().sqrt();
+    let (skin, crown) = (feature(skin), feature(crown));
+    let hairness: Vec<f32> = points
+        .iter()
+        .enumerate()
+        .map(|(n, p)| {
+            let Some(p) = p else { return 0.0 };
+            let up = p[2] > at.brow - HAIR_BELOW_BROW;
+            let behind = p[1] < at.front;
+            if !(up || behind) {
+                return 0.0;
+            }
+            let f = feature(texel(img, n));
+            let (to_skin, to_hair) = (apart(f, skin), apart(f, crown));
+            let share = to_skin / (to_skin + to_hair).max(1e-4);
+            ramp(share, HAIR_APART.0, HAIR_APART.1 - HAIR_APART.0)
+        })
+        .collect();
+    let (mut sum, mut weight) = (0.0, 0.0);
+    for (n, h) in hairness.iter().enumerate() {
+        if *h > 0.0 {
+            sum += light(texel(img, n)) * h;
+            weight += h;
+        }
+    }
+    if weight == 0.0 {
+        return;
+    }
+    let mean = (sum / weight).max(1.0);
+    for (n, h) in hairness.iter().enumerate() {
+        if *h <= 0.0 {
+            continue;
+        }
+        let c = texel(img, n);
+        let shade = (light(c) / mean).clamp(HAIR_SHADE.0, HAIR_SHADE.1);
+        for k in 0..3 {
+            let new = (colour[k] * shade).min(255.0);
+            img.rgba[n * 4 + k] = (c[k] + (new - c[k]) * h).round().clamp(0.0, 255.0) as u8;
+        }
+    }
 }
 
 /// How far a point is from a line between two points, across and up only: the face seen from the front.
@@ -253,7 +394,8 @@ fn marked(base: [f32; 3], p: [f32; 3], s: &[f32; 9], at: &Places) -> [f32; 3] {
 /// the game's points of the face is left as it is.
 pub fn paint_marks(head: &Model, texture: &str, img: &mut Image, marks: &str) {
     let s = strengths(marks);
-    if s.iter().all(|v| *v <= 0.0) {
+    let hair = hair_choice(marks);
+    if s.iter().all(|v| *v <= 0.0) && hair == 0 {
         return;
     }
     let Some(face) = Face::of(head) else {
@@ -344,6 +486,12 @@ pub fn paint_marks(head: &Model, texture: &str, img: &mut Image, marks: &str) {
             }
         }
     });
+    if hair > 0 {
+        recolour_hair(img, &point, &places, HAIR_COLOURS[hair].1);
+    }
+    if s.iter().all(|v| *v <= 0.0) {
+        return;
+    }
     for (n, p) in point.into_iter().enumerate() {
         let Some(p) = p else { continue };
         let at = n * 4;
@@ -382,6 +530,20 @@ mod tests {
         );
         let s = strengths("scar_nose=60,paint_lips=100,nonsense=5");
         assert_eq!((s[0], s[7], s[1]), (0.6, 1.0, 0.0));
+        // The hair's colour goes first, and alone it is marks too.
+        let hair = marks_suffix(|n| match n {
+            HAIR_KEY => 6,
+            "scar_lip" => 20,
+            _ => 0,
+        });
+        assert_eq!(hair, "#hair_colour=6,scar_lip=20");
+        assert_eq!(
+            split_marks(&format!("pfha01{hair}")).1,
+            "hair_colour=6,scar_lip=20"
+        );
+        assert_eq!(hair_choice("hair_colour=6,scar_lip=20"), 6);
+        assert_eq!(hair_choice("hair_colour=99"), 0);
+        assert_eq!(marks_suffix(|n| if n == HAIR_KEY { 99 } else { 0 }), "");
     }
 
     #[test]

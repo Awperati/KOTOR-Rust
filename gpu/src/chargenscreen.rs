@@ -14,7 +14,7 @@ use kotor_game::{
     attribute_cost, BodySize, CharacterLook, CharacterSpec, Clip, ATTRIBUTE_BASE, POINT_POOL,
 };
 use kotor_render::face::FaceShape;
-use kotor_render::marks::{MARKS, MARK_MOST, MARK_STEP};
+use kotor_render::marks::{HAIR_COLOURS, HAIR_KEY, MARKS, MARK_MOST, MARK_STEP};
 use kotor_render::shape::{BodyShape, SLIDER_MOST, SLIDER_STEP};
 use kotor_render::underwear::{list_underwear_variants, UnderwearVariant};
 use kotor_render::{Camera, Rig, Scene};
@@ -127,6 +127,8 @@ enum LookRow {
     Slider(usize),
     /// A scar, tattoo or make-up, by its place in `kotor_render::marks::MARKS`.
     Mark(usize),
+    /// The hair's colour, from `kotor_render::marks::HAIR_COLOURS`.
+    Hair,
     /// Every slider at random, and the head and the body.
     Random,
     /// Every slider back to 0.
@@ -833,6 +835,7 @@ impl Stage {
         if choice {
             rows.push(LookRow::Underwear);
         }
+        rows.push(LookRow::Hair);
         rows.extend((0..SLIDERS.len()).map(LookRow::Slider));
         rows.extend((0..MARKS.len()).map(LookRow::Mark));
         rows.extend([
@@ -891,6 +894,14 @@ impl Stage {
                             format!("{v:+}")
                         };
                         (SLIDERS[n].1.to_string(), words)
+                    }
+                    LookRow::Hair => {
+                        let n =
+                            slider(&d.spec.look, HAIR_KEY).clamp(0, HAIR_COLOURS.len() as i32 - 1);
+                        (
+                            "Hair colour".to_string(),
+                            HAIR_COLOURS[n as usize].0.to_string(),
+                        )
                     }
                     LookRow::Mark(n) => {
                         let v = slider(&d.spec.look, MARKS[n].0);
@@ -957,6 +968,25 @@ impl Stage {
                         d.spec.look.sliders.remove(name);
                     } else {
                         d.spec.look.sliders.insert(name.to_string(), v);
+                    }
+                }
+                self.sync_character();
+            }
+            Some(LookRow::Hair) => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    // Hair is on the head: from the whole body, the view comes to it.
+                    if d.view == 0 {
+                        d.view = FACE_VIEW;
+                    }
+                    let now = slider(&d.spec.look, HAIR_KEY).max(0) as usize;
+                    let next = cycle(now.min(HAIR_COLOURS.len() - 1), by, HAIR_COLOURS.len());
+                    if next == 0 {
+                        d.spec.look.sliders.remove(HAIR_KEY);
+                    } else {
+                        d.spec
+                            .look
+                            .sliders
+                            .insert(HAIR_KEY.to_string(), next as i32);
                     }
                 }
                 self.sync_character();

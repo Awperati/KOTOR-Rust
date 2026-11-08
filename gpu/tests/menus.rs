@@ -4564,6 +4564,68 @@ fn the_face_sliders_bring_the_view_to_the_head_and_reshape_it() {
 }
 
 #[test]
+fn the_hair_colour_goes_round_and_recolours_the_heads_texture() {
+    let Some(mut s) = at_chargen("hair_colour") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let rows = s.menu_rows("LB_OPTIONS");
+    let row = rows.iter().position(|r| r.text == "Hair colour").unwrap();
+    bring_row(&mut s, row);
+    let choice = |s: &mut Stage| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
+    assert_eq!(choice(&mut s), "The head's own");
+    let head = |s: &mut Stage| {
+        let (scene, _, _) = s.frame_scene();
+        scene
+            .meshes
+            .iter()
+            .filter_map(|m| m.texture.clone())
+            .find(|t| kotor_render::underwear::is_hero_head(kotor_render::marks::split_marks(t).0))
+            .expect("the head")
+    };
+    let plain = head(&mut s);
+    // Back from the head's own goes round to the last colour; on goes to Black.
+    let back = s.menu_step_pixel("LB_OPTIONS", row, -1, SIZE).unwrap();
+    s.click(back, SIZE);
+    assert_eq!(choice(&mut s), "White");
+    let on = s.menu_step_pixel("LB_OPTIONS", row, 1, SIZE).unwrap();
+    s.click(on, SIZE);
+    assert_eq!(choice(&mut s), "The head's own");
+    s.click(on, SIZE);
+    assert_eq!(choice(&mut s), "Black");
+    assert_eq!(
+        s.look_preview().unwrap().1,
+        "Head",
+        "the view came to the head"
+    );
+    let black = head(&mut s);
+    assert_eq!(
+        kotor_render::marks::split_marks(&black),
+        (plain.as_str(), "hair_colour=1")
+    );
+    let (before, after) = (s.texture(&plain).unwrap(), s.texture(&black).unwrap());
+    let changed = before
+        .rgba
+        .chunks(4)
+        .zip(after.rgba.chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    let all = before.rgba.len() / 4;
+    assert!(
+        changed > all / 50 && changed < all * 2 / 3,
+        "{changed} of {all}"
+    );
+    let w = &s.game.world;
+    assert_eq!(
+        w.object(w.pc).unwrap().look.sliders.get("hair_colour"),
+        Some(&1)
+    );
+}
+
+#[test]
 fn a_mark_is_painted_on_the_heads_texture_and_kept_with_the_look() {
     let Some(mut s) = at_chargen("marks") else {
         return;

@@ -411,7 +411,8 @@ impl Stage {
         let keys = kotor_render::face::FACE_SLIDERS
             .iter()
             .copied()
-            .chain(kotor_render::marks::MARKS.iter().map(|m| m.0));
+            .chain(kotor_render::marks::MARKS.iter().map(|m| m.0))
+            .chain([kotor_render::marks::HAIR_KEY]);
         let shaped: Vec<(&str, i32)> = keys
             .filter_map(|k| o.look.sliders.get(k).map(|v| (k, *v)))
             .filter(|(_, v)| *v != 0)
