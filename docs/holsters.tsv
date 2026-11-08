@@ -2,10 +2,10 @@
 class	hand	node	x	y	z	roll	pitch	yaw	shape
 pistol	right	pelvis_g	-0.19	0.02	-0.10	-90	0	0	hip_holster
 pistol	left	pelvis_g	0.19	0.02	-0.10	-90	0	0	hip_holster
-rifle	right	torsoUpr_g	-0.12	-0.13	-0.10	90	25	0	sling
-rifle	left	torsoUpr_g	-0.12	-0.13	-0.10	90	25	0	sling
-heavy	right	torsoUpr_g	-0.12	-0.14	-0.10	90	25	0	sling
-heavy	left	torsoUpr_g	-0.12	-0.14	-0.10	90	25	0	sling
+rifle	right	torsoUpr_g	-0.09	-0.13	-0.02	90	25	0	sling
+rifle	left	torsoUpr_g	-0.09	-0.13	-0.02	90	25	0	sling
+heavy	right	torsoUpr_g	-0.09	-0.14	-0.02	90	25	0	sling
+heavy	left	torsoUpr_g	-0.09	-0.14	-0.02	90	25	0	sling
 blade	right	torsoUpr_g	0.15	-0.12	0.24	-90	30	0	sheath
 blade	left	torsoUpr_g	-0.15	-0.12	0.24	-90	-30	0	sheath
 twohand	right	torsoUpr_g	0.00	-0.13	0.26	-90	30	0	sheath
