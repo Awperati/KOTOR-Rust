@@ -1823,10 +1823,11 @@ fn a_stored_weapon_hangs_at_its_holster() {
         assert_eq!(stored, before + 1, "{item}: its holster is drawn");
         // FRAME_HOLSTER is a folder: a front, side and back frame of the weapon stored and then drawn.
         if let Ok(dir) = std::env::var("FRAME_HOLSTER") {
-            for state in ["stored", "drawn"] {
+            for state in ["stored", "reach", "drawn"] {
+                s.reach_hold = (state == "reach").then_some(1.0);
                 if state == "drawn" {
                     s.game.hold_stance(pc);
-                    for _ in 0..(0.3 / DT) as usize {
+                    for _ in 0..(0.45 / DT) as usize {
                         s.update(DT);
                     }
                 }
@@ -1866,7 +1867,7 @@ fn a_stored_weapon_hangs_at_its_holster() {
             continue;
         }
         s.game.hold_stance(pc);
-        for _ in 0..(0.3 / DT) as usize {
+        for _ in 0..(0.45 / DT) as usize {
             s.update(DT);
         }
         assert_eq!(count(&mut s), before, "{item}: no holster in the hand");
@@ -1897,7 +1898,7 @@ fn attack_mode_draws_and_holsters_the_weapon() {
         Some("equip"),
         "the draw clip plays"
     );
-    let steps = (0.3 / DT) as usize;
+    let steps = (0.45 / DT) as usize;
     for _ in 0..steps {
         s.update(DT);
     }
@@ -1905,6 +1906,16 @@ fn attack_mode_draws_and_holsters_the_weapon() {
         s.game.weapons_drawn(pc),
         "in the hand part way through the draw"
     );
+    assert!(
+        !s.game.weapon_ready(pc),
+        "not ready to fire until the draw has finished"
+    );
+    assert!(s.game.draw_progress(pc).is_some(), "the hand is reaching");
+    for _ in 0..(0.5 / DT) as usize {
+        s.update(DT);
+    }
+    assert!(s.game.weapon_ready(pc), "ready to fire after the draw");
+    assert!(s.game.draw_progress(pc).is_none());
     s.game.world.set_attack_mode(false);
     // The stance from the fight holds a few seconds; wait it out, then the holster plays.
     let mut left = 0;

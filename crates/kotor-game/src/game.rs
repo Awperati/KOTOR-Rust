@@ -175,9 +175,9 @@ const STANCE_HOLD_SECONDS: f32 = 3.5;
 /// `HOLSTER_HAND_UNTIL`.
 /// A weapon is put away this long after the wish for it ends.
 const HOLSTER_DELAY_SECONDS: f32 = 1.0;
-const DRAW_SECONDS: f32 = 0.5;
-const DRAW_HAND_AT: f32 = 0.2;
-const HOLSTER_HAND_UNTIL: f32 = 0.3;
+pub const DRAW_SECONDS: f32 = 0.7;
+const DRAW_HAND_AT: f32 = 0.35;
+const HOLSTER_HAND_UNTIL: f32 = 0.35;
 
 #[derive(Clone, Copy)]
 enum Move {
@@ -694,6 +694,21 @@ impl Game {
             Some((was, t)) => {
                 self.hand_state.insert(id, (was, t + dt));
             }
+        }
+    }
+
+    /// How far the hand is through its reach to the holster, 0 to 1 and back to 0, while a draw or a holster takes place.
+    pub fn draw_progress(&self, id: ObjId) -> Option<f32> {
+        let (_, t) = self.hand_state.get(&id).copied()?;
+        (t < DRAW_SECONDS).then(|| 1.0 - (t / (DRAW_SECONDS / 2.0) - 1.0).abs())
+    }
+
+    /// Whether creature `id` can fire or strike: its weapon is drawn and the draw has finished.
+    pub fn weapon_ready(&self, id: ObjId) -> bool {
+        match self.hand_state.get(&id) {
+            Some((true, t)) => *t >= DRAW_SECONDS,
+            Some((false, _)) => false,
+            None => self.wants_weapons(id),
         }
     }
 

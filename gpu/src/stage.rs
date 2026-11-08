@@ -597,6 +597,8 @@ pub struct Stage {
     /// Seconds of real time: what bodies shown on screens with no game running (the character picker, the party screen)
     /// idle by.
     idle_clock: f32,
+    /// For a frame or a test: hold every reach at this far (0 to 1) instead of the draw's own.
+    pub reach_hold: Option<f32>,
     /// The `name` of each row of `dialoganimations.2da`.
     dialogue_labels: Vec<String>,
     models: HashMap<String, Option<Rc<Model>>>,
@@ -775,6 +777,7 @@ impl Stage {
             camera_model: String::new(),
             stunts: Vec::new(),
             idle_clock: 0.0,
+            reach_hold: None,
             dialogue_labels: Vec::new(),
             models: HashMap::new(),
             fixed_cameras: HashMap::new(),
@@ -3366,6 +3369,7 @@ impl Stage {
                         continue;
                     }
                     let aim = self.aim_down_of(pose.id, &clip);
+                    let reach = self.reach_of(pose.id);
                     let legs = if pose.id == own {
                         self.aim_legs(&clip)
                     } else {
@@ -3382,6 +3386,7 @@ impl Stage {
                         self.mouth_of(pose.id),
                         aim,
                         legs,
+                        reach,
                     );
                     scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                     self.grow_to_height(&mut scene, start, pose.id, pose.position);
@@ -3445,8 +3450,27 @@ impl Stage {
         underwear: &str,
     ) {
         self.add_speaking_creature(
-            scene, rig, hands, clip, at, heading, underwear, None, 0.0, None,
+            scene, rig, hands, clip, at, heading, underwear, None, 0.0, None, None,
         );
+    }
+
+    /// The arms of creature `id` reaching for a holster, while it draws or holsters: which weapon classes it holds, and how far.
+    fn reach_of(&mut self, id: ObjId) -> Option<moving::Reach> {
+        let p = self.reach_hold.or_else(|| self.game.draw_progress(id))?;
+        let o = self.game.world.object(id)?;
+        let held: Vec<(i32, ObjId)> = [RIGHT_HAND_SLOT, LEFT_HAND_SLOT]
+            .iter()
+            .filter_map(|slot| Some((*slot, *o.equipped.get(slot)?)))
+            .collect();
+        let mut arms = Vec::new();
+        for (slot, item) in held {
+            let base = self.game.world.object(item)?.base_item;
+            let wield: i32 = self.baseitem(base as usize, "weaponwield")?.parse().ok()?;
+            if let Some(class) = kotor_render::holster::class_of(wield) {
+                arms.push((class, slot == RIGHT_HAND_SLOT));
+            }
+        }
+        (!arms.is_empty()).then_some(moving::Reach { arms, p })
     }
 
     /// How far down, in degrees, creature `id` pitches its weapon: with a ranged weapon in its ranged clips, at a target lying on the floor.
@@ -3479,6 +3503,7 @@ impl Stage {
         mouth: Option<(f32, f32)>,
         aim_down: f32,
         legs: Option<moving::AimLegs>,
+        reach: Option<moving::Reach>,
     ) {
         // Models face +y at rest; turn so +y points along the heading.
         let angle = heading - std::f32::consts::FRAC_PI_2;
@@ -3526,6 +3551,9 @@ impl Stage {
             if let Some(p) = pose.as_mut() {
                 moving::aim_down(p, rig, aim_down);
             }
+        }
+        if let (Some(r), Some(p)) = (reach.as_ref(), pose.as_mut()) {
+            moving::reach_layer(p, rig, r);
         }
         let Ok(mut body) = rig.posed_with_face(pose.as_ref(), face.as_ref()) else {
             return;

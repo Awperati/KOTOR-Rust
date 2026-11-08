@@ -975,6 +975,78 @@ pub(super) fn aim_layer(pose: &mut Pose, ready: Option<&Pose>, rig: &Rig, turn: 
     turn_joints(pose, rig, &angles);
 }
 
+/// Hands reaching for a holster, or back from it, `p` of the way (0 to 1): the weapon classes in the hands, the arm each is in.
+#[derive(Clone, Debug)]
+pub(super) struct Reach {
+    pub arms: Vec<(&'static str, bool)>,
+    pub p: f32,
+}
+
+/// Where each class's arm goes at the full reach, as `(joint, [bend, out, twist])` in degrees for the right hand: the left
+/// hand's is the mirror, as `turn_joints` takes the side. A joint with no side in its name is the body's, and turns the
+/// way the hand's side is. **Assumed**, tuned from frames: a pistol's hand crosses to the opposite hip, a rifle's and a blade's
+/// goes up and back over the shoulder.
+const REACHES: &[(&str, &[(&str, [f32; 3])])] = &[
+    (
+        "pistol",
+        &[
+            ("bicep", [12.0, -45.0, 0.0]),
+            ("forearm", [35.0, 0.0, 0.0]),
+            ("torso_g", [0.0, 0.0, 15.0]),
+        ],
+    ),
+    (
+        "rifle",
+        &[
+            ("collar", [30.0, 0.0, 0.0]),
+            ("bicep", [70.0, -30.0, -90.0]),
+            ("forearm", [150.0, 0.0, 0.0]),
+        ],
+    ),
+    (
+        "blade",
+        &[
+            ("collar", [30.0, 0.0, 0.0]),
+            ("bicep", [70.0, -30.0, -90.0]),
+            ("forearm", [150.0, 0.0, 0.0]),
+        ],
+    ),
+];
+
+/// The class's reach: a baton goes with the pistols, a heavy repeater with the rifles, a two-handed weapon with the blades.
+fn reach_of_class(class: &str) -> Option<&'static [(&'static str, [f32; 3])]> {
+    let key = match class {
+        "pistol" | "baton" => "pistol",
+        "rifle" | "heavy" => "rifle",
+        "blade" | "twohand" => "blade",
+        _ => return None,
+    };
+    REACHES.iter().find(|r| r.0 == key).map(|r| r.1)
+}
+
+/// The arms for a draw or a holster laid over the clip's pose.
+pub(super) fn reach_layer(pose: &mut Pose, rig: &Rig, reach: &Reach) {
+    let mut angles = vec![[0.0f32; 3]; JOINTS.len()];
+    for (class, right) in &reach.arms {
+        let Some(joints) = reach_of_class(class) else {
+            continue;
+        };
+        for (suffix, a) in joints.iter() {
+            let (name, sign) = if suffix.ends_with("_g") {
+                (suffix.to_string(), if *right { 1.0 } else { -1.0 })
+            } else {
+                (format!("{}{suffix}_g", if *right { "r" } else { "l" }), 1.0)
+            };
+            if let Some(i) = JOINTS.iter().position(|j| j.name == name) {
+                angles[i][0] += a[0] * reach.p;
+                angles[i][1] += a[1] * reach.p * sign;
+                angles[i][2] += a[2] * reach.p * sign;
+            }
+        }
+    }
+    turn_joints(pose, rig, &angles);
+}
+
 pub(super) fn aim_down(pose: &mut Pose, rig: &Rig, degrees: f32) {
     let mut angles = vec![[0.0f32; 3]; JOINTS.len()];
     for (name, share) in [
