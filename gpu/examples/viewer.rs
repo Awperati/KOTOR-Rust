@@ -580,7 +580,7 @@ impl App {
                 .in_combat(self.stage.game.world.pc);
             let _ = writeln!(
                 log,
-                "{},{:.3},{update_ms:.3},{:.3},{},{upload_ms:.3},{scene_ms:.3},{:.3},{:.3},{},{:.3},{},{},{}",
+                "{},{:.3},{update_ms:.3},{:.3},{},{upload_ms:.3},{scene_ms:.3},{:.3},{:.3},{},{:.3},{},{},{},{:.3},{:.3},{}",
                 self.frames,
                 dt * 1000.0,
                 self.stage.overlay_ms,
@@ -592,6 +592,14 @@ impl App {
                 t.meshes,
                 u8::from(fight),
                 self.stage.game.world.module,
+                t.build_ms,
+                t.submit_ms,
+                self.stage
+                    .phases
+                    .iter()
+                    .map(|(n, ms)| format!("{n}:{ms:.1}"))
+                    .collect::<Vec<_>>()
+                    .join("|"),
             );
         }
         if self.state_log && self.frames.is_multiple_of(6) {
@@ -1127,7 +1135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut f = std::io::BufWriter::new(std::fs::File::create(path).ok()?);
             writeln!(
                 f,
-                "frame,dt,update,overlay,hud,upload,scene,draw,textures,new_textures,show,meshes,fight,module"
+                "frame,dt,update,overlay,hud,upload,scene,draw,textures,new_textures,show,meshes,fight,module,build,submit,phases"
             )
             .ok()?;
             Some(f)

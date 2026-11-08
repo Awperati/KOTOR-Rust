@@ -16,6 +16,19 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
+/// Time a part of `Stage::update`; one of half a millisecond or more is kept in `Stage::phases`.
+macro_rules! phase {
+    ($s:ident, $name:literal, $e:expr) => {{
+        let began = std::time::Instant::now();
+        let out = $e;
+        let ms = began.elapsed().as_secs_f32() * 1000.0;
+        if ms >= 0.5 {
+            $s.phases.push(($name, ms));
+        }
+        out
+    }};
+}
+
 #[path = "aimscreen.rs"]
 mod aimscreen;
 #[path = "bladescreen.rs"]
@@ -588,6 +601,8 @@ pub struct Stage {
     pub overlay_version: u64,
     /// A lift ride's own state on the stage: see `lift_stage.rs`.
     pub(super) lift: lift_stage::LiftStage,
+    /// What took half a millisecond or more of the last `update`, by name: for `--frame-log`.
+    pub phases: Vec<(&'static str, f32)>,
     /// The screen the overlay last showed, and the version of it that is.
     menu_drawn: Option<(u64, MenuView)>,
     /// How long the last look at the overlay took, for `--frame-log`.
@@ -782,6 +797,7 @@ impl Stage {
             turret_assist: false,
             overlay_version: 0,
             lift: Default::default(),
+            phases: Vec::new(),
             menu_drawn: None,
             overlay_ms: 0.0,
             hud_drawn: 0,
@@ -973,27 +989,28 @@ impl Stage {
     /// Advance the game by `dt` seconds of real time. Returns what to play.
     pub fn update(&mut self, dt: f32) -> Vec<Cue> {
         self.idle_clock += dt;
-        self.touch_look_tick(dt);
-        self.touch_fire_tick();
-        self.walkers_tick(dt);
-        self.lift_tick(dt);
+        self.phases.clear();
+        phase!(self, "touch_look_tick", self.touch_look_tick(dt));
+        phase!(self, "touch_fire_tick", self.touch_fire_tick());
+        phase!(self, "walkers_tick", self.walkers_tick(dt));
+        phase!(self, "lift_tick", self.lift_tick(dt));
         self.pictures_left = PICTURES_A_FRAME;
-        self.take_upscaled();
-        self.main_scene_tick(dt);
-        self.chargen_mist_tick(dt);
-        self.figure_mist_tick(dt);
-        self.galaxy_tick(dt);
-        self.bench_tick(dt);
-        self.take_bench_request();
-        self.take_party_request();
-        self.take_galaxy_request();
-        self.take_pazaak_request();
-        self.forget_container_choices();
-        self.slots_tick();
-        self.notices_tick();
-        self.aim_tick(dt);
-        self.lock_tick(dt);
-        self.blow_tick();
+        phase!(self, "take_upscaled", self.take_upscaled());
+        phase!(self, "main_scene_tick", self.main_scene_tick(dt));
+        phase!(self, "chargen_mist_tick", self.chargen_mist_tick(dt));
+        phase!(self, "figure_mist_tick", self.figure_mist_tick(dt));
+        phase!(self, "galaxy_tick", self.galaxy_tick(dt));
+        phase!(self, "bench_tick", self.bench_tick(dt));
+        phase!(self, "take_bench_request", self.take_bench_request());
+        phase!(self, "take_party_request", self.take_party_request());
+        phase!(self, "take_galaxy_request", self.take_galaxy_request());
+        phase!(self, "take_pazaak_request", self.take_pazaak_request());
+        phase!(self, "forget_container_choices", self.forget_container_choices());
+        phase!(self, "slots_tick", self.slots_tick());
+        phase!(self, "notices_tick", self.notices_tick());
+        phase!(self, "aim_tick", self.aim_tick(dt));
+        phase!(self, "lock_tick", self.lock_tick(dt));
+        phase!(self, "blow_tick", self.blow_tick());
         // Every screen holds the world, an open container's too. The owner: "The entire menu/inventory, etc should all pause
         // the game because you're effectively within a menu and paused".
         // A scripted player loots and goes on with the container still open, as it always has: its route does not move.
@@ -1019,9 +1036,9 @@ impl Stage {
             self.refresh_overlay();
             return std::mem::take(&mut self.cues);
         }
-        self.turret_tick(dt);
-        self.thrower_tick();
-        self.race_input();
+        phase!(self, "turret_tick", self.turret_tick(dt));
+        phase!(self, "thrower_tick", self.thrower_tick());
+        phase!(self, "race_input", self.race_input());
         let (ahead, mut right, walk) = self.steer;
         // Classic movement is the game's own tank controls: left and right turn the body and the camera behind it, and
         // there is no strafe. A scripted player keeps its own walk, and in a swoop race left and right steer the bike in
@@ -1085,27 +1102,28 @@ impl Stage {
             }
             self.pilot = Some(p);
         } else {
-            self.game.advance_at(dt, speed);
+            phase!(self, "advance_at", self.game.advance_at(dt, speed));
         }
         let dt_game = dt * speed;
         if self.game.world.module != self.module {
-            if let Err(e) = self.enter_module() {
+            let entered = phase!(self, "enter_module", self.enter_module());
+            if let Err(e) = entered {
                 self.game.world.errors.push(format!("stage: {e}"));
             }
             self.autosave();
         }
-        self.seamless_tick();
-        self.scan_music_events();
-        self.play_world_sounds(dt_game);
-        self.fire_on_frames(dt_game);
-        self.play_effects_at();
-        self.lids_tick(dt_game);
+        phase!(self, "seamless_tick", self.seamless_tick());
+        phase!(self, "scan_music_events", self.scan_music_events());
+        phase!(self, "play_world_sounds", self.play_world_sounds(dt_game));
+        phase!(self, "fire_on_frames", self.fire_on_frames(dt_game));
+        phase!(self, "play_effects_at", self.play_effects_at());
+        phase!(self, "lids_tick", self.lids_tick(dt_game));
         let eye = self.camera().eye;
-        self.effects.update(dt_game, eye);
-        self.update_line(dt_game);
-        self.movement_tick(dt);
-        self.update_camera(dt);
-        self.refresh_overlay();
+        phase!(self, "effects", self.effects.update(dt_game, eye));
+        phase!(self, "update_line", self.update_line(dt_game));
+        phase!(self, "movement_tick", self.movement_tick(dt));
+        phase!(self, "update_camera", self.update_camera(dt));
+        phase!(self, "refresh_overlay", self.refresh_overlay());
         std::mem::take(&mut self.cues)
     }
 

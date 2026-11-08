@@ -829,6 +829,11 @@ pub struct GpuRenderer {
     /// Drawn in place of a picture that is not ready, for a frame or two.
     grey: Tex,
     tex_cache: HashMap<String, Option<Tex>>,
+    /// Bind groups of meshes by what they show, so a scene built each frame makes none it made before. Cleared when a
+    /// texture comes or goes.
+    bind_cache: HashMap<BindKey, wgpu::BindGroup>,
+    /// A picture was asked for that is not ready: the bind group made with its grey stand-in is not kept.
+    stand_in_used: bool,
     static_draws: Vec<Draw>,
     /// Another area seen through a doorway.
     portal: Option<Portal>,
@@ -857,9 +862,20 @@ pub struct GpuRenderer {
     post: Post,
 }
 
+/// What a mesh's bind group depends on: its two pictures and its look.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct BindKey {
+    diffuse: Option<String>,
+    lightmap: Option<String>,
+    params: [u32; 5],
+}
+
 struct Draw {
+    /// The buffers of every mesh built together: one pair for a whole scene, and this mesh's bytes of each.
     vertices: wgpu::Buffer,
+    vertex_bytes: std::ops::Range<u64>,
     indices: wgpu::Buffer,
+    index_bytes: std::ops::Range<u64>,
     count: u32,
     bind: wgpu::BindGroup,
     blended: bool,
@@ -1048,6 +1064,8 @@ impl GpuRenderer {
             white,
             grey,
             tex_cache: HashMap::new(),
+            bind_cache: HashMap::new(),
+            stand_in_used: false,
             static_draws: Vec::new(),
             portal: None,
             lift_view: None,
@@ -1275,6 +1293,7 @@ impl GpuRenderer {
 
     /// Ask again for this picture the next time it is drawn: a better one has come.
     pub fn forget_texture(&mut self, name: &str) {
+        self.bind_cache.clear();
         self.tex_cache.remove(&name.to_ascii_lowercase());
     }
 
@@ -1290,9 +1309,11 @@ impl GpuRenderer {
             let began = std::time::Instant::now();
             let img = textures(&key);
             if img.as_ref().is_some_and(|i| i.width == 0) {
+                self.stand_in_used = true;
                 return Some(self.grey.view.clone());
             }
             let t = img.map(|img| upload_image(&self.device, &self.queue, &img));
+            self.bind_cache.clear();
             self.tex_cache.insert(key.clone(), t);
             self.frame_times.new_textures += 1;
             self.frame_times.textures_ms += began.elapsed().as_secs_f32() * 1000.0;
@@ -1305,22 +1326,41 @@ impl GpuRenderer {
         scene: &Scene,
         textures: &mut dyn FnMut(&str) -> Option<Image>,
     ) -> Vec<Draw> {
-        let mut draws = Vec::new();
+        // Every mesh's vertices and indices go into one buffer each, made once, not a pair of buffers a mesh: a scene
+        // built each frame made hundreds.
+        let mut verts: Vec<Vertex> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        let vsize = std::mem::size_of::<Vertex>() as u64;
+        struct Part {
+            vertex_bytes: std::ops::Range<u64>,
+            index_bytes: std::ops::Range<u64>,
+            count: u32,
+            bind: wgpu::BindGroup,
+            blended: bool,
+            adding: bool,
+            centre: [f32; 3],
+            sky: Option<[f32; 3]>,
+        }
+        let mut parts: Vec<Part> = Vec::new();
         for m in &scene.meshes {
             if m.positions.is_empty() || m.triangles.is_empty() {
                 continue;
             }
-            let verts: Vec<Vertex> = (0..m.positions.len())
-                .map(|i| Vertex {
-                    pos: m.positions[i],
-                    normal: m.normals.get(i).copied().unwrap_or([0.0, 0.0, 1.0]),
-                    uv: m.uvs.get(i).copied().unwrap_or([0.0; 2]),
-                    uv2: m.uvs2.get(i).copied().unwrap_or([0.0; 2]),
-                })
-                .collect();
-            let indices: Vec<u32> = m.triangles.iter().flatten().copied().collect();
+            let v_start = verts.len() as u64 * vsize;
+            verts.extend((0..m.positions.len()).map(|i| Vertex {
+                pos: m.positions[i],
+                normal: m.normals.get(i).copied().unwrap_or([0.0, 0.0, 1.0]),
+                uv: m.uvs.get(i).copied().unwrap_or([0.0; 2]),
+                uv2: m.uvs2.get(i).copied().unwrap_or([0.0; 2]),
+            }));
+            let v_end = verts.len() as u64 * vsize;
+            let i_start = indices.len() as u64 * 4;
+            indices.extend(m.triangles.iter().flatten().copied());
+            let i_end = indices.len() as u64 * 4;
+            self.stand_in_used = false;
             let diffuse = self.texture_view(&m.texture, textures);
             let lightmap = self.texture_view(&m.lightmap, textures);
+            let stand_in = self.stand_in_used;
             let look = match m.texture.as_ref().map(|n| n.to_ascii_lowercase()) {
                 Some(n) if self.transparency => self
                     .tex_cache
@@ -1349,56 +1389,67 @@ impl GpuRenderer {
                 0.0,
                 0.0,
             ];
-            let params_buf = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::bytes_of(&params),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-            let white = self.white.view.clone();
-            let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: None,
-                layout: &self.mesh_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(
-                            diffuse.as_ref().unwrap_or(&white),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(
-                            lightmap.as_ref().unwrap_or(&white),
-                        ),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: params_buf.as_entire_binding(),
-                    },
+            let key = BindKey {
+                diffuse: m.texture.as_ref().map(|n| n.to_ascii_lowercase()),
+                lightmap: m.lightmap.as_ref().map(|n| n.to_ascii_lowercase()),
+                params: [
+                    params[0].to_bits(),
+                    params[1].to_bits(),
+                    params[2].to_bits(),
+                    params[3].to_bits(),
+                    params[4].to_bits(),
                 ],
-            });
-            draws.push(Draw {
-                vertices: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            };
+            let bind = match self.bind_cache.get(&key) {
+                Some(b) if !stand_in => b.clone(),
+                _ => {
+                    let params_buf =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: None,
+                                contents: bytemuck::bytes_of(&params),
+                                usage: wgpu::BufferUsages::UNIFORM,
+                            });
+                    let white = self.white.view.clone();
+                    let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: None,
-                        contents: bytemuck::cast_slice(&verts),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    }),
-                indices: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: None,
-                        contents: bytemuck::cast_slice(&indices),
-                        usage: wgpu::BufferUsages::INDEX,
-                    }),
-                count: indices.len() as u32,
+                        layout: &self.mesh_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(
+                                    diffuse.as_ref().unwrap_or(&white),
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(
+                                    lightmap.as_ref().unwrap_or(&white),
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(&self.sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: params_buf.as_entire_binding(),
+                            },
+                        ],
+                    });
+                    if !stand_in {
+                        if self.bind_cache.len() > 4096 {
+                            self.bind_cache.clear();
+                        }
+                        self.bind_cache.insert(key, bind.clone());
+                    }
+                    bind
+                }
+            };
+            parts.push(Part {
+                vertex_bytes: v_start..v_end,
+                index_bytes: i_start..i_end,
+                count: ((i_end - i_start) / 4) as u32,
                 bind,
                 blended: look == AlphaLook::Blend,
                 adding,
@@ -1406,6 +1457,38 @@ impl GpuRenderer {
                 sky: sky_centre(m),
             });
         }
+        if parts.is_empty() {
+            return Vec::new();
+        }
+        let vertex_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&verts),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let index_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+        let draws: Vec<Draw> = parts
+            .into_iter()
+            .map(|p| Draw {
+                vertices: vertex_buffer.clone(),
+                vertex_bytes: p.vertex_bytes,
+                indices: index_buffer.clone(),
+                index_bytes: p.index_bytes,
+                count: p.count,
+                bind: p.bind,
+                blended: p.blended,
+                adding: p.adding,
+                centre: p.centre,
+                sky: p.sky,
+            })
+            .collect();
         draws
     }
 
@@ -1469,7 +1552,9 @@ impl GpuRenderer {
                 resource: globals_buf.as_entire_binding(),
             }],
         });
+        let building = std::time::Instant::now();
         let draws = self.build_draws(scene, textures);
+        self.frame_times.build_ms = building.elapsed().as_secs_f32() * 1000.0;
         // Binds 1 and 2 cut a doorway view out of one picture and keep nothing else of the other.
         let lift = self
             .lift_view
@@ -1687,8 +1772,8 @@ impl GpuRenderer {
             for (g, d) in &sky_binds {
                 pass.set_bind_group(0, g, &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
-                pass.set_vertex_buffer(0, d.vertices.slice(..));
-                pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
+                pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             let mut parts: Vec<(&Draw, usize)> = Vec::new();
@@ -1723,8 +1808,8 @@ impl GpuRenderer {
             for (d, k) in parts.iter().filter(|(d, _)| !d.blended) {
                 pass.set_bind_group(0, bind_of(*k), &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
-                pass.set_vertex_buffer(0, d.vertices.slice(..));
-                pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
+                pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             if self.cel > 0 {
@@ -1733,8 +1818,8 @@ impl GpuRenderer {
                 for d in draws.iter().filter(|d| !d.blended && d.sky.is_none()) {
                     pass.set_bind_group(0, bind_of(g_moving), &[]);
                     pass.set_bind_group(1, &d.bind, &[]);
-                    pass.set_vertex_buffer(0, d.vertices.slice(..));
-                    pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
+                    pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..d.count, 0, 0..1);
                 }
                 // The figures of the area seen through a doorway, in the doorway's view only.
@@ -1742,8 +1827,8 @@ impl GpuRenderer {
                     for d in p.moving.iter().filter(|d| !d.blended && d.sky.is_none()) {
                         pass.set_bind_group(0, bind_of(g_portal), &[]);
                         pass.set_bind_group(1, &d.bind, &[]);
-                        pass.set_vertex_buffer(0, d.vertices.slice(..));
-                        pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
+                        pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
                         pass.draw_indexed(0..d.count, 0, 0..1);
                     }
                 }
@@ -1762,8 +1847,8 @@ impl GpuRenderer {
                 });
                 pass.set_bind_group(0, bind_of(k), &[]);
                 pass.set_bind_group(1, &d.bind, &[]);
-                pass.set_vertex_buffer(0, d.vertices.slice(..));
-                pass.set_index_buffer(d.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.set_vertex_buffer(0, d.vertices.slice(d.vertex_bytes.clone()));
+                pass.set_index_buffer(d.indices.slice(d.index_bytes.clone()), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..d.count, 0, 0..1);
             }
             pass.set_bind_group(0, &globals_bind, &[]);
@@ -1875,7 +1960,9 @@ impl GpuRenderer {
                 run(&mut enc, &self.post.fxaa, from, None, &final_view);
             }
         }
+        let submitting = std::time::Instant::now();
         self.queue.submit([enc.finish()]);
+        self.frame_times.submit_ms = submitting.elapsed().as_secs_f32() * 1000.0;
     }
 
     /// Draw a frame without reading it back, and wait for the GPU to finish it: milliseconds, for measuring what a setting
@@ -1982,6 +2069,10 @@ pub struct FrameTimes {
     pub show_ms: f32,
     /// Meshes built anew this frame.
     pub meshes: u32,
+    /// Of `draw_ms`: turning the frame's scene into buffers and bind groups (`build_draws`), the textures it asked for among them.
+    pub build_ms: f32,
+    /// Of `draw_ms`: handing the commands to the card (`queue.submit`).
+    pub submit_ms: f32,
 }
 
 /// **Assumption:** a mesh wider than this with no lightmap is a sky (the Endar Spire's star sphere is 409 m across).
