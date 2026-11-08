@@ -3132,7 +3132,9 @@ impl Stage {
             .map(|o| {
                 [(RIGHT_HAND_SLOT, "rhand"), (LEFT_HAND_SLOT, "lhand")]
                     .iter()
-                    .filter_map(|(slot, node)| Some((*node, *o.equipped.get(slot)?, *node == "rhand")))
+                    .filter_map(|(slot, node)| {
+                        Some((*node, *o.equipped.get(slot)?, *node == "rhand"))
+                    })
                     .collect()
             })
             .unwrap_or_default();

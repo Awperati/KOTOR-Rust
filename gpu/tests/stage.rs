@@ -1808,7 +1808,11 @@ fn a_stored_weapon_hangs_at_its_holster() {
                 .meshes
                 .iter()
                 .filter(|m| m.name == shape)
-                .filter(|m| m.positions.iter().all(|p| (p[0] - at[0]).hypot(p[1] - at[1]) < 0.6))
+                .filter(|m| {
+                    m.positions
+                        .iter()
+                        .all(|p| (p[0] - at[0]).hypot(p[1] - at[1]) < 0.6)
+                })
                 .count()
         };
         let before = count(&mut s);
@@ -1826,14 +1830,22 @@ fn a_stored_weapon_hangs_at_its_holster() {
                 }
                 let at = s.game.world.object(pc).unwrap().position;
                 let heading = s.game.world.pc_mover.heading;
-                for (view, side, away) in [("front", 1.0, false), ("side", 1.0, true), ("back", -1.0, false)] {
+                for (view, side, away) in [
+                    ("front", 1.0, false),
+                    ("side", 1.0, true),
+                    ("back", -1.0, false),
+                ] {
                     let (dx, dy) = if away {
                         (-heading.sin(), heading.cos())
                     } else {
                         (heading.cos(), heading.sin())
                     };
                     let cam = kotor_render::Camera {
-                        eye: [at[0] + dx * 2.2 * side, at[1] + dy * 2.2 * side, at[2] + 1.1],
+                        eye: [
+                            at[0] + dx * 2.2 * side,
+                            at[1] + dy * 2.2 * side,
+                            at[2] + 1.1,
+                        ],
                         target: [at[0], at[1], at[2] + 0.95],
                         fov: 40.0,
                     };
@@ -1842,7 +1854,11 @@ fn a_stored_weapon_hangs_at_its_holster() {
                     gpu.set_static_scene(&still, &mut |n| s.texture(n));
                     let moving = s.dynamic_scene();
                     let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
-                    std::fs::write(format!("{dir}/{item}-{state}-{view}.png"), kotor_image::to_png(&img)).unwrap();
+                    std::fs::write(
+                        format!("{dir}/{item}-{state}-{view}.png"),
+                        kotor_image::to_png(&img),
+                    )
+                    .unwrap();
                 }
             }
             continue;
