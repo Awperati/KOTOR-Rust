@@ -10,7 +10,7 @@ cargo run --offline --release --manifest-path gpu\Cargo.toml --example viewer
 
 The window opens only on DISPLAY2, and never takes focus by itself: click it to give it the keyboard.
 
-It opens on the main menu (`mainmenu.gui`). New Game starts the Endar Spire, and Exit closes the window. `--skip-menu` starts straight in the game, which is what `Stage::open` and the test driver do. The movie button, the 3D model behind the menu, the debug warp and the new-content notice are left out; Options opens the pages below.
+It opens on the main menu (`mainmenu.gui`). Single Player asks first whether the game is Classic or Modern, and then starts the Endar Spire; Multiplayer says it is coming. Exit closes the window. The mode is kept with the game's saves (`World::game_mode`), and Options, Gameplay has it as one box, Game mode, for this game and the next: Modern is Modern movement and Modern combat together. A save from before modes keeps what Options had. A window started with `--no-chargen` asks nothing and plays as Options has it. `--skip-menu` starts straight in the game, which is what `Stage::open` and the test driver do. The movie button, the 3D model behind the menu, the debug warp and the new-content notice are left out; Options opens the pages below.
 
 | Input | What it does |
 |---|---|

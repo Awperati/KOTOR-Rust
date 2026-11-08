@@ -1032,6 +1032,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     stage.enable_tutorials(!flag("--no-tutorials") && !flag("--autopilot"));
     stage.enable_auto_pause(!flag("--no-auto-pause") && !flag("--autopilot"));
     stage.enable_chargen(!flag("--no-chargen"));
+    stage.enable_mode_choice(!flag("--no-chargen"));
     stage.enable_early_force(!flag("--no-early-force") && !flag("--autopilot"));
     stage.turret_assist = flag("--auto-aim");
     stage.combat_autosave = !flag("--state-log") && !flag("--autopilot");

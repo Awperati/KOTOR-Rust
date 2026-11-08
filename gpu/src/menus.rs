@@ -201,6 +201,10 @@ const NONE_PICTURE: &str = "inone";
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Screen {
     Main,
+    /// Single Player's first question: Classic or Modern, on a panel over the main menu.
+    ModeChoice,
+    /// The Multiplayer button's panel: not built yet.
+    Multiplayer,
     Pause,
     Saves(Mode),
     /// The name dialog over the save screen.
@@ -645,6 +649,8 @@ impl Screen {
     fn name(self) -> &'static str {
         match self {
             Screen::Main => "main",
+            Screen::ModeChoice => "mode_choice",
+            Screen::Multiplayer => "multiplayer",
             Screen::Pause => "pause",
             Screen::Saves(Mode::Load) => "load",
             Screen::Saves(Mode::Save) => "save",
@@ -813,6 +819,10 @@ pub(super) struct Menus {
     bench_turn: f32,
     /// New Game goes through the character's screens, the one being made, and the one made.
     chargen_on: bool,
+    /// Single Player asks Classic or Modern first. Off for tests, which want a game at once, as with the character's screens.
+    mode_choice_on: bool,
+    /// The mode the new game is to have, once chosen.
+    pub(super) new_game_mode: Option<kotor_game::GameMode>,
     pub(super) early_force_on: bool,
     chargen: Option<chargenscreen::Draft>,
     new_character: Option<kotor_game::CharacterSpec>,
@@ -996,8 +1006,12 @@ impl Stage {
         let hover = self.menus.hover.clone();
         match top {
             Screen::Tutorial => MenuView::default(),
-            Screen::Main => {
+            Screen::Main | Screen::ModeChoice | Screen::Multiplayer => {
                 let mut v = main_menu();
+                if top != Screen::Main {
+                    v.hide(&MAIN_BUTTONS);
+                    v.top = Some(Box::new(self.mode_panel(top)));
+                }
                 let card = self.ui.texture(kotor_ui::TITLE_CARD);
                 if let Some((w, h)) = card.map(|c| (c.width as i32, c.height as i32)) {
                     v.fill("LBL_GAMELOGO", kotor_ui::TITLE_CARD);
@@ -1492,11 +1506,55 @@ impl Stage {
     /// Modern or Classic movement for this run, without touching the settings file. For a test driver.
     pub fn set_movement_modern(&mut self, modern: bool) {
         self.menus.settings.movement_modern = modern;
+        self.game.world.game_mode = self.mode_of_settings();
     }
 
     /// Modern or Classic combat for this run, without touching the settings file. For a test.
     pub fn set_combat_modern(&mut self, modern: bool) {
         self.menus.settings.combat_modern = modern;
+        self.game.world.game_mode = self.mode_of_settings();
+    }
+
+    /// Whether Single Player asks Classic or Modern first. The window turns it on with the character's screens.
+    pub fn enable_mode_choice(&mut self, on: bool) {
+        self.menus.mode_choice_on = on;
+    }
+
+    /// The game's mode: Classic or Modern.
+    pub fn game_mode(&self) -> kotor_game::GameMode {
+        self.game.world.game_mode
+    }
+
+    /// The mode the settings have: Modern is Modern movement and Modern combat together.
+    pub(in crate::stage) fn mode_of_settings(&self) -> kotor_game::GameMode {
+        let s = &self.menus.settings;
+        if s.movement_modern && s.combat_modern {
+            kotor_game::GameMode::Modern
+        } else {
+            kotor_game::GameMode::Classic
+        }
+    }
+
+    /// A mode chosen for the new game, or on the Gameplay page for this one: the movement and the combat follow it, and the
+    /// settings keep it for the next game.
+    pub(super) fn choose_game_mode(&mut self, mode: kotor_game::GameMode) {
+        let modern = mode == kotor_game::GameMode::Modern;
+        self.menus.new_game_mode = Some(mode);
+        self.game.world.game_mode = mode;
+        let s = &mut self.menus.settings;
+        (s.movement_modern, s.combat_modern) = (modern, modern);
+        self.settings_changed();
+    }
+
+    /// A save loaded: its mode is the game's, and the movement and combat follow it if the settings had another.
+    fn follow_game_mode(&mut self) {
+        let mode = self.game.world.game_mode;
+        if mode != self.mode_of_settings() {
+            let modern = mode == kotor_game::GameMode::Modern;
+            let s = &mut self.menus.settings;
+            (s.movement_modern, s.combat_modern) = (modern, modern);
+            self.settings_changed();
+        }
     }
 
     /// Whether Modern combat is what the player has now: the box is ticked, the movement is Modern and nobody else drives.
@@ -1625,10 +1683,11 @@ impl Stage {
         let mut v = MenuView::new("optgameplay");
         self.gameplay_words(&mut v);
         let s = self.menus.settings;
-        v.value(optionpages::MOVEMENT_BOX, s.movement_modern as i32, 1);
+        let modern = self.mode_of_settings() == kotor_game::GameMode::Modern;
+        v.value(optionpages::MOVEMENT_BOX, modern as i32, 1);
         v.text(
             optionpages::MOVEMENT_BOX,
-            if s.movement_modern {
+            if modern {
                 optionpages::MOVEMENT_MODERN
             } else {
                 optionpages::MOVEMENT_CLASSIC
@@ -1648,9 +1707,8 @@ impl Stage {
                 optionpages::COMBAT_CLASSIC
             },
         );
-        if !s.movement_modern {
-            v.inert(&[optionpages::COMBAT_BOX]);
-        }
+        // One box for the mode: the combat goes with the movement.
+        v.hide(&[optionpages::COMBAT_BOX]);
         v.copy_control(
             optionpages::MOVEMENT_BOX,
             optionpages::CLICK_BOX,
@@ -1851,7 +1909,10 @@ impl Stage {
 
     /// The words a screen gives a control in place of the file's.
     pub fn menu_button_words(&mut self, tag: &str) -> Option<String> {
-        self.menu_view()?.patches.get(tag)?.text.clone()
+        let v = self.menu_view()?;
+        let words = v.patches.get(tag).and_then(|p| p.text.clone());
+        // A panel over the screen has words of its own.
+        words.or_else(|| v.top.as_ref()?.patches.get(tag)?.text.clone())
     }
 
     /// Nothing stays chosen once a container is shut.
@@ -2428,7 +2489,33 @@ impl Stage {
             (Screen::Container, "BTN_OK") => self.take_everything(),
             (Screen::Container, BTN_TAKE_SELECTED) => self.take_selected(),
             (Screen::Container, "BTN_CANCEL") => self.game.world.close_container(),
-            (Screen::Main, "BTN_NEWGAME") => self.new_game(),
+            (Screen::Main, "BTN_NEWGAME") => {
+                if self.menus.mode_choice_on {
+                    self.menus.stack.push(Screen::ModeChoice);
+                    self.menus.hover = None;
+                } else {
+                    self.new_game();
+                }
+            }
+            (Screen::Main, "BTN_MOVIES") => {
+                self.menus.stack.push(Screen::Multiplayer);
+                self.menus.hover = None;
+            }
+            (Screen::ModeChoice, MODE_CLASSIC_BUTTON | MODE_MODERN_BUTTON) => {
+                let mode = if tag == MODE_MODERN_BUTTON {
+                    kotor_game::GameMode::Modern
+                } else {
+                    kotor_game::GameMode::Classic
+                };
+                self.menus.stack.pop();
+                self.menus.hover = None;
+                self.choose_game_mode(mode);
+                self.new_game();
+            }
+            (Screen::ModeChoice | Screen::Multiplayer, "BTN_BACK") => {
+                self.menus.stack.pop();
+                self.menus.hover = None;
+            }
             (Screen::Main | Screen::Pause, "BTN_LOADGAME") => self.open_saves(Mode::Load),
             (Screen::Main, "BTN_OPTIONS") => self.menus.stack.push(Screen::Options),
             (Screen::Options | Screen::Pause, "BTN_GAMEPLAY") => {
@@ -2451,8 +2538,13 @@ impl Stage {
             (Screen::KeyMap, _) => self.key_map_press(tag),
             (Screen::Mouse, _) => self.mouse_press(tag),
             (Screen::Gameplay, optionpages::MOVEMENT_BOX) => {
-                self.menus.settings.movement_modern = !self.menus.settings.movement_modern;
-                self.settings_changed();
+                // The game's mode, this game's and the next one's.
+                let mode = match self.mode_of_settings() {
+                    kotor_game::GameMode::Modern => kotor_game::GameMode::Classic,
+                    kotor_game::GameMode::Classic => kotor_game::GameMode::Modern,
+                };
+                self.choose_game_mode(mode);
+                self.menus.new_game_mode = None;
             }
             (Screen::Gameplay, optionpages::CLICK_BOX) => {
                 let on = !self.menus.settings.click_to_walk;
@@ -2771,10 +2863,13 @@ impl Stage {
         let Some(path) = self.selected_file(Mode::Load).map(|f| f.path.clone()) else {
             return;
         };
+        // A save from before modes keeps the mode the settings have.
+        self.game.world.game_mode = self.mode_of_settings();
         if let Err(e) = self.game.world.load_from(&path) {
             self.menus.message = format!("Cannot load: {e}");
             return;
         }
+        self.follow_game_mode();
         self.forget_view();
         self.menus.paused = false;
         self.menus.map = None;
@@ -3006,8 +3101,49 @@ fn main_menu() -> MenuView {
         "LBL_LUCAS",
     ]);
     v.plain("BTN_EXIT");
-    v.inert(&["BTN_MOVIES"]);
+    // The owner: "Within the main menu build new options, singleplayer and multiplayer". The movies are not built: their
+    // button is Multiplayer's.
+    v.text("BTN_NEWGAME", "Single Player");
+    v.text("BTN_MOVIES", "Multiplayer");
     v
+}
+
+/// The main menu's buttons and the title, hidden while a panel is over them.
+const MAIN_BUTTONS: [&str; 7] = [
+    "LBL_GAMELOGO",
+    "BTN_NEWGAME",
+    "BTN_LOADGAME",
+    "BTN_MOVIES",
+    "BTN_OPTIONS",
+    "BTN_EXIT",
+    "LBL_MENUBG",
+];
+/// The panel of the mode choice: Quick or Custom's, with its own words. The owner's rules, from the game modes spec.
+const MODE_CLASSIC_BUTTON: &str = "QUICK_CHAR_BTN";
+const MODE_MODERN_BUTTON: &str = "CUST_CHAR_BTN";
+const CLASSIC_WORDS: &str = "Classic plays as the original game: tank movement, turning left and right and going forward and back. The game pauses, and fights go in rounds. No roll and no jump. The Attack mode button stays at the bottom left.";
+const MODERN_WORDS: &str = "Modern: you move where the camera looks, roll and jump, aim and lock on, and have a key for each Force power. Nothing pauses the game while you play but Escape, which opens the pause menu. Every menu still stops the world while it is open.";
+const MULTIPLAYER_WORDS: &str = "Multiplayer is coming soon.";
+
+impl Stage {
+    /// The panel over the main menu: the mode choice, or the Multiplayer one.
+    fn mode_panel(&mut self, top: Screen) -> MenuView {
+        let mut p = MenuView::new("qorcpnl");
+        if top == Screen::Multiplayer {
+            p.hide(&[MODE_CLASSIC_BUTTON, MODE_MODERN_BUTTON]);
+            p.text("LB_DESC", MULTIPLAYER_WORDS);
+        } else {
+            p.text(MODE_CLASSIC_BUTTON, "Classic");
+            p.text(MODE_MODERN_BUTTON, "Modern");
+            let words = match &self.menus.hover {
+                Some(Hit::Button(t)) if t == MODE_MODERN_BUTTON => MODERN_WORDS,
+                _ => CLASSIC_WORDS,
+            };
+            p.text("LB_DESC", words);
+        }
+        p.hover = self.menus.hover.clone();
+        p
+    }
 }
 
 /// `optionsingame.gui`.

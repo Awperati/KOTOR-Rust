@@ -1979,13 +1979,16 @@ fn the_option_pages_change_what_they_say_and_keep_it() {
     press(&mut s, "CB_INVERTCAM");
     s.update(DT);
     assert_ne!(s.overlay().unwrap().rgba, ticked.rgba, "the box is ticked");
-    // The movement box: Modern to begin with, kept in the file, and back again.
-    assert!(s.settings().movement_modern);
+    // The mode box: Modern movement with Classic combat to begin with is Classic; once pressed, Modern, both kept in the file;
+    // and pressed again, Classic, with Classic movement.
+    assert!(s.settings().movement_modern && !s.settings().combat_modern);
     press(&mut s, "CB_REVERSE");
-    assert!(!s.settings().movement_modern);
+    assert!(s.settings().movement_modern && s.settings().combat_modern);
     assert!(std::fs::read_to_string(&file)
         .unwrap()
-        .contains("movement_modern=false"));
+        .contains("combat_modern=true"));
+    press(&mut s, "CB_REVERSE");
+    assert!(!s.settings().movement_modern && !s.settings().combat_modern);
     press(&mut s, "CB_REVERSE");
     assert!(s.settings().movement_modern);
     press(&mut s, "BTN_BACK");
@@ -3620,7 +3623,6 @@ fn every_gameplay_option_fits_on_its_page_apart_from_the_others() {
         "CB_REVERSE",
         "CB_DISABLEMOVE",
         "CB_CLICK_TO_MOVE",
-        "CB_COMBAT_MODERN",
         "BTN_MOUSE",
         "BTN_KEYMAP",
     ];
@@ -6743,9 +6745,9 @@ fn the_cel_shading_row_goes_round_and_the_key_toggles_it() {
     }
 }
 
-/// The owner's two modes: Classic stays the default, for a new settings file and an old one.
+/// The owner's two modes: Classic stays the default, for a new settings file and an old one, and one box sets the game's mode.
 #[test]
-fn combat_is_classic_until_the_box_is_ticked_and_modern_needs_modern_movement() {
+fn combat_is_classic_until_the_mode_box_makes_the_game_modern() {
     let Some((mut s, dir)) = in_game("combat_mode") else {
         return;
     };
@@ -6758,27 +6760,90 @@ fn combat_is_classic_until_the_box_is_ticked_and_modern_needs_modern_movement() 
     assert!(!s.modern_combat(), "a file from before the box");
     s.escape();
     press(&mut s, "BTN_GAMEPLAY");
-    press(&mut s, "CB_COMBAT_MODERN");
-    assert!(s.settings().combat_modern);
+    // The combat has no box of its own any more: it goes with the mode.
+    assert!(s.menu_pixel("CB_COMBAT_MODERN", None, SIZE).is_none());
+    press(&mut s, "CB_REVERSE");
     assert!(s.modern_combat());
+    assert_eq!(s.game_mode(), kotor_game::GameMode::Modern);
     let saved = std::fs::read_to_string(&file).unwrap();
     assert!(saved.contains("combat_modern=true"), "{saved}");
-    // Classic movement has no body to fight with: the setting waits, and the box cannot be pressed.
     press(&mut s, "CB_REVERSE");
-    assert!(!s.settings().movement_modern);
-    assert!(!s.modern_combat());
-    assert!(s.settings().combat_modern, "kept for when it comes back");
-    if let Some(p) = s.menu_pixel("CB_COMBAT_MODERN", None, SIZE) {
-        s.hover(p, SIZE);
-        s.click(p, SIZE);
-    }
-    assert!(s.settings().combat_modern, "greyed");
+    assert!(!s.settings().movement_modern && !s.modern_combat());
+    assert_eq!(s.game_mode(), kotor_game::GameMode::Classic);
     press(&mut s, "CB_REVERSE");
     assert!(s.modern_combat());
-    // Default leaves the two modes alone, as it does the movement.
+    // Default leaves the mode alone.
     press(&mut s, "BTN_DEFAULT");
     assert!(s.modern_combat());
     std::fs::remove_file(&file).ok();
+}
+
+#[test]
+fn single_player_asks_classic_or_modern_and_multiplayer_is_coming() {
+    let Some(mut s) = at_menu() else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("kotor_rs_modes_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    s.use_settings_file(dir.join("settings.txt"));
+    s.update(DT);
+    assert_eq!(
+        s.menu_button_words("BTN_NEWGAME").as_deref(),
+        Some("Single Player")
+    );
+    assert_eq!(
+        s.menu_button_words("BTN_MOVIES").as_deref(),
+        Some("Multiplayer")
+    );
+
+    // Multiplayer: a panel that says it is coming, and Cancel goes back.
+    press(&mut s, "BTN_MOVIES");
+    assert_eq!(s.menu_name(), "multiplayer");
+    assert!(s.menu_pixel("QUICK_CHAR_BTN", None, SIZE).is_none());
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "main");
+
+    // Single Player asks first, and Escape goes back.
+    s.enable_mode_choice(true);
+    press(&mut s, "BTN_NEWGAME");
+    assert_eq!(s.menu_name(), "mode_choice");
+    assert_eq!(
+        s.menu_button_words("QUICK_CHAR_BTN").as_deref(),
+        Some("Classic")
+    );
+    assert_eq!(
+        s.menu_button_words("CUST_CHAR_BTN").as_deref(),
+        Some("Modern")
+    );
+    let (_, too_big) = s.words_fit();
+    assert!(too_big.is_empty(), "{too_big:?}");
+    s.escape();
+    assert_eq!(s.menu_name(), "main");
+
+    // Classic: the game it starts is Classic, with Classic movement and combat, and a save keeps it.
+    press(&mut s, "BTN_NEWGAME");
+    press(&mut s, "QUICK_CHAR_BTN");
+    assert!(s.in_game());
+    assert_eq!(s.game_mode(), kotor_game::GameMode::Classic);
+    assert!(!s.settings().movement_modern && !s.settings().combat_modern);
+    let file = dir.join("classic.sav");
+    s.game.world.save_to(&file, "Classic").unwrap();
+
+    // A Modern game, and the Classic save loaded into it brings Classic back.
+    let mut s = at_menu().unwrap();
+    s.use_settings_file(dir.join("settings.txt"));
+    s.enable_mode_choice(true);
+    s.update(DT);
+    press(&mut s, "BTN_NEWGAME");
+    press(&mut s, "CUST_CHAR_BTN");
+    assert_eq!(s.game_mode(), kotor_game::GameMode::Modern);
+    assert!(s.settings().movement_modern && s.settings().combat_modern);
+    let saved = std::fs::read_to_string(dir.join("settings.txt")).unwrap();
+    assert!(saved.contains("movement_modern=true") && saved.contains("combat_modern=true"));
+    s.game.world.load_from(&file).unwrap();
+    assert_eq!(s.game.world.game_mode, kotor_game::GameMode::Classic);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// How many pixels of the Attack mode button's line show.

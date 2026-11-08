@@ -93,7 +93,11 @@ impl Stage {
 
     /// Time goes on while it is up.
     pub(in crate::stage) fn main_scene_tick(&mut self, dt: f32) {
-        if self.top() != Some(Screen::Main) || !self.main_scene_ready() {
+        let main = matches!(
+            self.top(),
+            Some(Screen::Main | Screen::ModeChoice | Screen::Multiplayer)
+        );
+        if !main || !self.main_scene_ready() {
             return;
         }
         let wide = self.ui_width as f32 / MADE_WIDTH;
@@ -111,7 +115,11 @@ impl Stage {
 
     /// Malak and the room at this moment, and the camera, when the main menu is up.
     pub(super) fn main_scene_now(&mut self) -> Option<(Scene, Camera)> {
-        if self.top() != Some(Screen::Main) || !self.main_scene_ready() {
+        let main = matches!(
+            self.top(),
+            Some(Screen::Main | Screen::ModeChoice | Screen::Multiplayer)
+        );
+        if !main || !self.main_scene_ready() {
             return None;
         }
         let wide = self.ui_width as f32 / MADE_WIDTH;

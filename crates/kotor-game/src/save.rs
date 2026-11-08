@@ -366,6 +366,7 @@ impl World {
                     "TrackedQuest",
                     Value::String(self.tracked_quest.clone().unwrap_or_default()),
                 ),
+                ("GameMode", Value::Byte(self.game_mode.number())),
                 ("LawWanted", Value::Byte(self.law.wanted)),
                 ("LawCrimeSeen", Value::Byte(self.law.crime_seen as u8)),
                 (
@@ -1091,6 +1092,10 @@ impl World {
             .str("TrackedQuest")
             .filter(|t| !t.is_empty())
             .map(str::to_string);
+        // A save from before modes keeps the mode the world had: what Options had when it was loaded.
+        if let Some(n) = globals.root.int("GameMode") {
+            self.game_mode = crate::GameMode::from_number(n);
+        }
         self.law = Default::default();
         self.law.wanted = globals.root.int("LawWanted").unwrap_or(0) as u8;
         self.law.crime_seen = globals.root.int("LawCrimeSeen").unwrap_or(0) != 0;

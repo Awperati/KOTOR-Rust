@@ -795,6 +795,12 @@ impl Stage {
                 .ok_or("no recommended character")?,
         };
         world.create_character(&spec)?;
+        // Classic or Modern, as Single Player asked; with no question asked, as the settings have it.
+        world.game_mode = self
+            .menus
+            .new_game_mode
+            .take()
+            .unwrap_or_else(|| self.mode_of_settings());
         // The one on the character screen's figure: the world under those screens is not this one.
         world.set_player_underwear(&self.preview_underwear);
         self.preview_underwear.clear();

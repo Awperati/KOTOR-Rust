@@ -23,7 +23,8 @@ function Quick([int]$n) { Press 377 (87 + 59 + 30 * ($n - 1)) 195 31 }
 Start-Viewer
 $s = WaitFor "menu" "main"
 Report "Opens on the main menu" ($s.menu -eq "main") "menu=$($s.menu)"
-Step "New Game asks the class" 285 222 210 22 "chargen_class"
+Step "Single Player asks Classic or Modern" 285 222 210 22 "mode_choice"
+Step "Modern goes on to the class" 339 143 233 24 "chargen_class"
 Hover 553 336          # BTN_SEL3: the words about the class
 [void](State)
 Shot "cg_class"
@@ -133,7 +134,8 @@ Stop-Process -Id $v.Id -Force
 # A quick one: portrait, name, play.
 Start-Viewer
 $s = WaitFor "menu" "main"
-Step "New Game asks the class" 285 222 210 22 "chargen_class"
+Step "Single Player asks Classic or Modern" 285 222 210 22 "mode_choice"
+Step "Modern goes on to the class" 339 143 233 24 "chargen_class"
 Press 500 128 75 193   # BTN_SEL6
 $s = WaitFor "menu" "chargen"
 Report "A figure is chosen" ($s.menu -eq "chargen") "menu=$($s.menu)"

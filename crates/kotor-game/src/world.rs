@@ -353,6 +353,8 @@ pub struct World {
     pub journal_order: Vec<String>,
     /// The one quest the compass points to, by its tag.
     pub tracked_quest: Option<String>,
+    /// Classic or Modern, chosen when the game started and kept with its saves.
+    pub game_mode: crate::GameMode,
     /// `global.jrl`, once read.
     pub(crate) journal_file: Option<Rc<Gff>>,
     /// Party members besides the player, in join order.
@@ -709,6 +711,7 @@ impl World {
             inside: HashSet::new(),
             journal: BTreeMap::new(),
             tracked_quest: None,
+            game_mode: crate::GameMode::Classic,
             party: Vec::new(),
             npc_slots: HashMap::new(),
             transition_request: None,

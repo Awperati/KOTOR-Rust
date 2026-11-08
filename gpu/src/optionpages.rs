@@ -213,9 +213,9 @@ const AUTOPAUSE: [(&str, u32); 6] = [
 /// The box on the Gameplay page that picks the movement, and what it says. It takes the place of the game's Reverse
 /// Minigame Y Axis, which was greyed: the page has no room of its own for another.
 pub(super) const MOVEMENT_BOX: &str = "CB_REVERSE";
-pub(super) const MOVEMENT_MODERN: &str = "Movement: Modern";
-pub(super) const MOVEMENT_CLASSIC: &str = "Movement: Classic";
-const MOVEMENT_WORDS: &str = "Ticked, Modern: the keys go where the camera looks, with momentum, gravity, a sprint a quarter faster and a roll on its key. Not ticked, Classic: the walk as the game has it.";
+pub(super) const MOVEMENT_MODERN: &str = "Game mode: Modern";
+pub(super) const MOVEMENT_CLASSIC: &str = "Game mode: Classic";
+const MOVEMENT_WORDS: &str = "This game's mode, kept with its saves, and the next new game's. Ticked, Modern: you move where the camera looks, roll and jump, aim, lock on, and Force keys; only Escape pauses. Not ticked, Classic: the original game, with tank movement, pausing and fights in rounds.";
 /// The box that picks the combat. The file has no such box, nor room in its column: it goes under the words, over Close.
 pub(super) const COMBAT_BOX: &str = "CB_COMBAT_MODERN";
 pub(super) const COMBAT_BOX_AT: [i32; 4] = [338, 214, 240, 34];
