@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Each head, then the colours round to the head's own again: 10 in all.
     for head in 0..4 {
         if head > 0 {
-            step(&mut s, "Head", 4);
+            step(&mut s, "Preset", 4);
         }
         for colour in 0..10 {
             let words = if colour == 0 {

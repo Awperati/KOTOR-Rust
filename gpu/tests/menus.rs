@@ -4223,7 +4223,7 @@ fn custom_has_an_appearance_page_with_the_figure_on_the_right_and_quick_keeps_th
     // A female body has the underwear row too.
     let rows = s.menu_rows("LB_OPTIONS");
     let names: Vec<&str> = rows.iter().map(|r| r.text.as_str()).collect();
-    assert_eq!(names[..2], ["Head", "Body"]);
+    assert_eq!(names[..2], ["Preset", "Body"]);
     let got = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
 
     // The figure is on the right, in a hole, and alone.
@@ -4561,6 +4561,81 @@ fn the_face_sliders_bring_the_view_to_the_head_and_reshape_it() {
     );
     let w = &s.game.world;
     assert_eq!(w.object(w.pc).unwrap().look.sliders.get("nose"), Some(&100));
+}
+
+#[test]
+fn a_preset_loads_a_portraits_head_and_the_sheets_portrait_follows_the_face() {
+    let Some(mut s) = at_chargen("presets") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let row_of = |s: &mut Stage, name: &str| {
+        let rows = s.menu_rows("LB_OPTIONS");
+        rows.iter().position(|r| r.text == name).unwrap()
+    };
+    let choice = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
+    let arrow = |s: &mut Stage, row: usize, by: i32| {
+        bring_row(s, row);
+        let at = s.menu_step_pixel("LB_OPTIONS", row, by, SIZE).unwrap();
+        s.click(at, SIZE);
+    };
+    let sliders = |s: &Stage| {
+        let w = &s.game.world;
+        w.object(w.pc).unwrap().look.sliders.clone()
+    };
+    let preset = row_of(&mut s, "Preset");
+    let first: usize = choice(&mut s, preset)
+        .strip_prefix("Portrait ")
+        .and_then(|r| r.strip_suffix(" of 15"))
+        .and_then(|n| n.parse().ok())
+        .expect("Portrait n of 15");
+    // A face of one's own on the first portrait, and a taller body.
+    for (name, times) in [
+        ("Nose", 3),
+        ("Scar: lip", 2),
+        ("Hair colour", 1),
+        ("Height", 2),
+    ] {
+        let row = row_of(&mut s, name);
+        for _ in 0..times {
+            arrow(&mut s, row, 1);
+        }
+    }
+    let shaped = sliders(&s);
+    for key in ["nose", "scar_lip", "hair_colour", "height"] {
+        assert!(shaped.contains_key(key), "{key}: {shaped:?}");
+    }
+    // The next preset is that portrait's head as it is: the face goes back to it, the body stays.
+    arrow(&mut s, preset, 1);
+    assert_eq!(
+        choice(&mut s, preset),
+        format!("Portrait {} of 15", first % 15 + 1)
+    );
+    let loaded = sliders(&s);
+    assert_eq!(loaded.len(), 1, "{loaded:?}");
+    assert_eq!(loaded.get("height"), Some(&20));
+    // Every row works on top of it.
+    let nose = row_of(&mut s, "Nose");
+    arrow(&mut s, nose, 1);
+    assert_eq!(sliders(&s).get("nose"), Some(&10));
+
+    // OK, and the creation sheet shows the portrait made from this face once the window has drawn it.
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+    let game_own = s.menu_picture_of("PORTRAIT_LBL").unwrap();
+    let (name, _, _) = s.face_portrait_wanted().expect("a face of its own");
+    let drawn = kotor_image::Image {
+        width: 64,
+        height: 64,
+        rgba: vec![120; 64 * 64 * 4],
+    };
+    s.set_face_portrait(&name, &drawn);
+    let shown = s.menu_picture_of("PORTRAIT_LBL").unwrap();
+    assert_ne!(shown, game_own);
+    assert_eq!(shown, name);
 }
 
 #[test]

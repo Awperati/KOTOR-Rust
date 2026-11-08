@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         s.mouse_up_on_layer();
     };
     if heads > 0 {
-        set(&mut s, "Head", 1, heads);
+        set(&mut s, "Preset", 1, heads);
     }
     let groups: [(&str, [&str; 3]); 3] = [
         ("marks_scars", ["Scar: nose", "Scar: lip", "Scar: chin"]),

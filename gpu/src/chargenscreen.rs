@@ -868,8 +868,8 @@ impl Stage {
             .map(|row| {
                 let (name, choice) = match row {
                     LookRow::Head => (
-                        "Head".to_string(),
-                        format!("{} of {}", d.pick + 1, d.portraits.len()),
+                        "Preset".to_string(),
+                        format!("Portrait {} of {}", d.pick + 1, d.portraits.len()),
                     ),
                     LookRow::Body => (
                         "Body".to_string(),
@@ -945,7 +945,7 @@ impl Stage {
     /// An arrow on a row of the Appearance page: it goes on the figure at once.
     pub(super) fn look_step(&mut self, row: usize, by: i32) {
         match self.look_rows().get(row) {
-            Some(LookRow::Head) => self.turn_portrait(by),
+            Some(LookRow::Head) => self.load_preset(by),
             Some(LookRow::Underwear) => self.turn_underwear(by),
             Some(LookRow::Body) => {
                 const SIZES: [BodySize; 3] = [BodySize::Small, BodySize::Medium, BodySize::Large];
@@ -1215,6 +1215,25 @@ impl Stage {
             d.spec.portrait = *p;
         }
         self.sync_character();
+    }
+
+    /// The owner: "make the portraits themselves just presets and then allow for full facial customisation as well". The
+    /// Preset row's arrows load the next portrait's head as it is: the face's sliders, marks and hair colour go back to
+    /// the head's own, and the body's sliders stay. Every row can then change it. **Assumed:** the game's portraits have
+    /// no shape of their own, so their preset is the head with all of those at 0.
+    fn load_preset(&mut self, by: i32) {
+        if let Some(d) = self.menus.chargen.as_mut() {
+            let face = kotor_render::face::FACE_SLIDERS
+                .iter()
+                .copied()
+                .chain(MARKS.iter().map(|m| m.0))
+                .chain([HAIR_KEY]);
+            for key in face {
+                d.spec.look.sliders.remove(key);
+            }
+            d.saved_pick = None;
+        }
+        self.turn_portrait(by);
     }
 
     fn set_portrait(&mut self, pick: usize) {
