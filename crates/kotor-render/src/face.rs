@@ -39,7 +39,16 @@ pub struct FaceShape {
     pub cheeks: f32,
     pub eyes: f32,
     pub mouth: f32,
+    /// A Twi'lek's head-tails, longer or shorter. They are the head's `hair` mesh, with no bones of their own.
+    pub lekku: f32,
 }
+
+/// The look's name for the lekku slider, and how much longer or shorter they go at its ends, as a share of their length.
+pub const LEKKU_KEY: &str = "lekku";
+const LEKKU_MOST: f32 = 0.3;
+/// From how far under the top of the tails they grow, and over how far the growth comes in, in metres.
+const LEKKU_FROM: f32 = 0.03;
+const LEKKU_OVER: f32 = 0.05;
 
 /// The sliders' names, as a look keeps them, in the order of the page.
 pub const FACE_SLIDERS: [&str; 6] = ["brow", "nose", "jaw", "cheeks", "eyes", "mouth"];
@@ -55,6 +64,7 @@ impl FaceShape {
             cheeks: v("cheeks"),
             eyes: v("eyes"),
             mouth: v("mouth"),
+            lekku: v(LEKKU_KEY),
         }
     }
 
@@ -181,6 +191,46 @@ fn face_move(q: [f32; 3], s: &FaceShape, f: &Face, eye_part: bool) -> [f32; 3] {
     out
 }
 
+/// A Twi'lek's tails longer or shorter: what hangs under the top of the `hair` mesh grows away from the back of the skull,
+/// more the further down it is. A head whose `hair` is other hair, as a Cathar's, grows the same way.
+fn grow_lekku(
+    world: &[(String, [[f32; 4]; 4])],
+    name: &str,
+    mesh: &mut kotor_model::Mesh,
+    lekku: f32,
+    face: &Face,
+) {
+    if lekku == 0.0 || mesh.positions.is_empty() {
+        return;
+    }
+    let Some(w) = world
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+        .map(|x| x.1)
+    else {
+        return;
+    };
+    let turn = [0, 1, 2].map(|r| [w[r][0], w[r][1], w[r][2]]);
+    let at = |p: [f32; 3]| {
+        [0, 1, 2].map(|r| turn[r][0] * p[0] + turn[r][1] * p[1] + turn[r][2] * p[2] + w[r][3])
+    };
+    let points: Vec<[f32; 3]> = mesh.positions.iter().map(|p| at(*p)).collect();
+    let top = points.iter().fold(f32::MIN, |t, p| t.max(p[2]));
+    // The root: the back of the skull at the top of the tails, on the face's middle.
+    let back = points
+        .iter()
+        .filter(|p| p[2] > top - LEKKU_FROM)
+        .fold(f32::MAX, |b, p| b.min(p[1]));
+    let root = [face.middle, back, top - LEKKU_FROM];
+    for (p, q) in mesh.positions.iter_mut().zip(points) {
+        let grow = lekku * LEKKU_MOST * ramp(root[2] - q[2], 0.0, LEKKU_OVER);
+        let delta = [0, 1, 2].map(|k| (q[k] - root[k]) * grow);
+        for k in 0..3 {
+            p[k] += turn[0][k] * delta[0] + turn[1][k] * delta[1] + turn[2][k] * delta[2];
+        }
+    }
+}
+
 /// Reshape a head at rest by the sliders. A head without the game's face points is left as it is.
 pub fn shape_face(model: &mut Model, s: &FaceShape) {
     if s.is_plain() {
@@ -202,6 +252,10 @@ pub fn shape_face(model: &mut Model, s: &FaceShape) {
         let lower = name.to_ascii_lowercase();
         // The game's own points of the face, and the neck, stay where they are.
         if lower.starts_with("f_") || lower.starts_with("neck") || lower == "head_g" {
+            return;
+        }
+        if lower == "hair" {
+            grow_lekku(&world, name, mesh, s.lekku, &face);
             return;
         }
         let eye_part = lower.starts_with("eye");

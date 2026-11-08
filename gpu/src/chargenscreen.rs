@@ -14,7 +14,9 @@ use kotor_game::{
     attribute_cost, BodySize, CharacterLook, CharacterSpec, Clip, ATTRIBUTE_BASE, POINT_POOL,
 };
 use kotor_render::face::FaceShape;
+use kotor_render::face::LEKKU_KEY;
 use kotor_render::marks::{HAIR_COLOURS, HAIR_KEY, MARKS, MARK_MOST, MARK_STEP};
+use kotor_render::races;
 use kotor_render::shape::{BodyShape, SLIDER_MOST, SLIDER_STEP};
 use kotor_render::underwear::{list_underwear_variants, UnderwearVariant};
 use kotor_render::{Camera, Rig, Scene};
@@ -110,8 +112,9 @@ const SLIDERS: [(&str, &str, bool); 13] = [
     ("eyes", "Eyes", true),
     ("mouth", "Mouth", true),
 ];
-/// The view a face slider brings the figure to, from the whole body.
+/// The view a face slider brings the figure to, from the whole body, and the one the lekku slider does.
 const FACE_VIEW: usize = 2;
+const LEKKU_VIEW: usize = 1;
 use super::STOCK_UNDERWEAR;
 const STOCK_UNDERWEAR_NAME: &str = "None (the game's own)";
 /// Saved looks: the file beside the settings that keeps them, and how far a random look's sliders go each way, in per cent.
@@ -129,6 +132,10 @@ enum LookRow {
     Mark(usize),
     /// The hair's colour, from `kotor_render::marks::HAIR_COLOURS`.
     Hair,
+    /// How the player looks: Human, or another race's head on their body. See `kotor_render::races`.
+    Race,
+    /// A Twi'lek's head-tails, longer or shorter.
+    Lekku,
     /// Every slider at random, and the head and the body.
     Random,
     /// Every slider back to 0.
@@ -831,11 +838,21 @@ impl Stage {
             .chargen
             .as_ref()
             .is_some_and(|d| gender == FEMALE && d.underwear.len() > 1);
-        let mut rows = vec![LookRow::Head, LookRow::Body];
+        let human = self
+            .menus
+            .chargen
+            .as_ref()
+            .is_none_or(|d| races::race_of(|k| slider(&d.spec.look, k)) == 0);
+        let mut rows = vec![LookRow::Race, LookRow::Head, LookRow::Body];
         if choice {
             rows.push(LookRow::Underwear);
         }
-        rows.push(LookRow::Hair);
+        // A race of its own has no hair to colour. A Twi'lek has head-tails instead.
+        if human {
+            rows.push(LookRow::Hair);
+        } else {
+            rows.push(LookRow::Lekku);
+        }
         rows.extend((0..SLIDERS.len()).map(LookRow::Slider));
         rows.extend((0..MARKS.len()).map(LookRow::Mark));
         rows.extend([
@@ -860,6 +877,10 @@ impl Stage {
         v.text("BTN_ACCEPT", self.ui.strref(STR_OK));
         v.text("BTN_BACK", self.ui.strref(STR_CANCEL));
         let rows = self.look_rows();
+        let d_woman = {
+            let w = &self.game.world;
+            w.object(w.pc).is_some_and(|o| o.gender == FEMALE)
+        };
         let Some(d) = self.menus.chargen.as_ref() else {
             return v;
         };
@@ -867,10 +888,31 @@ impl Stage {
             .into_iter()
             .map(|row| {
                 let (name, choice) = match row {
-                    LookRow::Head => (
-                        "Preset".to_string(),
-                        format!("Portrait {} of {}", d.pick + 1, d.portraits.len()),
+                    LookRow::Lekku => {
+                        let v = slider(&d.spec.look, LEKKU_KEY);
+                        let words = if v == 0 {
+                            "0".to_string()
+                        } else {
+                            format!("{v:+}")
+                        };
+                        ("Lekku".to_string(), words)
+                    }
+                    LookRow::Race => (
+                        "Race".to_string(),
+                        races::RACES[races::race_of(|k| slider(&d.spec.look, k))].to_string(),
                     ),
+                    LookRow::Head => {
+                        let race = races::race_of(|k| slider(&d.spec.look, k));
+                        let heads = races::heads(race, d_woman).len();
+                        let choice = if race == 0 || heads == 0 {
+                            format!("Portrait {} of {}", d.pick + 1, d.portraits.len())
+                        } else {
+                            let n = slider(&d.spec.look, races::RACE_HEAD_KEY)
+                                .clamp(0, heads as i32 - 1);
+                            format!("{} {} of {heads}", races::RACES[race], n + 1)
+                        };
+                        ("Preset".to_string(), choice)
+                    }
                     LookRow::Body => (
                         "Body".to_string(),
                         match d.spec.body {
@@ -945,6 +987,21 @@ impl Stage {
     /// An arrow on a row of the Appearance page: it goes on the figure at once.
     pub(super) fn look_step(&mut self, row: usize, by: i32) {
         match self.look_rows().get(row) {
+            Some(LookRow::Race) => self.turn_race(by),
+            Some(LookRow::Lekku) => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    // The tails hang to the shoulders: from the whole body or the head, the view comes to the upper body.
+                    d.view = LEKKU_VIEW;
+                    let v = (slider(&d.spec.look, LEKKU_KEY) + by * SLIDER_STEP)
+                        .clamp(-SLIDER_MOST, SLIDER_MOST);
+                    if v == 0 {
+                        d.spec.look.sliders.remove(LEKKU_KEY);
+                    } else {
+                        d.spec.look.sliders.insert(LEKKU_KEY.to_string(), v);
+                    }
+                }
+                self.sync_character();
+            }
             Some(LookRow::Head) => self.load_preset(by),
             Some(LookRow::Underwear) => self.turn_underwear(by),
             Some(LookRow::Body) => {
@@ -1222,18 +1279,61 @@ impl Stage {
     /// the head's own, and the body's sliders stay. Every row can then change it. **Assumed:** the game's portraits have
     /// no shape of their own, so their preset is the head with all of those at 0.
     fn load_preset(&mut self, by: i32) {
+        let woman = {
+            let w = &self.game.world;
+            w.object(w.pc).is_some_and(|o| o.gender == FEMALE)
+        };
+        let Some(d) = self.menus.chargen.as_mut() else {
+            return;
+        };
+        let face = kotor_render::face::FACE_SLIDERS
+            .iter()
+            .copied()
+            .chain(MARKS.iter().map(|m| m.0))
+            .chain([HAIR_KEY, LEKKU_KEY]);
+        for key in face {
+            d.spec.look.sliders.remove(key);
+        }
+        d.saved_pick = None;
+        // Another race's presets are its heads; a Human's are the game's portraits.
+        let race = races::race_of(|k| slider(&d.spec.look, k));
+        let heads = races::heads(race, woman).len() as i32;
+        if heads > 0 {
+            let n = (slider(&d.spec.look, races::RACE_HEAD_KEY) + by).rem_euclid(heads);
+            d.spec
+                .look
+                .sliders
+                .insert(races::RACE_HEAD_KEY.to_string(), n);
+            self.sync_character();
+        } else {
+            self.turn_portrait(by);
+        }
+    }
+
+    /// The next race or the last: its first head, as it is. A race of its own has no hair colour.
+    fn turn_race(&mut self, by: i32) {
         if let Some(d) = self.menus.chargen.as_mut() {
-            let face = kotor_render::face::FACE_SLIDERS
+            let now = races::race_of(|k| slider(&d.spec.look, k));
+            let next = cycle(now, by, races::RACES.len());
+            let looks = &mut d.spec.look.sliders;
+            for key in kotor_render::face::FACE_SLIDERS
                 .iter()
                 .copied()
                 .chain(MARKS.iter().map(|m| m.0))
-                .chain([HAIR_KEY]);
-            for key in face {
-                d.spec.look.sliders.remove(key);
+                .chain([HAIR_KEY, LEKKU_KEY, races::RACE_KEY, races::RACE_HEAD_KEY])
+            {
+                looks.remove(key);
+            }
+            if next != 0 {
+                looks.insert(races::RACE_KEY.to_string(), next as i32);
             }
             d.saved_pick = None;
+            // The head is what changes: the view comes to it.
+            if d.view == 0 {
+                d.view = FACE_VIEW;
+            }
         }
-        self.turn_portrait(by);
+        self.sync_character();
     }
 
     fn set_portrait(&mut self, pick: usize) {
@@ -1582,9 +1682,10 @@ impl Stage {
     fn body_in_hole(&mut self, appearance: i32, hole: [f32; 4]) -> (Scene, Camera) {
         let (places, camera) = self.places_in_holes(&[hole]);
         let mut scene = Scene::default();
-        if let Some(rig) = self.bare_rig(appearance) {
+        let head = self.draft_race_head().map(|h| h.0);
+        if let Some(rig) = self.bare_rig_head(appearance, head) {
             let clip = self.idling(0);
-            let wear = self.draft_wear();
+            let wear = self.draft_wear(appearance);
             self.add_creature(
                 &mut scene,
                 &rig,
@@ -1606,7 +1707,8 @@ impl Stage {
             .as_ref()
             .map_or((0.0, 0, 0, 0), |d| (d.turn, d.view, d.pose, d.light));
         let mut scene = Scene::default();
-        let Some(rig) = self.bare_rig(appearance) else {
+        let head = self.draft_race_head().map(|h| h.0);
+        let Some(rig) = self.bare_rig_head(appearance, head) else {
             return (scene, default_camera());
         };
         let look = self
@@ -1615,7 +1717,7 @@ impl Stage {
             .as_ref()
             .map_or(CharacterLook::default(), |d| d.spec.look.clone());
         let rig = self.shaped_rig(rig, &look);
-        let wear = self.draft_wear();
+        let wear = self.draft_wear(appearance);
         let stance = self.look_stance(&rig, appearance, &look, &wear);
         let clip = Some(Clip {
             name: POSES[pose].1,
@@ -1753,21 +1855,33 @@ impl Stage {
         }
     }
 
-    /// What the figures of character creation wear: the underwear on show, and the marks of the look being made.
-    fn draft_wear(&self) -> String {
-        match self.menus.chargen.as_ref() {
-            Some(d) => crate::stage::dress(&self.preview_underwear, &d.spec.look),
-            None => self.preview_underwear.clone(),
-        }
+    /// What the figures of character creation wear, on the body of `appearance`: the underwear on show, and the marks,
+    /// hair colour and race of the look being made.
+    fn draft_wear(&mut self, appearance: i32) -> String {
+        let Some(look) = self.menus.chargen.as_ref().map(|d| d.spec.look.clone()) else {
+            return self.preview_underwear.clone();
+        };
+        let head = self.draft_race_head();
+        let underwear = self.preview_underwear.clone();
+        self.dress_with(&underwear, &look, appearance, head)
+    }
+
+    /// The head of another race the look being made puts on the player: model and texture.
+    fn draft_race_head(&self) -> Option<(&'static str, &'static str)> {
+        let d = self.menus.chargen.as_ref()?;
+        let w = &self.game.world;
+        let woman = w.object(w.pc).is_some_and(|o| o.gender == FEMALE);
+        kotor_render::races::head_of(|k| slider(&d.spec.look, k), woman)
     }
 
     /// The head on the portrait page, large, in its hole.
     fn head_in_hole(&mut self, appearance: i32) -> (Scene, Camera) {
         let mut scene = Scene::default();
-        let Some(rig) = self.clothed_rig(appearance) else {
+        let head = self.draft_race_head().map(|h| h.0);
+        let Some(rig) = self.clothed_rig_head(appearance, head) else {
             return (scene, default_camera());
         };
-        let wear = self.draft_wear();
+        let wear = self.draft_wear(appearance);
         self.add_creature(&mut scene, &rig, &[], &None, [0.0; 3], HEAD_FACING, &wear);
         let top = scene
             .meshes

@@ -4223,7 +4223,7 @@ fn custom_has_an_appearance_page_with_the_figure_on_the_right_and_quick_keeps_th
     // A female body has the underwear row too.
     let rows = s.menu_rows("LB_OPTIONS");
     let names: Vec<&str> = rows.iter().map(|r| r.text.as_str()).collect();
-    assert_eq!(names[..2], ["Preset", "Body"]);
+    assert_eq!(names[..3], ["Race", "Preset", "Body"]);
     let got = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
 
     // The figure is on the right, in a hole, and alone.
@@ -4240,27 +4240,27 @@ fn custom_has_an_appearance_page_with_the_figure_on_the_right_and_quick_keeps_th
         (o.portrait.clone(), o.appearance)
     };
     let found = pc_look(&s);
-    let head = got(&mut s, 0);
-    look_arrow(&mut s, 0, 1);
-    assert_ne!(got(&mut s, 0), head);
-    assert_ne!(pc_look(&s).0, found.0);
-    let body = got(&mut s, 1);
+    let head = got(&mut s, 1);
     look_arrow(&mut s, 1, 1);
-    assert_ne!(got(&mut s, 1), body);
+    assert_ne!(got(&mut s, 1), head);
+    assert_ne!(pc_look(&s).0, found.0);
+    let body = got(&mut s, 2);
+    look_arrow(&mut s, 2, 1);
+    assert_ne!(got(&mut s, 2), body);
     assert_ne!(pc_look(&s).1, found.1, "another body");
-    look_arrow(&mut s, 1, -1);
-    assert_eq!(got(&mut s, 1), body, "and back");
+    look_arrow(&mut s, 2, -1);
+    assert_eq!(got(&mut s, 2), body, "and back");
 
     // Cancel puts it all back.
-    look_arrow(&mut s, 1, 1);
+    look_arrow(&mut s, 2, 1);
     press(&mut s, "BTN_BACK");
     assert_eq!(s.menu_name(), "chargen");
     assert_eq!(pc_look(&s), found);
 
     // OK keeps it, and the next step opens.
     press(&mut s, "BTN_STEPNAME1");
-    assert_eq!(got(&mut s, 0), head);
-    look_arrow(&mut s, 0, 1);
+    assert_eq!(got(&mut s, 1), head);
+    look_arrow(&mut s, 1, 1);
     press(&mut s, "BTN_ACCEPT");
     assert_eq!(s.menu_name(), "chargen");
     assert_ne!(pc_look(&s).0, found.0);
@@ -4488,6 +4488,7 @@ fn the_body_sliders_reshape_the_figure_cancel_puts_them_back_and_ok_keeps_them()
     // Wider shoulders: the figure on the page is wider at the same moment, and it stops at +100.
     let (plain, _) = bounds_near(&s.frame_scene().0, [0.0; 3]);
     let shoulders = row_of(&mut s, "Shoulders");
+    bring_row(&mut s, shoulders);
     let at = s.menu_step_pixel("LB_OPTIONS", shoulders, 1, SIZE).unwrap();
     for _ in 0..12 {
         s.click(at, SIZE);
@@ -4501,6 +4502,7 @@ fn the_body_sliders_reshape_the_figure_cancel_puts_them_back_and_ok_keeps_them()
     assert!(sliders(&s).is_empty(), "{:?}", sliders(&s));
     press(&mut s, "BTN_STEPNAME1");
     let height = row_of(&mut s, "Height");
+    bring_row(&mut s, height);
     let at = s.menu_step_pixel("LB_OPTIONS", height, -1, SIZE).unwrap();
     s.click(at, SIZE);
     s.click(at, SIZE);
@@ -4636,6 +4638,125 @@ fn a_preset_loads_a_portraits_head_and_the_sheets_portrait_follows_the_face() {
     let shown = s.menu_picture_of("PORTRAIT_LBL").unwrap();
     assert_ne!(shown, game_own);
     assert_eq!(shown, name);
+}
+
+#[test]
+fn a_twilek_wears_a_twilek_head_on_the_human_body_in_its_tone_with_lekku() {
+    let Some(mut s) = at_chargen("twilek") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let row_of = |s: &mut Stage, name: &str| {
+        let rows = s.menu_rows("LB_OPTIONS");
+        rows.iter().position(|r| r.text == name)
+    };
+    let choice = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
+    let arrow = |s: &mut Stage, row: usize, by: i32| {
+        bring_row(s, row);
+        let at = s.menu_step_pixel("LB_OPTIONS", row, by, SIZE).unwrap();
+        s.click(at, SIZE);
+    };
+    let textures = |s: &mut Stage| -> Vec<String> {
+        let (scene, _, _) = s.frame_scene();
+        scene
+            .meshes
+            .iter()
+            .filter_map(|m| m.texture.clone())
+            .collect()
+    };
+    let race = row_of(&mut s, "Race").unwrap();
+    assert_eq!(choice(&mut s, race), "Human");
+    assert!(row_of(&mut s, "Hair colour").is_some() && row_of(&mut s, "Lekku").is_none());
+    let human = textures(&mut s);
+    assert!(human
+        .iter()
+        .any(|t| kotor_render::underwear::is_hero_head(t)));
+
+    // A Twi'lek woman: her first head on the same body, the body's skin in its tone, and no hair colour.
+    arrow(&mut s, race, 1);
+    assert_eq!(choice(&mut s, race), "Twi'lek");
+    let preset = row_of(&mut s, "Preset").unwrap();
+    assert_eq!(choice(&mut s, preset), "Twi'lek 1 of 4");
+    assert!(row_of(&mut s, "Hair colour").is_none());
+    let twilek = textures(&mut s);
+    assert!(
+        twilek.iter().any(|t| t.eq_ignore_ascii_case("twilek_f01")),
+        "{twilek:?}"
+    );
+    assert!(!twilek
+        .iter()
+        .any(|t| kotor_render::underwear::is_hero_head(t)));
+    let body = twilek
+        .iter()
+        .find(|t| t.contains("#tone_from="))
+        .expect("the body in the head's tone")
+        .clone();
+    let plain = kotor_render::marks::split_marks(&body).0.to_string();
+    let (a, b) = (s.texture(&plain).unwrap(), s.texture(&body).unwrap());
+    let changed = a
+        .rgba
+        .chunks(4)
+        .zip(b.rgba.chunks(4))
+        .filter(|(x, y)| x != y)
+        .count();
+    assert!(changed > a.rgba.len() / 4 / 10, "{changed}");
+
+    // Her presets are the Twi'lek heads, and the face can be shaped on them, with marks.
+    arrow(&mut s, preset, 1);
+    assert_eq!(choice(&mut s, preset), "Twi'lek 2 of 4");
+    assert!(textures(&mut s)
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case("twilek_f02")));
+    let nose = row_of(&mut s, "Nose").unwrap();
+    arrow(&mut s, nose, 1);
+    let scar = row_of(&mut s, "Scar: lip").unwrap();
+    arrow(&mut s, scar, 1);
+    assert!(textures(&mut s)
+        .iter()
+        .any(|t| t.starts_with("twilek_f02#") && t.contains("scar_lip=10")));
+
+    // The lekku: longer reaches further from the head.
+    let reach = |s: &mut Stage| {
+        let (scene, _, _) = s.frame_scene();
+        let head: Vec<[f32; 3]> = scene
+            .meshes
+            .iter()
+            .filter(|m| {
+                m.texture
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with("twilek_f02"))
+            })
+            .flat_map(|m| m.positions.iter().copied())
+            .collect();
+        let top = head.iter().fold(f32::MIN, |t, p| t.max(p[2]));
+        head.iter().fold(0.0f32, |r, p| r.max(top - p[2]))
+    };
+    let before = reach(&mut s);
+    let lekku = row_of(&mut s, "Lekku").unwrap();
+    for _ in 0..10 {
+        arrow(&mut s, lekku, 1);
+    }
+    assert_eq!(choice(&mut s, lekku), "+100");
+    let after = reach(&mut s);
+    assert!(after > before + 0.02, "{before} {after}");
+
+    // Kept with the character, and back to Human takes the race away.
+    let w = &s.game.world;
+    let look = &w.object(w.pc).unwrap().look.sliders;
+    assert_eq!(look.get("race"), Some(&1));
+    assert_eq!(look.get("lekku"), Some(&100));
+    let race = row_of(&mut s, "Race").unwrap();
+    arrow(&mut s, race, 1);
+    assert_eq!(choice(&mut s, race), "Human");
+    let w = &s.game.world;
+    let look = &w.object(w.pc).unwrap().look.sliders;
+    assert!(
+        !look.contains_key("race") && !look.contains_key("lekku"),
+        "{look:?}"
+    );
 }
 
 #[test]
@@ -5128,7 +5249,7 @@ fn a_custom_character_goes_through_every_step_into_a_new_game() {
     assert_eq!(s.menu_name(), "chargen_look");
     let w = &s.game.world;
     let first = w.object(w.pc).unwrap().portrait.clone();
-    look_arrow(&mut s, 0, 1);
+    look_arrow(&mut s, 1, 1);
     let w = &s.game.world;
     let next = w.object(w.pc).unwrap().portrait.clone();
     assert_ne!(first, next);
@@ -5136,7 +5257,7 @@ fn a_custom_character_goes_through_every_step_into_a_new_game() {
     let w = &s.game.world;
     assert_eq!(w.object(w.pc).unwrap().portrait, first);
     press(&mut s, "BTN_STEPNAME1");
-    look_arrow(&mut s, 0, 1);
+    look_arrow(&mut s, 1, 1);
     press(&mut s, "BTN_ACCEPT");
     assert_eq!(s.menu_name(), "chargen");
 

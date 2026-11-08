@@ -47,18 +47,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut s, "look_steps");
     click(&mut s, "BTN_STEPNAME1");
     shot(&mut s, "look_page");
-    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 1, 1, size) {
+    // Row 0 is Race, 1 Preset, 2 Body and 3 Underwear.
+    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 2, 1, size) {
         s.hover(p, size);
         s.click(p, size);
     }
     shot(&mut s, "look_large");
     // Stage 5: None for underwear, the game's own painted body, one to the left of Standard.
-    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 2, -1, size) {
+    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 3, -1, size) {
         s.hover(p, size);
         s.click(p, size);
     }
     shot(&mut s, "look_underwear_none");
-    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 2, 1, size) {
+    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 3, 1, size) {
         s.hover(p, size);
         s.click(p, size);
     }

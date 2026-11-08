@@ -2,7 +2,13 @@
 
 The owner: "Can we make the portraits themselves just presets and then allow for full facial customisation as well? Include the playable alien races as well".
 
-This is a survey and a design. Nothing of it is built yet. It builds on [CHARGEN_PLAN.md](CHARGEN_PLAN.md).
+This is a survey and a design. Portraits as presets and the Twi'lek are built; the rest is not. It builds on [CHARGEN_PLAN.md](CHARGEN_PLAN.md).
+
+## Built: Twi'lek
+
+A Race row first on the Appearance page: Human or Twi'lek. A Twi'lek woman has the game's 4 Twi'lek women's heads as her presets, and a man the 3 men's. The head goes on the player's own body in place of the human head, by [races.rs](../crates/kotor-render/src/races.rs), so the human skeleton, clips and armour stay. The body's skin, bare or in armour, takes the head's tone: the player's own head's cheeks give the tone it was painted in, the Twi'lek head's cheeks the tone it goes to, and texels of that hue are moved, keeping their light ([marks.rs](../crates/kotor-render/src/marks.rs) `tint_skin`). The face's sliders and marks work on the Twi'lek heads, which carry the same face points. Hair colour is not offered, as Twi'leks have no hair. A **Lekku** slider, -100 to +100, makes the head-tails up to 30% longer or shorter: they are the head's `hair` mesh, which grows away from the back of the skull, more the further down it is ([face.rs](../crates/kotor-render/src/face.rs) `grow_lekku`). The Race row going back to Human takes all of it away.
+
+**Assumed:** the skin test's limits, the tails' growth and its top, by eye from frames of all 7 heads. **Known:** at full length the tails touch the shoulders. A man's bare body keeps a few orange marks on the forearms, which the skin test takes for cloth. Not checked: every armour model on a Twi'lek, and the portrait page of Quick Character, which stays Human.
 
 ## What the game's files have
 

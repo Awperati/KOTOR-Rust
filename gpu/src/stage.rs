@@ -83,6 +83,10 @@ const DOOR_SLAB: f32 = 0.35;
 /// `Equip_ItemList` slots: the armour is measured from the data (`g_a_*` items have this bit); the right hand is the one
 /// combat reads.
 const ARMOUR_SLOT: i32 = 1;
+/// A woman's `gender`, as `portraits.2da` gives it.
+const GENDER_FEMALE: i32 = 1;
+/// A body with another race's head: appearance, texture variation, armour's letter, and the head's model.
+type RaceRigKey = (i32, u32, Option<char>, &'static str);
 /// `baseitems.2da` row of the disguise item, and the `appearance.2da` row (Sith soldier) its wearer is drawn as.
 const DISGUISE_BASE_ITEM: i32 = 90;
 const DISGUISE_APPEARANCE: i32 = 28;
@@ -449,6 +453,12 @@ pub struct Stage {
     /// Goes up whenever `static_scene` is replaced.
     pub static_version: u64,
     rigs: HashMap<(i32, u32, Option<char>), Option<Rc<Rig>>>,
+    /// Bodies with another race's head on them, by body and head's model.
+    race_rigs: HashMap<RaceRigKey, Option<Rc<Rig>>>,
+    /// The skin of each head's cheeks, by its texture: what a body's skin goes from and to.
+    head_tones: HashMap<String, Option<[f32; 3]>>,
+    /// The texture of each appearance's own head, read once.
+    normal_heads: HashMap<i32, Option<String>>,
     pub effects: crate::effects::Effects,
     /// Templates of the placeables that hold things, drawn each frame so that their lids can move.
     chests: Vec<String>,
@@ -687,6 +697,9 @@ impl Stage {
             seam: Default::default(),
             static_version: 0,
             rigs: HashMap::new(),
+            race_rigs: HashMap::new(),
+            head_tones: HashMap::new(),
+            normal_heads: HashMap::new(),
             baseitems: None,
             hide_equipment: None,
             volleys: Default::default(),
@@ -2095,6 +2108,8 @@ impl Stage {
             });
             self.neck_plans.clear();
             self.rigs.clear();
+            self.race_rigs.clear();
+            self.head_tones.clear();
             self.static_version += 1;
         }
     }
@@ -2110,13 +2125,77 @@ impl Stage {
     }
 
     /// What a creature wears for `wear_underwear`: its underwear, and the player's marks.
-    pub(crate) fn dress_of(&self, id: kotor_game::ObjId) -> String {
+    pub(crate) fn dress_of(&mut self, id: kotor_game::ObjId) -> String {
         let w = &self.game.world;
-        match w.object(id) {
-            Some(o) if id == w.pc => dress(&o.underwear, &o.look),
-            Some(o) => o.underwear.clone(),
-            None => String::new(),
+        let Some(o) = w.object(id) else {
+            return String::new();
+        };
+        if id != w.pc {
+            return o.underwear.clone();
         }
+        let (underwear, look, appearance) = (o.underwear.clone(), o.look.clone(), o.appearance);
+        let race_head = self.race_head_of(id);
+        self.dress_with(&underwear, &look, appearance, race_head)
+    }
+
+    /// What a player's figure wears, for `wear_underwear`: the underwear, the look's marks and hair colour, and, with
+    /// another race's head, the tones the body's skin goes between.
+    pub(crate) fn dress_with(
+        &mut self,
+        underwear: &str,
+        look: &kotor_game::CharacterLook,
+        appearance: i32,
+        race_head: Option<(&'static str, &'static str)>,
+    ) -> String {
+        let tone = match race_head {
+            Some((_, texture)) => {
+                let own = self.normal_head_texture_cached(appearance);
+                own.map(|own| kotor_render::marks::tone_suffix(&own, texture))
+            }
+            None => None,
+        };
+        // A race of its own has no hair to colour.
+        let hair = race_head.is_none();
+        let marks = kotor_render::marks::marks_suffix(|name| {
+            if !hair && name == kotor_render::marks::HAIR_KEY {
+                return 0;
+            }
+            look.sliders.get(name).copied().unwrap_or(0)
+        });
+        let marks = marks.trim_start_matches('#');
+        let parts: Vec<&str> = [marks, tone.as_deref().unwrap_or("")]
+            .into_iter()
+            .filter(|p| !p.is_empty())
+            .collect();
+        if parts.is_empty() {
+            underwear.to_string()
+        } else {
+            format!("{underwear}#{}", parts.join(","))
+        }
+    }
+
+    /// [`Stage::normal_head_texture`], read once for each appearance.
+    fn normal_head_texture_cached(&mut self, appearance: i32) -> Option<String> {
+        if let Some(t) = self.normal_heads.get(&appearance) {
+            return t.clone();
+        }
+        let t = self.normal_head_texture(appearance);
+        self.normal_heads.insert(appearance, t.clone());
+        t
+    }
+
+    /// The skin of a head's cheeks, by its texture, worked out once.
+    fn head_tone(&mut self, texture: &str) -> Option<[f32; 3]> {
+        if let Some(t) = self.head_tones.get(texture) {
+            return *t;
+        }
+        let model = kotor_render::races::model_of_head(texture).unwrap_or(texture);
+        let tone = match (self.model(model), self.texture(texture)) {
+            (Some(m), Some(img)) => kotor_render::marks::cheek_tone(&m, texture, &img),
+            _ => None,
+        };
+        self.head_tones.insert(texture.to_string(), tone);
+        tone
     }
 
     /// The underwear the character creation screen's figures wear while a choice is being looked at: a variant's id, or empty.
@@ -2132,9 +2211,17 @@ impl Stage {
                 return got.clone();
             }
             let mut img = self.texture(unmarked)?;
-            let head = kotor_render::underwear::split_variant(unmarked).0;
-            if let Some(model) = self.model(head) {
-                kotor_render::marks::paint_marks(&model, head, &mut img, marks);
+            let plain = kotor_render::underwear::split_variant(unmarked).0;
+            if let Some((from, to)) = kotor_render::marks::tone_names(marks) {
+                // A body under another race's head: its skin in that head's tone.
+                if let (Some(from), Some(to)) = (self.head_tone(from), self.head_tone(to)) {
+                    kotor_render::marks::tint_skin(&mut img, from, to);
+                }
+            } else {
+                let model = kotor_render::races::model_of_head(plain).unwrap_or(plain);
+                if let Some(model) = self.model(model) {
+                    kotor_render::marks::paint_marks(&model, plain, &mut img, marks);
+                }
             }
             self.textures.insert(name.to_string(), Some(img.clone()));
             return Some(img);
@@ -2924,7 +3011,8 @@ impl Stage {
                 .or_else(|| o.dressed_as.clone());
             (o.appearance, o.template.clone(), armour)
         };
-        let rig = self.rig_for(appearance, &template, armour)?;
+        let head = self.race_head_of(id).map(|h| h.0);
+        let rig = self.rig_for_head(appearance, &template, armour, head)?;
         // The player in a garment of the owner's: the body with it on, kept by body and garment.
         if let (true, Some(g)) = (id == self.game.world.pc, self.worn_garment) {
             if let Some(garment) = self.garments.get(g) {
@@ -2940,8 +3028,71 @@ impl Stage {
         Some(self.shaped_for(id, rig))
     }
 
+    /// The head of another race that the player wears in place of their own, model and texture, from their look. None for
+    /// anyone else, and for a Human.
+    pub(crate) fn race_head_of(&self, id: ObjId) -> Option<(&'static str, &'static str)> {
+        let w = &self.game.world;
+        if id != w.pc {
+            return None;
+        }
+        let o = w.object(id)?;
+        kotor_render::races::head_of(
+            |k| o.look.sliders.get(k).copied().unwrap_or(0),
+            o.gender == GENDER_FEMALE,
+        )
+    }
+
+    /// A body with another race's head on it, kept by body and head.
+    fn race_rig(
+        &mut self,
+        appearance: i32,
+        var: u32,
+        letter: Option<char>,
+        head: &'static str,
+    ) -> Option<Rc<Rig>> {
+        let inst = &mut self.inst;
+        let conventional = self.conventional_underwear;
+        self.race_rigs
+            .entry((appearance, var, letter, head))
+            .or_insert_with(|| {
+                kotor_render::rig_for_outfit_with_head(
+                    inst,
+                    appearance as usize,
+                    var,
+                    letter,
+                    Some(head),
+                )
+                .ok()
+                .map(|rig| styled(rig, conventional))
+            })
+            .clone()
+    }
+
+    /// The texture of the head an appearance row gives, the player's own: what their body's skin was painted to go with.
+    pub(crate) fn normal_head_texture(&mut self, appearance: i32) -> Option<String> {
+        let app = TwoDa::parse(&self.inst.read("appearance", ResType::TWODA).ok()?).ok()?;
+        let row: usize = app
+            .get(appearance.max(0) as usize, "normalhead")?
+            .parse()
+            .ok()?;
+        let heads = TwoDa::parse(&self.inst.read("heads", ResType::TWODA).ok()?).ok()?;
+        heads.get(row, "head").map(|h| h.to_ascii_lowercase())
+    }
+
     /// A body in the clothes a character starts with, as the character's screens show it: the second set of `appearance.2da`.
     fn clothed_rig(&mut self, appearance: i32) -> Option<Rc<Rig>> {
+        self.clothed_rig_head(appearance, None)
+    }
+
+    /// [`Stage::clothed_rig`] with another race's head, when there is one.
+    pub(crate) fn clothed_rig_head(
+        &mut self,
+        appearance: i32,
+        head: Option<&'static str>,
+    ) -> Option<Rc<Rig>> {
+        if let Some(h) = head {
+            return self.race_rig(appearance, 1, Some(CLOTHES_LETTER), h);
+        }
         let key = (appearance, 1, Some(CLOTHES_LETTER));
         let inst = &mut self.inst;
         let conventional = self.conventional_underwear;
@@ -2977,8 +3128,15 @@ impl Stage {
         self.eye_fade(w.pc, self.pc_position(), self.camera().eye)
     }
 
-    /// A body with nothing over its underwear, for the character screen.
-    fn bare_rig(&mut self, appearance: i32) -> Option<Rc<Rig>> {
+    /// A body with nothing over its underwear, for the character screen, with another race's head when there is one.
+    pub(crate) fn bare_rig_head(
+        &mut self,
+        appearance: i32,
+        head: Option<&'static str>,
+    ) -> Option<Rc<Rig>> {
+        if let Some(h) = head {
+            return self.race_rig(appearance, 1, None, h);
+        }
         let key = (appearance, 1, None);
         let inst = &mut self.inst;
         let conventional = self.conventional_underwear;
@@ -2998,6 +3156,17 @@ impl Stage {
         appearance: i32,
         template: &str,
         armour: Option<(i32, String)>,
+    ) -> Option<Rc<Rig>> {
+        self.rig_for_head(appearance, template, armour, None)
+    }
+
+    /// [`Stage::rig_for`] with another race's head, when there is one.
+    fn rig_for_head(
+        &mut self,
+        appearance: i32,
+        template: &str,
+        armour: Option<(i32, String)>,
+        head: Option<&'static str>,
     ) -> Option<Rc<Rig>> {
         let number = |inst: &mut Install, name: &str, ty: ResType, field: &str| {
             inst.read(name, ty)
@@ -3022,6 +3191,9 @@ impl Stage {
             if let Some(v) = number(&mut self.inst, &item, ResType(2025), "TextureVar") {
                 var = v;
             }
+        }
+        if let Some(h) = head {
+            return self.race_rig(appearance, var as u32, letter, h);
         }
         let key = (appearance, var as u32, letter);
         // A body is tens of milliseconds to read. The rest stand out of the picture for a frame or two.
@@ -4269,27 +4441,31 @@ fn wear_underwear(scene: &mut Scene, from: usize, underwear: &str) {
         return;
     }
     let (underwear, marks) = kotor_render::marks::split_marks(underwear);
+    // The tones are for the body's skin, the rest for the head.
+    let (body_marks, head_marks): (Vec<&str>, Vec<&str>) = marks
+        .split(',')
+        .filter(|p| !p.is_empty())
+        .partition(|p| p.starts_with("tone_"));
+    let (body_marks, head_marks) = (body_marks.join(","), head_marks.join(","));
     for m in scene.meshes.iter_mut().skip(from) {
         if let Some(t) = &m.texture {
-            let head = kotor_render::underwear::is_hero_head(t);
+            let hero = kotor_render::underwear::is_hero_head(t);
+            let race_head = kotor_render::races::is_race_head(t);
+            let body = kotor_render::races::is_player_body(t);
+            let mut name = t.clone();
             if kotor_render::underwear::body_of_texture(t).is_some()
-                || head
+                || hero
                 || (kotor_render::underwear::is_pack(underwear)
                     && kotor_render::underwear::is_body_sheet(t))
             {
-                let mut name = kotor_render::underwear::variant_texture_name(t, underwear);
-                if head && !marks.is_empty() {
-                    name = format!("{name}#{marks}");
-                }
-                m.texture = Some(name);
+                name = kotor_render::underwear::variant_texture_name(t, underwear);
             }
+            if (hero || race_head) && !head_marks.is_empty() {
+                name = format!("{name}#{head_marks}");
+            } else if body && !body_marks.is_empty() {
+                name = format!("{name}#{body_marks}");
+            }
+            m.texture = Some(name);
         }
     }
-}
-
-/// What a figure wears, for `wear_underwear`: the underwear's id, and after it the marks of a look, if it has any.
-pub(crate) fn dress(underwear: &str, look: &kotor_game::CharacterLook) -> String {
-    let marks =
-        kotor_render::marks::marks_suffix(|name| look.sliders.get(name).copied().unwrap_or(0));
-    format!("{underwear}{marks}")
 }

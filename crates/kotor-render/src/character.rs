@@ -700,6 +700,17 @@ pub fn rig_for_outfit(
     texture_var: u32,
     letter: Option<char>,
 ) -> Result<Rig> {
+    rig_for_outfit_with_head(inst, appearance_row, texture_var, letter, None)
+}
+
+/// [`rig_for_outfit`] with another head in place of the row's `normalhead`, for a player of another race.
+pub fn rig_for_outfit_with_head(
+    inst: &mut Install,
+    appearance_row: usize,
+    texture_var: u32,
+    letter: Option<char>,
+    head_instead: Option<&str>,
+) -> Result<Rig> {
     let app = TwoDa::parse(&inst.read("appearance", ResType::TWODA)?)?;
     let get = |c: &str| {
         app.get(appearance_row, c)
@@ -723,12 +734,14 @@ pub fn rig_for_outfit(
     let body_texture = get(&format!("tex{letter}"))
         .map(|t| format!("{t}{texture_var:02}"))
         .filter(|t| inst.contains(t, ResType::TPC) || inst.contains(t, ResType::TGA));
-    let head = get("normalhead")
-        .and_then(|h| h.parse::<usize>().ok())
-        .and_then(|row| {
-            let heads = TwoDa::parse(&inst.read("heads", ResType::TWODA).ok()?).ok()?;
-            heads.get(row, "head").map(str::to_string)
-        });
+    let head = head_instead.map(str::to_string).or_else(|| {
+        get("normalhead")
+            .and_then(|h| h.parse::<usize>().ok())
+            .and_then(|row| {
+                let heads = TwoDa::parse(&inst.read("heads", ResType::TWODA).ok()?).ok()?;
+                heads.get(row, "head").map(str::to_string)
+            })
+    });
     let named = body_texture.is_some();
     let mut rig = Rig::load(inst, &race, head.as_deref(), body_texture)?;
     if named {

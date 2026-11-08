@@ -62,6 +62,13 @@ const HAIR_BELOW_BROW: f32 = 0.012;
 /// How dark and how light a texel of new hair goes, as a share of the colour, so that strands keep their shading.
 const HAIR_SHADE: (f32, f32) = (0.25, 1.8);
 
+/// A body's skin in a race head's tone: the keys of the two heads, and how near in hue a texel must be to the body's own
+/// skin to be skin, from all to none, and how light, against that skin, from none to all.
+const TONE_FROM: &str = "tone_from";
+const TONE_TO: &str = "tone_to";
+const SKIN_HUE: (f32, f32) = (0.07, 0.1);
+const SKIN_LIGHT: (f32, f32) = (0.12, 0.25);
+
 /// What goes between a texture's name and its marks.
 const MARKS_MARK: char = '#';
 
@@ -113,7 +120,9 @@ pub fn split_marks(name: &str) -> (&str, &str) {
         .map(|(at, _)| at)
         .find(|at| {
             let rest = &name[at + 1..];
-            rest.starts_with(HAIR_KEY) || MARKS.iter().any(|(mark, _)| rest.starts_with(mark))
+            rest.starts_with(HAIR_KEY)
+                || rest.starts_with(TONE_FROM)
+                || MARKS.iter().any(|(mark, _)| rest.starts_with(mark))
         })
         .map_or((name, ""), |at| (&name[..at], &name[at + 1..]))
 }
@@ -167,13 +176,7 @@ fn recolour_hair(img: &mut Image, points: &[Option<[f32; 3]>], at: &Places, colo
         (count > 0.0).then(|| sum.map(|v| v / count))
     };
     // The skin: the mean of the cheeks. The hair: the mean of the crown.
-    let on_cheek = |p: [f32; 3]| {
-        p[1] > at.front
-            && (0..2).any(|e| {
-                (p[0] - at.out_to(e, 1.2)).abs() < 0.012
-                    && (p[2] - (at.eyes[e][1] - 0.02)).abs() < 0.012
-            })
-    };
+    let on_cheek = |p: [f32; 3]| at.on_cheek(p);
     let top = points
         .iter()
         .flatten()
@@ -290,6 +293,15 @@ impl Places {
         }
     }
 
+    /// Whether a point is on a cheek, a little out from and under an eye: skin on every head.
+    fn on_cheek(&self, p: [f32; 3]) -> bool {
+        p[1] > self.front
+            && (0..2).any(|e| {
+                (p[0] - self.out_to(e, 1.2)).abs() < 0.012
+                    && (p[2] - (self.eyes[e][1] - 0.02)).abs() < 0.012
+            })
+    }
+
     /// A point `share` of the way out from the face's middle to an eye, across.
     fn out_to(&self, eye: usize, share: f32) -> f32 {
         self.middle + (self.eyes[eye][0] - self.middle) * share
@@ -402,12 +414,96 @@ pub fn paint_marks(head: &Model, texture: &str, img: &mut Image, marks: &str) {
         return;
     };
     let places = Places::of(&face);
+    let Some(point) = texel_points(head, texture, img) else {
+        return;
+    };
+    if hair > 0 {
+        recolour_hair(img, &point, &places, HAIR_COLOURS[hair].1);
+    }
+    if s.iter().all(|v| *v <= 0.0) {
+        return;
+    }
+    for (n, p) in point.into_iter().enumerate() {
+        let Some(p) = p else { continue };
+        let at = n * 4;
+        let base = [0, 1, 2].map(|k| img.rgba[at + k] as f32);
+        let c = marked(base, p, &s, &places);
+        for k in 0..3 {
+            img.rgba[at + k] = c[k].round().clamp(0.0, 255.0) as u8;
+        }
+    }
+}
+
+/// The skin of a head's cheeks: the mean colour of its texture there.
+pub fn cheek_tone(head: &Model, texture: &str, img: &Image) -> Option<[f32; 3]> {
+    let places = Places::of(&Face::of(head)?);
+    let points = texel_points(head, texture, img)?;
+    let mut sum = [0.0f32; 3];
+    let mut count = 0.0;
+    for (n, p) in points.iter().enumerate() {
+        let Some(p) = p else { continue };
+        if places.on_cheek(*p) {
+            for k in 0..3 {
+                sum[k] += img.rgba[n * 4 + k] as f32;
+            }
+            count += 1.0;
+        }
+    }
+    (count > 0.0).then(|| sum.map(|v| v / count))
+}
+
+/// The names of the two heads whose tones a body's skin goes between, from a texture name's marks: `tone_from` is the
+/// head the body was painted for, `tone_to` the race head it now wears.
+pub fn tone_names(marks: &str) -> Option<(&str, &str)> {
+    let get = |key: &str| {
+        marks
+            .split(',')
+            .filter_map(|part| part.split_once('='))
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v)
+    };
+    Some((get(TONE_FROM)?, get(TONE_TO)?))
+}
+
+/// The marks of a body's texture name for a race head: from the player's own head's texture to the race head's.
+pub fn tone_suffix(from: &str, to: &str) -> String {
+    format!("{TONE_FROM}={from},{TONE_TO}={to}")
+}
+
+/// A body's skin moved from one tone to another. Skin is what has the hue of `from` and is not much darker: cloth and
+/// boots keep theirs. Each texel keeps how light it is against `from`, so the body's shading stays.
+pub fn tint_skin(img: &mut Image, from: [f32; 3], to: [f32; 3]) {
+    let hue = |c: [f32; 3]| {
+        let sum = (c[0] + c[1] + c[2]).max(1.0);
+        c.map(|v| v / sum)
+    };
+    let (from_hue, from_light) = (hue(from), light(from).max(1.0));
+    let pixels = img.rgba.len() / 4;
+    for n in 0..pixels {
+        let c = [0, 1, 2].map(|k| img.rgba[n * 4 + k] as f32);
+        let h = hue(c);
+        let apart = ((0..3).map(|k| (h[k] - from_hue[k]).powi(2)).sum::<f32>()).sqrt();
+        let ratio = light(c) / from_light;
+        let skin = (1.0 - ramp(apart, SKIN_HUE.0, SKIN_HUE.1 - SKIN_HUE.0))
+            * ramp(ratio, SKIN_LIGHT.0, SKIN_LIGHT.1 - SKIN_LIGHT.0);
+        if skin <= 0.0 {
+            continue;
+        }
+        for k in 0..3 {
+            let new = (to[k] * ratio).min(255.0);
+            img.rgba[n * 4 + k] = (c[k] + (new - c[k]) * skin).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+}
+
+/// For each texel of a texture, the point of the model at rest that covers it, across, forward and up, from the meshes
+/// with that texture. Where the picture is shared, the most forward point wins, as the face is what is marked.
+fn texel_points(head: &Model, texture: &str, img: &Image) -> Option<Vec<Option<[f32; 3]>>> {
     let world = head.world_matrices(None);
     let (w, h) = (img.width as usize, img.height as usize);
     if w == 0 || h == 0 || img.rgba.len() < w * h * 4 {
-        return;
+        return None;
     }
-    // Each texel is painted once, from the point of the head that covers it most squarely.
     let mut point: Vec<Option<[f32; 3]>> = vec![None; w * h];
     let mut depth = vec![f32::MIN; w * h];
     fn each(n: &Node, f: &mut dyn FnMut(&Node)) {
@@ -486,21 +582,7 @@ pub fn paint_marks(head: &Model, texture: &str, img: &mut Image, marks: &str) {
             }
         }
     });
-    if hair > 0 {
-        recolour_hair(img, &point, &places, HAIR_COLOURS[hair].1);
-    }
-    if s.iter().all(|v| *v <= 0.0) {
-        return;
-    }
-    for (n, p) in point.into_iter().enumerate() {
-        let Some(p) = p else { continue };
-        let at = n * 4;
-        let base = [0, 1, 2].map(|k| img.rgba[at + k] as f32);
-        let c = marked(base, p, &s, &places);
-        for k in 0..3 {
-            img.rgba[at + k] = c[k].round().clamp(0.0, 255.0) as u8;
-        }
-    }
+    Some(point)
 }
 
 #[cfg(test)]

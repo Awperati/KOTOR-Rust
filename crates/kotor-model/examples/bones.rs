@@ -43,6 +43,19 @@ fn main() {
             models[0],
             set.contains("head") || set.contains("headhook")
         );
+        if std::env::var_os("BONES_TEXTURES").is_some() {
+            fn textures(n: &kotor_model::Node, out: &mut BTreeSet<String>) {
+                if let Some(t) = n.mesh.as_ref().and_then(|m| m.texture.clone()) {
+                    out.insert(format!("{}={t}", n.name));
+                }
+                for c in &n.children {
+                    textures(c, out);
+                }
+            }
+            let mut t = BTreeSet::new();
+            textures(&m.root, &mut t);
+            println!("  textures: {t:?}");
+        }
         if std::env::var_os("BONES_LIST").is_some() {
             let own: Vec<&String> = set
                 .iter()
