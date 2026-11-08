@@ -982,11 +982,14 @@ pub(super) struct Reach {
     pub p: f32,
 }
 
+/// A joint, and its bend, out and twist.
+type ReachJoint = (&'static str, [f32; 3]);
+
 /// Where each class's arm goes at the full reach, as `(joint, [bend, out, twist])` in degrees for the right hand: the left
 /// hand's is the mirror, as `turn_joints` takes the side. A joint with no side in its name is the body's, and turns the
 /// way the hand's side is. **Assumed**, tuned from frames: a pistol's hand crosses to the opposite hip, a rifle's and a blade's
 /// goes up and back over the shoulder.
-const REACHES: &[(&str, &[(&str, [f32; 3])])] = &[
+const REACHES: &[(&str, &[ReachJoint])] = &[
     (
         "pistol",
         &[
