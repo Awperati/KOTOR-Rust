@@ -76,6 +76,8 @@ A `.mod` beside a module's `.rim` pair is an installed mod. The original game pr
 ## The camera and the sky
 The camera starts 3.3 m behind and 1.7 m above the player, and comes closer where the floor ends so that it stays inside the room. A mesh over 150 m wide with no lightmap counts as a sky (an assumption): it is drawn first, around the camera, with no depth. `compare.rs` turns that off to match the software renderer.
 
+Holding the right button to turn the camera hides the cursor and holds it, so the mouse turns on past the window's edges. Letting go puts the cursor back where it was. Aiming and the turret do the same. A menu, a conversation's replies or switching to another window let it go.
+
 ## Interface on a wide screen
 GUI files lay out 640x480. The interface is drawn 480 units high and as wide as the window's shape makes it, then stretched over the whole window. **Assumed, not compared with the game:** the left of the HUD stays, the party and map keep their distance from the right edge, the action slot and notice icons stay centred, and the dialogue box is a bar from edge to edge.
 

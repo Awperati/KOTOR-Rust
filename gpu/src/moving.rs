@@ -319,6 +319,15 @@ impl Stage {
         self.camera_side
     }
 
+    /// Whether the window hides the cursor and holds it, so the mouse turns the camera with no edge to stop it: while the look
+    /// button is down, while aiming, and at the turret. The owner: "Upon holding right click to pan the mouse around make the
+    /// cursor invisible and infinitely repeat across the borders of the window". A menu, a conversation's replies or a window
+    /// without focus let it go, so the cursor is there to click with, and a driver's window, which never has focus, never holds it.
+    pub fn cursor_held(&self, look_button: bool, focused: bool) -> bool {
+        let looking = look_button && self.choice_view().is_none();
+        focused && !self.menu_open() && (looking || self.aiming() || self.turret_on())
+    }
+
     /// The look button is held or let go.
     pub fn set_looking(&mut self, looking: bool) {
         self.looking = looking;

@@ -186,9 +186,14 @@ struct App {
     pazaak: Option<i32>,
     alignment: Option<i32>,
     grenadier: bool,
+    /// The cursor is hidden and held: `Stage::cursor_held`.
     turret_cursor: bool,
-    /// The turret has seen where the cursor is: till then, how far it has come means nothing.
+    /// The turret or the look has seen where the cursor is: till then, how far it has come means nothing.
     turret_cursor_known: bool,
+    /// Where the cursor was when it was taken, to put it back there.
+    cursor_home: Option<(f32, f32)>,
+    /// Held by the system, which then gives only how far the mouse moved: `DeviceEvent::MouseMotion`.
+    cursor_locked: bool,
     pilot_until: Option<String>,
     auto_pause: bool,
     frames: u32,
@@ -412,10 +417,30 @@ impl App {
         self.stage
             .set_looking(self.looking || self.stage.touch_looking());
         self.stage.set_aim_held(self.looking);
-        if self.turret_cursor != (self.stage.turret_on() || self.stage.aiming()) {
-            self.turret_cursor = !self.turret_cursor;
+        let held = self.stage.cursor_held(self.looking, st.window.has_focus());
+        if self.turret_cursor != held {
+            use winit::window::CursorGrabMode;
+            self.turret_cursor = held;
             self.turret_cursor_known = false;
-            st.window.set_cursor_visible(!self.turret_cursor);
+            st.window.set_cursor_visible(!held);
+            if held {
+                self.cursor_home = Some(self.cursor);
+                // Locked where the system can, else kept in the window and brought back to its middle as it nears an edge.
+                self.cursor_locked = st.window.set_cursor_grab(CursorGrabMode::Locked).is_ok();
+                if !self.cursor_locked {
+                    let _ = st.window.set_cursor_grab(CursorGrabMode::Confined);
+                }
+            } else {
+                let _ = st.window.set_cursor_grab(CursorGrabMode::None);
+                self.cursor_locked = false;
+                // Back where it was taken, as if it had never moved.
+                if let Some(home) = self.cursor_home.take() {
+                    let spot = winit::dpi::PhysicalPosition::new(home.0, home.1);
+                    if st.window.set_cursor_position(spot).is_ok() {
+                        self.cursor = home;
+                    }
+                }
+            }
         }
         let axis = |a: bool, b: bool| a as i32 as f32 - b as i32 as f32;
         self.stage.steer = self.stage.touch_steer().unwrap_or((
@@ -767,7 +792,10 @@ impl ApplicationHandler for App {
                 let now = (position.x as f32, position.y as f32);
                 let size = self.window_size();
                 self.stage.mouse_moved_on_layer(now, size);
-                if self.stage.turret_on() {
+                if self.turret_cursor && self.cursor_locked {
+                    // The system gives how far the mouse moved, in `device_event`, and the cursor stays where it was taken.
+                    return;
+                } else if self.stage.turret_on() {
                     if self.turret_cursor_known {
                         self.stage
                             .turret_look(now.0 - self.cursor.0, now.1 - self.cursor.1);
@@ -781,8 +809,8 @@ impl ApplicationHandler for App {
                 } else if self.looking {
                     self.stage
                         .look(now.0 - self.cursor.0, now.1 - self.cursor.1);
-                    // The cursor is hidden while aiming, and held in the window as at the turret.
-                    if self.stage.aiming() {
+                    // Held, the hidden cursor goes back to the middle before an edge can stop it.
+                    if self.turret_cursor {
                         if let Some(middle) =
                             self.state.as_ref().and_then(|st| back_to_middle(st, now))
                         {
@@ -865,6 +893,27 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => self.frame(el),
             _ => {}
+        }
+    }
+
+    /// With the cursor locked by the system, the mouse's own movement turns the camera or the turret.
+    fn device_event(
+        &mut self,
+        _: &ActiveEventLoop,
+        _: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        let winit::event::DeviceEvent::MouseMotion { delta } = event else {
+            return;
+        };
+        if !(self.turret_cursor && self.cursor_locked) {
+            return;
+        }
+        let (dx, dy) = (delta.0 as f32, delta.1 as f32);
+        if self.stage.turret_on() {
+            self.stage.turret_look(dx, dy);
+        } else if self.looking {
+            self.stage.look(dx, dy);
         }
     }
 
@@ -1073,6 +1122,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         grenadier: flag("--grenadier"),
         turret_cursor: false,
         turret_cursor_known: false,
+        cursor_home: None,
+        cursor_locked: false,
         pilot_until: opt("--pilot-until"),
         auto_pause: !flag("--no-auto-pause"),
         frames: 0,
