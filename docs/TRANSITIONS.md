@@ -32,9 +32,9 @@ Choosing a planet runs `k_sup_galaxymap`, which writes `K_FUTURE_PLANET` (row 3 
 
 | Case | Why | Plan |
 |---|---|---|
-| `tar02_aptdoor` (apartment door, `k_ptar_extapt`) → `tar_m02aa` | Its script decides by the state of the apartment, so a probe on a copy of the globals alone does not reach `StartNewModule` | Run the probe with the door's and the player's own state; or list it by hand in `quest_routes.tsv`-style table. One door. |
-| `unk41_goebon` trigger → `ebo_m41aa` | Same | Same. One trigger |
-| Hawk minigame (`m12ab`) ends in the ship or a cut scene | A heartbeat script decides when | Load the ship when the minigame starts (one call, `ebo_m12aa`). Not done: the minigames have their own loading path |
+| `tar02_aptdoor` (apartment door, `k_ptar_extapt`) → `tar_m02aa` | Not a freeze: the door has its own link and is joined (0 ms in `docs/link_drive.tsv`); its script only starts a conversation | Done (nothing to do) |
+| `unk41_goebon` trigger → `ebo_m41aa` | The script asks "is the one who entered the player?" before it starts the module, and the probe answered no | Done: the probe answers the player for `GetEnteringObject`, `GetLastUsedBy`, `GetClickingObject`, `GetFirstPC` and so `GetIsPC` yes; it finds `ebo_m41aa` (`tests/script_probe.rs`) |
+| Hawk minigame (`m12ab`) ends in the ship | A heartbeat script decides when | Done: the ship (`ebo_m12aa`) is loaded ahead from the start of a minigame (`tests/preload.rs`). Assumed: every minigame ends in the ship |
 | Cut scenes (`stunt_*`) | Left alone: short, behind a screen of their own, and many | None needed |
 
 ## What each link costs the player (`link_drive`)

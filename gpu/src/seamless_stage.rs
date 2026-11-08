@@ -20,6 +20,8 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 
 /// How near the player must come to a door, in metres, before the area behind it is loaded.
+/// The Ebon Hawk's module, where a minigame ends.
+const SHIP: &str = "ebo_m12aa";
 const PRELOAD_RANGE: f32 = 40.0;
 /// How much farther than `PRELOAD_RANGE` a kept module is kept, so that it is not loaded and dropped at the same spot.
 const PRELOAD_KEEP_EXTRA: f32 = 20.0;
@@ -440,9 +442,12 @@ impl Stage {
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
-        if self.game.world.minigame.is_some() || std::env::var_os("KOTOR_NO_PRELOAD").is_some() {
+        if std::env::var_os("KOTOR_NO_PRELOAD").is_some() {
             return;
         }
+        // A minigame ends in the ship, by a heartbeat script that cannot be told in advance: the ship is loaded ahead from the
+        // start of it. Assumed: the Ebon Hawk's own module, which every minigame of the game returns to or goes through.
+        let minigame = self.game.world.minigame.is_some();
         let here = self.game.world.pc_mover.pos;
         let scripted = self.scripted_exits(here);
         let journey = self.journey_goal();
@@ -471,6 +476,9 @@ impl Stage {
                 .into_iter()
                 .filter(|(_, m)| *m != w.module && !joined.contains(m.as_str())),
         );
+        if minigame {
+            exits = vec![(0.0, SHIP.to_string())];
+        }
         exits.sort_by(|a, b| a.0.total_cmp(&b.0));
         // What is kept goes when its exit is out of reach, or when the player has walked away from the talk that named it.
         self.seam.pre.retain(|p| match p.talk {

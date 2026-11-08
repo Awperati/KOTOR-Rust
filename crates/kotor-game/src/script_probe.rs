@@ -63,6 +63,9 @@ impl Probe<'_> {
         if self.depth >= DEPTH || self.found.is_some() {
             return;
         }
+        if std::env::var_os("KOTOR_PROBE_TRACE").is_some() {
+            eprintln!("probe run {script}");
+        }
         let Some(prog) = self.world.program(script) else {
             return;
         };
@@ -82,6 +85,9 @@ impl Host for Probe<'_> {
         routine: &Routine,
         args: &[Value],
     ) -> Result<Option<Value>, String> {
+        if std::env::var_os("KOTOR_PROBE_TRACE").is_some() {
+            eprintln!("probe call {} {:?}", routine.name, args);
+        }
         Ok(match routine.name.as_str() {
             "StartNewModule" => {
                 let m = text(args, 0);
@@ -129,6 +135,16 @@ impl Host for Probe<'_> {
                 None
             }
             "GetSelectedPlanet" => Some(Value::Int(self.planet)),
+            // Whoever sets the script off is the player: a door's or a trigger's script that asks "is it the player" before
+            // it starts a module (`k_punk_goebon`) would otherwise stop at once.
+            "GetEnteringObject" | "GetLastUsedBy" | "GetClickingObject" | "GetLastOpenedBy"
+            | "GetFirstPC" | "GetLastPerceived" => Some(Value::Object(self.world.pc)),
+            "GetIsPC" => Some(Value::Int(
+                (matches!(args.first(), Some(Value::Object(o)) if *o == self.world.pc)) as i32,
+            )),
+            "GetIsObjectValid" => Some(Value::Int(
+                !matches!(args.first(), Some(Value::Object(o)) if *o == OBJECT_INVALID) as i32,
+            )),
             _ => nothing(&routine.ret),
         })
     }

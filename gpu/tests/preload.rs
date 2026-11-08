@@ -287,3 +287,19 @@ fn the_module_of_the_save_chosen_on_the_load_screen_is_loaded_while_the_player_l
     };
     assert_eq!(m, "tar_m03aa", "the save's own module");
 }
+
+#[test]
+fn the_ship_is_loaded_ahead_while_a_hawk_minigame_runs() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open("M12ab", true).unwrap();
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    assert!(s.game.world.minigame.is_some(), "the turret minigame");
+    let Some(m) = wait_for_any(&mut s) else {
+        // Memory short on this machine: nothing to check.
+        return;
+    };
+    assert_eq!(m, "ebo_m12aa", "the ship it ends in");
+}

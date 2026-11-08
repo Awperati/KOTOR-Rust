@@ -77,3 +77,19 @@ fn choosing_a_planet_on_the_map_says_which_module_the_ramp_will_open() {
     assert_eq!(w.global_numbers.get("K_FUTURE_PLANET"), None);
     assert_eq!(w.global_numbers.get("K_CURRENT_PLANET"), None);
 }
+
+#[test]
+fn a_trigger_that_asks_who_entered_before_it_starts_a_module_is_read_as_the_player() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let mut w = World::new(Install::open(dir).unwrap()).unwrap();
+    w.load_module("unk_m41aa").unwrap();
+    // `k_punk_goebon` stops at "is the one who entered the player?": the probe answers yes.
+    assert_eq!(
+        w.script_destination("k_punk_goebon", -1).as_deref(),
+        Some("ebo_m41aa")
+    );
+    // Looking changes nothing.
+    assert!(w.transition_request.is_none());
+}
