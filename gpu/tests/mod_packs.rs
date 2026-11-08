@@ -104,8 +104,14 @@ fn the_mod_packs_are_used_when_on_and_read_from_the_mods_folder() {
     });
     if has_jawa {
         assert!(inst.in_override("p_jawab", ResType::MDL));
-        assert!(!inst.in_override("pmbal", ResType::MDL), "the hero's own body");
-        assert!(!inst.in_override("pmha01", ResType::MDL), "the hero's own head");
+        assert!(
+            !inst.in_override("pmbal", ResType::MDL),
+            "the hero's own body"
+        );
+        assert!(
+            !inst.in_override("pmha01", ResType::MDL),
+            "the hero's own head"
+        );
         assert!(inst.contains("p_jawamw_atk1", ResType::WAV));
         let rig = kotor_render::rig_for_race_body(&mut inst, "p_jawab", None).unwrap();
         assert!(rig.body_model().root.find("eyes").is_some(), "the eyes");
@@ -137,10 +143,21 @@ fn the_mod_packs_are_used_when_on_and_read_from_the_mods_folder() {
             .map(|p| p[2])
             .collect();
         assert!(!front.iter().any(|z| (lo[2]..hi[2]).contains(z)), "hidden");
-        let chin = front.iter().copied().filter(|z| *z < middle).fold(f32::MIN, f32::max);
-        let brow = front.iter().copied().filter(|z| *z > middle).fold(f32::MAX, f32::min);
+        let chin = front
+            .iter()
+            .copied()
+            .filter(|z| *z < middle)
+            .fold(f32::MIN, f32::max);
+        let brow = front
+            .iter()
+            .copied()
+            .filter(|z| *z > middle)
+            .fold(f32::MAX, f32::min);
         let at = (middle - chin) / (brow - chin);
-        assert!((0.33..0.67).contains(&at), "{at} of the way from the chin {chin} to the brow {brow}");
+        assert!(
+            (0.33..0.67).contains(&at),
+            "{at} of the way from the chin {chin} to the brow {brow}"
+        );
     } else {
         assert!(!inst.in_override("p_jawab", ResType::MDL));
     }

@@ -1022,7 +1022,9 @@ impl Stage {
         // Classic movement is the game's own tank controls: left and right turn the body and the camera behind it, and
         // there is no strafe. A scripted player keeps its own walk, and in a swoop race left and right steer the bike in
         // either mode: turning them into the walk's turn took them from the race after its first frame.
-        if !self.settings().movement_modern && self.pilot.is_none() && self.game.world.race.is_none()
+        if !self.settings().movement_modern
+            && self.pilot.is_none()
+            && self.game.world.race.is_none()
         {
             self.yaw -= right * TANK_TURN * dt;
             right = 0.0;

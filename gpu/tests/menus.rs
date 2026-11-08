@@ -2434,7 +2434,10 @@ fn the_mouse_going_down_looks_down_and_invert_camera_flips_it() {
         // Modern, then Classic.
         ("movement_modern=true\ncombat_modern=true\n", false),
         ("movement_modern=false\n", false),
-        ("invert_y=true\nmovement_modern=true\ncombat_modern=true\n", true),
+        (
+            "invert_y=true\nmovement_modern=true\ncombat_modern=true\n",
+            true,
+        ),
         ("invert_y=true\nmovement_modern=false\n", true),
         // What an old file calls the box does nothing.
         ("invert_camera=true\n", false),
@@ -4825,7 +4828,10 @@ fn the_games_aliens_are_races_that_wear_their_own_bodies() {
     }
     let preset = row_of(&mut s, "Preset").unwrap();
     assert_eq!(choice(&mut s, preset), "Wookiee 1 of 5");
-    assert!(textures(&mut s).iter().any(|t| t == "n_wookiem06"), "its own");
+    assert!(
+        textures(&mut s).iter().any(|t| t == "n_wookiem06"),
+        "its own"
+    );
     arrow(&mut s, preset, 1);
     assert_eq!(choice(&mut s, preset), "Wookiee 2 of 5");
     let second = textures(&mut s);
