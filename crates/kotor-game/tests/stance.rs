@@ -95,6 +95,7 @@ fn with_auto_attack_mode_a_fight_turns_it_on_for_the_leader_and_the_companion() 
     };
     let pc = w.pc;
     w.stance.auto_enabled = true;
+    w.stance.live = true;
     assert!(!w.attack_mode() && !w.in_attack_mode(mate), "no fight yet");
     w.attack(pc, foe);
     run(&mut w, 1.0);
@@ -113,6 +114,7 @@ fn a_mode_goes_off_ten_seconds_after_the_fight_and_one_set_by_hand_and_never_fou
     };
     let pc = w.pc;
     w.stance.auto_enabled = true;
+    w.stance.live = true;
     w.set_mode_of(mate, true);
     w.attack(pc, foe);
     run(&mut w, 1.0);
@@ -147,12 +149,37 @@ fn a_mode_goes_off_ten_seconds_after_the_fight_and_one_set_by_hand_and_never_fou
 }
 
 #[test]
-fn without_the_switch_nothing_goes_on_by_itself() {
+fn a_fight_turns_the_mode_on_with_the_switch_off_but_then_it_stays_until_the_player_turns_it_off() {
     let Some((mut w, mate, foe)) = scene() else {
         return;
     };
     let pc = w.pc;
-    assert!(!w.stance.auto_enabled, "off in a bare world");
+    w.stance.live = true;
+    assert!(!w.stance.auto_enabled, "the switch is off");
+    assert!(!w.in_combat(pc), "one flag: not in combat");
+    w.attack(pc, foe);
+    run(&mut w, 2.0);
+    assert!(w.attack_mode(), "the fight turned it on");
+    assert!(
+        w.in_combat(pc) && w.in_combat(mate),
+        "and that is being in combat"
+    );
+    // The fight is over: with the switch off nothing turns it off by itself.
+    w.object_mut(foe).unwrap().dead = true;
+    w.combat.target.clear();
+    run(&mut w, 30.0);
+    assert!(w.attack_mode() && w.in_combat(pc), "it stays");
+    w.set_attack_mode(false);
+    assert!(!w.in_combat(pc), "and by hand it goes");
+}
+
+#[test]
+fn in_a_bare_world_nothing_goes_on_by_itself() {
+    let Some((mut w, mate, foe)) = scene() else {
+        return;
+    };
+    let pc = w.pc;
+    assert!(!w.stance.live, "off in a bare world");
     w.attack(pc, foe);
     run(&mut w, 2.0);
     assert!(!w.attack_mode());

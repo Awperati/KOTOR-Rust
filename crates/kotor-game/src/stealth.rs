@@ -57,7 +57,7 @@ impl World {
             if !self.has_stealth_unit(pc) {
                 return Err("Stealth Mode needs a stealth unit.");
             }
-            if self.combat.in_combat(pc) {
+            if self.in_combat(pc) {
                 return Err("Not in combat.");
             }
         }
@@ -76,7 +76,7 @@ impl World {
             return;
         }
         let pc = self.pc;
-        if self.combat.in_combat(pc) || !self.has_stealth_unit(pc) {
+        if self.in_combat(pc) || !self.has_stealth_unit(pc) {
             self.stealth_mode = false;
             self.stealth_looks.clear();
             self.events.push("stealth mode off".into());

@@ -15,13 +15,18 @@ yellow line when theirs is on. A member counts as in attack mode when it is on *
 - After you turn the mode off in a fight, it stays off until the fight is over: it does not light again while enemies hit you, and a
   companion you turned off holds fire (does not join your target). One that is attacked still defends itself.
 
-## Auto attack mode
+## One flag: attack mode is combat
 
-With the switch on, a member who enters a fight (they attack an enemy, or an enemy attacks them) goes into attack mode by
-themselves, the leader and each companion alike. **Ten seconds after their fight ends** the mode goes off by itself
+Attack mode and being in combat are the same thing. A party member who enters a fight (they attack an enemy, or an enemy attacks
+them) goes into attack mode by themselves, whatever the switch says. `World::in_combat` for the leader and the party reads that
+flag, so the scripts' `GetIsInCombat`, Stealth Mode and the HUD agree with the button. For anyone else it is who fights whom.
+
+## Auto attack mode (the switch)
+
+The switch decides whether the mode goes **off** by itself. **Ten seconds after their fight ends** it goes off
 (`AUTO_OFF_SECONDS` in [stance.rs](../crates/kotor-game/src/stance.rs)). That holds for a mode you set by hand, if they fought
-in it. A new fight starts the count again. A mode you set by hand and never fought in stays until you turn it off. Off: nothing
-goes on or off by itself, and the button still lights while they fight. A scripted pilot (the drivers) keeps the old rules.
+in it. A new fight starts the count again. A mode you set by hand and never fought in stays until you turn it off. Switch off:
+the fight still turns the mode on, and it stays on until you turn it off. A scripted pilot (the drivers) keeps the old rules.
 
 ## The queue
 

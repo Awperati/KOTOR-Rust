@@ -1,8 +1,9 @@
 //! Attack mode, one for each member of the party, and what each has queued.
 //!
 //! The Attack mode button shows the truth: lit when the member is in attack mode or is fighting, and a click on it when lit
-//! ends the fight (it is the old Disengage button). With "Auto attack mode" on (the player's switch), a member who enters a
-//! fight goes into attack mode by itself. Ten seconds after a fight is over (`AUTO_OFF_SECONDS`) the mode goes off by itself,
+//! ends the fight (it is the old Disengage button). Attack mode and combat are one flag: a member who enters a fight goes
+//! into attack mode by itself, and `World::in_combat` for the party reads it. The player's switch "Auto attack mode" decides
+//! whether it also goes off by itself. Ten seconds after a fight is over (`AUTO_OFF_SECONDS`) the mode goes off by itself,
 //! one the player set by hand as well, and the timer starts again if a fight starts. A mode set by hand and never fought in
 //! stays until the player turns it off.
 //!
@@ -36,8 +37,10 @@ pub struct Stance {
 /// Every member's mode and queue. The leader's are in their own places, and swap with the new leader's when the lead changes.
 #[derive(Clone, Debug, Default)]
 pub struct StanceState {
-    /// The player's switch "Auto attack mode".
+    /// The player's switch "Auto attack mode": a mode that a fight turned on goes off by itself after the fight.
     pub auto_enabled: bool,
+    /// A fight turns attack mode on. False in a bare world and for a scripted player, which keep the old rules.
+    pub live: bool,
     pub leader: Stance,
     pub members: BTreeMap<ObjId, Stance>,
     /// What the other members have queued. The leader's is `World::combat_queue`.
@@ -64,6 +67,16 @@ impl World {
     /// Attack mode, as the law means it: the leader may attack anyone.
     pub fn attack_mode(&self) -> bool {
         self.stance.leader.on
+    }
+
+    /// Whether someone is in combat, as the scripts, Stealth Mode and the HUD ask it. For the leader and the party this is
+    /// attack mode (which a fight turns on): one flag. For anyone else it is who is fighting whom.
+    pub fn in_combat(&self, id: ObjId) -> bool {
+        if id == self.pc || self.party.contains(&id) {
+            self.in_attack_mode(id) || self.combat.in_combat(id)
+        } else {
+            self.combat.in_combat(id)
+        }
     }
 
     /// What the button shows for a member: in attack mode, or fighting.
@@ -129,6 +142,7 @@ impl World {
         self.stance.members.retain(|id, _| party.contains(id));
         self.stance.queues.retain(|id, _| party.contains(id));
         let auto = self.stance.auto_enabled;
+        let live = self.stance.live;
         for id in std::iter::once(self.pc).chain(party) {
             if self.objects.get(&id).is_none_or(|o| o.dead) {
                 continue;
@@ -137,7 +151,7 @@ impl World {
             let s = self.stance_mut(id);
             if fighting {
                 s.calm = 0.0;
-                if auto && !s.on && !s.hold {
+                if live && !s.on && !s.hold {
                     s.on = true;
                     s.auto = true;
                 }
@@ -148,7 +162,7 @@ impl World {
                 if s.calm >= HOLD_SECONDS {
                     s.hold = false;
                 }
-                if s.calm >= AUTO_OFF_SECONDS && s.on && (s.auto || (s.fought && auto)) {
+                if s.calm >= AUTO_OFF_SECONDS && auto && s.on && (s.auto || s.fought) {
                     *s = Stance::default();
                 }
             }
@@ -167,9 +181,10 @@ impl World {
 
     /// A loaded save: the leader's mode as it was saved, and nothing else remembered.
     pub(crate) fn restore_attack_mode(&mut self, on: bool) {
-        let auto = self.stance.auto_enabled;
+        let (auto, live) = (self.stance.auto_enabled, self.stance.live);
         self.stance = StanceState::default();
         self.stance.auto_enabled = auto;
+        self.stance.live = live;
         self.stance.leader.on = on;
         self.combat_queue.clear();
     }

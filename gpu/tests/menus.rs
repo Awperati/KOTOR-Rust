@@ -6729,7 +6729,7 @@ fn auto_attack_mode_has_a_switch_and_an_automatic_mode_goes_off_after_the_fight(
     }
     assert!(s.game.world.attack_mode(), "by hand: it stays");
     s.attack_mode_key();
-    // The switch is in Options > Feedback. Off: a fight leaves the mode as it was, but the button still shows the fight.
+    // The switch is in Options > Feedback. Off: a fight still turns the mode on, but it does not go off by itself.
     s.escape();
     press(&mut s, "BTN_FEEDBACK");
     for _ in 0..40 {
@@ -6747,16 +6747,24 @@ fn auto_attack_mode_has_a_switch_and_an_automatic_mode_goes_off_after_the_fight(
         .contains("auto_attack_mode=false"));
     press(&mut s, "BTN_BACK");
     press(&mut s, "BTN_EXIT");
+    // The hand-set "off" held the mode off for a few seconds more.
+    for _ in 0..150 {
+        s.update(DT);
+    }
     let foe = hostile_beside(&mut s);
     s.game.world.attack(pc, foe);
     for _ in 0..30 {
         s.update(DT);
     }
-    assert!(!s.game.world.attack_mode(), "not on by itself");
-    assert!(
-        s.game.world.in_attack_mode(pc),
-        "but the button shows the fight"
-    );
+    assert!(s.game.world.attack_mode(), "a fight turns it on all the same");
+    assert!(s.game.world.in_attack_mode(pc));
+    // With the switch off it is not turned off by itself.
+    s.game.world.object_mut(foe).unwrap().dead = true;
+    s.game.world.combat.target.clear();
+    for _ in 0..450 {
+        s.update(DT);
+    }
+    assert!(s.game.world.attack_mode(), "and it stays");
 }
 
 #[test]

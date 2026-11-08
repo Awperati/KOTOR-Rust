@@ -1741,7 +1741,7 @@ impl Host for Adapter<'_> {
                 self.record(name, args);
                 None
             }
-            "GetIsInCombat" => b(self.world.combat.in_combat(self.obj(caller, args, 0))),
+            "GetIsInCombat" => b(self.world.in_combat(self.obj(caller, args, 0))),
             "GetAttackTarget" => Some(Value::Object(
                 self.world
                     .combat
