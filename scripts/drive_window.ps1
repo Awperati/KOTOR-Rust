@@ -111,17 +111,20 @@ for ($t = 0; $t -lt 300 -and (TurnedBy $a $s) -lt 2.6; $t++) { $s = State }
 [void](State)
 "turned from the locker by $([Math]::Round((TurnedBy $a (State)), 2)) rad"
 
-# A click on the floor walks there, with Click to move on for the run (--click-to-move): look for one that lands.
+# A click on the floor walks there, with Click to move on for the run (--click-to-move): look for one that lands. Not the
+# middle of the screen: the player stands there, and a click on the body started a talk once and left the locker open, so
+# that every click after it found the locker. Before each try any talk is ended and the locker shut, waited for.
 $ok = $false; $detail = ""
 foreach ($y in 600, 560, 520, 480, 640) {
-  foreach ($x in 640, 400, 880) {
+  foreach ($x in 400, 880, 520, 760) {
     $a = State
     for ($k = 0; $k -lt 80 -and $a.dlg -eq "true"; $k++) { $a = Advance }
+    if ($a.opened -eq "true") { Key $SPACE[0] $SPACE[1]; $a = WaitFor "opened" "false" }
     Click $x $y
-    $b = UntilSteps { param($o) (Moved $a $o) -gt 0.3 -or $o.opened -eq "true" } 30
+    $b = UntilSteps { param($o) (Moved $a $o) -gt 0.3 -or $o.opened -eq "true" -or $o.dlg -eq "true" } 30
     $moved = Moved $a $b
     $detail = "click $x,$y $($a.pc) -> $($b.pc) clip=$($b.clip) opened=$($b.opened) dlg=$($b.dlg)"
-    if ($b.opened -eq "true") { Key $SPACE[0] $SPACE[1] }
+    "floor click: $detail"
     if ($moved -gt 0.3) { $ok = $true; break }
   }
   if ($ok) { break }
