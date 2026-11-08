@@ -67,9 +67,10 @@ pub(super) const SHIPPED_ROLLS: [&str; 2] = [
     include_str!("poses_old/roll_pose_v2.txt"),
 ];
 pub(super) const SHIPPED_LANDINGS: [&str; 1] = [include_str!("poses_old/landing_pose_v1.txt")];
-pub(super) const SHIPPED_JUMPS: [&str; 2] = [
+pub(super) const SHIPPED_JUMPS: [&str; 3] = [
     include_str!("poses_old/jump_pose_v1.txt"),
     include_str!("poses_old/jump_pose_v2.txt"),
+    include_str!("poses_old/jump_pose_v3.txt"),
 ];
 pub(super) const ROLL_FILE: &str = "roll_pose.txt";
 pub(super) const LANDING_FILE: &str = "landing_pose.txt";
@@ -323,6 +324,15 @@ mod tests {
         assert_eq!(jump.turns, 0.0);
         assert_eq!(jump.sample(0.5).tuck, 1.0);
         assert!(angle(&jump.sample(0.5), "lshin_g")[0] > 45.0);
+        // Coming down it is no stiff drop: knees bent to take the floor, the body leaning on, and the arms forward.
+        for p in [0.75, 0.85, 0.93, 1.0] {
+            let s = jump.sample(p);
+            for knee in ["lshin_g", "rshin_g"] {
+                assert!(angle(&s, knee)[0] >= 40.0, "{knee} at {p}");
+            }
+            assert!(angle(&s, "torso_g")[0] >= 14.0, "torso at {p}");
+            assert!(angle(&s, "rbicep_g")[0] >= 25.0, "arm at {p}");
+        }
         assert_eq!(
             jump.sample(0.0).tuck,
             0.0,

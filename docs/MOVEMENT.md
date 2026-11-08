@@ -44,7 +44,7 @@ There is no separate run: a held key goes to a sprint. Going diagonally is no fa
 | Steering in the air | 0.3 of what it is on the floor |
 | Landing | A short crouch, and the speed is kept |
 | Stride | One leg forward, with the other arm forward |
-| After the top | The stride closes for the landing, with no paddling: the owner had it taken out |
+| After the top | The stride closes for the landing, with no paddling: the owner had it taken out. The knees stay bent, the body leans a little forward and the arms come forward, so it does not drop stiff and straight |
 
 - Only from the floor, on its feet. Not in the air, in a roll, in a conversation, in a minigame or while down.
 - Not at a walk: Space does nothing with Shift held and a direction pressed, or with a light push on the touch stick. A run, a sprint and a stand all jump, a stand even with Shift held.

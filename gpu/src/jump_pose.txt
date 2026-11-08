@@ -23,7 +23,7 @@
 #   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
 # The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
 #
-version = 3            # which of the game's own jumps this began as. Leave it alone.
+version = 4            # which of the game's own jumps this began as. Leave it alone.
 
 # THE KEYS. Each one is a moment. The game moves from each key to the next.
 #   at     how far through the jump, 0 to 1. 0 is leaving the floor, 0.5 the top, and 1 is the feet touching.
@@ -89,53 +89,54 @@ rbicep_g   =    30  -24    0
 lforearm_g =    28
 rforearm_g =    48
 
-[key]            # Coming down, the stride closing: the same leg and arm in front, with no changing over.
+[key]            # Coming down, the stride closing: the same leg and arm in front, with no changing over. Knees kept bent, the
+                 # body leaning a little forward and the arms coming forward for balance.
 at = 0.75
 tuck = 1
 lower = 0
 #              bend  out  twist
-lthigh_g   =    32   -5    0
-rthigh_g   =     8   -5    0
-lshin_g    =    46
-rshin_g    =    36
-lfoot_g    =     4
-rfoot_g    =     4
-torso_g    =    11
-lbicep_g   =     0  -28    0
-rbicep_g   =    20  -28    0
-lforearm_g =    26
-rforearm_g =    36
+lthigh_g   =    40   -5    0
+rthigh_g   =    18   -5    0
+lshin_g    =    62
+rshin_g    =    52
+lfoot_g    =     6
+rfoot_g    =     6
+torso_g    =    15
+lbicep_g   =    14  -26    0
+rbicep_g   =    30  -26    0
+lforearm_g =    38
+rforearm_g =    44
 
-[key]            # Legs reaching down for the floor.
+[key]            # Legs reaching down for the floor, knees still bent to take it, arms forward.
 at = 0.93
 tuck = 1
 lower = 0
 #              bend  out  twist
-lthigh_g   =    22   -5    0
-rthigh_g   =    22   -5    0
-lshin_g    =    30
-rshin_g    =    30
-lfoot_g    =    -4
-rfoot_g    =    -4
-torso_g    =    12
-lbicep_g   =    10  -30    0
-rbicep_g   =    10  -30    0
-lforearm_g =    26
-rforearm_g =    26
+lthigh_g   =    34   -5    0
+rthigh_g   =    30   -5    0
+lshin_g    =    50
+rshin_g    =    46
+lfoot_g    =     0
+rfoot_g    =     0
+torso_g    =    16
+lbicep_g   =    26  -28    0
+rbicep_g   =    28  -28    0
+lforearm_g =    40
+rforearm_g =    40
 
 [key]            # The feet touch, and the landing takes over.
 at = 1
 tuck = 1
 lower = 0
 #              bend  out  twist
-lthigh_g   =    18   -5    0
-rthigh_g   =    18   -5    0
-lshin_g    =    25
-rshin_g    =    25
-lfoot_g    =    -8
-rfoot_g    =    -8
-torso_g    =    12
-lbicep_g   =    10  -32    0
-rbicep_g   =    10  -32    0
-lforearm_g =    20
-rforearm_g =    20
+lthigh_g   =    30   -5    0
+rthigh_g   =    28   -5    0
+lshin_g    =    44
+rshin_g    =    42
+lfoot_g    =    -4
+rfoot_g    =    -4
+torso_g    =    16
+lbicep_g   =    26  -30    0
+rbicep_g   =    26  -30    0
+lforearm_g =    36
+rforearm_g =    36
