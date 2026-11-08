@@ -266,8 +266,11 @@ impl World {
             let (whole, now) = self.object(target).map_or((1, 1), |o| (o.max_hp, o.hp));
             let steps = (1.0 / share.max(0.01)).round().max(1.0) as i32;
             // A blow lands a moment after it is rolled, so the one before it may not have taken its hit points yet: count it.
+            // Natural healing of a point or two (Constitution gives it every few seconds) does not buy a landed blow back: only a heal
+            // of a whole step does, a medpac for one. Else a sturdy character would outlast a frail one by a blow.
+            let step = (whole / steps).max(1);
             let eff = match self.story.ladder {
-                Some((projected, seen)) if now <= seen => now.min(projected),
+                Some((projected, seen)) if now - seen <= step => now.min(projected),
                 _ => now,
             };
             let dealt = ladder_blow(whole, eff, steps);
