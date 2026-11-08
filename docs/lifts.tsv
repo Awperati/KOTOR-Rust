@@ -1,0 +1,5 @@
+# Which way a lift goes, by hand. The install does not say which of two modules lies lower.
+# Columns, split by one tab: module the lift is taken in, module it leads to, direction (down up level), seconds the ride takes.
+# A row is also read the other way round (down becomes up). A lift with no row is level and takes the default.
+tar_m02ab	tar_m03aa	down	6
+tar_m03aa	tar_m04aa	down	6

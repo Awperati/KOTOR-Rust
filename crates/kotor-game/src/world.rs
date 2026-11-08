@@ -393,6 +393,8 @@ pub struct World {
     pub(crate) exptable: Vec<i32>,
     /// Seconds the player has pressed on people without getting nearer where it is going.
     pub(crate) pc_pressed: f32,
+    /// A lift ride that is going on: see `lift.rs`.
+    pub lift_ride: Option<crate::lift::LiftRide>,
     /// How long each walker has pressed on people it cannot get round, getting no nearer: past `PRESSED_SECONDS` it walks through.
     pub(crate) walker_pressed: BTreeMap<ObjId, f32>,
     /// For each walker that went round something solid: the side it went (1 or -1), and how long it has been held by it.
@@ -761,6 +763,7 @@ impl World {
             repute: None,
             exptable: Vec::new(),
             pc_pressed: 0.0,
+            lift_ride: None,
             walker_pressed: BTreeMap::new(),
             walker_steer: BTreeMap::new(),
             left_modules: BTreeMap::new(),

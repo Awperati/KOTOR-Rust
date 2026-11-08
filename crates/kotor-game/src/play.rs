@@ -260,6 +260,9 @@ impl World {
     /// Click on an object: walk up to it, then talk to it, use it, or open it. Returns false when there is
     /// nothing to do (not an interactive object, or no way to reach it).
     pub fn click(&mut self, target: ObjId) -> bool {
+        if self.lift_ride.is_some() {
+            return false;
+        }
         let Some(o) = self.objects.get(&target) else {
             return false;
         };
@@ -410,6 +413,13 @@ impl World {
         };
         // A door whose neighbour is joined just opens: the player walks through, see `update_seamless`.
         if !d.link_module.is_empty() && !self.seamless.attached.contains_key(&id) {
+            // A lift is a ride, not a jump: see `lift.rs`.
+            if self.begin_lift_ride(id) {
+                return;
+            }
+            let Some(d) = self.objects.get(&id) else {
+                return;
+            };
             self.transition_request = Some((d.link_module.clone(), d.link_to.clone()));
             return;
         }
@@ -820,6 +830,11 @@ impl World {
         self.update_race(dt);
         self.resume_conversation();
         self.update_routes();
+        // In a lift the party is held: no steering, and the ride runs out.
+        if self.lift_ride.is_some() {
+            self.steer = None;
+        }
+        self.update_lift(dt);
         self.update_doors(dt);
         let before = self.pc_mover.pos;
         let modern = self.movement == MovementMode::Modern && self.nav.is_some();

@@ -25,6 +25,7 @@ mod journal;
 mod k2feats;
 mod labels;
 mod law;
+mod lift;
 mod medication;
 pub mod quest_route;
 mod respawn;
@@ -110,6 +111,7 @@ pub trait Barriers {
     fn above(&self, at: [f32; 3], reach: f32) -> Option<f32>;
 }
 pub use law::{KillKind, LawState, LawTable};
+pub use lift::{ride_between, LiftRide, LiftWay, DEFAULT_SECONDS as LIFT_SECONDS};
 pub use party::{BenchedMember, PartyRequest, PARTY_SIZE};
 pub use pazaak::{PazaakCard, PazaakGame, PazaakMove, PazaakSide, PazaakView};
 pub use play::{

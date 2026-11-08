@@ -24,6 +24,8 @@ mod bladescreen;
 mod bodypose;
 #[path = "deathscreen.rs"]
 mod deathscreen;
+#[path = "lift_stage.rs"]
+mod lift_stage;
 #[path = "menus.rs"]
 mod menus;
 #[path = "moving.rs"]
@@ -565,6 +567,8 @@ pub struct Stage {
     pub turret_assist: bool,
     /// Goes up whenever the overlay changes.
     pub overlay_version: u64,
+    /// A lift ride's own state on the stage: see `lift_stage.rs`.
+    pub(super) lift: lift_stage::LiftStage,
     /// The screen the overlay last showed, and the version of it that is.
     menu_drawn: Option<(u64, MenuView)>,
     /// How long the last look at the overlay took, for `--frame-log`.
@@ -751,6 +755,7 @@ impl Stage {
             armed_home: None,
             turret_assist: false,
             overlay_version: 0,
+            lift: Default::default(),
             menu_drawn: None,
             overlay_ms: 0.0,
             hud_drawn: 0,
@@ -942,6 +947,7 @@ impl Stage {
         self.touch_look_tick(dt);
         self.touch_fire_tick();
         self.walkers_tick(dt);
+        self.lift_tick(dt);
         self.pictures_left = PICTURES_A_FRAME;
         self.take_upscaled();
         self.main_scene_tick(dt);
@@ -1702,13 +1708,14 @@ impl Stage {
                 None => d,
             }
         });
+        let shake = self.lift_camera_shake();
         Camera {
             eye: [
                 p[0] - dx * flat * d,
                 p[1] - dy * flat * d,
-                p[2] + looks_at + up * d,
+                p[2] + looks_at + up * d + shake,
             ],
-            target,
+            target: [target[0], target[1], target[2] + shake],
             fov: CAMERA_FOV + self.fov_extra - self.aim_narrows(),
         }
     }
@@ -3496,12 +3503,13 @@ impl Stage {
 
     /// The picture over the scene: the dialogue box in a conversation, otherwise the HUD.
     pub fn overlay(&self) -> Option<&Image> {
-        self.overlay.as_ref()
+        self.lift.dark.as_ref().or(self.overlay.as_ref())
     }
 
     fn refresh_overlay(&mut self) {
         let began = std::time::Instant::now();
         self.refresh_overlay_now();
+        self.lift_fade();
         self.overlay_ms = began.elapsed().as_secs_f32() * 1000.0;
     }
 

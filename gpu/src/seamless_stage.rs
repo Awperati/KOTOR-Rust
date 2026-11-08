@@ -764,9 +764,10 @@ impl Stage {
             .iter()
             .filter(|s| (s.at[0] - here[0]).hypot(s.at[1] - here[1]) < PRELOAD_RANGE)
         {
+            // A lift is a ride, never a doorway the party walks through: it is loaded ahead instead.
             let joined = w
                 .link_door_at(site.at)
-                .is_none_or(|d| w.seamless.attached.contains_key(&d));
+                .is_none_or(|d| w.seamless.attached.contains_key(&d) || w.is_lift_door(d));
             let busy = self.seam.jobs.iter().any(|j| spot(j.at) == spot(site.at));
             if joined || busy || self.seam.failed.contains(&spot(site.at)) {
                 continue;
