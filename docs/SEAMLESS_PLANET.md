@@ -40,3 +40,10 @@ Owner: "Still noticeable loading between sections, need to find a way to seamles
 - Times in the table come from a loaded machine and overstate the "ahead" rows. Stage 1 re-measures them quiet.
 - 40 m / 60 m / cap 3 are starting values, tuned by stage 1's measurements.
 - Shop interiors accept a 0.3 s dip. Streets, plazas and the lifts must not show a loading screen.
+
+## Stage 1 done (measured)
+
+- **Kept by range.** Up to four modules loaded ahead at once (was one), loaded when an exit is within 40 m (was 24 m), dropped at 60 m (was 32 m). Nearest exit first, one load at a time. `Stage::resident()` lists them with their size.
+- **Memory.** 5 to 12 MB each in Taris (picture + textures; creatures' bodies not counted), far under the 4 GB free-memory guard, so the cap of four is for load time, not RAM.
+- **Link drive on 20 Taris modules** (`docs/link_drive.tsv`, quiet machine): before 21 joined, 9 ahead (avg 733 ms, worst 2401), 9 cold (avg 614, worst 1509). After 19 joined, 20 ahead, 0 cold; the loaded-ahead links freeze avg 75 ms, worst 166 ms. The two joined that fell are lifts, which now ride. `link_drive` waits out a lift's ride before timing.
+- **Still frozen about 100 to 166 ms:** the world change and the first textures of the new module's picture (`tar04_elevdoor` to `tar_m02ab` 166, `tar_m09ab` 99). That is stage 3's job (shops) and the planet's last stage.

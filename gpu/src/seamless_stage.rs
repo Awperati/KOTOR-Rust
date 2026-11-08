@@ -20,7 +20,11 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 
 /// How near the player must come to a door, in metres, before the area behind it is loaded.
-const PRELOAD_RANGE: f32 = 24.0;
+const PRELOAD_RANGE: f32 = 40.0;
+/// How much farther than `PRELOAD_RANGE` a kept module is kept, so that it is not loaded and dropped at the same spot.
+const PRELOAD_KEEP_EXTRA: f32 = 20.0;
+/// Modules kept at once (measured 5 to 12 MB each in Taris), nearest exits first. Each is a picture and its bodies and textures: `Stage::resident_bytes`.
+const PRELOAD_KEPT: usize = 4;
 
 fn spot(at: [f32; 3]) -> (i32, i32) {
     ((at[0] * 10.0) as i32, (at[1] * 10.0) as i32)
@@ -176,6 +180,8 @@ pub(super) struct Preloaded {
     talk: Option<[f32; 3]>,
     /// The bodies of its creatures, built on the thread.
     rigs: Vec<RigEntry>,
+    /// About how much memory its picture and textures take, in bytes.
+    bytes: usize,
     /// Its waypoints by lower-case tag: where, and facing which way in radians. A lift ride lines its arrival up by one.
     waypoints: std::collections::BTreeMap<String, ([f32; 3], f32)>,
 }
@@ -282,7 +288,7 @@ fn free_ram_mb() -> Option<u64> {
 #[derive(Default)]
 pub(super) struct Seam {
     /// The module a nearby exit leads to, loaded ahead, and the one being loaded. One of each.
-    pub(super) pre: Option<Preloaded>,
+    pub(super) pre: Vec<Preloaded>,
     pre_job: Option<PreJob>,
     /// Modules that could not be loaded ahead (or not for want of memory): not tried again in this module.
     pre_failed: HashSet<String>,
@@ -353,8 +359,8 @@ impl Stage {
         let p = self
             .seam
             .pre
-            .as_ref()
-            .filter(|p| p.module.eq_ignore_ascii_case(module))?;
+            .iter()
+            .find(|p| p.module.eq_ignore_ascii_case(module))?;
         let (at, face) = *p.waypoints.get(&waypoint.to_ascii_lowercase())?;
         Some((p.scene.clone(), at, face))
     }
@@ -381,7 +387,17 @@ impl Stage {
 
     /// The module loaded ahead for a nearby exit, once it is ready.
     pub fn preloaded(&self) -> Option<&str> {
-        self.seam.pre.as_ref().map(|p| p.module.as_str())
+        self.seam.pre.last().map(|p| p.module.as_str())
+    }
+
+    /// Every module kept loaded ahead, with an estimate of the memory each holds in bytes: its picture's vertices and the
+    /// pictures it uses.
+    pub fn resident(&self) -> Vec<(String, usize)> {
+        self.seam
+            .pre
+            .iter()
+            .map(|p| (p.module.clone(), p.bytes))
+            .collect()
     }
 
     /// Why links fell back to the loading screen, so far.
@@ -404,7 +420,11 @@ impl Stage {
                             .entry(key)
                             .or_insert_with(|| Some(super::styled(rig, conventional)));
                     }
-                    self.seam.pre = Some(p);
+                    self.seam.pre.retain(|k| k.module != p.module);
+                    if self.seam.pre.len() >= PRELOAD_KEPT {
+                        self.seam.pre.remove(0);
+                    }
+                    self.seam.pre.push(p);
                     self.seam.pre_job = None;
                 }
                 // Memory was short: tried again in a while, as the other programs may have let go of some.
@@ -453,17 +473,14 @@ impl Stage {
         );
         exits.sort_by(|a, b| a.0.total_cmp(&b.0));
         // What is kept goes when its exit is out of reach, or when the player has walked away from the talk that named it.
-        if let Some(p) = &self.seam.pre {
-            let kept = match p.talk {
-                Some(at) => (at[0] - here[0]).hypot(at[1] - here[1]) < PRELOAD_RANGE + 8.0,
-                None => exits
-                    .iter()
-                    .any(|(d, m)| *m == p.module && *d < PRELOAD_RANGE + 8.0),
-            };
-            if !kept {
-                self.seam.pre = None;
+        self.seam.pre.retain(|p| match p.talk {
+            Some(at) => {
+                (at[0] - here[0]).hypot(at[1] - here[1]) < PRELOAD_RANGE + PRELOAD_KEEP_EXTRA
             }
-        }
+            None => exits
+                .iter()
+                .any(|(d, m)| *m == p.module && *d < PRELOAD_RANGE + PRELOAD_KEEP_EXTRA),
+        });
         if self.seam.pre_job.is_some()
             || self
                 .seam
@@ -480,18 +497,19 @@ impl Stage {
                 .is_none_or(|t| self.seam.pre_failed.contains(&format!("talk:{t}")))
                 && *d < PRELOAD_RANGE
                 && !self.seam.pre_failed.contains(m)
-                && self.seam.pre.as_ref().is_none_or(|p| p.module != *m)
+                && self.seam.pre.len() < PRELOAD_KEPT
+                && !self.seam.pre.iter().any(|p| p.module == *m)
         });
         // A conversation whose scripts send the player elsewhere: that module is loaded while they talk.
         let talk = talking
             .filter(|t| !self.seam.pre_failed.contains(&format!("talk:{t}")))
-            .filter(|_| self.seam.pre.as_ref().is_none_or(|p| p.talk.is_none()));
+            .filter(|_| !self.seam.pre.iter().any(|p| p.talk.is_some()));
         // A screen that is about to start a module: the save chosen to load, or a new game while the character is made.
         let menu = self.menu_goal().filter(|m| {
             !self.seam.pre_failed.contains(&format!("menu:{m}"))
-                && self.seam.pre.as_ref().is_none_or(|p| p.module != *m)
+                && !self.seam.pre.iter().any(|p| p.module == *m)
         });
-        let nothing_kept = self.seam.pre.is_none();
+        let nothing_kept = self.seam.pre.is_empty();
         let (key, exit, talk) = match (menu.clone(), near, talk) {
             (Some(m), _, _) => (format!("menu:{m}"), Some(m), Some(String::new())),
             (None, Some((_, m)), _) => (m.clone(), Some(m), None),
@@ -567,7 +585,7 @@ impl Stage {
                     }
                     names.sort();
                     names.dedup();
-                    let images = names
+                    let images: Vec<(String, Image)> = names
                         .into_iter()
                         .filter_map(|n| {
                             let img = hd
@@ -577,6 +595,15 @@ impl Stage {
                             Some((n, img))
                         })
                         .collect();
+                    let bytes = scene
+                        .meshes
+                        .iter()
+                        .map(|m| m.positions.len() * 40 + m.triangles.len() * 12)
+                        .sum::<usize>()
+                        + images
+                            .iter()
+                            .map(|(_, i): &(String, Image)| i.rgba.len())
+                            .sum::<usize>();
                     Some((
                         Preloaded {
                             module: name.clone(),
@@ -584,6 +611,7 @@ impl Stage {
                             chests,
                             talk: talk.is_some().then_some(here),
                             rigs,
+                            bytes,
                             waypoints,
                         },
                         images,
@@ -853,7 +881,7 @@ impl Stage {
                     }
                     names.sort();
                     names.dedup();
-                    let images = names
+                    let images: Vec<(String, Image)> = names
                         .into_iter()
                         .filter_map(|n| {
                             let img = hd
@@ -1224,7 +1252,15 @@ impl Stage {
             self.seam.figure_version += 1;
         }
         // A module loaded ahead for this exit: used once, and only for this module.
-        let ahead = self.seam.pre.take();
+        let ahead = {
+            let m = &self.game.world.module;
+            let at = self
+                .seam
+                .pre
+                .iter()
+                .position(|p| p.module.eq_ignore_ascii_case(m));
+            at.map(|i| self.seam.pre.remove(i))
+        };
         let Some(c) = crossed else {
             let module = &self.game.world.module;
             return ahead

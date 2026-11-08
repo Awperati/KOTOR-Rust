@@ -135,8 +135,20 @@ fn main() {
             }
             // The game step that takes the request does the world change.
             let step = t.elapsed();
+            // A lift rides first: the frames of the ride are not a freeze, the ones after its end are.
+            for _ in 0..3000 {
+                if s.game.world.lift_ride().is_none_or(|r| r.progress() > 0.97) {
+                    break;
+                }
+                s.update(DT);
+            }
             let t = std::time::Instant::now();
-            s.update(DT);
+            for _ in 0..40 {
+                s.update(DT);
+                if s.game.world.module.eq_ignore_ascii_case(&to) {
+                    break;
+                }
+            }
             let build = ms(t);
             let changed = s.game.world.module.eq_ignore_ascii_case(&to);
             let t = std::time::Instant::now();
