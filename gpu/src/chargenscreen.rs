@@ -1038,7 +1038,7 @@ impl Stage {
         for (name, _, _) in SLIDERS {
             let r = next_random(&mut d.seed);
             let v = (r % (2 * steps + 1)) as i32 - steps as i32;
-            if v != 0 && r % 3 != 0 {
+            if v != 0 && !r.is_multiple_of(3) {
                 d.spec
                     .look
                     .sliders
