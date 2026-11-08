@@ -169,6 +169,18 @@ An enemy under the cursor has a red bar and three slots: the attack, a feat and 
 ## Classic and Modern
 Classic is the game's own controls: left and right turn the body and the camera behind it, with no strafe, forward and back go along the facing, and there is no roll or jump. The pause key, the hourglass and the auto-pauses pause as ever. Modern, with Modern movement and Modern combat both on, has no pause in play: the pause key, the hourglass and the on-screen Pause do nothing and nothing pauses by itself. Only Escape holds the world, with its menu. In both, every screen holds the world: the inventory, the character, the journal, the map, the options, a conversation, an open container, a shop and levelling up. **Assumed:** Classic turns at 2.6 radians a second, and stepping back walks toward the camera, facing it.
 
+| Input | Classic | Modern |
+|---|---|---|
+| W and S | ahead and back along the facing | ahead and back along the camera |
+| A and D | turn the body and the camera | step to the side; the camera stays |
+| Mouse | moves the cursor; the right button held turns the camera | turns the camera, with no cursor |
+| Caps Lock | nothing | brings the cursor back, and again takes it away |
+| Left click on the floor, Click to move on | walks there | walks there, with the cursor back |
+| E | talks to or opens what the camera faces, walking up to it | the same |
+| B, the hourglass | pause and go on | nothing; Escape pauses |
+
+`scripts\drive_modes.ps1` checks these rows in a hidden window, in each mode.
+
 ## Modern combat
 The Combat box on the Gameplay page turns it on, with Modern movement. Classic is the default, and enemies and party members fight the same either way.
 

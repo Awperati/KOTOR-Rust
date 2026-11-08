@@ -12,6 +12,7 @@
 //!     --volume V      0 to 1 (default 0.8); --mute opens no sound device
 //!     --frames N      close after N frames             --hidden     no visible window
 //!     --state-log     print the game's state every few frames, for a test driver
+//!     --game-mode M   a test driver's mode for the run, classic or modern, in memory only; --click-to-move likewise
 //!     --saves DIR     keep saves in this folder, made if missing. With --state-log or --autopilot the viewer is a test
 //!                     driver's: without this flag it has a temp folder of its own, the player's folder is refused, it
 //!                     works on a temp copy of the settings, and it may not overwrite or delete a save it did not make
@@ -1071,6 +1072,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A click on the floor walks there, as Options' Click to move does: a driver's way to turn it on for the run.
     if flag("--click-to-move") && driver {
         stage.set_click_to_move(true);
+    }
+    // A driver's game mode for the run, as the Single Player choice sets it: movement and combat together. In memory only.
+    if driver {
+        if let Some(m) = opt("--game-mode") {
+            let modern = m.eq_ignore_ascii_case("modern");
+            stage.set_movement_modern(modern);
+            stage.set_combat_modern(modern);
+        }
     }
     let out = if flag("--mute") {
         None

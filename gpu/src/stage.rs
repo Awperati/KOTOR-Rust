@@ -4241,7 +4241,7 @@ impl Stage {
             format!("{:.1},{gear},{:.2},{:.1}", g.speed, at[0], at[1])
         });
         format!(
-            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} armed={armed} thrower={thrower} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} lineat={line_at} {touch} {compass} blue={blue} inventory={inventory} mode={mode} target={} use={}",
+            "state menu={} saves={} gold={} level={} xp={} hp={} worn={} module={} pc={:.2},{:.2} clip={} dlg={} replies={} said={} opened={} items={} inv={} pilot={} engaged={} paused={paused} note={} attacks={} queue={} floats={floats} width={} slot0={left_slot} down0={left_down} slot1={middle_slot} slot2={right_slot} disengage={disengage} ok={ok} solo={solo} turret={turret} grenades={grenades} armed={armed} thrower={thrower} align={align} attack={attack} defense={defense} row0={row0} row1={row1} beside={beside} leader={pc} down2={down2} thrown={thrown} foe={foe} race={race} pcz={:.3} speed={:.2} air={} roll={} plates={plates} plate0={plate0} enemyplate={enemy_plate} nearcam={near_camera} fov={:.1} pitch={:.4} yaw={:.3} heading={:.3} lookdown={:.4} steps={} loot={loot} chosen={chosen} slotsize={slotsize} lineat={line_at} {touch} {compass} blue={blue} inventory={inventory} mode={mode} target={} use={} game={} mlook={}",
             self.menu_name(),
             self.saves_listed(),
             w.gold,
@@ -4280,6 +4280,9 @@ impl Stage {
             self.use_choice()
                 .and_then(|i| w.object(i))
                 .map_or("-".to_string(), |o| o.tag.clone()),
+            // The game's mode, and whether the mouse turns the camera by itself (Modern, Caps Lock not pressed).
+            if self.modern_mode() { "modern" } else { "classic" },
+            u8::from(self.mouse_looks()),
         )
     }
 
