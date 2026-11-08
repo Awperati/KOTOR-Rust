@@ -7,7 +7,7 @@ param([string]$Size = $(if ($env:KOTOR_DRIVE_SIZE) { $env:KOTOR_DRIVE_SIZE } els
 $script:ClickScale = [double]($Size -split "x")[1] / 720.0
 $savesDir = Join-Path $scratch "kotor_window_saves_$PID"
 New-Item -ItemType Directory -Force $savesDir | Out-Null
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--saves",$savesDir,"--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--click-to-move","--saves",$savesDir,"--skip-menu","--near","end_locker01","--frames","200000","--speed","$Speed") -RedirectStandardOutput "$scratch\kotor_drive.out" -RedirectStandardError "$scratch\kotor_drive.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 $h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"
@@ -83,7 +83,7 @@ $a = State
 $b = HoldUntilMoved $W $a 0.3 60
 Report "B goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
 
-# A click on the floor walks there: look for one that lands.
+# A click on the floor walks there, with Click to move on for the run (--click-to-move): look for one that lands.
 $ok = $false; $detail = ""
 foreach ($y in 600, 560, 520, 480, 640) {
   foreach ($x in 640, 400, 880) {
@@ -107,7 +107,7 @@ Get-Content "$scratch\kotor_drive.err" -Tail 4
 # The second run: from the main menu, through a save and two loads, to Exit. A 640x480 screen fills this 1280x720
 # window, so a control at layout (x, y) is at (2x, 1.5y).
 $savesBefore = @(Get-ChildItem $savesDir -Filter *.sav -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--saves",$savesDir,"--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
+$v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList @("--size",$Size,"--mute","--no-tutorials","--no-auto-pause","--no-chargen","--state-log","--click-to-move","--saves",$savesDir,"--frames","200000") -RedirectStandardOutput "$scratch\kotor_drive2.out" -RedirectStandardError "$scratch\kotor_drive2.err" -PassThru -NoNewWindow
 $h = [IntPtr]::Zero
 $h = WaitWindow $v; [Drv]::NeverActive($h)
 "window $h"

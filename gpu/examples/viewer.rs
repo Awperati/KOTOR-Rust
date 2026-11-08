@@ -1057,6 +1057,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None if !flag("--skip-menu") && !flag("--autopilot") => stage.use_saved_settings(),
         _ => {}
     }
+    // A click on the floor walks there, as Options' Click to move does: a driver's way to turn it on for the run.
+    if flag("--click-to-move") && driver {
+        stage.set_click_to_move(true);
+    }
     let out = if flag("--mute") {
         None
     } else {
