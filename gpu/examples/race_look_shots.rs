@@ -110,11 +110,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         shot(&mut s, &format!("race_{who}_lekku_plain"));
         step(&mut s, "View", -1);
         shot(&mut s, &format!("race_{who}_whole"));
-        // The Jawa, when the mod packs are on and bring it: close, as a new race shows its head, then whole.
-        if step(&mut s, "Race", 1) == "Jawa" {
-            shot(&mut s, &format!("race_{who}_jawa_close"));
+        // The races with a body of their own (the Jawa when the mod packs are on and bring it): each preset close, as a new
+        // race shows its head, then the first whole.
+        loop {
+            let race = step(&mut s, "Race", 1);
+            if race == "Human" {
+                break;
+            }
+            let name = race.to_ascii_lowercase().replace('\'', "");
+            let presets = s.menu_rows("LB_OPTIONS")[row(&mut s, "Preset")]
+                .choice
+                .clone()
+                .unwrap_or_default();
+            let presets: usize = presets
+                .rsplit(' ')
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(1);
+            for p in 0..presets {
+                if p > 0 {
+                    println!("{who}: {}", step(&mut s, "Preset", 1));
+                }
+                shot(&mut s, &format!("race_{who}_{name}{p}_close"));
+            }
+            step(&mut s, "Preset", 1);
             step(&mut s, "View", 1);
-            shot(&mut s, &format!("race_{who}_jawa_whole"));
+            shot(&mut s, &format!("race_{who}_{name}_whole"));
         }
     }
     Ok(())

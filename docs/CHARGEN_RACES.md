@@ -2,7 +2,7 @@
 
 The owner: "Can we make the portraits themselves just presets and then allow for full facial customisation as well? Include the playable alien races as well".
 
-This is a survey and a design. Portraits as presets, the Twi'lek and the pack's Jawa are built; the rest is not. It builds on [CHARGEN_PLAN.md](CHARGEN_PLAN.md).
+This is a survey and a design. Portraits as presets, the Twi'lek, the pack's Jawa, and the game's Rodian, Duros, Wookiee and Trandoshan are built; the rest is not. It builds on [CHARGEN_PLAN.md](CHARGEN_PLAN.md).
 
 ## Built: Twi'lek
 
@@ -23,6 +23,22 @@ The Jawa wears its body whatever the player has on: robe, hood and bandoliers ar
 **Voice.** The pack's 22 lines become `p_jawamw_*`. When the player is a Jawa, a line of a hero's voice set, `p_plyer??_<line>`, is said as `p_jawamw_<line>` where the pack has it, and as the hero's where it does not.
 
 **Checked:** frames of the Appearance page (close and whole, as a man and as a woman), the character sheet, the HUD portrait made from the hood, and the player in the game. A test checks the pack's names, the eyes' place in the posed hood and the voice's names. **Assumed:** the Jawa is offered to women too, as Jawas look alike. It stands as tall as the hero, as the pack made it. **Not checked:** the voice in a fight, by ear; every clip on the Jawa body.
+
+## Built: Rodian, Duros, Wookiee and Trandoshan
+
+The Race row goes on after the Jawa (or after the Twi'lek, when the Jawa's pack is off) to the game's Rodian, Duros, Wookiee and Trandoshan. Each is one model, head, body and clothes, so it wears that in every outfit, as the game's characters of those races do. Its presets are its model's own picture, then the pictures its other `appearance.2da` rows give (`racetex`), in place of the model's main one ([races.rs](../crates/kotor-render/src/races.rs) `BODIES`):
+
+| Race | Model | Presets |
+|---|---|---|
+| Rodian | `n_rodian` | its own (`N_Rodian02`), `N_Rodian03` to `05`: 4 |
+| Duros | `n_duros` | its own (`N_Duros01`), `N_Duros02`, `03`: 3 |
+| Wookiee man | `n_wookiem` | its own (`N_WookieM06`), `N_WookieM02` to `05`: 5 |
+| Wookiee woman | `n_wookief` | its own (`N_WookieF01`), `N_WookieF02` to `05`: 5 |
+| Trandoshan | `n_trandoshan` | its own (`P_Trndoshan`), `p_trndoshan02`: 2 |
+
+The Appearance page shows the same rows as for the Jawa. The face's sliders and marks are not offered: they are made for the player's heads, and these are whole bodies. The picture made from the face, the HUD's and the sheet's, is made from the model's head as for any look.
+
+**Checked:** frames of every preset close, and each race whole, as a man and as a woman, and a Wookiee woman in the game with her HUD picture. **Assumed:** a Wookiee is a man's or a woman's model by the player's sex, and the other races have one model for both. They speak with the player's human voice set. **Not checked:** what a weapon in the hand looks like on each, and every clip.
 
 ## What the game's files have
 
@@ -62,7 +78,7 @@ These are read at run time from `Mods`, through the mod packs switch. Nothing go
 1. **Human:** as now.
 2. **Twi'lek:** the human body and armour, with a Twi'lek head. The body's skin takes the head's tone, the way hair colour is done now. The head's skin is sampled from its cheeks, and the body's skin is moved to it. Face sliders, marks and hair colour work, as the heads carry the same 14 face points. A **Lekku** slider stretches the head-tails by our own deformer: they have no bones. With the Twi'lek mod on, its 26 heads join the Head row, with its bare bodies.
 3. **Jawa**, with the Jawa pack on: its body in place of the player's, in every outfit, and its sounds as the voice. Built: see above.
-4. **Rodian, Duros, Wookiee, Trandoshan:** one model each, which is their body and clothes too. So armour does not show on them, and only height and the marks fit them. They play the human animations. Offered after the races above, marked so.
+4. **Rodian, Duros, Wookiee, Trandoshan:** one model each, which is their body and clothes too. So armour does not show on them. They play the human animations. Offered after the races above. Built: see above.
 5. **Bith, Aqualish, Selkath, Ithorian:** other animation sets. Later, after a check of each clip the player needs.
 
 **Voice.** The human player's voice sets for every race but the Jawa. No alien in the game has a player's voice set.

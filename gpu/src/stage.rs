@@ -3090,7 +3090,7 @@ impl Stage {
             .inst
             .pack_names(ResType::MDL)
             .iter()
-            .any(|n| Some(n.as_str()) == kotor_render::races::body_of(kotor_render::races::JAWA));
+            .any(|n| n == kotor_render::races::JAWA_BODY);
         kotor_render::races::set_mod_jawa(jawa);
     }
 
@@ -3107,9 +3107,9 @@ impl Stage {
         self.race_rigs
             .entry((appearance, var, letter, head))
             .or_insert_with(|| {
-                // A race with a body of its own wears it whatever is on: a Jawa's robe is its outfit.
-                if let Some(body) = kotor_render::races::body_of_head(head) {
-                    return kotor_render::rig_for_race_body(inst, body)
+                // A race with a body of its own wears it whatever is on: a Jawa's robe is its outfit, a Rodian's clothes its.
+                if let Some((body, texture)) = kotor_render::races::body_of_head(head) {
+                    return kotor_render::rig_for_race_body(inst, body, texture)
                         .ok()
                         .map(|rig| styled(rig, conventional));
                 }

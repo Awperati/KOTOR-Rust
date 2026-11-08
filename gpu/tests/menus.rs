@@ -4768,7 +4768,7 @@ fn a_twilek_wears_a_twilek_head_on_the_human_body_in_its_tone_with_lekku() {
     assert_eq!(look.get("race"), Some(&1));
     assert_eq!(look.get("lekku"), Some(&100));
     let race = row_of(&mut s, "Race").unwrap();
-    arrow(&mut s, race, 1);
+    arrow(&mut s, race, -1);
     assert_eq!(choice(&mut s, race), "Human");
     let w = &s.game.world;
     let look = &w.object(w.pc).unwrap().look.sliders;
@@ -4776,6 +4776,60 @@ fn a_twilek_wears_a_twilek_head_on_the_human_body_in_its_tone_with_lekku() {
         !look.contains_key("race") && !look.contains_key("lekku"),
         "{look:?}"
     );
+}
+
+#[test]
+fn the_games_aliens_are_races_that_wear_their_own_bodies() {
+    let Some(mut s) = at_chargen("aliens") else {
+        return;
+    };
+    // A man: a Wookiee man's model.
+    press(&mut s, "BTN_SEL1");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let row_of = |s: &mut Stage, name: &str| {
+        let rows = s.menu_rows("LB_OPTIONS");
+        rows.iter().position(|r| r.text == name)
+    };
+    let choice = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
+    let arrow = |s: &mut Stage, row: usize, by: i32| {
+        bring_row(s, row);
+        let at = s.menu_step_pixel("LB_OPTIONS", row, by, SIZE).unwrap();
+        s.click(at, SIZE);
+    };
+    let textures = |s: &mut Stage| -> Vec<String> {
+        let (scene, _, _) = s.frame_scene();
+        scene
+            .meshes
+            .iter()
+            .filter_map(|m| m.texture.clone().map(|t| t.to_ascii_lowercase()))
+            .collect()
+    };
+    let race = row_of(&mut s, "Race").unwrap();
+    arrow(&mut s, race, 1);
+    assert_eq!(choice(&mut s, race), "Twi'lek");
+    // With the mod packs off the Jawa is passed by.
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        arrow(&mut s, race, 1);
+        seen.push(choice(&mut s, race));
+    }
+    assert_eq!(seen, ["Rodian", "Duros", "Wookiee", "Trandoshan"]);
+    arrow(&mut s, race, -1);
+    assert_eq!(choice(&mut s, race), "Wookiee");
+    // A whole body: no size, underwear, face or hair to change, and presets of its rows' pictures.
+    for gone in ["Body", "Hair colour", "Lekku"] {
+        assert!(row_of(&mut s, gone).is_none(), "{gone}");
+    }
+    let preset = row_of(&mut s, "Preset").unwrap();
+    assert_eq!(choice(&mut s, preset), "Wookiee 1 of 5");
+    assert!(textures(&mut s).iter().any(|t| t == "n_wookiem06"), "its own");
+    arrow(&mut s, preset, 1);
+    assert_eq!(choice(&mut s, preset), "Wookiee 2 of 5");
+    let second = textures(&mut s);
+    assert!(second.iter().any(|t| t == "n_wookiem02"), "{second:?}");
+    assert!(!second.iter().any(|t| t == "n_wookiem06"), "{second:?}");
 }
 
 #[test]

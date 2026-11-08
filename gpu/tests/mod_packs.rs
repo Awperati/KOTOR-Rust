@@ -107,7 +107,7 @@ fn the_mod_packs_are_used_when_on_and_read_from_the_mods_folder() {
         assert!(!inst.in_override("pmbal", ResType::MDL), "the hero's own body");
         assert!(!inst.in_override("pmha01", ResType::MDL), "the hero's own head");
         assert!(inst.contains("p_jawamw_atk1", ResType::WAV));
-        let rig = kotor_render::rig_for_race_body(&mut inst, "p_jawab").unwrap();
+        let rig = kotor_render::rig_for_race_body(&mut inst, "p_jawab", None).unwrap();
         assert!(rig.body_model().root.find("eyes").is_some(), "the eyes");
         let scene = rig.pose(Some(("pause1", 0.0))).unwrap();
         let points = |name: &str| {

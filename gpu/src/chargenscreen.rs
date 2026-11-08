@@ -847,7 +847,7 @@ impl Stage {
             .map_or(0, |d| races::race_of(|k| slider(&d.spec.look, k)));
         let mut rows = vec![LookRow::Race, LookRow::Head];
         // A race with a body of its own, the Jawa, is all robe and hood: no body size, underwear, face or hair to change.
-        if races::body_of(race).is_none() {
+        if !races::own_body(race) {
             rows.push(LookRow::Body);
             if choice {
                 rows.push(LookRow::Underwear);
