@@ -85,6 +85,50 @@ pub(crate) fn slide_around(
     at
 }
 
+/// How far over its feet and how high a walker is stopped by something solid: the player's own test, `movement.rs`.
+const BARRIER_LOW: f32 = 0.25;
+const BARRIER_HIGH: f32 = 1.2;
+/// Turns tried, in turn, from straight on, to get a step round something solid.
+const TURNS: [f32; 6] = [0.6, 1.2, 1.57, 2.1, 2.6, 3.1];
+
+/// Take the step from `old` to `new` of someone who walks, going round what the player could not walk through (a light, a
+/// rail, a crate: `Barriers`). A step that crosses something is turned, to the side it went round last time first, by the
+/// first turn that does not and ends on the floor. `None` when no turn does. Returns the place and the side (1 or -1).
+pub(crate) fn steer_round(
+    nav: &NavMesh,
+    barriers: &dyn crate::Barriers,
+    old: [f32; 3],
+    new: [f32; 3],
+    side: f32,
+) -> Option<([f32; 3], f32)> {
+    let across = |to: [f32; 2]| {
+        barriers.across(
+            [old[0], old[1]],
+            to,
+            old[2] + BARRIER_LOW,
+            old[2] + BARRIER_HIGH,
+        )
+    };
+    let (dx, dy) = (new[0] - old[0], new[1] - old[1]);
+    if !across([new[0], new[1]]) {
+        return Some((new, side));
+    }
+    for turn in TURNS {
+        for s in [side, -side] {
+            let a = turn * s;
+            let (c, sn) = (a.cos(), a.sin());
+            let (x, y) = (old[0] + dx * c - dy * sn, old[1] + dx * sn + dy * c);
+            if across([x, y]) {
+                continue;
+            }
+            if let Some(z) = nav.height_at(x, y, old[2] + 0.4) {
+                return Some(([x, y, z], s));
+            }
+        }
+    }
+    None
+}
+
 impl World {
     /// Centres of living creatures that block `who`: everyone but itself, the party included (bug 15). A player pressed
     /// against someone for half a second walks through, see `collide_pc`.

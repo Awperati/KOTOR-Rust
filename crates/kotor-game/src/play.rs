@@ -1,7 +1,7 @@
 //! Interaction and movement on top of the world: picking, click-to-walk, doors, triggers, module
 //! transitions and the per-step update.
 
-use crate::follow::{dist2d, slide_around, trim_route, PRESSED_SECONDS};
+use crate::follow::{dist2d, slide_around, steer_round, trim_route, PRESSED_SECONDS};
 use crate::movement::{Body, Ground, Input, MovementMode};
 use crate::world::{Action, DoorState, Kind, ObjId, Object, World};
 use kotor_core::{Error, ResType, Result};
@@ -47,6 +47,8 @@ const SKILL_SECURITY: usize = 6;
 pub const RUN_SPEED: f32 = 5.4;
 /// How far the steered Classic player keeps off a closed door's line. The same as the Modern body's: see `movement.rs`.
 const DOOR_KEEP: f32 = 0.5;
+/// How long a walker held by something solid on every side waits before it goes on through.
+const BARRIER_HELD_SECONDS: f32 = 2.0;
 /// A body is stopped this far short of a closed door's line, so that it never stands on it.
 const DOOR_MARGIN: f32 = 0.03;
 /// When steered, the player keeps this far from the edge of the walkmesh, so that it does not stand in a wall.
@@ -1140,6 +1142,36 @@ impl World {
             return true;
         };
         let status = mover.step(nav, &params, dt);
+        // Walkers do not go through what the player cannot: a row of low lights down the middle of a walk. A step that would
+        // is turned aside (to the side taken last, so as not to shudder), and one that finds no way for 2 s goes on through.
+        if id != self.pc && mover.pos != pos {
+            if let Some(b) = self.barriers.clone() {
+                let (side, held) = self.walker_steer.get(&id).copied().unwrap_or((1.0, 0.0));
+                let found = steer_round(nav, b.as_ref(), pos, mover.pos, side);
+                // A clean step eases the time held; a turned or stopped one adds to it.
+                let clean = found.is_some_and(|(at, _)| at == mover.pos);
+                let held = if clean {
+                    (held - dt).max(0.0)
+                } else {
+                    (held + dt).min(BARRIER_HELD_SECONDS + 1.0)
+                };
+                let mut side = side;
+                if held < BARRIER_HELD_SECONDS || clean {
+                    match found {
+                        Some((at, s)) => {
+                            mover.pos = at;
+                            side = s;
+                        }
+                        None => mover.pos = pos,
+                    }
+                }
+                if held > 0.0 {
+                    self.walker_steer.insert(id, (side, held));
+                } else {
+                    self.walker_steer.remove(&id);
+                }
+            }
+        }
         // Walkers go round the people in their way (bug 15), except the one they walk to. One that is held up by them, getting
         // no nearer, for half a second walks through, as the player does: a person standing in a narrow walk held a passer-by
         // shuddering against them for good.
