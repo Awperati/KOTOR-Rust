@@ -422,7 +422,8 @@ impl Ui<'_> {
             }
         }
         let column = middle.0 - reach - side / 2.0 - gap - small / 2.0;
-        let step = small + gap;
+        // In line with the diamond's rows: Pause with Jump (and Lock on), Pickup with Action.
+        let step = reach;
         for (key, dy) in [
             (TouchKey::Pickup, step),
             (TouchKey::AttackMode, 0.0),
