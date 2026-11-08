@@ -1,5 +1,5 @@
 //! How often a new character and Trask beat Darth Bandon, at levels 1 and 2 (the owner's added branch: see `story_branches.rs`).
-//! Usage: bandon_odds [fights] [health,...] [trask damage,...] [full hit points,...] [share of his blows,...]. The player only attacks: no powers, grenades or medpacks.
+//! Usage: bandon_odds [fights] [health,...] [trask damage,...] [full hit points,...] [share of his blows,...] [player levels,...]. The player only attacks: no powers, grenades or medpacks.
 use kotor_archive::Install;
 use kotor_game::{Action, Game, World};
 
@@ -121,7 +121,7 @@ fn list<T: std::str::FromStr + Clone>(arg: Option<String>, default: &[T]) -> Vec
 }
 
 /// A level 1 fight against one Sith trooper of this module's, beside Trask, for comparison.
-fn trooper(class: i32, seed: u64) -> Option<Result> {
+fn trooper(class: i32, xp: i32, seed: u64) -> Option<Result> {
     let dir = kotor_core::install_dir()?;
     let mut inst = Install::open(&dir).ok()?;
     inst.set_prefer_rim(true);
@@ -132,6 +132,9 @@ fn trooper(class: i32, seed: u64) -> Option<Result> {
     w.create_character(&spec).ok()?;
     w.enter_area();
     let pc = w.pc;
+    if xp > 0 {
+        w.grant_xp(pc, xp);
+    }
     let mut g = Game::new(w);
     for _ in 0..600 {
         g.step_once();
@@ -206,37 +209,51 @@ fn main() {
     let damages: Vec<i32> = list(args.next(), &[kotor_game::TRASK_DAMAGE]);
     let fulls: Vec<i32> = list(args.next(), &[kotor_game::BANDON_FULL_HEALTH]);
     let blows: Vec<f32> = list(args.next(), &[kotor_game::BANDON_BLOWS]);
-    println!("--- one Sith trooper, beside Trask, level 1");
-    for (name, class) in [("soldier", 0), ("scout", 1), ("scoundrel", 2)] {
-        let (mut wins, mut time) = (0, 0.0);
-        for k in 0..n {
-            if let Some(r) = trooper(class, k + 1) {
-                wins += r.won as u64;
-                time += r.seconds;
+    // The player's level: 1 is a new character, and the others get the experience that level starts at.
+    let levels: Vec<i32> = list(args.next(), &[1]);
+    let xp_of = |level: i32| level * (level - 1) * 500;
+    for &level in &levels {
+        println!("--- one Sith trooper, beside Trask, level {level}");
+        for (name, class) in [("soldier", 0), ("scout", 1), ("scoundrel", 2)] {
+            let (mut wins, mut time) = (0, 0.0);
+            for k in 0..n {
+                if let Some(r) = trooper(class, xp_of(level), k + 1) {
+                    wins += r.won as u64;
+                    time += r.seconds;
+                }
             }
+            println!(
+                "{name}: won {wins} of {n}, {:.0} s a fight",
+                time / n as f32
+            );
         }
-        println!(
-            "{name}: won {wins} of {n}, {:.0} s a fight",
-            time / n as f32
-        );
     }
     for &full in &fulls {
         for &blow in &blows {
             for &health in &healths {
                 for &damage in &damages {
                     println!("--- Bandon {full} hit points whole, starts at {health}, his blows {blow}, Trask adds {damage}");
-                    for (name, class) in [("soldier", 0), ("scout", 1), ("scoundrel", 2)] {
-                        let (mut wins, mut time) = (0, 0.0);
-                        for k in 0..n {
-                            if let Some(r) = fight(class, 0, k + 1, health, damage, full, blow) {
-                                wins += r.won as u64;
-                                time += r.seconds;
+                    for &level in &levels {
+                        for (name, class) in [("soldier", 0), ("scout", 1), ("scoundrel", 2)] {
+                            let (mut wins, mut time) = (0, 0.0);
+                            let (mut hit, mut taken) = (0, 0);
+                            for k in 0..n {
+                                if let Some(r) =
+                                    fight(class, xp_of(level), k + 1, health, damage, full, blow)
+                                {
+                                    wins += r.won as u64;
+                                    time += r.seconds;
+                                    hit += r.player_hit;
+                                    taken += r.trask_hit;
+                                }
                             }
+                            println!(
+                                "{name} level {level}: won {wins} of {n}, {:.0} s a fight, the player dealt {} and Trask {} a fight",
+                                time / n as f32,
+                                hit / n as i32,
+                                taken / n as i32
+                            );
                         }
-                        println!(
-                            "{name} level 1: won {wins} of {n}, {:.0} s a fight",
-                            time / n as f32
-                        );
                     }
                 }
             }
