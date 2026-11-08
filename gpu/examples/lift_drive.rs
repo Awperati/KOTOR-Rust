@@ -5,8 +5,8 @@
 //!
 //!   cargo run --release --example lift_drive -- [module:tag[>to] ...] [--modes classic,modern] [--inputs e,click] [--out dir]
 //!
-//! With no lifts named it rides the lift doors of Taris (every door the install has whose tag or template says elevator or
-//! lift, and the Upper City's, which says neither).
+//! With no lifts named it rides every lift door of the install: those whose tag or template says elevator or lift, and those
+//! `docs/lifts.tsv` makes lifts (the Upper City's, Davik's estate's and the Star Forge's, named "Elevator" in the game).
 use kotor_game::{GameMode, Kind, ObjId};
 use kotor_gpu::stage::Stage;
 use kotor_gpu::{composite, GpuRenderer};
@@ -27,6 +27,9 @@ const LIFTS: &[&str] = &[
     "tar_m10ac:tar10_elevator",
     "tar_m09aa:ptar_elevdoor",
     "tar_m09ab:tar09_elevdoor",
+    "tar_m11aa:ptar_secdoor>tar_m11ab",
+    "sta_m45ab:sta45b_sta45c",
+    "sta_m45ac:sta45c_sta45d",
 ];
 
 fn keep_alive(s: &mut Stage) {

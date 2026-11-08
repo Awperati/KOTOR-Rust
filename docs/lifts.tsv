@@ -8,3 +8,9 @@ tar_m03aa	tar_m04aa	down	6
 tar_m05ab	tar_m10aa	down	6
 tar_m10aa	tar_m10ac	down	5
 # Level on purpose (a car module whose floor is on both sides of the door): tar_m09aa/tar_m09ab, tar_m10ab/tar_m10ac, Leviathan.
+# GUESSED level, direction unknown (the install does not say which floor is lower); flip to down or up when known. Named "Elevator" in the game.
+# Davik's estate (tar_m11aa ptar_secdoor):
+tar_m11aa	tar_m11ab	level	4
+# The Star Forge (sta45b_sta45c, sta45c_sta45d):
+sta_m45ab	sta_m45ac	level	4
+sta_m45ac	sta_m45ad	level	4

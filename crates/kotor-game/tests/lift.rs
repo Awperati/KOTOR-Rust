@@ -81,3 +81,31 @@ fn the_upper_city_lift_whose_tag_says_neither_is_a_ride_down() {
     let other = g.world.by_tag("UpperSouth")[0];
     assert!(!g.world.is_lift_door(other));
 }
+
+/// Davik's estate has two doors tagged `ptar_secdoor`: the one the game names "Elevator", to the floor above, is a lift by the
+/// table's GUESSED row; the one out to the Lower City is a door.
+#[test]
+fn a_table_row_makes_only_the_door_between_its_two_modules_a_lift() {
+    let Some(g) = at("tar_m11aa") else { return };
+    let doors: Vec<(String, bool)> = g
+        .world
+        .by_tag("ptar_secdoor")
+        .into_iter()
+        .map(|d| {
+            let o = g.world.object(d).unwrap();
+            (o.link_module.to_ascii_lowercase(), g.world.is_lift_door(d))
+        })
+        .collect();
+    assert!(
+        doors.contains(&("tar_m11ab".to_string(), true)),
+        "{doors:?}"
+    );
+    assert!(
+        doors.contains(&("tar_m03aa".to_string(), false)),
+        "{doors:?}"
+    );
+    assert_eq!(
+        ride_between("sta_m45ab", "sta_m45ac"),
+        (LiftWay::Level, 4.0)
+    );
+}
