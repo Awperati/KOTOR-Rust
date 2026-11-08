@@ -1407,14 +1407,10 @@ impl World {
         }
         let ids: Vec<ObjId> = self.objects.keys().copied().collect();
         for id in ids {
-            // A body does not walk: a creature killed on its way keeps no queue, and nothing it was told to do moves it again.
-            if let Some(o) = self.objects.get_mut(&id).filter(|o| o.dead) {
-                o.actions.clear();
-                continue;
-            }
             let mut budget = dt;
             // A queue that keeps adding to itself goes on next tick, and cannot hang this one.
             let mut left = ACTIONS_PER_TICK;
+            let dead = self.objects.get(&id).is_some_and(|o| o.dead);
             while let Some(head) = self
                 .objects
                 .get_mut(&id)
@@ -1431,6 +1427,13 @@ impl World {
                             break;
                         }
                         budget -= *left;
+                        if let Some(o) = self.objects.get_mut(&id) {
+                            o.actions.pop_front();
+                        }
+                    }
+                    // A body does not walk: a creature killed on its way, or told to walk when it is dead, goes nowhere. What else is
+                    // queued on it (a door closed in its last scene) is still done.
+                    Action::MoveTo { .. } if dead => {
                         if let Some(o) = self.objects.get_mut(&id) {
                             o.actions.pop_front();
                         }

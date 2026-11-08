@@ -385,5 +385,4 @@ fn a_body_stays_where_it_fell() {
     let after = walked(&mut g, &[walker], 6)[0];
     assert!(after < 0.01, "the body slid {after} m");
     assert_eq!(here(&g, walker), lies);
-    assert!(g.world.object(walker).unwrap().actions.is_empty());
 }
