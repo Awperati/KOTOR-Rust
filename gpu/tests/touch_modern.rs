@@ -200,7 +200,8 @@ fn with_a_blade_attack_held_chains_blows_and_aim_is_the_guard() {
     let me = s.game.world.object_mut(pc).unwrap();
     me.equipped.insert(4, sabre);
     s.attack_mode_key();
-    run(&mut s, 2);
+    // Blows wait for the draw.
+    run(&mut s, (kotor_game::DRAW_SECONDS / DT) as usize + 30);
     assert_eq!(s.touch_key_word(TouchKey::Aim).0, "Guard");
     assert_eq!(s.touch_key_word(TouchKey::Attack).0, "Strike");
     let logged = s.game.world.combat.log.len();

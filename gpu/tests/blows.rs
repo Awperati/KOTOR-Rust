@@ -103,7 +103,9 @@ fn clicks_in_time_chain_the_five_clips_and_a_wait_starts_over() {
     s.set_combat_modern(true);
     let id = dummy(&mut s, 1.5, 0.0, 90000);
     let pc = s.game.world.pc;
-    run(&mut s, 2);
+    // The sword is drawn first: blows wait for the draw.
+    s.game.world.set_attack_mode(true);
+    run(&mut s, (kotor_game::DRAW_SECONDS / DT) as usize + 30);
     let logged = s.game.world.combat.log.len();
     let mut seen: Vec<String> = Vec::new();
     let began = s.game.world.time;
