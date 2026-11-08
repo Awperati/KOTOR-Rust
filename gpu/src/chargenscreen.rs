@@ -14,6 +14,7 @@ use kotor_game::{
     attribute_cost, BodySize, CharacterLook, CharacterSpec, Clip, ATTRIBUTE_BASE, POINT_POOL,
 };
 use kotor_render::face::FaceShape;
+use kotor_render::marks::{MARKS, MARK_MOST, MARK_STEP};
 use kotor_render::shape::{BodyShape, SLIDER_MOST, SLIDER_STEP};
 use kotor_render::underwear::{list_underwear_variants, UnderwearVariant};
 use kotor_render::{Camera, Rig, Scene};
@@ -124,6 +125,8 @@ enum LookRow {
     Underwear,
     /// A slider, by its place in `SLIDERS`.
     Slider(usize),
+    /// A scar, tattoo or make-up, by its place in `kotor_render::marks::MARKS`.
+    Mark(usize),
     /// Every slider at random, and the head and the body.
     Random,
     /// Every slider back to 0.
@@ -831,6 +834,7 @@ impl Stage {
             rows.push(LookRow::Underwear);
         }
         rows.extend((0..SLIDERS.len()).map(LookRow::Slider));
+        rows.extend((0..MARKS.len()).map(LookRow::Mark));
         rows.extend([
             LookRow::Random,
             LookRow::Reset,
@@ -888,6 +892,15 @@ impl Stage {
                         };
                         (SLIDERS[n].1.to_string(), words)
                     }
+                    LookRow::Mark(n) => {
+                        let v = slider(&d.spec.look, MARKS[n].0);
+                        let words = if v <= 0 {
+                            "None".to_string()
+                        } else {
+                            format!("{v}%")
+                        };
+                        (MARKS[n].1.to_string(), words)
+                    }
                     LookRow::Random => ("Random look".to_string(), "Roll".to_string()),
                     LookRow::Reset => ("Sliders".to_string(), "All to 0".to_string()),
                     LookRow::Saved => (
@@ -940,6 +953,22 @@ impl Stage {
                     }
                     let v = (slider(&d.spec.look, name) + by * SLIDER_STEP)
                         .clamp(-SLIDER_MOST, SLIDER_MOST);
+                    if v == 0 {
+                        d.spec.look.sliders.remove(name);
+                    } else {
+                        d.spec.look.sliders.insert(name.to_string(), v);
+                    }
+                }
+                self.sync_character();
+            }
+            Some(LookRow::Mark(n)) => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    let name = MARKS[*n].0;
+                    // A mark is on the face: from the whole body, the view comes to the head.
+                    if d.view == 0 {
+                        d.view = FACE_VIEW;
+                    }
+                    let v = (slider(&d.spec.look, name) + by * MARK_STEP).clamp(0, MARK_MOST);
                     if v == 0 {
                         d.spec.look.sliders.remove(name);
                     } else {
@@ -1506,7 +1535,7 @@ impl Stage {
         let mut scene = Scene::default();
         if let Some(rig) = self.bare_rig(appearance) {
             let clip = self.idling(0);
-            let wear = self.preview_underwear.clone();
+            let wear = self.draft_wear();
             self.add_creature(
                 &mut scene,
                 &rig,
@@ -1537,7 +1566,7 @@ impl Stage {
             .as_ref()
             .map_or(CharacterLook::default(), |d| d.spec.look.clone());
         let rig = self.shaped_rig(rig, &look);
-        let wear = self.preview_underwear.clone();
+        let wear = self.draft_wear();
         let stance = self.look_stance(&rig, appearance, &look, &wear);
         let clip = Some(Clip {
             name: POSES[pose].1,
@@ -1675,13 +1704,21 @@ impl Stage {
         }
     }
 
+    /// What the figures of character creation wear: the underwear on show, and the marks of the look being made.
+    fn draft_wear(&self) -> String {
+        match self.menus.chargen.as_ref() {
+            Some(d) => crate::stage::dress(&self.preview_underwear, &d.spec.look),
+            None => self.preview_underwear.clone(),
+        }
+    }
+
     /// The head on the portrait page, large, in its hole.
     fn head_in_hole(&mut self, appearance: i32) -> (Scene, Camera) {
         let mut scene = Scene::default();
         let Some(rig) = self.clothed_rig(appearance) else {
             return (scene, default_camera());
         };
-        let wear = self.preview_underwear.clone();
+        let wear = self.draft_wear();
         self.add_creature(&mut scene, &rig, &[], &None, [0.0; 3], HEAD_FACING, &wear);
         let top = scene
             .meshes

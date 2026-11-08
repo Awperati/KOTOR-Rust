@@ -2080,6 +2080,7 @@ impl Stage {
         if self.conventional_underwear != on {
             self.conventional_underwear = on;
             self.textures.retain(|name, _| {
+                let name = kotor_render::marks::split_marks(name).0;
                 let name = kotor_render::underwear::split_variant(name).0;
                 kotor_render::underwear::body_of_texture(name).is_none()
                     && !kotor_render::underwear::is_hero_head(name)
@@ -2100,12 +2101,36 @@ impl Stage {
         }
     }
 
+    /// What a creature wears for `wear_underwear`: its underwear, and the player's marks.
+    pub(crate) fn dress_of(&self, id: kotor_game::ObjId) -> String {
+        let w = &self.game.world;
+        match w.object(id) {
+            Some(o) if id == w.pc => dress(&o.underwear, &o.look),
+            Some(o) => o.underwear.clone(),
+            None => String::new(),
+        }
+    }
+
     /// The underwear the character creation screen's figures wear while a choice is being looked at: a variant's id, or empty.
     pub fn set_preview_underwear(&mut self, id: &str) {
         self.preview_underwear = id.to_string();
     }
 
     pub fn texture(&mut self, name: &str) -> Option<Image> {
+        // A head with marks: its texture as it is without them, and the marks painted on it, once.
+        let (unmarked, marks) = kotor_render::marks::split_marks(name);
+        if !marks.is_empty() {
+            if let Some(got) = self.textures.get(name) {
+                return got.clone();
+            }
+            let mut img = self.texture(unmarked)?;
+            let head = kotor_render::underwear::split_variant(unmarked).0;
+            if let Some(model) = self.model(head) {
+                kotor_render::marks::paint_marks(&model, head, &mut img, marks);
+            }
+            self.textures.insert(name.to_string(), Some(img.clone()));
+            return Some(img);
+        }
         let (plain, variant) = kotor_render::underwear::split_variant(name);
         let (plain, variant) = (plain.to_string(), variant.to_string());
         let inst = &mut self.inst;
@@ -2448,8 +2473,10 @@ impl Stage {
     /// stock ones are read in a frame, and past that one with no pixels says to try again. The paint on a hero's body and
     /// head is not put off: they come with a load or a change of clothes, behind a screen, and the wrong paint must not show.
     pub fn texture_soon(&mut self, name: &str) -> Option<Image> {
-        let (plain, variant) = kotor_render::underwear::split_variant(name);
+        let (unmarked, marks) = kotor_render::marks::split_marks(name);
+        let (plain, variant) = kotor_render::underwear::split_variant(unmarked);
         let painted = !variant.is_empty()
+            || !marks.is_empty()
             || kotor_render::underwear::body_of_texture(plain).is_some()
             || kotor_render::underwear::is_hero_head(plain);
         if painted || self.textures.contains_key(name) {
@@ -3283,12 +3310,7 @@ impl Stage {
                         continue;
                     };
                     let hands = self.hands(pose.id);
-                    let underwear = self
-                        .game
-                        .world
-                        .object(pose.id)
-                        .map(|o| o.underwear.clone())
-                        .unwrap_or_default();
+                    let underwear = self.dress_of(pose.id);
                     if let Some(p) = self.stunt_pose(pose.id, &rig) {
                         // A stunt is in world space, like the camera beside it.
                         let face = self.stunt_face(pose.id, &rig);
@@ -4192,20 +4214,34 @@ impl Stage {
 }
 
 /// A creature in a player's chosen underwear: from mesh `from` on, the bare body and the head's neck go by another name, which
-/// `Stage::texture` knows. The standard paint keeps its names.
+/// `Stage::texture` knows. The standard paint keeps its names. After a `#`, `underwear` carries the head's marks too, which
+/// go on the head's name.
 fn wear_underwear(scene: &mut Scene, from: usize, underwear: &str) {
     if underwear.is_empty() {
         return;
     }
+    let (underwear, marks) = kotor_render::marks::split_marks(underwear);
     for m in scene.meshes.iter_mut().skip(from) {
         if let Some(t) = &m.texture {
+            let head = kotor_render::underwear::is_hero_head(t);
             if kotor_render::underwear::body_of_texture(t).is_some()
-                || kotor_render::underwear::is_hero_head(t)
+                || head
                 || (kotor_render::underwear::is_pack(underwear)
                     && kotor_render::underwear::is_body_sheet(t))
             {
-                m.texture = Some(kotor_render::underwear::variant_texture_name(t, underwear));
+                let mut name = kotor_render::underwear::variant_texture_name(t, underwear);
+                if head && !marks.is_empty() {
+                    name = format!("{name}#{marks}");
+                }
+                m.texture = Some(name);
             }
         }
     }
+}
+
+/// What a figure wears, for `wear_underwear`: the underwear's id, and after it the marks of a look, if it has any.
+pub(crate) fn dress(underwear: &str, look: &kotor_game::CharacterLook) -> String {
+    let marks =
+        kotor_render::marks::marks_suffix(|name| look.sliders.get(name).copied().unwrap_or(0));
+    format!("{underwear}{marks}")
 }

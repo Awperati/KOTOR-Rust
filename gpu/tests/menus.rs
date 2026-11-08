@@ -4185,10 +4185,10 @@ fn the_messages_tab_shows_what_was_said_and_fought() {
 /// The Appearance page's list scrolled so that a row is on it, with the cursor on the list.
 fn bring_row(s: &mut Stage, row: usize) {
     s.hover((300.0, 300.0), SIZE);
-    for _ in 0..20 {
+    for _ in 0..40 {
         s.menu_wheel(1.0);
     }
-    for _ in 0..20 {
+    for _ in 0..40 {
         let shown = s
             .menu_step_pixel("LB_OPTIONS", row, 1, SIZE)
             .is_some_and(|p| p.1 < 345.0 * SIZE.1 as f32 / 480.0);
@@ -4561,6 +4561,84 @@ fn the_face_sliders_bring_the_view_to_the_head_and_reshape_it() {
     );
     let w = &s.game.world;
     assert_eq!(w.object(w.pc).unwrap().look.sliders.get("nose"), Some(&100));
+}
+
+#[test]
+fn a_mark_is_painted_on_the_heads_texture_and_kept_with_the_look() {
+    let Some(mut s) = at_chargen("marks") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let names: Vec<String> = s
+        .menu_rows("LB_OPTIONS")
+        .iter()
+        .map(|r| r.text.clone())
+        .collect();
+    for (_, words) in kotor_render::marks::MARKS {
+        assert!(names.iter().any(|n| n == words), "{words}: {names:?}");
+    }
+    let row = names.iter().position(|n| n == "Tattoo: brow").unwrap();
+    bring_row(&mut s, row);
+    assert_eq!(
+        s.menu_rows("LB_OPTIONS")[row].choice.as_deref(),
+        Some("None")
+    );
+    // The head's texture, by the name the figure gives it.
+    let head = |s: &mut Stage| {
+        let (scene, _, _) = s.frame_scene();
+        scene
+            .meshes
+            .iter()
+            .filter_map(|m| m.texture.clone())
+            .find(|t| kotor_render::underwear::is_hero_head(kotor_render::marks::split_marks(t).0))
+            .expect("the head")
+    };
+    let plain = head(&mut s);
+    assert_eq!(kotor_render::marks::split_marks(&plain).1, "");
+    // Down stops at none; up goes in tens to full.
+    let less = s.menu_step_pixel("LB_OPTIONS", row, -1, SIZE).unwrap();
+    s.click(less, SIZE);
+    assert_eq!(
+        s.menu_rows("LB_OPTIONS")[row].choice.as_deref(),
+        Some("None")
+    );
+    let more = s.menu_step_pixel("LB_OPTIONS", row, 1, SIZE).unwrap();
+    for _ in 0..12 {
+        s.click(more, SIZE);
+    }
+    assert_eq!(
+        s.menu_rows("LB_OPTIONS")[row].choice.as_deref(),
+        Some("100%")
+    );
+    assert_eq!(
+        s.look_preview().unwrap().1,
+        "Head",
+        "the view came to the head"
+    );
+    let marked = head(&mut s);
+    assert_eq!(
+        kotor_render::marks::split_marks(&marked),
+        (plain.as_str(), "tattoo_brow=100")
+    );
+    let (before, after) = (s.texture(&plain).unwrap(), s.texture(&marked).unwrap());
+    assert_eq!((before.width, before.height), (after.width, after.height));
+    let changed = before
+        .rgba
+        .chunks(4)
+        .zip(after.rgba.chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    let all = before.rgba.len() / 4;
+    assert!(changed > 0 && changed < all / 20, "{changed} of {all}");
+    press(&mut s, "BTN_ACCEPT");
+    let w = &s.game.world;
+    assert_eq!(
+        w.object(w.pc).unwrap().look.sliders.get("tattoo_brow"),
+        Some(&100)
+    );
 }
 
 #[test]

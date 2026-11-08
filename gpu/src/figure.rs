@@ -346,10 +346,7 @@ impl Stage {
         };
         if let Some(rig) = rig {
             let clip = self.idling(0);
-            let wear = here
-                .and_then(|id| self.game.world.object(id))
-                .map(|o| o.underwear.clone())
-                .unwrap_or_default();
+            let wear = here.map(|id| self.dress_of(id)).unwrap_or_default();
             self.add_creature(&mut scene, &rig, &[], &clip, at, heading, &wear);
             self.fit_figure(&rig, &wear);
         }
@@ -373,12 +370,7 @@ impl Stage {
             return scene;
         };
         let clip = self.idling(0);
-        let wear = self
-            .game
-            .world
-            .object(pc)
-            .map(|o| o.underwear.clone())
-            .unwrap_or_default();
+        let wear = self.dress_of(pc);
         self.add_creature(
             &mut scene,
             &rig,

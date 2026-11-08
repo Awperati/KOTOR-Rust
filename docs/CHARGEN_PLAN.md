@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, stage 7, and stage 5 for women; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, stage 7, stage 5 for women, and stage 4 without pictures; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -74,6 +74,10 @@ For a finger, a choice row's arrows answer over the row's whole height and a lit
 **Stage 7.** Four rows after the sliders. Random look rolls every slider, most of them a little way from 0 and some at 0, at most 60 either way, and a head and a body of the chosen sex. Sliders puts every slider back to 0. Save this look keeps the head, the body and the sliders as the next "Look" by number in `looks.txt` beside the settings file, one look a line. Saved look goes through them with its arrows, and each goes on the figure; a look saved with a head of the other sex keeps this head. **Assumed:** the names "Look 1" and so on, as the page has no box to type in, and the random range.
 
 **Stage 5.** A woman's Underwear row has Standard, the packs and folders in the mods folder as before, and last "None (the game's own)": the game's body with its painted top, as decided. Its id, `*none`, cannot be a folder's name. The texture of a body or head that wears it has no paint of ours. It is the player's in the new game, as the other choices are. **Not built:** a man's row. A man's body has no paint of ours and wears the game's own already, and a plan of underwear for men is new work in `underwear.rs`, not begun. **Assumed:** with None, the chest keeps the small shape the standard paint gives it under its cups.
+
+**Stage 4.** Nine rows after the face's sliders, each from None to 100% in steps of 10: three scars (nose, lip, chin), three tattoos (cheeks, brow, chin) and three make-ups (eyes, lips, cheeks). A look keeps them with its sliders, so saved looks and saves keep them too. They need no pictures: [marks.rs](../crates/kotor-render/src/marks.rs) draws each in code, as a line or a soft patch given in metres on the face at rest, and paints it into the head's texture as it loads. A head with marks has its texture's name followed by `#` and the marks, so each set is painted once. A mark's arrow brings the view to the head.
+
+**Found in stage 4:** the heads' textures are mirrored, so one half of the picture paints both sides of the face. A scar on one side shows on both. So every mark is the same on both sides, or on the middle line. The game's points of the face are not all at the features: the jaw's is its hinge, and the mouth's middle is above the lips. The marks go by the brows, the points under the eyes and the mouth's corners. **Assumed:** each mark's shape, place and colour, by eye from frames of `PFHA01`. Not checked on the other 29 heads.
 
 ## What each stage must not break
 

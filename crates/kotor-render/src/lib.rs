@@ -7,6 +7,7 @@ pub mod custom_clip;
 pub mod custom_mesh;
 pub mod face;
 mod json;
+pub mod marks;
 mod objects;
 mod scene;
 pub mod shape;

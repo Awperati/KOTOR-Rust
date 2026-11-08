@@ -65,13 +65,13 @@ impl FaceShape {
 }
 
 /// A smooth hump: 1 at 0, 0 from `reach` away.
-fn bump(d: f32, reach: f32) -> f32 {
+pub(crate) fn bump(d: f32, reach: f32) -> f32 {
     let t = (d.abs() / reach.max(1e-4)).min(1.0);
     0.5 + 0.5 * (t * std::f32::consts::PI).cos()
 }
 
 /// 0 below `from`, 1 from `from + over`, smooth between.
-fn ramp(x: f32, from: f32, over: f32) -> f32 {
+pub(crate) fn ramp(x: f32, from: f32, over: f32) -> f32 {
     let t = ((x - from) / over.max(1e-4)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
@@ -88,22 +88,24 @@ fn mid(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     ]
 }
 
-/// The face's points at rest, from the head's own nodes.
-struct Face {
+/// The face's points at rest, from the head's own nodes. Across is x, forward is y and up is z.
+pub(crate) struct Face {
     /// The middle of the face across: the heads are not all centred on 0.
-    middle: f32,
-    brow: [f32; 3],
-    nose: [f32; 3],
-    mouth: [f32; 3],
-    corners: [[f32; 3]; 2],
-    jaw: [f32; 3],
-    under_eyes: [[f32; 3]; 2],
+    pub(crate) middle: f32,
+    pub(crate) brow: [f32; 3],
+    pub(crate) nose: [f32; 3],
+    pub(crate) mouth: [f32; 3],
+    /// The mouth's corners, left and then right as the game names them.
+    pub(crate) corners: [[f32; 3]; 2],
+    pub(crate) jaw: [f32; 3],
+    /// Under each eye, left and then right as the game names them.
+    pub(crate) under_eyes: [[f32; 3]; 2],
     /// From this far forward a vertex is of the face, not the back of the head.
-    front: f32,
+    pub(crate) front: f32,
 }
 
 impl Face {
-    fn of(model: &Model) -> Option<Face> {
+    pub(crate) fn of(model: &Model) -> Option<Face> {
         let points: Vec<(String, [f32; 3])> = model
             .world_matrices(None)
             .into_iter()
