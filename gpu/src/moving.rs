@@ -975,6 +975,29 @@ pub(super) fn aim_layer(pose: &mut Pose, ready: Option<&Pose>, rig: &Rig, turn: 
     turn_joints(pose, rig, &angles);
 }
 
+/// A shot's firing clip over the upper body of whatever the creature is doing (the aim stance, with the legs walking), and the
+/// weapon's kick: `fired` is the clip sampled `age` seconds into the shot. It comes in at once and goes out over its last 0.12 s.
+pub(super) fn shot_layer(pose: &mut Pose, fired: Option<&Pose>, rig: &Rig, age: f32, seconds: f32) {
+    let w = (age / 0.04).min(1.0) * ((seconds - age) / 0.12).clamp(0.0, 1.0);
+    if let Some(fired) = fired {
+        let upper: Pose = fired
+            .iter()
+            .filter(|(name, _)| !LOWER_BODY.contains(&name.as_str()))
+            .map(|(n, k)| (n.clone(), *k))
+            .collect();
+        *pose = kotor_model::blend(pose, &upper, w);
+    }
+    // The weapon kicks up, and settles.
+    aim_down(
+        pose,
+        rig,
+        -SHOT_KICK_DEGREES * w * (1.0 - age / seconds).max(0.0),
+    );
+}
+
+/// How far the weapon kicks up at a shot, in degrees.
+const SHOT_KICK_DEGREES: f32 = 6.0;
+
 /// Hands reaching for a holster, or back from it, `p` of the way (0 to 1): the weapon classes in the hands, the arm each is in.
 #[derive(Clone, Debug)]
 pub(super) struct Reach {

@@ -3608,6 +3608,7 @@ impl Stage {
                     }
                     let aim = self.aim_down_of(pose.id, &clip);
                     let reach = self.reach_of(pose.id);
+                    let shot = self.shot_of(pose.id);
                     let legs = if pose.id == own {
                         self.aim_legs(&clip)
                     } else {
@@ -3625,6 +3626,7 @@ impl Stage {
                         aim,
                         legs,
                         reach,
+                        shot,
                     );
                     scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                     self.grow_to_height(&mut scene, start, pose.id, pose.position);
@@ -3688,7 +3690,7 @@ impl Stage {
         underwear: &str,
     ) {
         self.add_speaking_creature(
-            scene, rig, hands, clip, at, heading, underwear, None, 0.0, None, None,
+            scene, rig, hands, clip, at, heading, underwear, None, 0.0, None, None, None,
         );
     }
 
@@ -3709,6 +3711,12 @@ impl Stage {
             }
         }
         (!arms.is_empty()).then_some(moving::Reach { arms, p })
+    }
+
+    /// A creature that has just fired: its weapon's firing clip and how far into the shot it is.
+    fn shot_of(&mut self, id: ObjId) -> Option<(&'static str, f32)> {
+        let age = self.game.shot_age(id)?;
+        Some((self.game.attack_clip(id), age))
     }
 
     /// How far down, in degrees, creature `id` pitches its weapon: with a ranged weapon in its ranged clips, at a target lying on the floor.
@@ -3742,6 +3750,7 @@ impl Stage {
         aim_down: f32,
         legs: Option<moving::AimLegs>,
         reach: Option<moving::Reach>,
+        shot: Option<(&'static str, f32)>,
     ) {
         // Models face +y at rest; turn so +y points along the heading.
         let angle = heading - std::f32::consts::FRAC_PI_2;
@@ -3785,6 +3794,17 @@ impl Stage {
                 .filter(|n| *n > 0.0)
                 .and_then(|n| rig.sample(l.ready, self.idle_clock % n));
             moving::aim_layer(p, ready.as_ref(), rig, l.turn);
+        }
+        if let (Some((fire, age)), Some(p)) = (shot, pose.as_mut()) {
+            // The firing clip of the weapon, over the upper body, unless it is already what the whole body plays.
+            let fired = (name != fire)
+                .then(|| rig.clip_name(fire))
+                .flatten()
+                .and_then(|n| {
+                    let len = rig.animation_length(n)?;
+                    rig.sample(n, age.min(len))
+                });
+            moving::shot_layer(p, fired.as_ref(), rig, age, kotor_game::SHOT_LAYER_SECONDS);
         }
         if aim_down > 0.0 {
             if let Some(p) = pose.as_mut() {

@@ -287,6 +287,8 @@ impl Stage {
             return;
         };
         self.aim_next_shot = now + SHOT_SECONDS;
+        let pc = self.game.world.pc;
+        self.game.note_shot(pc);
         let w = &self.game.world;
         let (gun, pc) = (w.pc_gun(), w.pc);
         let to = [

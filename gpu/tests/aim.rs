@@ -912,3 +912,70 @@ fn aiming_on_the_move_the_legs_go_the_way_of_the_body_and_the_upper_body_keeps_t
     assert_eq!(s.aim_legs_now(), None);
     std::fs::remove_file(&file).ok();
 }
+
+/// The owner, 8 Nov: "Aiming and shooting doesnt have a shooting animation". Each shot plays the weapon's firing clip over the aim
+/// stance for a moment, with a kick, whether or not it hits anything. With `FRAME_SHOT` set to a folder, three frames of a burst are
+/// written there.
+#[test]
+fn every_aimed_shot_plays_the_firing_clip_and_a_kick_over_the_aim() {
+    let Some((mut s, file)) = stage("firing", "") else {
+        return;
+    };
+    if !blaster_in_hand(&mut s) {
+        return;
+    }
+    aim_at(&mut s);
+    let pc = s.game.world.pc;
+    assert!(s.game.shot_age(pc).is_none(), "no shot yet");
+    let upper = |s: &mut Stage| -> u64 {
+        use std::hash::{Hash, Hasher};
+        let at = s.game.world.object(pc).unwrap().position;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for m in &s.dynamic_scene().meshes {
+            for p in &m.positions {
+                if (p[0] - at[0]).hypot(p[1] - at[1]) < 0.8
+                    && p[2] > at[2] + 0.9
+                    && p[2] < at[2] + 1.6
+                {
+                    p.map(f32::to_bits).hash(&mut h);
+                }
+            }
+        }
+        h.finish()
+    };
+    let before = upper(&mut s);
+    let before_again = upper(&mut s);
+    assert_eq!(before, before_again, "the aim stance holds still");
+    s.click((320.0, 180.0), SIZE);
+    run(&mut s, 5);
+    let age = s.game.shot_age(pc);
+    assert!(age.is_some(), "a click with nothing hit is a shot");
+    let during = upper(&mut s);
+    assert_ne!(before, during, "the arms move at a shot");
+    if let Ok(dir) = std::env::var("FRAME_SHOT") {
+        let heading = s.game.world.pc_mover.heading;
+        let at = s.game.world.object(pc).unwrap().position;
+        let mut gpu = kotor_gpu::GpuRenderer::new(480, 640).unwrap();
+        for (n, wait) in [(0, 0usize), (1, 6), (2, 12)] {
+            run(&mut s, wait);
+            let cam = kotor_render::Camera {
+                eye: [
+                    at[0] - heading.sin() * 2.4,
+                    at[1] + heading.cos() * 2.4,
+                    at[2] + 1.3,
+                ],
+                target: [at[0], at[1], at[2] + 1.1],
+                fov: 40.0,
+            };
+            let still = s.static_scene().clone();
+            gpu.set_static_scene(&still, &mut |n| s.texture(n));
+            let moving = s.dynamic_scene();
+            let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+            std::fs::write(format!("{dir}/shot-{n}.png"), kotor_image::to_png(&img)).unwrap();
+        }
+    }
+    // The layer ends, and the aim stance is what plays.
+    run(&mut s, 60);
+    assert!(s.game.shot_age(pc).is_none());
+    std::fs::remove_file(&file).ok();
+}

@@ -119,6 +119,8 @@ pub struct Game {
     hand_state: HashMap<ObjId, (bool, f32)>,
     /// The last step a creature wanted its weapons out: a fight that flickers (a target lost for a moment) does not holster.
     wanted_at: HashMap<ObjId, u64>,
+    /// The step of each creature's last ranged shot: the firing clip plays over what it is doing for a moment (`shot_age`).
+    shot_at: HashMap<ObjId, u64>,
     log_seen: usize,
     /// The clip of a Modern chain of blows, and how fast it plays.
     blow_clip: Option<(&'static str, f32)>,
@@ -179,6 +181,8 @@ const STANCE_HOLD_SECONDS: f32 = 3.5;
 /// `HOLSTER_HAND_UNTIL`.
 /// A weapon is put away this long after the wish for it ends.
 const HOLSTER_DELAY_SECONDS: f32 = 1.0;
+/// How long the firing clip and the kick of a shot play over the stance.
+pub const SHOT_LAYER_SECONDS: f32 = 0.45;
 pub const DRAW_SECONDS: f32 = 0.7;
 const DRAW_HAND_AT: f32 = 0.35;
 const HOLSTER_HAND_UNTIL: f32 = 0.35;
@@ -218,6 +222,7 @@ impl Game {
             ready_until: HashMap::new(),
             hand_state: HashMap::new(),
             wanted_at: HashMap::new(),
+            shot_at: HashMap::new(),
             scripted: HashMap::new(),
             log_seen: 0,
             blow_clip: None,
@@ -456,6 +461,9 @@ impl Game {
         for l in &new {
             if l.attacker == pc && blowing {
                 continue;
+            }
+            if self.holds_ranged(l.attacker) {
+                self.note_shot(l.attacker);
             }
             let swing = self.style_clip(l.attacker, Move::Attack);
             // An aimed shot starts its clip over, standing. On the move the legs go on, and the shot is only the bolt.
@@ -717,6 +725,28 @@ impl Game {
         } else {
             self.world.combat.drawing.remove(&id);
         }
+    }
+
+    /// A creature has fired a ranged weapon: its firing clip and a kick play over the aim for a moment, whether or not the shot
+    /// hit anything, and on the move.
+    pub fn note_shot(&mut self, id: ObjId) {
+        self.shot_at.insert(id, self.steps);
+    }
+
+    /// Seconds since the creature's last shot, while the shot's layer plays.
+    pub fn shot_age(&self, id: ObjId) -> Option<f32> {
+        let age = self.steps.checked_sub(*self.shot_at.get(&id)?)? as f32 * self.dt;
+        (age < SHOT_LAYER_SECONDS).then_some(age)
+    }
+
+    /// The clip of a creature's attack with the weapon in hand (`b5a1` for a pistol).
+    pub fn attack_clip(&mut self, id: ObjId) -> &'static str {
+        self.style_clip(id, Move::Attack)
+    }
+
+    /// Whether the weapon in the creature's hand is fired and not swung.
+    pub fn holds_ranged(&mut self, id: ObjId) -> bool {
+        self.weapon_stance(id).1
     }
 
     /// How far the hand is through its reach to the holster, 0 to 1 and back to 0, while a draw or a holster takes place.
