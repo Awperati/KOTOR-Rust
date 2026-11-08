@@ -93,6 +93,24 @@ $b = HoldUntilMoved $W $a 0.3 60
 Report "B goes on" ((Moved $a $b) -gt 0.3) "$($a.pc) -> $($b.pc)"
 }
 
+# Turn the view away from the footlocker, which E had it face, so that a click below finds the floor and not the locker (as in
+# drive_modes.ps1). In one run of 1098 green tests every click here opened the locker. The left arrow, held until the camera is
+# half round.
+function TurnedBy($a, $b) {
+  $d = [double]$b.yaw - [double]$a.yaw
+  while ($d -gt [Math]::PI) { $d -= 2 * [Math]::PI }
+  while ($d -lt -[Math]::PI) { $d += 2 * [Math]::PI }
+  [Math]::Abs($d)
+}
+$a = State
+WatchFocus
+[void][Drv]::PostMessage($h, 0x100, [IntPtr]0x25, [IntPtr](1 -bor (0x4B -shl 16) -bor (1 -shl 24)))
+$s = $a
+for ($t = 0; $t -lt 300 -and (TurnedBy $a $s) -lt 2.6; $t++) { $s = State }
+[void][Drv]::PostMessage($h, 0x101, [IntPtr]0x25, [IntPtr][long]([long]0xC0000001 -bor (0x4B -shl 16) -bor (1 -shl 24)))
+[void](State)
+"turned from the locker by $([Math]::Round((TurnedBy $a (State)), 2)) rad"
+
 # A click on the floor walks there, with Click to move on for the run (--click-to-move): look for one that lands.
 $ok = $false; $detail = ""
 foreach ($y in 600, 560, 520, 480, 640) {

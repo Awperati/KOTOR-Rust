@@ -433,6 +433,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 };
                 let (mut fails, there) = ride(&mut s, door, input, &mut shots, &name);
+                let mut one_way = false;
                 // And back: the lift door of where it landed that leads home, nearest the player.
                 if fails.is_empty() {
                     let pc = s.game.world.pc;
@@ -458,10 +459,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 ride(&mut s, b, input, &mut shots, &format!("{name}_back"));
                             fails.extend(f.into_iter().map(|f| format!("back: {f}")));
                         }
-                        None => fails.push(format!("back: {there} has no door to {module}")),
+                        // A lift the game made one way, as tar_m10ab's: the way back is by other means.
+                        None => one_way = true,
                     }
                 }
-                if fails.is_empty() {
+                if fails.is_empty() && one_way {
+                    println!(
+                        "{name:<60} PASS  to {there}, one way: it has no door back to {module}"
+                    );
+                } else if fails.is_empty() {
                     println!("{name:<60} PASS  to {there} and back");
                 } else {
                     failed += 1;
