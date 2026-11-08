@@ -63,8 +63,68 @@ fn main() {
                 .collect();
             println!("  not in {}: {own:?}", models[0]);
         }
+        // Where nodes sit at rest in the model, and the box of their mesh there: `BONES_AT=eyes,head_g`.
+        if let Ok(at) = std::env::var("BONES_AT") {
+            let want: Vec<String> = at.split(',').map(|s| s.to_ascii_lowercase()).collect();
+            places(&m.root, [0.0; 3], [1.0, 0.0, 0.0, 0.0], &want);
+        }
         if first.is_none() {
             first = Some(set);
         }
+    }
+}
+
+fn turn(q: [f32; 4], v: [f32; 3]) -> [f32; 3] {
+    let [w, x, y, z] = q;
+    let u = [x, y, z];
+    let cross = |a: [f32; 3], b: [f32; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let t = cross(u, v).map(|c| 2.0 * c);
+    let c = cross(u, t);
+    [0, 1, 2].map(|i| v[i] + w * t[i] + c[i])
+}
+
+fn mul(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    [
+        a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+        a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+        a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+        a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0],
+    ]
+}
+
+fn places(n: &kotor_model::Node, at: [f32; 3], q: [f32; 4], want: &[String]) {
+    let p = turn(q, n.position);
+    let at = [at[0] + p[0], at[1] + p[1], at[2] + p[2]];
+    let q = mul(q, n.orientation);
+    if want.iter().any(|w| *w == n.name.to_ascii_lowercase()) {
+        let bounds = n
+            .mesh
+            .as_ref()
+            .filter(|m| !m.positions.is_empty())
+            .map(|m| {
+                let mut lo = [f32::MAX; 3];
+                let mut hi = [f32::MIN; 3];
+                for v in &m.positions {
+                    let v = turn(q, *v);
+                    for i in 0..3 {
+                        lo[i] = lo[i].min(at[i] + v[i]);
+                        hi[i] = hi[i].max(at[i] + v[i]);
+                    }
+                }
+                (lo, hi)
+            });
+        println!(
+            "  {} at {at:.3?}, turned {q:.3?}, mesh box {bounds:.3?}",
+            n.name
+        );
+    }
+    for c in &n.children {
+        places(c, at, q, want);
     }
 }

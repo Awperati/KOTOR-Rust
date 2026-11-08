@@ -23,13 +23,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.use_settings_file(settings);
     let pc = s.game.world.pc;
     let o = s.game.world.object_mut(pc).unwrap();
-    for (k, v) in [
-        ("nose", 60),
-        ("jaw", 40),
-        ("tattoo_cheeks", 100),
-        ("paint_lips", 80),
-    ] {
-        o.look.sliders.insert(k.to_string(), v);
+    // `PORTRAIT_LOOK=race=2` for another look: the Jawa's, with `KOTOR_MOD_PACKS=on`.
+    let look: Vec<(String, i32)> = match std::env::var("PORTRAIT_LOOK") {
+        Ok(l) => l
+            .split(',')
+            .filter_map(|kv| kv.split_once('='))
+            .filter_map(|(k, v)| Some((k.to_string(), v.parse().ok()?)))
+            .collect(),
+        Err(_) => [
+            ("nose", 60),
+            ("jaw", 40),
+            ("tattoo_cheeks", 100),
+            ("paint_lips", 80),
+        ]
+        .map(|(k, v)| (k.to_string(), v))
+        .to_vec(),
+    };
+    for (k, v) in look {
+        o.look.sliders.insert(k, v);
     }
     s.update(1.0 / 30.0);
     let mut gpu = GpuRenderer::new(width, height)?;

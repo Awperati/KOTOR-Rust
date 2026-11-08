@@ -788,6 +788,13 @@ pub fn rig_for_outfit_with_head(
     Ok(rig)
 }
 
+/// The body of a race with one of its own, the Jawa, whatever the player has on: see [`crate::races`]. Its hood is its head.
+pub fn rig_for_race_body(inst: &mut Install, body: &str) -> Result<Rig> {
+    let mut rig = Rig::load(inst, body, None, None)?;
+    crate::races::add_jawa_eyes(inst, &mut rig.body);
+    Ok(rig)
+}
+
 /// [`rig_for_appearance`] posed once.
 pub fn load_creature(
     inst: &mut Install,

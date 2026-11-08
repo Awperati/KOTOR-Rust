@@ -1,4 +1,5 @@
-//! Frames of the Appearance page's races: a Twi'lek woman and man, each head, close and whole, and in the game.
+//! Frames of the Appearance page's races: a Twi'lek woman and man, each head, close and whole, and the Jawa when the mod
+//! packs bring it (`KOTOR_MOD_PACKS=on`).
 //! Offscreen: no window, no screen capture, no saves.
 //!
 //!   cargo run --release --example race_look_shots -- [out_dir] [width] [height]
@@ -109,6 +110,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         shot(&mut s, &format!("race_{who}_lekku_plain"));
         step(&mut s, "View", -1);
         shot(&mut s, &format!("race_{who}_whole"));
+        // The Jawa, when the mod packs are on and bring it: close, as a new race shows its head, then whole.
+        if step(&mut s, "Race", 1) == "Jawa" {
+            shot(&mut s, &format!("race_{who}_jawa_close"));
+            step(&mut s, "View", 1);
+            shot(&mut s, &format!("race_{who}_jawa_whole"));
+        }
     }
     Ok(())
 }

@@ -2704,6 +2704,7 @@ impl Stage {
         // What the hurt and the dying say, from their soundsets.
         for (id, sound) in std::mem::take(&mut self.game.world.sound_cues) {
             if let Some(at) = self.game.world.object(id).map(|o| o.position) {
+                let sound = self.voice_of(id, sound);
                 self.effect_from(&sound, at);
             }
         }
@@ -3045,6 +3046,22 @@ impl Stage {
         )
     }
 
+    /// The line a creature says for a soundset's `sound`: the player of a race with a voice of its own, the Jawa, says theirs
+    /// when its pack has it, and everyone else the game's own.
+    pub(crate) fn voice_of(&mut self, id: ObjId, sound: String) -> String {
+        let w = &self.game.world;
+        if id != w.pc {
+            return sound;
+        }
+        let race = w.object(id).map_or(0, |o| {
+            kotor_render::races::race_of(|k| o.look.sliders.get(k).copied().unwrap_or(0))
+        });
+        match kotor_render::races::voice_of(race, &sound) {
+            Some(theirs) if self.inst.contains(&theirs, ResType::WAV) => theirs,
+            _ => sound,
+        }
+    }
+
     /// The Twi'lek women's heads the player's mod packs bring, for the Race row: each `P_TwiH` model and the texture of its
     /// head. None when the packs are off.
     pub(crate) fn find_mod_heads(&mut self) {
@@ -3069,6 +3086,12 @@ impl Stage {
             }
         }
         kotor_render::races::set_mod_twilek_women(heads);
+        let jawa = self
+            .inst
+            .pack_names(ResType::MDL)
+            .iter()
+            .any(|n| Some(n.as_str()) == kotor_render::races::body_of(kotor_render::races::JAWA));
+        kotor_render::races::set_mod_jawa(jawa);
     }
 
     /// A body with another race's head on it, kept by body and head.
@@ -3084,6 +3107,12 @@ impl Stage {
         self.race_rigs
             .entry((appearance, var, letter, head))
             .or_insert_with(|| {
+                // A race with a body of its own wears it whatever is on: a Jawa's robe is its outfit.
+                if let Some(body) = kotor_render::races::body_of_head(head) {
+                    return kotor_render::rig_for_race_body(inst, body)
+                        .ok()
+                        .map(|rig| styled(rig, conventional));
+                }
                 kotor_render::rig_for_outfit_with_head(
                     inst,
                     appearance as usize,

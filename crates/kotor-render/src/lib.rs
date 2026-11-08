@@ -19,7 +19,7 @@ mod walk;
 
 pub use character::{
     load_character, load_character_with, load_creature, mouth_at, rig_for_appearance,
-    rig_for_outfit, rig_for_outfit_with_head, Rig, MOUTH_RATE, VOICE_STEPS,
+    rig_for_outfit, rig_for_outfit_with_head, rig_for_race_body, Rig, MOUTH_RATE, VOICE_STEPS,
 };
 pub use objects::{
     add_area_creatures, add_area_objects, add_area_objects_except, add_area_objects_with,

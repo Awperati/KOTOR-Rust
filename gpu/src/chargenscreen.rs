@@ -840,23 +840,27 @@ impl Stage {
             .chargen
             .as_ref()
             .is_some_and(|d| gender == FEMALE && d.underwear.len() > 1);
-        let human = self
+        let race = self
             .menus
             .chargen
             .as_ref()
-            .is_none_or(|d| races::race_of(|k| slider(&d.spec.look, k)) == 0);
-        let mut rows = vec![LookRow::Race, LookRow::Head, LookRow::Body];
-        if choice {
-            rows.push(LookRow::Underwear);
+            .map_or(0, |d| races::race_of(|k| slider(&d.spec.look, k)));
+        let mut rows = vec![LookRow::Race, LookRow::Head];
+        // A race with a body of its own, the Jawa, is all robe and hood: no body size, underwear, face or hair to change.
+        if races::body_of(race).is_none() {
+            rows.push(LookRow::Body);
+            if choice {
+                rows.push(LookRow::Underwear);
+            }
+            // A race of its own has no hair to colour. A Twi'lek has head-tails instead.
+            if race == 0 {
+                rows.push(LookRow::Hair);
+            } else {
+                rows.push(LookRow::Lekku);
+            }
+            rows.extend((0..SLIDERS.len()).map(LookRow::Slider));
+            rows.extend((0..MARKS.len()).map(LookRow::Mark));
         }
-        // A race of its own has no hair to colour. A Twi'lek has head-tails instead.
-        if human {
-            rows.push(LookRow::Hair);
-        } else {
-            rows.push(LookRow::Lekku);
-        }
-        rows.extend((0..SLIDERS.len()).map(LookRow::Slider));
-        rows.extend((0..MARKS.len()).map(LookRow::Mark));
         rows.extend([
             LookRow::Random,
             LookRow::Reset,
@@ -1316,7 +1320,11 @@ impl Stage {
     fn turn_race(&mut self, by: i32) {
         if let Some(d) = self.menus.chargen.as_mut() {
             let now = races::race_of(|k| slider(&d.spec.look, k));
-            let next = cycle(now, by, races::RACES.len());
+            // A mod pack's race is passed by when its pack is off.
+            let mut next = cycle(now, by, races::RACES.len());
+            while !races::offered(next) {
+                next = cycle(next, by, races::RACES.len());
+            }
             let looks = &mut d.spec.look.sliders;
             for key in kotor_render::face::FACE_SLIDERS
                 .iter()

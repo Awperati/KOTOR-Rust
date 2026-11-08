@@ -234,15 +234,17 @@ pub fn override_problems() -> Vec<String> {
 /// switches them on as a whole. The install's own `Override` files come before them, and the game's own files after.
 static MOD_PACKS: AtomicBool = AtomicBool::new(false);
 
-/// A pack: the start of its folder's name, the folder inside it that holds the files (empty for the folder itself), the types it
-/// brings, the starts of names it leaves alone, and, when not empty, the starts of the only names it brings. Later packs come
-/// before earlier ones where they hold the same name.
+/// A pack: the start of its folder's name, the folder inside it that holds the files (empty for the folder itself; each step
+/// the start of a name, as modders' download folders carry a date), the types it brings, the starts of names it leaves alone,
+/// when not empty the starts of the only names it brings, and new starts for names that would otherwise take the place of the
+/// game's own. Later packs come before earlier ones where they hold the same name.
 struct Pack {
     folder: &'static str,
     inside: &'static str,
     types: &'static [&'static str],
     leave: &'static [&'static str],
     only: &'static [&'static str],
+    rename: &'static [(&'static str, &'static str)],
 }
 
 const PACKS: &[Pack] = &[
@@ -253,6 +255,7 @@ const PACKS: &[Pack] = &[
         types: &["tga", "tpc", "txi", "mdl", "mdx", "lyt", "vis", "are"],
         leave: &[],
         only: &[],
+        rename: &[],
     },
     Pack {
         folder: "High Resolution Lightsaber Beams",
@@ -260,6 +263,7 @@ const PACKS: &[Pack] = &[
         types: &["tga", "txi"],
         leave: &[],
         only: &[],
+        rename: &[],
     },
     // The characters' pictures; the hero's own bodies and heads are painted by this game, so they stay.
     Pack {
@@ -268,6 +272,7 @@ const PACKS: &[Pack] = &[
         types: &["tpc"],
         leave: &["pfb", "pmb", "pfh", "pmh"],
         only: &[],
+        rename: &[],
     },
     Pack {
         folder: "Kotor Weapon Model Overhaul",
@@ -275,6 +280,7 @@ const PACKS: &[Pack] = &[
         types: &["mdl", "mdx", "tga", "txi"],
         leave: &[],
         only: &[],
+        rename: &[],
     },
     Pack {
         folder: "Weapon Model Overhaul Texture Rework",
@@ -282,6 +288,7 @@ const PACKS: &[Pack] = &[
         types: &["tga", "txi"],
         leave: &[],
         only: &[],
+        rename: &[],
     },
     // Playable Twi'lek women: only the new heads, their pictures and their portraits. The pack's characters, bodies and tables
     // are for its installer, which changes the game's own; the Race row puts these heads on the player's body instead.
@@ -291,6 +298,26 @@ const PACKS: &[Pack] = &[
         types: &["mdl", "mdx", "tpc", "tga", "txi"],
         leave: &[],
         only: &["p_twi", "po_ptwi"],
+        rename: &[],
+    },
+    // The playable Jawa: a Jawa's body on the hero's skeleton, made to take the place of the first man's body, and its voice,
+    // made to take a hero's. Here they keep names of their own, for the Race row, and the game's own stay. Its empty head, a
+    // neck with no picture, is left: the hood is the head.
+    Pack {
+        folder: "playable Jawa",
+        inside: "JAWA PROTOTYPE/JAWA PROTOTYPE",
+        types: &["mdl", "mdx"],
+        leave: &[],
+        only: &["pmbal"],
+        rename: &[("pmbal", "p_jawab")],
+    },
+    Pack {
+        folder: "playable Jawa",
+        inside: "Jawa Player Sounds/Jawa Player sounds",
+        types: &["wav"],
+        leave: &[],
+        only: &["p_plyermw_"],
+        rename: &[("p_plyermw_", "p_jawamw_")],
     },
 ];
 
@@ -347,7 +374,7 @@ pub(crate) fn scan_packs(root: &Path) -> Loose {
         }) else {
             continue;
         };
-        let Ok(read) = std::fs::read_dir(folder.join(pack.inside)) else {
+        let Some(read) = inside(folder, pack.inside).and_then(|d| std::fs::read_dir(d).ok()) else {
             continue;
         };
         for entry in read.flatten() {
@@ -355,7 +382,7 @@ pub(crate) fn scan_packs(root: &Path) -> Loose {
             let (Some(stem), Some(ext)) = (path.file_stem(), path.extension()) else {
                 continue;
             };
-            let stem = stem.to_string_lossy().to_ascii_lowercase();
+            let mut stem = stem.to_string_lossy().to_ascii_lowercase();
             let ext = ext.to_string_lossy().to_ascii_lowercase();
             if !pack.types.contains(&ext.as_str())
                 || pack.leave.iter().any(|l| stem.starts_with(l))
@@ -364,10 +391,71 @@ pub(crate) fn scan_packs(root: &Path) -> Loose {
             {
                 continue;
             }
+            if let Some((from, to)) = pack.rename.iter().find(|(f, _)| stem.starts_with(f)) {
+                stem = format!("{to}{}", &stem[from.len()..]);
+            }
             if let Some(restype) = ResType::from_extension(&ext) {
                 files.insert((stem, restype), path);
             }
         }
     }
     files
+}
+
+/// The folder a pack keeps its files in: each step of `path` the folder of that name, else the first whose name starts so.
+fn inside(folder: &Path, path: &str) -> Option<PathBuf> {
+    let mut at = folder.to_path_buf();
+    for step in path.split('/').filter(|s| !s.is_empty()) {
+        let exact = at.join(step);
+        if exact.is_dir() {
+            at = exact;
+            continue;
+        }
+        let step = step.to_ascii_lowercase();
+        let mut found: Vec<PathBuf> = std::fs::read_dir(&at)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_dir()
+                    && p.file_name().is_some_and(|n| {
+                        n.to_string_lossy().to_ascii_lowercase().starts_with(&step)
+                    })
+            })
+            .collect();
+        found.sort();
+        at = found.into_iter().next()?;
+    }
+    Some(at)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pack_finds_its_dated_folder_and_renames_what_would_replace_the_games_own() {
+        let root = std::env::temp_dir().join(format!("kotor-packs-{}", std::process::id()));
+        let models = root.join("playable Jawa/JAWA PROTOTYPE 1837 1 2026-07-21/JAWA PROTOTYPE");
+        let sounds =
+            root.join("playable Jawa/Jawa Player Sounds 1837 2 2026-07-24/Jawa Player sounds");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::create_dir_all(&sounds).unwrap();
+        for f in [
+            "pmbal.mdl",
+            "pmbal.mdx",
+            "pmha01.mdl",
+            "pmbala01.tga",
+            "appearance.2da",
+        ] {
+            std::fs::write(models.join(f), b"").unwrap();
+        }
+        std::fs::write(sounds.join("P_PLYERMW_ATK1.wav"), b"").unwrap();
+        let files = scan_packs(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        let mut names: Vec<String> = files.keys().map(|(n, _)| n.clone()).collect();
+        names.sort();
+        assert_eq!(names, ["p_jawab", "p_jawab", "p_jawamw_atk1"]);
+        assert!(files.contains_key(&("p_jawamw_atk1".to_string(), ResType::WAV)));
+    }
 }
