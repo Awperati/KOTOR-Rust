@@ -1276,3 +1276,46 @@ fn a_jump_goes_smoothly_from_the_run_to_the_landing_and_back() {
     }
     std::fs::remove_file(&file).ok();
 }
+
+/// The owner, 8 Nov: "Jump animation is still off. Palms shouldn't be facing out." With `FRAME_JUMP` set to a folder, five moments of
+/// a jump from the front and the side are written there.
+#[test]
+fn frames_of_a_jump_from_the_front_and_the_side() {
+    let Ok(dir) = std::env::var("FRAME_JUMP") else {
+        return;
+    };
+    let Some((mut s, file)) = stage("jumpframes", "") else {
+        return;
+    };
+    s.set_view((480, 640));
+    let pc = s.game.world.pc;
+    let mut gpu = kotor_gpu::GpuRenderer::new(480, 640).unwrap();
+    for (n, p) in [0.05f32, 0.25, 0.5, 0.75, 0.95].iter().enumerate() {
+        s.preview_jump(*p);
+        s.update(DT);
+        let at = s.game.world.object(pc).unwrap().position;
+        let heading = s.game.world.pc_mover.heading;
+        for (view, ahead) in [("front", true), ("side", false)] {
+            let (dx, dy) = if ahead {
+                (heading.cos(), heading.sin())
+            } else {
+                (-heading.sin(), heading.cos())
+            };
+            let cam = kotor_render::Camera {
+                eye: [at[0] + dx * 2.6, at[1] + dy * 2.6, at[2] + 1.2],
+                target: [at[0], at[1], at[2] + 0.9],
+                fov: 40.0,
+            };
+            let still = s.static_scene().clone();
+            gpu.set_static_scene(&still, &mut |n| s.texture(n));
+            let moving = s.dynamic_scene();
+            let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+            std::fs::write(
+                format!("{dir}/jump-{n}-{view}.png"),
+                kotor_image::to_png(&img),
+            )
+            .unwrap();
+        }
+    }
+    std::fs::remove_file(&file).ok();
+}

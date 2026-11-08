@@ -23,7 +23,7 @@
 #   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
 # The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
 #
-version = 4            # which of the game's own jumps this began as. Leave it alone.
+version = 5            # which of the game's own jumps this began as. Leave it alone.
 
 # THE KEYS. Each one is a moment. The game moves from each key to the next.
 #   at     how far through the jump, 0 to 1. 0 is leaving the floor, 0.5 the top, and 1 is the feet touching.
@@ -52,8 +52,8 @@ rfoot_g    =    10
 torso_g    =     8
 lbicep_g   =   -22  -20    0
 rbicep_g   =    42  -20    0
-lforearm_g =    25
-rforearm_g =    48
+lforearm_g =    25   0  -50
+rforearm_g =    48   0  -50
 
 [key]            # The stride at its widest: one leg in front of the other, and the opposite arm.
 at = 0.36
@@ -69,8 +69,8 @@ rfoot_g    =    15
 torso_g    =    10
 lbicep_g   =   -28  -24    0
 rbicep_g   =    48  -22    0
-lforearm_g =    30
-rforearm_g =    58
+lforearm_g =    30   0  -50
+rforearm_g =    58   0  -50
 
 [key]            # The top, 0.35 seconds in the air. From here the stride closes for the landing.
 at = 0.5
@@ -86,8 +86,8 @@ rfoot_g    =    10
 torso_g    =    10
 lbicep_g   =   -12  -24    0
 rbicep_g   =    30  -24    0
-lforearm_g =    28
-rforearm_g =    48
+lforearm_g =    28   0  -50
+rforearm_g =    48   0  -50
 
 [key]            # Coming down, the stride closing: the same leg and arm in front, with no changing over. Knees kept bent, the
                  # body leaning a little forward and the arms coming forward for balance.
@@ -104,8 +104,8 @@ rfoot_g    =     6
 torso_g    =    15
 lbicep_g   =    14  -26    0
 rbicep_g   =    30  -26    0
-lforearm_g =    38
-rforearm_g =    44
+lforearm_g =    38   0  -50
+rforearm_g =    44   0  -50
 
 [key]            # Legs reaching down for the floor, knees still bent to take it, arms forward.
 at = 0.93
@@ -121,8 +121,8 @@ rfoot_g    =     0
 torso_g    =    16
 lbicep_g   =    26  -28    0
 rbicep_g   =    28  -28    0
-lforearm_g =    40
-rforearm_g =    40
+lforearm_g =    40   0  -50
+rforearm_g =    40   0  -50
 
 [key]            # The feet touch, and the landing takes over.
 at = 1
@@ -138,5 +138,5 @@ rfoot_g    =    -4
 torso_g    =    16
 lbicep_g   =    26  -30    0
 rbicep_g   =    26  -30    0
-lforearm_g =    36
-rforearm_g =    36
+lforearm_g =    36   0  -50
+rforearm_g =    36   0  -50

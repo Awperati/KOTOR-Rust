@@ -67,10 +67,11 @@ pub(super) const SHIPPED_ROLLS: [&str; 2] = [
     include_str!("poses_old/roll_pose_v2.txt"),
 ];
 pub(super) const SHIPPED_LANDINGS: [&str; 1] = [include_str!("poses_old/landing_pose_v1.txt")];
-pub(super) const SHIPPED_JUMPS: [&str; 3] = [
+pub(super) const SHIPPED_JUMPS: [&str; 4] = [
     include_str!("poses_old/jump_pose_v1.txt"),
     include_str!("poses_old/jump_pose_v2.txt"),
     include_str!("poses_old/jump_pose_v3.txt"),
+    include_str!("poses_old/jump_pose_v4.txt"),
 ];
 pub(super) const ROLL_FILE: &str = "roll_pose.txt";
 pub(super) const LANDING_FILE: &str = "landing_pose.txt";
