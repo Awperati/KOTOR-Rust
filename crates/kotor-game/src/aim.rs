@@ -28,6 +28,10 @@ const SWAY_KICK_SECONDS: f32 = 0.6;
 const SWAY_RIFLE: f32 = 0.7;
 const SWAY_HEAVY: f32 = 1.4;
 const SWAY_FEAT: f32 = 0.75;
+/// The use key: how far either side of the middle of the view counts as in view, in radians, about 45 degrees, and how many
+/// radians a metre further away counts as.
+const USE_VIEW_CONE: f32 = 0.8;
+const USE_PER_METRE: f32 = 0.2;
 
 /// Where the crosshair is on its drift at this time of the game, each way from -1 to 1. By the clock and not by dice: the same
 /// time gives the same place.
@@ -200,6 +204,28 @@ impl World {
             .filter(|r| *r != power && priority(*r) > mine)
             .collect();
         stronger.into_iter().find(|r| self.power_active(who, *r))
+    }
+
+    /// What the use key works on: of what the player can use within `reach`, the one nearest the middle of the view, which
+    /// looks along `view_yaw`, with a nearer one a little ahead of a farther. With nothing in view, the nearest. So the
+    /// footlocker the camera faces opens, and not Trask beside it, a hand's width nearer. Top Dog's rule, with the owner's go.
+    /// **Assumed:** the view's cone, `USE_VIEW_CONE`, and how much a metre counts against the angle, `USE_PER_METRE`.
+    pub fn usable_in_view(&self, reach: f32, view_yaw: f32) -> Option<ObjId> {
+        let here = self.objects.get(&self.pc)?.position;
+        let tau = std::f32::consts::TAU;
+        let in_view = self
+            .objects
+            .values()
+            .filter(|o| self.usable_by_player(o))
+            .filter_map(|o| {
+                let d = dist2d(o.position, here);
+                let way = (o.position[1] - here[1]).atan2(o.position[0] - here[0]);
+                let off = ((way - view_yaw + tau / 2.0).rem_euclid(tau) - tau / 2.0).abs();
+                (d <= reach && off <= USE_VIEW_CONE).then_some((off + d * USE_PER_METRE, o.id))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, id)| id);
+        in_view.or_else(|| self.nearest_usable(reach))
     }
 
     /// Where a shot leaves the player.

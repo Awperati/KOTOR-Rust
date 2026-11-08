@@ -1259,18 +1259,21 @@ impl World {
         }
     }
 
+    /// A creature, door or placeable the player can use: not the player, not a party member, and not dead unless it has loot.
+    pub(crate) fn usable_by_player(&self, o: &crate::world::Object) -> bool {
+        matches!(o.kind, Kind::Creature | Kind::Door | Kind::Placeable)
+            && o.id != self.pc
+            && (!o.dead || self.lootable(o.id))
+            && !o.party_member
+            && o.useable
+    }
+
     /// The nearest thing the player can use: creature, door or placeable within `reach` metres.
     pub fn nearest_usable(&self, reach: f32) -> Option<ObjId> {
         let here = self.objects.get(&self.pc)?.position;
         self.objects
             .values()
-            .filter(|o| {
-                matches!(o.kind, Kind::Creature | Kind::Door | Kind::Placeable)
-                    && o.id != self.pc
-                    && (!o.dead || self.lootable(o.id))
-                    && !o.party_member
-                    && o.useable
-            })
+            .filter(|o| self.usable_by_player(o))
             .map(|o| (dist2d(o.position, here), o.id))
             .filter(|(d, _)| *d <= reach)
             .min_by(|a, b| a.0.total_cmp(&b.0))

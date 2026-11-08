@@ -33,8 +33,18 @@ for ($i = 0; $i -lt 200 -and $s.dlg -eq "true"; $i++) { $s = Advance }
 Report "Keys finish the talk" ($s.dlg -eq "false") "dlg=$($s.dlg) said=$($s.said)"
 
 # The footlocker beside the player: E opens it, a click chooses the first item, Take Selected takes it, Space closes it.
+# E works on what the camera faces, and Trask may stand nearer: the left arrow turns the view until the locker is what it would
+# open. The state line's use= says what that is. An arrow key is an extended key, bit 24.
 $s = State
-"before E: target=$($s.target) opened=$($s.opened)"
+$turns = 0
+if ($s.use -ne "end_locker01") {
+    WatchFocus
+    [void][Drv]::PostMessage($h, 0x100, [IntPtr]0x25, [IntPtr](1 -bor (0x4B -shl 16) -bor (1 -shl 24)))
+    for (; $turns -lt 200 -and $s.use -ne "end_locker01"; $turns++) { $s = State }
+    [void][Drv]::PostMessage($h, 0x101, [IntPtr]0x25, [IntPtr][long]([long]0xC0000001 -bor (0x4B -shl 16) -bor (1 -shl 24)))
+    $s = State
+}
+"before E: target=$($s.target) use=$($s.use) turned=$turns opened=$($s.opened)"
 Key $E[0] $E[1]
 $s = WaitFor "opened" "true"
 Report "E opens the locker" ($s.opened -eq "true" -and [int]$s.items -gt 0) "opened=$($s.opened) items=$($s.items)"
