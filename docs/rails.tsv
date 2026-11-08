@@ -1,0 +1,4 @@
+module	x	y	radius
+# Edges of the floor in a module that are only a low barrier over nothing: a creature pushed at them goes over and is lost.
+# A barrier over another floor needs no row: the creature falls to that floor. One row per stretch: the module, a point on the
+# edge, and how far the stretch reaches from it, in metres. Delete this note line when you add rows.

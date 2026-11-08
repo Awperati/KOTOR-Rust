@@ -100,7 +100,37 @@ pub struct Shove {
     pub seconds: f32,
     /// It ends against a wall, a closed door or the edge of the floor, and not in open air.
     pub wall: bool,
+    /// Who threw it.
+    pub by: ObjId,
+    /// It went over an edge and falls: how far, in metres, or `FALL_VOID` into nothing.
+    pub fall: Option<f32>,
 }
+
+/// How far a creature falls when there is no floor under the edge it was thrown over: it is lost.
+pub const FALL_VOID: f32 = f32::INFINITY;
+/// A fall does 1d6 for each this many metres, 10 dice at the most. **Assumed:** the game's files give no rule.
+pub const FALL_METRES_PER_DIE: f32 = 3.0;
+/// The rails over nothing of `docs/rails.tsv`: module, x, y, radius. A line that is not four such cells is a note.
+pub(crate) fn rails_from_table() -> Vec<(String, f32, f32, f32)> {
+    include_str!("../../../docs/rails.tsv")
+        .lines()
+        .filter_map(|l| {
+            let c: Vec<&str> = l.split('\t').collect();
+            let num = |i: usize| c.get(i)?.trim().parse::<f32>().ok();
+            Some((c.first()?.trim().to_string(), num(1)?, num(2)?, num(3)?))
+        })
+        .collect()
+}
+
+/// A fall of less than this hurts no one: a step down.
+const FALL_SAFE_METRES: f32 = 2.0;
+/// A drop of more than this, between one quarter metre and the next, is the edge of a level: a step is not.
+const EDGE_DROP: f32 = 1.0;
+/// Seconds a fall takes for each metre, on top of the slide, and at the most.
+const FALL_SECONDS_PER_METRE: f32 = 0.08;
+const FALL_MOST_SECONDS: f32 = 1.6;
+/// How far down the void is taken, so that the body is out of sight.
+const VOID_DEPTH: f32 = 40.0;
 
 /// A thrown creature has come down: where, and whether on a wall first (a smack, and then the floor).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -421,10 +451,38 @@ impl World {
         let mut at = b;
         let metres = push_metres(self.spell.id);
         let mut wall = false;
+        // Past a low barrier, in the air: the last place on the floor, and where the flight has got to.
+        let mut air: Option<[f32; 3]> = None;
+        let mut over = [b[0], b[1]];
+        let mut prev = [b[0], b[1]];
+        // The player keeps the invisible wall at the edge. Anyone else goes over a barrier that is only an edge of the floor:
+        // no wall of the walkmesh stands there to stop a body, and no door.
+        let over_edges = target != self.pc;
         for i in 1..=(metres / 0.25) as usize {
             let s = i as f32 * 0.25;
             let (x, y) = (b[0] + dx * s, b[1] + dy * s);
-            let Some(z) = nav.height_at(x, y, at[2] + 0.4) else {
+            let level = air.map_or(at[2], |l| l[2]);
+            let found = nav.height_at(x, y, level + 0.4);
+            // No floor, or a drop of more than a step, is an edge.
+            if found.is_none_or(|z| z < level - EDGE_DROP) {
+                // A ledge over a floor below, or an edge that `docs/rails.tsv` lists as a rail over nothing.
+                let drop_below = found.is_some() || nav.locate(x, y, level - 1.0).is_some();
+                let open = over_edges
+                    && (drop_below || self.is_rail_over_nothing(x, y))
+                    && !nav.crosses_block([prev[0], prev[1], level], [x, y, level])
+                    && !nav.sight_blocked([prev[0], prev[1], level + 0.6], [x, y, level + 0.6]);
+                if open {
+                    air.get_or_insert(at);
+                    over = [x, y];
+                    prev = [x, y];
+                    continue;
+                }
+                if found.is_none() {
+                    wall = true;
+                    break;
+                }
+            }
+            let Some(z) = found else {
                 wall = true;
                 break;
             };
@@ -438,17 +496,41 @@ impl World {
                 wall = blocked;
                 break;
             }
+            // Floor again across the gap: it lands there, with no fall.
+            air = None;
             at = next;
+            prev = [x, y];
+        }
+        // Over the edge and still in the air at the end of the push: it falls to the floor below, or into nothing.
+        let mut fall = None;
+        if let Some(last) = air {
+            match nav.locate(over[0], over[1], last[2] - 0.3) {
+                Some((_, z)) => {
+                    fall = Some(last[2] - z);
+                    at = [over[0], over[1], z];
+                }
+                None => {
+                    fall = Some(FALL_VOID);
+                    at = [over[0], over[1], last[2] - VOID_DEPTH];
+                }
+            }
         }
         self.shoves.retain(|s| s.who != target);
         let length = dist2d(b, at);
+        let drop = fall.map_or(0.0, |f| {
+            (if f.is_finite() { f } else { VOID_DEPTH }) * FALL_SECONDS_PER_METRE
+        });
         self.shoves.push(Shove {
             who: target,
             from: b,
             to: at,
             start: self.time,
-            seconds: PUSH_SLIDE_SECONDS + PUSH_SECONDS_PER_METRE * length,
+            seconds: PUSH_SLIDE_SECONDS
+                + PUSH_SECONDS_PER_METRE * length
+                + drop.min(FALL_MOST_SECONDS),
             wall,
+            by: from,
+            fall,
         });
         if let Some(o) = self.objects.get_mut(&target) {
             o.facing = (-dy).atan2(-dx).to_degrees();
@@ -463,7 +545,11 @@ impl World {
             let t = ((now - s.start) / s.seconds).clamp(0.0, 1.0);
             // Fast at first, slowing to a stop.
             let e = 1.0 - (1.0 - t).powi(2);
-            let at = [0, 1, 2].map(|i| s.from[i] + (s.to[i] - s.from[i]) * e);
+            let mut at = [0, 1, 2].map(|i| s.from[i] + (s.to[i] - s.from[i]) * e);
+            // A fall speeds up: the height goes late.
+            if s.fall.is_some() {
+                at[2] = s.from[2] + (s.to[2] - s.from[2]) * t * t;
+            }
             if let Some(o) = self.objects.get_mut(&s.who) {
                 o.position = at;
             }
@@ -477,8 +563,53 @@ impl World {
                     who: s.who,
                     wall: s.wall,
                 });
+                if let Some(height) = s.fall {
+                    self.land_after_fall(s.by, s.who, height);
+                }
             }
         }
+    }
+
+    /// Whether `docs/rails.tsv` lists this place in this module as a rail over nothing, where a pushed creature goes over and is lost.
+    fn is_rail_over_nothing(&self, x: f32, y: f32) -> bool {
+        self.rails
+            .iter()
+            .any(|(m, cx, cy, r)| *m == self.module && (cx - x).hypot(cy - y) <= *r)
+    }
+
+    /// An edge of the floor in a module that is only a low barrier over nothing, as the rows of `docs/rails.tsv` say.
+    pub fn add_rail(&mut self, module: &str, x: f32, y: f32, radius: f32) {
+        self.rails.push((module.to_string(), x, y, radius));
+    }
+
+    /// A fall of `height` metres, as a test has it.
+    pub fn fall_for_test(&mut self, by: ObjId, who: ObjId, height: f32) {
+        self.land_after_fall(by, who, height);
+    }
+
+    /// A creature thrown over an edge has come down. Into nothing, it is lost. Onto a floor below, it takes 1d6 for each
+    /// `FALL_METRES_PER_DIE` of the fall, 10 dice at the most, and gets up where it landed.
+    fn land_after_fall(&mut self, by: ObjId, who: ObjId, height: f32) {
+        if height < FALL_SAFE_METRES {
+            return;
+        }
+        let hp = self.objects.get(&who).map_or(0, |o| o.hp);
+        let damage = if height.is_finite() {
+            let dice = ((height / FALL_METRES_PER_DIE).ceil() as i32).clamp(1, 10);
+            (0..dice).map(|_| self.roll(6)).sum()
+        } else {
+            hp.max(1)
+        };
+        self.hurt(by, who, damage);
+        self.events.push(format!(
+            "{} {}",
+            self.describe(who),
+            if height.is_finite() {
+                "falls"
+            } else {
+                "falls out of sight"
+            }
+        ));
     }
 
     /// Drop temporary effects whose time has run out.

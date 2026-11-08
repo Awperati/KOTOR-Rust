@@ -559,6 +559,8 @@ pub struct World {
     pub(crate) heal_scale: f32,
     /// How far each enemy has noticed the party, 0 to 1: the detection bars.
     pub detection: BTreeMap<ObjId, f32>,
+    /// Edges of the floor that are only a low barrier over nothing: module, x, y, radius. `docs/rails.tsv`.
+    pub(crate) rails: Vec<(String, f32, f32, f32)>,
     /// For a test driver: this creature stays at this place, and the player at this other, while this item still has at least this
     /// many in its stack.
     pub hold_in_place: Option<HoldInPlace>,
@@ -745,6 +747,7 @@ impl World {
             medication: BTreeMap::new(),
             heal_scale: 1.0,
             detection: BTreeMap::new(),
+            rails: crate::force::rails_from_table(),
             hold_in_place: None,
             law: Default::default(),
             lost_quests: Vec::new(),

@@ -256,6 +256,14 @@ impl NavMesh {
         matches!((island(a), island(b)), (Some(x), Some(y)) if x == y)
     }
 
+    /// The lowest height of any face of the floor: the ground of the area.
+    pub fn lowest_floor(&self) -> Option<f32> {
+        self.tris
+            .iter()
+            .flat_map(|t| t.iter().map(|v| v[2]))
+            .min_by(f32::total_cmp)
+    }
+
     /// Number of upright non-floor faces kept for sight.
     pub fn wall_count(&self) -> usize {
         self.walls.len()
