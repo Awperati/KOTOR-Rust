@@ -4374,6 +4374,92 @@ fn the_face_sliders_bring_the_view_to_the_head_and_reshape_it() {
 }
 
 #[test]
+fn a_look_can_be_saved_loaded_rolled_at_random_and_reset() {
+    let Some(mut s) = at_chargen("look_presets") else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("kotor_rs_looks_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    s.use_settings_file(dir.join("settings.txt"));
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let row_of = |s: &mut Stage, name: &str| {
+        let rows = s.menu_rows("LB_OPTIONS");
+        rows.iter().position(|r| r.text == name).unwrap()
+    };
+    let choice = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
+    let sliders = |s: &Stage| {
+        let w = &s.game.world;
+        w.object(w.pc).unwrap().look.sliders.clone()
+    };
+    let arrow = |s: &mut Stage, row: usize, by: i32| {
+        bring_row(s, row);
+        let at = s.menu_step_pixel("LB_OPTIONS", row, by, SIZE).unwrap();
+        s.click(at, SIZE);
+    };
+    let saved = row_of(&mut s, "Saved look");
+    assert_eq!(choice(&mut s, saved), "None yet");
+
+    // A look with a longer nose, saved: the file beside the settings keeps it.
+    let nose = row_of(&mut s, "Nose");
+    for _ in 0..3 {
+        arrow(&mut s, nose, 1);
+    }
+    let save_this_look = row_of(&mut s, "Save this look");
+    arrow(&mut s, save_this_look, 1);
+    assert_eq!(s.saved_look_names(), ["Look 1"]);
+    let text = std::fs::read_to_string(dir.join("looks.txt")).unwrap();
+    assert!(text.contains("nose=30"), "{text}");
+
+    // Reset takes every slider to 0, and the saved look brings them back.
+    let reset = row_of(&mut s, "Sliders");
+    arrow(&mut s, reset, 1);
+    assert!(sliders(&s).is_empty());
+    arrow(&mut s, saved, 1);
+    assert_eq!(choice(&mut s, saved), "Look 1");
+    assert_eq!(sliders(&s).get("nose"), Some(&30));
+
+    // A random look stays in range, in steps of ten.
+    let before = (
+        sliders(&s),
+        s.game
+            .world
+            .object(s.game.world.pc)
+            .unwrap()
+            .portrait
+            .clone(),
+    );
+    let random_look = row_of(&mut s, "Random look");
+    arrow(&mut s, random_look, 1);
+    let after = (
+        sliders(&s),
+        s.game
+            .world
+            .object(s.game.world.pc)
+            .unwrap()
+            .portrait
+            .clone(),
+    );
+    assert_ne!(before, after);
+    assert!(
+        after.0.values().all(|v| v.abs() <= 60 && v % 10 == 0),
+        "{:?}",
+        after.0
+    );
+
+    // The page found again reads the file.
+    press(&mut s, "BTN_ACCEPT");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let saved = row_of(&mut s, "Saved look");
+    assert_eq!(choice(&mut s, saved), "1 saved");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_players_look_shapes_their_body_in_the_game_and_their_height_is_drawn() {
     let Some((mut s, _)) = in_game("body_in_game") else {
         return;

@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, and stage 3 but its eye colour; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, and stage 7; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -70,6 +70,8 @@ For a finger, a choice row's arrows answer over the row's whole height and a lit
 **Stage 3.** Six more slider rows: Brow, Nose, Jaw, Cheeks, Eyes and Mouth, -100 to +100 as the body's. The heads have no morph targets and no bones of a face to shape by, but each carries the game's own points of its face, the `f_*_g` nodes: the brows, the nostrils, the mouth's middle and corners, the jaw and under each eye. [face.rs](../crates/kotor-render/src/face.rs) moves the head's vertices near those points at rest: the brow forward and up, the nose out and wider, the jaw wider and the chin forward, fading out under the chin so that the neck still meets the body, the cheeks out, the eyes and their lids wider apart, the mouth wider. A face slider brings the view from the whole body to the head. The head row stays the 15 of the chosen sex, which with the other sex's are the 30.
 
 **Not built in stage 3:** eye colour. The eyes are painted in the head's own texture, and a colour of their own would need a texture made at run time for them. **Assumed:** each face slider's size at its ends, a few millimetres, by eye from frames of one head, `PFHA01`. Not checked on the other 29.
+
+**Stage 7.** Four rows after the sliders. Random look rolls every slider, most of them a little way from 0 and some at 0, at most 60 either way, and a head and a body of the chosen sex. Sliders puts every slider back to 0. Save this look keeps the head, the body and the sliders as the next "Look" by number in `looks.txt` beside the settings file, one look a line. Saved look goes through them with its arrows, and each goes on the figure; a look saved with a head of the other sex keeps this head. **Assumed:** the names "Look 1" and so on, as the page has no box to type in, and the random range.
 
 ## What each stage must not break
 

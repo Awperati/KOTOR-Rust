@@ -111,6 +111,9 @@ const SLIDERS: [(&str, &str, bool); 13] = [
 ];
 /// The view a face slider brings the figure to, from the whole body.
 const FACE_VIEW: usize = 2;
+/// Saved looks: the file beside the settings that keeps them, and how far a random look's sliders go each way, in per cent.
+const LOOKS_FILE: &str = "looks.txt";
+const RANDOM_MOST: i32 = 60;
 /// One row of that page.
 #[derive(Clone, Copy, PartialEq)]
 enum LookRow {
@@ -119,6 +122,14 @@ enum LookRow {
     Underwear,
     /// A slider, by its place in `SLIDERS`.
     Slider(usize),
+    /// Every slider at random, and the head and the body.
+    Random,
+    /// Every slider back to 0.
+    Reset,
+    /// The looks saved before: the arrows go through them, and each goes on the figure.
+    Saved,
+    /// Keep this look with the others.
+    Save,
     View,
     Pose,
     Light,
@@ -206,6 +217,85 @@ pub(super) struct Draft {
     measured: Option<(i32, CharacterLook, Stance)>,
     /// What the Appearance page found of the sliders, for its Cancel.
     page_look: CharacterLook,
+    /// The looks kept in the file beside the settings, and the one on the figure.
+    saved: Vec<SavedLook>,
+    saved_pick: Option<usize>,
+    /// Where the random looks are in their sequence.
+    seed: u64,
+}
+
+/// A look kept to use again: its name, the head, the body and the sliders.
+#[derive(Clone, PartialEq)]
+pub(super) struct SavedLook {
+    name: String,
+    portrait: i32,
+    body: BodySize,
+    sliders: std::collections::BTreeMap<String, i32>,
+}
+
+impl SavedLook {
+    /// One line of the file: the name, the portrait's row, the body and the sliders, between tabs.
+    fn to_line(&self) -> String {
+        let body = match self.body {
+            BodySize::Small => "small",
+            BodySize::Medium => "medium",
+            BodySize::Large => "large",
+        };
+        let sliders: Vec<String> = self
+            .sliders
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
+        format!(
+            "{}\t{}\t{body}\t{}",
+            self.name.replace('\t', " "),
+            self.portrait,
+            sliders.join(",")
+        )
+    }
+
+    fn from_line(line: &str) -> Option<SavedLook> {
+        let mut parts = line.split('\t');
+        let name = parts.next()?.trim().to_string();
+        let portrait = parts.next()?.trim().parse().ok()?;
+        let body = match parts.next()?.trim() {
+            "small" => BodySize::Small,
+            "large" => BodySize::Large,
+            _ => BodySize::Medium,
+        };
+        let sliders = parts
+            .next()
+            .unwrap_or("")
+            .split(',')
+            .filter_map(|kv| {
+                let (k, v) = kv.split_once('=')?;
+                let v: i32 = v.trim().parse().ok()?;
+                (v != 0).then(|| (k.trim().to_string(), v.clamp(-SLIDER_MOST, SLIDER_MOST)))
+            })
+            .collect();
+        (!name.is_empty()).then_some(SavedLook {
+            name,
+            portrait,
+            body,
+            sliders,
+        })
+    }
+}
+
+/// The looks in a file's text, one a line.
+pub(super) fn read_looks(text: &str) -> Vec<SavedLook> {
+    text.lines().filter_map(SavedLook::from_line).collect()
+}
+
+/// A step of a small random sequence: the next number, and the seed after it.
+fn next_random(seed: &mut u64) -> u64 {
+    // xorshift64*.
+    let mut x = (*seed).max(1);
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    *seed = x;
+    x.wrapping_mul(0x2545_F491_4F6C_DD1D)
 }
 
 /// How low and high a body stands at rest, facing the camera, and the middle across of what each view shows.
@@ -440,6 +530,11 @@ impl Stage {
             over_figure: false,
             measured: None,
             page_look: CharacterLook::default(),
+            saved: Vec::new(),
+            saved_pick: None,
+            seed: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(1, |d| d.as_nanos() as u64 | 1),
         });
         self.sync_character();
         self.menus.stack.push(Screen::ChargenMain);
@@ -621,6 +716,13 @@ impl Stage {
                     d.page_look = d.spec.look.clone();
                     d.body_on_show = false;
                 }
+                let saved = self
+                    .looks_file()
+                    .and_then(|p| std::fs::read_to_string(p).ok());
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    d.saved = saved.map_or(Vec::new(), |t| read_looks(&t));
+                    d.saved_pick = None;
+                }
                 // Quick Character keeps the game's short page.
                 let custom = self.menus.chargen.as_ref().and_then(|d| d.custom);
                 self.menus.stack.push(if custom == Some(true) {
@@ -721,6 +823,12 @@ impl Stage {
             rows.push(LookRow::Underwear);
         }
         rows.extend((0..SLIDERS.len()).map(LookRow::Slider));
+        rows.extend([
+            LookRow::Random,
+            LookRow::Reset,
+            LookRow::Saved,
+            LookRow::Save,
+        ]);
         rows.extend([LookRow::View, LookRow::Pose, LookRow::Light]);
         rows
     }
@@ -772,6 +880,19 @@ impl Stage {
                         };
                         (SLIDERS[n].1.to_string(), words)
                     }
+                    LookRow::Random => ("Random look".to_string(), "Roll".to_string()),
+                    LookRow::Reset => ("Sliders".to_string(), "All to 0".to_string()),
+                    LookRow::Saved => (
+                        "Saved look".to_string(),
+                        match (d.saved_pick, d.saved.len()) {
+                            (_, 0) => "None yet".to_string(),
+                            (Some(n), _) => {
+                                d.saved.get(n).map_or(String::new(), |l| l.name.clone())
+                            }
+                            (None, all) => format!("{all} saved"),
+                        },
+                    ),
+                    LookRow::Save => ("Save this look".to_string(), "Save".to_string()),
                     LookRow::View => ("View".to_string(), VIEWS[d.view].0.to_string()),
                     LookRow::Pose => ("Pose".to_string(), POSES[d.pose].0.to_string()),
                     LookRow::Light => ("Lighting".to_string(), LIGHTS[d.light].0.to_string()),
@@ -819,6 +940,16 @@ impl Stage {
                 }
                 self.sync_character();
             }
+            Some(LookRow::Random) => self.random_look(),
+            Some(LookRow::Reset) => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    d.spec.look.sliders.clear();
+                    d.saved_pick = None;
+                }
+                self.sync_character();
+            }
+            Some(LookRow::Saved) => self.saved_look_step(by),
+            Some(LookRow::Save) => self.save_look(),
             Some(LookRow::View) => self.look_view_step(by, true),
             Some(LookRow::Pose) => {
                 if let Some(d) = self.menus.chargen.as_mut() {
@@ -832,6 +963,103 @@ impl Stage {
             }
             None => {}
         }
+    }
+
+    /// The file beside the settings that keeps the saved looks, if the settings have a file.
+    fn looks_file(&self) -> Option<std::path::PathBuf> {
+        self.menus
+            .settings_file
+            .as_ref()
+            .map(|p| p.with_file_name(LOOKS_FILE))
+    }
+
+    /// This look kept with the others, as the next "Look" by number.
+    fn save_look(&mut self) {
+        let Some(file) = self.looks_file() else {
+            self.menus.message = "There is no settings folder to keep looks in.".to_string();
+            return;
+        };
+        let Some(d) = self.menus.chargen.as_mut() else {
+            return;
+        };
+        let number = (1..)
+            .find(|n| !d.saved.iter().any(|l| l.name == format!("Look {n}")))
+            .unwrap_or(1);
+        d.saved.push(SavedLook {
+            name: format!("Look {number}"),
+            portrait: d.spec.portrait,
+            body: d.spec.body,
+            sliders: d.spec.look.sliders.clone(),
+        });
+        d.saved_pick = Some(d.saved.len() - 1);
+        let text: String = d.saved.iter().map(|l| l.to_line() + "\n").collect();
+        let name = format!("Look {number}");
+        let written = file
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&file, text));
+        self.menus.message = match written {
+            Ok(()) => format!("Saved as {name}."),
+            Err(e) => format!("Cannot keep the look: {e}"),
+        };
+    }
+
+    /// The next or last saved look, on the figure. A look of a head of the other sex keeps this head.
+    fn saved_look_step(&mut self, by: i32) {
+        let Some(d) = self.menus.chargen.as_mut() else {
+            return;
+        };
+        if d.saved.is_empty() {
+            return;
+        }
+        let pick = match d.saved_pick {
+            Some(n) => cycle(n, by, d.saved.len()),
+            None if by < 0 => d.saved.len() - 1,
+            None => 0,
+        };
+        d.saved_pick = Some(pick);
+        let look = d.saved[pick].clone();
+        if let Some(head) = d.portraits.iter().position(|p| *p == look.portrait) {
+            d.pick = head;
+            d.spec.portrait = look.portrait;
+        }
+        d.spec.body = look.body;
+        d.spec.look.sliders = look.sliders;
+        self.sync_character();
+    }
+
+    /// Every slider at random, mostly near the middle and some at 0, and a head and a body of the sex chosen.
+    fn random_look(&mut self) {
+        let Some(d) = self.menus.chargen.as_mut() else {
+            return;
+        };
+        let steps = (RANDOM_MOST / SLIDER_STEP) as u64;
+        d.spec.look.sliders.clear();
+        for (name, _, _) in SLIDERS {
+            let r = next_random(&mut d.seed);
+            let v = (r % (2 * steps + 1)) as i32 - steps as i32;
+            if v != 0 && r % 3 != 0 {
+                d.spec
+                    .look
+                    .sliders
+                    .insert(name.to_string(), v * SLIDER_STEP);
+            }
+        }
+        if !d.portraits.is_empty() {
+            d.pick = (next_random(&mut d.seed) % d.portraits.len() as u64) as usize;
+            d.spec.portrait = d.portraits[d.pick];
+        }
+        d.spec.body = [BodySize::Small, BodySize::Medium, BodySize::Large]
+            [(next_random(&mut d.seed) % 3) as usize];
+        d.saved_pick = None;
+        self.sync_character();
+    }
+
+    /// The saved looks, for a test: their names.
+    pub fn saved_look_names(&self) -> Vec<String> {
+        self.menus.chargen.as_ref().map_or(Vec::new(), |d| {
+            d.saved.iter().map(|l| l.name.clone()).collect()
+        })
     }
 
     /// The next view, closer for 1. The arrows go round, and the wheel stops at the ends.
@@ -1590,5 +1818,27 @@ fn default_camera() -> Camera {
         eye: [0.0, -3.0, 1.0],
         target: [0.0, 0.0, 1.0],
         fov: FIGURE_FOV,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_saved_look_goes_through_its_line_and_back() {
+        let look = SavedLook {
+            name: "Look 2".to_string(),
+            portrait: 12,
+            body: BodySize::Large,
+            sliders: [("nose".to_string(), 30), ("height".to_string(), -100)].into(),
+        };
+        let text = format!("{}\nnot a look\n", look.to_line());
+        let back = read_looks(&text);
+        assert_eq!(back.len(), 1);
+        assert!(back[0] == look);
+        let mut seed = 7;
+        let (a, b) = (next_random(&mut seed), next_random(&mut seed));
+        assert_ne!(a, b);
     }
 }

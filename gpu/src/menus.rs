@@ -824,7 +824,7 @@ pub(super) struct Menus {
     main_scene_failed: bool,
     settings: Settings,
     /// Where the settings are kept; `None` keeps them in memory, as in tests.
-    settings_file: Option<PathBuf>,
+    pub(super) settings_file: Option<PathBuf>,
     wanted_size: Option<(u32, u32)>,
 }
 
