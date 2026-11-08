@@ -166,7 +166,82 @@ fn crosses_sheet(t: &[V3; 3], a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> 
     true
 }
 
+/// The sheet a body is stopped by is this high over its feet, as in `movement.rs`.
+const SHEET_LOW: f32 = 0.25;
+const SHEET_HIGH: f32 = 1.2;
+/// A triangle this flat is a top or a floor, not a side.
+const FLAT: f32 = 0.9;
+/// How far to each side of a line floor is looked for, in metres.
+const BESIDE: f32 = 0.12;
+
+impl RoomShell {
+    /// Where one triangle meets the horizontal plane at height `z`, if it does.
+    fn slice(t: &[V3; 3], z: f32) -> Option<([f32; 2], [f32; 2])> {
+        let mut pts: Vec<[f32; 2]> = Vec::with_capacity(2);
+        for k in 0..3 {
+            let (p, q) = (t[k], t[(k + 1) % 3]);
+            if (p[2] < z) != (q[2] < z) {
+                let f = (z - p[2]) / (q[2] - p[2]);
+                pts.push([p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f]);
+            }
+        }
+        match pts[..] {
+            [a, b] => Some((a, b)),
+            _ => None,
+        }
+    }
+
+    fn outline_of(&self, floor: &dyn Fn(f32, f32, f32) -> Option<f32>, out: &mut Vec<(V3, V3)>) {
+        for t in &self.triangles {
+            let (e1, e2) = (sub(t[1], t[0]), sub(t[2], t[0]));
+            let n = cross(e1, e2);
+            let len = dot(n, n).sqrt();
+            if len < 1e-9 || (n[2] / len).abs() > FLAT {
+                continue;
+            }
+            let (zlo, zhi) = (
+                t.iter().map(|p| p[2]).fold(f32::MAX, f32::min),
+                t.iter().map(|p| p[2]).fold(f32::MIN, f32::max),
+            );
+            let (cx, cy) = (
+                (t[0][0] + t[1][0] + t[2][0]) / 3.0,
+                (t[0][1] + t[1][1] + t[2][1]) / 3.0,
+            );
+            // The floor under the middle of it: nothing there, nothing to outline (the walkmesh has a hole, or it hangs).
+            let Some(f) = floor(cx, cy, zhi + 0.25) else {
+                continue;
+            };
+            let low = zlo.max(f + SHEET_LOW);
+            let high = zhi.min(f + SHEET_HIGH);
+            if low >= high || zlo > f + 0.5 {
+                continue;
+            }
+            let Some((a, b)) = Self::slice(t, (low + high) / 2.0) else {
+                continue;
+            };
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let long = dx.hypot(dy);
+            if long < 1e-3 {
+                continue;
+            }
+            let (nx, ny) = (-dy / long * BESIDE, dx / long * BESIDE);
+            let mid = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
+            // Floor on both sides, level with the one under it: a thing standing in the open, not a wall at the floor's edge.
+            let level = |x: f32, y: f32| floor(x, y, f + 0.4).is_some_and(|g| (g - f).abs() < 0.3);
+            if level(mid[0] + nx, mid[1] + ny) && level(mid[0] - nx, mid[1] - ny) {
+                out.push(([a[0], a[1], f], [b[0], b[1], f]));
+            }
+        }
+    }
+}
+
 impl kotor_game::Barriers for RoomShell {
+    fn outline(&self, floor: &dyn Fn(f32, f32, f32) -> Option<f32>) -> Vec<(V3, V3)> {
+        let mut out = Vec::new();
+        self.outline_of(floor, &mut out);
+        out
+    }
+
     fn above(&self, at: [f32; 3], reach: f32) -> Option<f32> {
         self.first_hit(at, [0.0, 0.0, 1.0], reach)
     }

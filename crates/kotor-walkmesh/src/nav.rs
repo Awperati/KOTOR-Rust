@@ -30,6 +30,10 @@ pub struct NavMesh {
     blocked: Vec<u16>,
     /// Lines that nothing may cross.
     lines: Vec<(V3, V3)>,
+    /// The outlines of fixtures that stand on open floor (a light bar, a crate): lines that nothing walking may cross, but
+    /// that do not stop a shot or the sight, and that a closed door's count does not touch. By grid cell, as faces are.
+    fixtures: Vec<(V3, V3)>,
+    fixture_cells: HashMap<(i32, i32), Vec<u32>>,
     /// Faces by the grid cells their bounds touch, so that finding the face under a point need not try them all.
     cells: HashMap<(i32, i32), Vec<u32>>,
     /// Upright faces that are not floor (walls and the sides of obstacles), for sight, and the cells they touch.
@@ -234,6 +238,8 @@ impl NavMesh {
             links,
             blocked,
             lines: Vec::new(),
+            fixtures: Vec::new(),
+            fixture_cells: HashMap::new(),
             cells,
             walls,
             wall_cells,
@@ -308,6 +314,108 @@ impl NavMesh {
         n
     }
 
+    /// The outlines of the fixtures standing on this floor, in place of any before.
+    pub fn set_fixtures(&mut self, lines: Vec<(V3, V3)>) {
+        self.fixture_cells.clear();
+        for (i, (a, b)) in lines.iter().enumerate() {
+            for x in cell(a[0].min(b[0]), 0.0).0..=cell(a[0].max(b[0]), 0.0).0 {
+                for y in cell(0.0, a[1].min(b[1])).1..=cell(0.0, a[1].max(b[1])).1 {
+                    self.fixture_cells.entry((x, y)).or_default().push(i as u32);
+                }
+            }
+        }
+        self.fixtures = lines;
+    }
+
+    pub fn fixture_count(&self) -> usize {
+        self.fixtures.len()
+    }
+
+    /// Whether going straight from `p` to `q` crosses the outline of a fixture on its level.
+    pub fn crosses_fixture(&self, p: V3, q: V3) -> bool {
+        if self.fixtures.is_empty() {
+            return false;
+        }
+        const LEVEL: f32 = 1.5;
+        let side =
+            |u: V3, v: V3, r: V3| (v[0] - u[0]) * (r[1] - u[1]) - (v[1] - u[1]) * (r[0] - u[0]);
+        let mut seen: Vec<u32> = Vec::new();
+        for x in cell(p[0].min(q[0]), 0.0).0..=cell(p[0].max(q[0]), 0.0).0 {
+            for y in cell(0.0, p[1].min(q[1])).1..=cell(0.0, p[1].max(q[1])).1 {
+                for &i in self.fixture_cells.get(&(x, y)).into_iter().flatten() {
+                    if seen.contains(&i) {
+                        continue;
+                    }
+                    seen.push(i);
+                    let (a, b) = self.fixtures[i as usize];
+                    if (p[2] - a[2]).abs() <= LEVEL
+                        && side(a, b, p) * side(a, b, q) < 0.0
+                        && side(p, q, a) * side(p, q, b) < 0.0
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Where a step from `old` to `new` ends when a fixture's outline is in the way: along the outline, as far as the rest of the
+    /// step goes, and `old` when that crosses another. `new` when nothing is in the way. A route is not fitted round a fixture
+    /// (a face of the floor is wider than any bar), so whoever follows one slides along the bar instead.
+    pub fn slide_fixture(&self, old: V3, new: V3) -> V3 {
+        if self.fixtures.is_empty() || !self.crosses_fixture(old, new) {
+            return new;
+        }
+        let side =
+            |u: V3, v: V3, r: V3| (v[0] - u[0]) * (r[1] - u[1]) - (v[1] - u[1]) * (r[0] - u[0]);
+        // The outline the step meets first.
+        let mut best: Option<(f32, V3, V3)> = None;
+        for x in cell(old[0].min(new[0]), 0.0).0..=cell(old[0].max(new[0]), 0.0).0 {
+            for y in cell(0.0, old[1].min(new[1])).1..=cell(0.0, old[1].max(new[1])).1 {
+                for &i in self.fixture_cells.get(&(x, y)).into_iter().flatten() {
+                    let (a, b) = self.fixtures[i as usize];
+                    if (old[2] - a[2]).abs() <= 1.5
+                        && side(a, b, old) * side(a, b, new) < 0.0
+                        && side(old, new, a) * side(old, new, b) < 0.0
+                    {
+                        let (so, sn) = (side(a, b, old).abs(), side(a, b, new).abs());
+                        let t = so / (so + sn);
+                        if best.is_none_or(|(bt, _, _)| t < bt) {
+                            best = Some((t, a, b));
+                        }
+                    }
+                }
+            }
+        }
+        let Some((t, a, b)) = best else {
+            return old;
+        };
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let long = dx.hypot(dy).max(1e-6);
+        let (ux, uy) = (dx / long, dy / long);
+        let (step_x, step_y) = (new[0] - old[0], new[1] - old[1]);
+        // Stop short of the outline, then go along it by what is left of the step.
+        // Head on, it goes along the outline all the same, the way it was already leaning.
+        let (proj, whole) = (step_x * ux + step_y * uy, step_x.hypot(step_y).max(1e-6));
+        let along = proj.signum() * whole * (1.0 - t) * (proj.abs() / whole).max(0.6);
+        let (hx, hy) = (old[0] + step_x * t * 0.98, old[1] + step_y * t * 0.98);
+        // Along it the way it leans, else the other way, else a little of either.
+        for k in [1.0, -1.0, 0.3, -0.3, 0.1, -0.1] {
+            let slid = [hx + ux * along * k, hy + uy * along * k, new[2]];
+            if !self.crosses_fixture(old, slid) {
+                return slid;
+            }
+        }
+        old
+    }
+
+    /// A closed door's line or a fixture's outline: what a body that walks may not cross. A shot or a look is stopped only by
+    /// the first of them.
+    pub fn crosses_walk(&self, p: V3, q: V3) -> bool {
+        self.crosses_block(p, q) || self.crosses_fixture(p, q)
+    }
+
     /// Nothing may cross this line on the floor, as across a closed door. Undo with [`NavMesh::unblock_line`] using the
     /// same arguments. A line and not faces, because a door's faces can reach metres to either side of it.
     pub fn block_line(&mut self, a: V3, b: V3) {
@@ -361,10 +469,10 @@ impl NavMesh {
         let (dx, dy) = (q[0] - p[0], q[1] - p[1]);
         let l = dx.hypot(dy);
         if l < 1e-6 {
-            return self.crosses_block(p, q);
+            return self.crosses_walk(p, q);
         }
         let far = [q[0] + dx / l * margin, q[1] + dy / l * margin, q[2]];
-        self.crosses_block(p, q) || self.crosses_block(p, far)
+        self.crosses_walk(p, q) || self.crosses_walk(p, far)
     }
 
     /// The faces a walker can reach from `from` without crossing a blocked line or entering a blocked face. Told apart

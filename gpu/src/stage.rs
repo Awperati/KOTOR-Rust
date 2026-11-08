@@ -878,6 +878,7 @@ impl Stage {
         }
         // What a fall stops at: the rooms, and what stands in them, as fences do.
         self.game.world.barriers = Some(std::sync::Arc::new(roomshell::RoomShell::of(&scene)));
+        self.game.world.refresh_fixtures();
         self.chests = chests;
         self.chest_bodies.clear();
         self.lids.clear();

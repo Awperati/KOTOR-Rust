@@ -383,6 +383,7 @@ impl World {
             let (p, q) = crate::play::door_line(o);
             nav.block_line(p, q);
         }
+        nav.set_fixtures(self.fixtures.clone());
         self.nav = Some(nav);
     }
 

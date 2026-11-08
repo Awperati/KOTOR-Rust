@@ -338,6 +338,8 @@ pub struct World {
     pub nav: Option<NavMesh>,
     /// What stands in the rooms and is not in the walkmesh, when a window has loaded it: railings, for one.
     pub barriers: Option<std::sync::Arc<dyn crate::Barriers>>,
+    /// The outlines of the fixtures that stand on open floor, kept for when the walkmesh is built again.
+    pub fixtures: Vec<([f32; 3], [f32; 3])>,
     pub pc_mover: Mover,
     /// Movers of party members that are walking after the player, and the time until they replan.
     pub(crate) followers: BTreeMap<ObjId, Mover>,
@@ -709,6 +711,7 @@ impl World {
             module: String::new(),
             nav: None,
             barriers: None,
+            fixtures: Vec::new(),
             pc_mover: Mover::new([0.0; 3], 0.0),
             followers: BTreeMap::new(),
             replan_in: 0.0,

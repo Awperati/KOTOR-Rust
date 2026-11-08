@@ -24,6 +24,7 @@ fn main() {
     }
     let step = f(6, 0.04);
     let n = (2.0 * half / step) as u32;
+    let n_px = n;
     let mut img = Image {
         width: n,
         height: n,
@@ -38,7 +39,8 @@ fn main() {
             let solid = barriers.across([x - 0.03, y], [x + 0.03, y], zz + 0.25, zz + 1.2)
                 || barriers.across([x, y - 0.03], [x, y + 0.03], zz + 0.25, zz + 1.2);
             let c = match (solid, floor.is_some()) {
-                (true, _) => [220, 40, 40],
+                (true, true) => [240, 150, 30],
+                (true, false) => [220, 40, 40],
                 (false, true) => [170, 170, 170],
                 (false, false) => [60, 90, 200],
             };
@@ -46,6 +48,24 @@ fn main() {
             img.rgba[i..i + 3].copy_from_slice(&c);
         }
     }
+    for (a, b) in &s.game.world.fixtures {
+        let n = (((b[0] - a[0]).hypot(b[1] - a[1])) / (step * 0.5))
+            .ceil()
+            .max(1.0) as u32;
+        for k in 0..=n {
+            let t = k as f32 / n as f32;
+            let (x, y) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
+            let (px, py) = (
+                ((x - cx + half) / step) as i32,
+                ((cy + half - y) / step) as i32,
+            );
+            if px >= 0 && py >= 0 && (px as u32) < n_px && (py as u32) < n_px {
+                let i = ((py as u32 * n_px + px as u32) * 4) as usize;
+                img.rgba[i..i + 3].copy_from_slice(&[0, 0, 0]);
+            }
+        }
+    }
+    println!("{} fixture lines", s.game.world.fixtures.len());
     std::fs::write(&out, kotor_image::to_png(&img)).unwrap();
     println!("{out}");
 }

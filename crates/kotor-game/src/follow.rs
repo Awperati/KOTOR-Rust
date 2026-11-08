@@ -146,6 +146,20 @@ impl World {
     /// someone standing where its route ends. When going round people gets it no nearer for a moment, it walks through:
     /// someone on a corner of the route, beside a wall, or two people with no gap between them would hold it for good.
     pub(crate) fn collide_pc(&mut self, old: [f32; 3], dt: f32) -> bool {
+        if self.pc_mover.pos == old {
+            return false;
+        }
+        // The outline of a fixture on open floor: along it, not through it. Held against one for half a second, as against a
+        // person, it goes through: a corner the slide cannot get round must not hold the player for good.
+        if self.pc_pressed < PRESSED_SECONDS {
+            if let Some(nav) = self.nav.as_ref() {
+                let slid = nav.slide_fixture(old, self.pc_mover.pos);
+                if slid == old {
+                    self.pc_pressed += dt;
+                }
+                self.pc_mover.pos = slid;
+            }
+        }
         let pos = self.pc_mover.pos;
         if pos == old {
             return false;
@@ -267,6 +281,22 @@ impl World {
             if let Some(o) = self.objects.get_mut(&id) {
                 o.position = to;
             }
+        }
+    }
+}
+
+impl World {
+    /// Work out the outlines of the fixtures that stand on open floor from the barriers, and give them to the walkmesh: the
+    /// player, the party and the walkers keep out of a light bar's real shape, as the modern body already does by the sheet.
+    /// Call it after the barriers are set, with the module loaded.
+    pub fn refresh_fixtures(&mut self) {
+        let lines = match (self.barriers.as_ref(), self.nav.as_ref()) {
+            (Some(b), Some(nav)) => b.outline(&|x, y, z| nav.height_at(x, y, z)),
+            _ => Vec::new(),
+        };
+        self.fixtures = lines.clone();
+        if let Some(nav) = self.nav.as_mut() {
+            nav.set_fixtures(lines);
         }
     }
 }

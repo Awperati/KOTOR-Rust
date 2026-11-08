@@ -109,6 +109,11 @@ pub trait Barriers {
     fn across(&self, a: [f32; 2], b: [f32; 2], low: f32, high: f32) -> bool;
     /// How far over `at` the first surface is, within `reach` metres.
     fn above(&self, at: [f32; 3], reach: f32) -> Option<f32>;
+    /// The outlines, as lines on the floor, of what stands in the sheet over open floor: where `floor(x, y, max_z)` gives the
+    /// walkmesh's floor, a line is kept when there is floor on both of its sides. Nothing by default.
+    fn outline(&self, _floor: &dyn Fn(f32, f32, f32) -> Option<f32>) -> Vec<([f32; 3], [f32; 3])> {
+        Vec::new()
+    }
 }
 pub use law::{KillKind, LawState, LawTable};
 pub use lift::{ride_between, LiftRide, LiftWay, DEFAULT_SECONDS as LIFT_SECONDS};
