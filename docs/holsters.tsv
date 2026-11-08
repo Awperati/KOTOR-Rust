@@ -1,0 +1,14 @@
+# Where a weapon is when it is not in the hand. node: the body node; x y z: metres in that node's frame (to be tuned from frames; x to the creature's left, y forward, z up); roll pitch yaw: degrees; shape: the plain holster drawn there.
+class	hand	node	x	y	z	roll	pitch	yaw	shape
+pistol	right	pelvis_g	0.17	0.02	-0.05	0	-80	0	hip_holster
+pistol	left	pelvis_g	-0.17	0.02	-0.05	0	-80	0	hip_holster
+rifle	right	torsoUpr_g	0.00	-0.12	0.10	0	10	-35	sling
+rifle	left	torsoUpr_g	0.00	-0.12	0.10	0	10	-35	sling
+heavy	right	torsoUpr_g	0.00	-0.13	0.08	0	10	-35	sling
+heavy	left	torsoUpr_g	0.00	-0.13	0.08	0	10	-35	sling
+blade	right	torsoUpr_g	-0.13	-0.11	0.25	0	40	-55	sheath
+blade	left	torsoUpr_g	0.13	-0.11	0.25	0	-40	55	sheath
+twohand	right	torsoUpr_g	0.00	-0.12	0.20	0	0	-60	sheath
+twohand	left	torsoUpr_g	0.00	-0.12	0.20	0	0	-60	sheath
+baton	right	pelvis_g	-0.17	0.00	-0.02	0	-80	0	hip_holster
+baton	left	pelvis_g	0.17	0.00	-0.02	0	-80	0	hip_holster
