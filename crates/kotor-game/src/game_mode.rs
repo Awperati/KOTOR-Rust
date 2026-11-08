@@ -39,6 +39,13 @@ impl GameMode {
     }
 }
 
+impl crate::World {
+    /// Make this game Classic or Modern. What the mode changes reads it from the world.
+    pub fn set_game_mode(&mut self, mode: GameMode) {
+        self.game_mode = mode;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
