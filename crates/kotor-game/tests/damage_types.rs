@@ -19,6 +19,8 @@ fn world() -> Option<(World, u32, u32)> {
     let foe = w.spawn_creature("n_calonord", [p[0] + 2.0, p[1], p[2]]);
     let o = w.object_mut(foe)?;
     (o.hp, o.max_hp, o.plot, o.min_one_hp) = (900, 900, false, false);
+    // Calo Nord's own armour resists damage now: these tests are about the effects, so he wears nothing.
+    o.equipped.clear();
     let pc = w.pc;
     Some((w, pc, foe))
 }

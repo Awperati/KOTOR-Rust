@@ -5,7 +5,8 @@
 //! **Read from the install:** all of that. **Assumed, not compared with the game:** enhancement adds to attack and to damage,
 //! keen doubles the threat range, flat damage is multiplied on a critical and bonus dice are not, a massive critical adds on a
 //! critical only, and what an item in another slot gives to attack it gives to both hands. **Not built:** damage types, so what
-//! a type resists or adds is the same as any; on-hit effects, immunities, regeneration, deflection and bonus feats.
+//! a type adds is the same as any. What worn items resist, are immune to, regenerate, deflect, give as feats and do on a hit is
+//! in [`crate::gear_effects`].
 
 use crate::rules::Save;
 use crate::world::{ObjId, World};
@@ -49,13 +50,13 @@ const LEFT_HAND: i32 = crate::items::SLOT_LEFT_HAND;
 /// One line of an item's `PropertiesList`.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ItemProperty {
-    kind: i32,
-    subtype: i32,
+    pub(crate) kind: i32,
+    pub(crate) subtype: i32,
     /// What it adds, or takes away, if a number.
-    flat: i32,
+    pub(crate) flat: i32,
     /// How many dice of how many sides it adds, if dice.
-    dice: (i32, i32),
-    waits_for: Option<i32>,
+    pub(crate) dice: (i32, i32),
+    pub(crate) waits_for: Option<i32>,
 }
 
 /// Whether an alignment may use what is limited to a row of `iprp_aligngrp`. The middle may use both sides' things, by the
@@ -101,6 +102,7 @@ impl World {
                     out.flat = t
                         .int(row, "value")
                         .map(|v| v as i32)
+                        .or_else(|| t.int(row, "amount").map(|v| v as i32))
                         .or_else(|| t.get(row, "label")?.parse().ok())
                         .unwrap_or(0);
                     out.dice = (
@@ -132,7 +134,7 @@ impl World {
     }
 
     /// What all a creature wears and holds has working, with the slot each is in.
-    fn gear(&self, id: ObjId) -> Vec<(i32, ItemProperty)> {
+    pub(crate) fn gear(&self, id: ObjId) -> Vec<(i32, ItemProperty)> {
         let Some(o) = self.objects.get(&id) else {
             return Vec::new();
         };
@@ -143,7 +145,7 @@ impl World {
     }
 
     /// The properties of the weapon in `slot`, with what the rest of the gear gives every attack.
-    fn attacking(&self, id: ObjId, slot: i32) -> Vec<ItemProperty> {
+    pub(crate) fn attacking(&self, id: ObjId, slot: i32) -> Vec<ItemProperty> {
         self.gear(id)
             .into_iter()
             .filter(|(s, _)| *s == slot || (*s != RIGHT_HAND && *s != LEFT_HAND))

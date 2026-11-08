@@ -347,6 +347,8 @@ fn a_grenade_thrown_at_a_foe_hurts_it_and_is_used_up() {
     let Some(mut w) = world() else { return };
     let pc = w.pc;
     let foe = soldier(&w);
+    // His own weapon stuns on a hit now; this test is about the grenade.
+    w.object_mut(foe).unwrap().equipped.clear();
     let at = w.object(pc).unwrap().position;
     w.teleport(foe, [at[0] + 3.0, at[1], at[2]]);
     w.object_mut(pc).unwrap().hp = 5000;

@@ -20,6 +20,7 @@ mod galaxy;
 mod game;
 mod game_mode;
 mod gear;
+mod gear_effects;
 mod host;
 mod items;
 mod journal;

@@ -950,6 +950,7 @@ impl World {
             self.run_module_script("Mod_OnAcquirItem");
         }
         self.update_regeneration(dt);
+        self.update_gear(dt);
         if let Some((module, wp)) = self.transition_request.take() {
             // A script that sends the party to the neighbour joined at the door it stands at (the apartments' own door
             // asks for the party screen, then `StartNewModule`) is the crossing, with no loading screen.

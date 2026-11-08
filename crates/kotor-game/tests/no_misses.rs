@@ -14,6 +14,9 @@ fn world(no_misses: bool) -> Option<(World, u32, u32)> {
     let p = w.object(pc)?.position;
     let foe = w.spawn_creature("n_calonord", [p[0] + 1.5, p[1], p[2]]);
     let f = w.object_mut(foe)?;
+    // His own weapon stuns on a hit now, and this is about the player's blows.
+    f.equipped.remove(&4);
+    f.equipped.remove(&5);
     // So armoured that only a natural 20 hits: nearly every attack would have missed.
     (
         f.hp,

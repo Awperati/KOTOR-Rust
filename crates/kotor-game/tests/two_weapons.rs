@@ -15,6 +15,8 @@ fn world() -> Option<(World, u32, u32)> {
     let foe = w.spawn_creature("n_calonord", [p[0] + 1.5, p[1], p[2]]);
     let f = w.object_mut(foe)?;
     (f.hp, f.max_hp, f.plot, f.min_one_hp, f.faction) = (9000, 9000, false, false, 1);
+    // His own gear stuns on a hit now: the swings here are about the player's.
+    f.equipped.clear();
     // Nothing the player does is hit back at, so that the log holds only its own swings.
     w.object_mut(pc)?.min_one_hp = true;
     Some((w, pc, foe))

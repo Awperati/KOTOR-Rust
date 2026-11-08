@@ -665,7 +665,10 @@ impl World {
                 list_of(o.skills.iter(), |r| st(vec![("Value", Value::Int(*r))])),
             ),
             ("Spells", ints(&o.spells)),
-            ("Feats", ints(&o.feats)),
+            (
+                "Feats",
+                ints(&o.feats.difference(&o.gear_feats).copied().collect()),
+            ),
             (
                 "Inventory",
                 list_of(o.inventory.iter(), |id| key_struct(*id)),

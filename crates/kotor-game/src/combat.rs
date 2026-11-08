@@ -277,16 +277,26 @@ impl World {
             .filter_map(|i| self.objects.get(i))
             .map(|i| i.base_item)
             .collect();
-        let armor: i32 = match self.table("baseitems") {
-            Some(t) => items
-                .iter()
-                .map(|b| t.int((*b).max(0) as usize, "baseac").unwrap_or(0) as i32)
-                .sum(),
-            None => 0,
+        let (armor, dex_cap): (i32, i32) = match self.table("baseitems") {
+            Some(t) => (
+                items
+                    .iter()
+                    .map(|b| t.int((*b).max(0) as usize, "baseac").unwrap_or(0) as i32)
+                    .sum(),
+                // Armour caps the Dexterity bonus (`dexbonus` of `baseitems.2da`); only what gives armour class counts.
+                items
+                    .iter()
+                    .filter(|b| t.int((**b).max(0) as usize, "baseac").unwrap_or(0) > 0)
+                    .filter_map(|b| t.int((*b).max(0) as usize, "dexbonus"))
+                    .map(|v| v as i32)
+                    .min()
+                    .unwrap_or(i32::MAX),
+            ),
+            None => (0, i32::MAX),
         };
         10 + armor
             + natural
-            + ability_mod(dex)
+            + ability_mod(dex).min(dex_cap)
             + self.gear_defense(id)
             + self.effect_sum(id, "EffectACIncrease", None)
             - self.effect_sum(id, "EffectACDecrease", None)
@@ -653,6 +663,16 @@ impl World {
         {
             outcome = Outcome::Glance;
         }
+        // Worn items turn aside a share of blaster bolts, and an item that makes its wearer immune to critical hits makes them hits.
+        if weapon.ranged && outcome != Outcome::Miss {
+            let turned = self.gear_deflect_percent(target);
+            if turned > 0 && self.roll(100) <= turned {
+                outcome = Outcome::Miss;
+            }
+        }
+        if outcome == Outcome::Critical && self.is_immune(target, 31) {
+            outcome = Outcome::Hit;
+        }
         let grazing = self.aimed && outcome == Outcome::Glance;
         // Someone on the floor is finished off: a melee blow on a creature knocked down is a critical, whatever the roll.
         if self.ground_finishers && !weapon.ranged && self.is_knocked_down(target) {
@@ -690,7 +710,7 @@ impl World {
             }
             // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.
             let kind = self.weapon_damage_type(attacker, slot);
-            dealt = self.adjust_damage(target, dealt, kind);
+            dealt = self.adjust_damage_share(target, dealt, kind, self.blow_share.unwrap_or(1.0));
             // **Assumption:** difficulty scales what the party takes, by the `multiplier` of `difficultyopt.2da`.
             if target == self.pc || self.party.contains(&target) {
                 dealt = ((dealt as f32 * self.difficulty_multiplier()).round() as i32).max(1);
@@ -699,6 +719,9 @@ impl World {
             dealt = self.absorb_with_shields(target, dealt, kind);
         }
         let fell = self.hurt(attacker, target, dealt);
+        if outcome != Outcome::Miss && !fell {
+            self.gear_on_hit(attacker, target, slot);
+        }
         if let (Some(ability), true, false) = (boost.stun_ability, outcome != Outcome::Miss, fell) {
             let level = self.objects.get(&attacker).map_or(1, |o| o.level);
             let dc = level + ability_mod(self.ability_score(attacker, ability));

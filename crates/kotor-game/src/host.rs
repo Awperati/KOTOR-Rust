@@ -787,6 +787,7 @@ impl Host for Adapter<'_> {
                     - self
                         .world
                         .effect_sum(target, "EffectForceResistanceDecrease", None);
+                let sr = sr + self.world.gear_magic_resist(target);
                 let level = self.world.object(caster).map_or(1, |o| o.level);
                 let resisted = sr > 0 && self.world.roll(20) + level < sr;
                 Some(Value::Int(resisted as i32))

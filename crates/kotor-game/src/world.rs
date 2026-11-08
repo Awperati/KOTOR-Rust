@@ -160,6 +160,8 @@ pub struct Object {
     /// Force powers and feats the creature knows.
     pub spells: BTreeSet<i32>,
     pub feats: BTreeSet<i32>,
+    /// Feats that worn items give (`BonusFeats`): they are in `feats` while worn and are not kept in a save.
+    pub gear_feats: BTreeSet<i32>,
     /// Effects applied to it: handles into `World::effects`.
     pub effects: Vec<u32>,
     /// Facing in degrees, 0 = east, counter-clockwise (`GetFacing`).
@@ -263,6 +265,7 @@ impl Object {
             subrace: 0,
             spells: BTreeSet::new(),
             feats: BTreeSet::new(),
+            gear_feats: BTreeSet::new(),
             effects: Vec::new(),
             facing: 0.0,
             abilities: [10; 6],
@@ -551,6 +554,8 @@ pub struct World {
     pub early_force: bool,
     pub(crate) force_regen: f32,
     pub(crate) hp_regen: f32,
+    /// Seconds towards the next point of what worn items regenerate.
+    pub(crate) gear_regen: f32,
     /// Who has just cast a power, for the animation.
     pub(crate) casts: Vec<(ObjId, i32)>,
     /// Grenades thrown and not yet burst.
@@ -745,6 +750,7 @@ impl World {
             early_force: false,
             force_regen: 0.0,
             hp_regen: 0.0,
+            gear_regen: 0.0,
             casts: Vec::new(),
             flights: Vec::new(),
             stance: Default::default(),

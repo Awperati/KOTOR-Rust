@@ -256,6 +256,12 @@ impl World {
     /// raised and lowered by `EffectDamageImmunityIncrease` and `Decrease`, and kept between 0 and 100. Universal damage
     /// (type 8) passes resistance and immunity, as in the d20 game.
     pub fn adjust_damage(&self, target: ObjId, amount: i32, kind: i32) -> i32 {
+        self.adjust_damage_share(target, amount, kind, 1.0)
+    }
+
+    /// The same for one blow of a chain that does `share` of a whole hit: a flat resistance takes `share` of its amount, so a
+    /// chain of small blows loses no more to it than one whole hit would.
+    pub fn adjust_damage_share(&self, target: ObjId, amount: i32, kind: i32, share: f32) -> i32 {
         if kind & UNIVERSAL != 0 || amount <= 0 {
             return amount.max(0);
         }
@@ -277,6 +283,14 @@ impl World {
                 _ => {}
             }
         }
+        // What worn items give: `DamageResist` takes a flat amount off a type, `DamageImmunity` a percentage.
+        flat += self.gear_damage_resist(target, kind);
+        immune += self.gear_damage_immunity(target, kind);
+        let flat = if share < 1.0 {
+            (flat as f32 * share).round() as i32
+        } else {
+            flat
+        };
         let left = (amount - flat).max(0);
         left * (100 - immune.clamp(0, 100)) / 100
     }
@@ -307,14 +321,16 @@ impl World {
 
     /// Whether `target` carries an `EffectImmunity` for `kind` (an `IMMUNITY_TYPE_*`).
     pub fn is_immune(&self, target: ObjId, kind: i32) -> bool {
-        self.objects.get(&target).is_some_and(|o| {
-            o.effects
-                .iter()
-                .filter_map(|h| self.effects.get(h.wrapping_sub(1) as usize))
-                .any(|e| {
-                    e.name == "EffectImmunity" && e.nums.first().is_some_and(|n| *n as i32 == kind)
-                })
-        })
+        self.gear_immune_to(target, kind)
+            || self.objects.get(&target).is_some_and(|o| {
+                o.effects
+                    .iter()
+                    .filter_map(|h| self.effects.get(h.wrapping_sub(1) as usize))
+                    .any(|e| {
+                        e.name == "EffectImmunity"
+                            && e.nums.first().is_some_and(|n| *n as i32 == kind)
+                    })
+            })
     }
 
     /// Whether `target` is immune to the effect `handle` or any effect linked to it (`GetIsLinkImmune`).

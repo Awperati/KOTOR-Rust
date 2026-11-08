@@ -23,6 +23,9 @@ fn world(finishers: bool) -> Option<(World, u32, u32)> {
         f.faction,
         f.natural_ac,
     ) = (90000, 90000, false, false, 1, 100);
+    // His own weapon stuns on a hit now, and this is about the player's blows.
+    f.equipped.remove(&4);
+    f.equipped.remove(&5);
     let o = w.object_mut(pc)?;
     o.min_one_hp = true;
     o.force = 100;
