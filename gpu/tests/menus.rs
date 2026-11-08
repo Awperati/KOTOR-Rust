@@ -4808,6 +4808,52 @@ fn a_players_look_shapes_their_body_in_the_game_and_their_height_is_drawn() {
 }
 
 #[test]
+fn a_shaped_face_asks_once_for_a_portrait_and_the_hud_shows_it() {
+    let Some((mut s, _)) = in_game("face_portrait") else {
+        return;
+    };
+    s.update(DT);
+    let pc = s.game.world.pc;
+    let game_own = s.pc_portrait();
+    assert!(s.face_portrait_wanted().is_none(), "the game's own face");
+    // A body slider is not seen in a portrait.
+    let look = |s: &mut Stage, k: &str, v: i32| {
+        let o = s.game.world.object_mut(pc).unwrap();
+        o.look.sliders.insert(k.to_string(), v);
+    };
+    look(&mut s, "height", 50);
+    assert!(s.face_portrait_wanted().is_none());
+    look(&mut s, "nose", 40);
+    let (name, scene, camera) = s.face_portrait_wanted().expect("a portrait of the face");
+    assert!(!scene.meshes.is_empty());
+    assert!(
+        camera.eye[2] > 1.3,
+        "the camera is at the head: {:?}",
+        camera.eye
+    );
+    assert!(s.face_portrait_wanted().is_none(), "asked once");
+    assert_eq!(s.pc_portrait(), game_own, "the game's until it is drawn");
+    // The window's picture, wider than tall: its middle square is the portrait.
+    let drawn = kotor_image::Image {
+        width: 320,
+        height: 180,
+        rgba: vec![90; 320 * 180 * 4],
+    };
+    s.set_face_portrait(&name, &drawn);
+    assert_eq!(s.pc_portrait(), name);
+    assert!(s.face_portrait_wanted().is_none());
+    // A mark is another face, and another portrait.
+    look(&mut s, "tattoo_brow", 30);
+    let (other, _, _) = s.face_portrait_wanted().expect("the new face");
+    assert_ne!(other, name);
+    assert_eq!(
+        s.pc_portrait(),
+        game_own,
+        "the old face's picture is not this one"
+    );
+}
+
+#[test]
 fn the_party_screen_shows_whoever_is_chosen_in_3d() {
     let Some((mut s, _)) = in_game("party_figure") else {
         return;

@@ -483,6 +483,9 @@ pub struct Stage {
     /// How strongly the body's skin is shaded by its own shape: 0 off, 1 subtle, 2 strong.
     skin_shading: f32,
     neck_plans: HashMap<String, Option<kotor_render::underwear::NeckPlan>>,
+    /// The player's portraits made from their face, by name, and the one last asked for. See `figure::face_portrait_name`.
+    face_portraits: std::collections::HashSet<String>,
+    face_portrait_asked: Option<String>,
     baseitems: Option<TwoDa>,
     /// The clips `animations.2da` marks `hideequ`: whoever plays one holds nothing in sight (`inject`, picking a lock).
     hide_equipment: Option<std::collections::BTreeSet<String>>,
@@ -707,6 +710,8 @@ impl Stage {
             underwear_plans: HashMap::new(),
             skin_shading: 1.0,
             neck_plans: HashMap::new(),
+            face_portraits: std::collections::HashSet::new(),
+            face_portrait_asked: None,
             held: HashMap::new(),
             doors: HashMap::new(),
             textures: HashMap::new(),
@@ -4138,9 +4143,10 @@ impl Stage {
             .filter_map(|id| w.object(id))
             .take(3)
             .map(|o| HudMember {
-                // Only a player with no character made has no picture of their own.
-                portrait: if o.portrait.is_empty() && o.id == w.pc {
-                    "po_pfha2".to_string()
+                // Only a player with no character made has no picture of their own. A player whose face was shaped has
+                // a picture made from it, once the window has drawn one.
+                portrait: if o.id == w.pc {
+                    self.pc_portrait()
                 } else {
                     o.portrait.clone()
                 },

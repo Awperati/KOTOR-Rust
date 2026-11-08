@@ -1346,11 +1346,7 @@ impl Stage {
     }
 
     fn portrait(&self) -> String {
-        let w = &self.game.world;
-        w.object(w.pc)
-            .map(|o| o.portrait.clone())
-            .filter(|p| !p.is_empty())
-            .unwrap_or_else(|| "po_pfha2".to_string())
+        self.pc_portrait()
     }
 
     fn vitality(&self) -> String {

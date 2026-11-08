@@ -607,6 +607,12 @@ impl<'a> Ui<'a> {
         self.textures.insert(key, Some(Rc::new(shown)));
     }
 
+    /// A picture made while the game runs, such as the player's portrait from their face, by a name of its own.
+    pub fn set_texture(&mut self, name: &str, img: Image) {
+        self.textures
+            .insert(name.to_ascii_lowercase(), Some(Rc::new(img)));
+    }
+
     pub fn texture(&mut self, name: &str) -> Option<&Image> {
         if name.is_empty() {
             return None;

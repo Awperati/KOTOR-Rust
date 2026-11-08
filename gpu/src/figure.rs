@@ -49,6 +49,16 @@ const MIST_BLUE_FROM: i32 = 60;
 const MIST_RED_FROM: i32 = 40;
 const ALIGNMENT_NEUTRAL: i32 = 50;
 
+/// The player's portrait made from their face, chargen's stage 8: what its name starts with, and its size, square.
+const FACE_PORTRAIT_PREFIX: &str = "kotorrs_face_";
+const FACE_PORTRAIT_SIZE: usize = 128;
+/// Its camera: the view, how much of the head it shows top to bottom in metres, and how far under the top of the head its
+/// middle is. The head is turned a little, as the game's own portraits are. **Assumed:** all four, by eye.
+const FACE_PORTRAIT_FOV: f32 = 20.0;
+const FACE_PORTRAIT_SPAN: f32 = 0.36;
+const FACE_PORTRAIT_BELOW_TOP: f32 = 0.14;
+const FACE_PORTRAIT_HEADING: f32 = -1.3;
+
 /// How a camera puts a body in its hole, measured once a body so that its idling does not make the picture breathe.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::stage) struct FigureFit {
@@ -116,6 +126,45 @@ fn hole_on_window([left, top, width, height]: [f32; 4]) -> [f32; 4] {
         1.0 - (top + height) / 240.0,
         1.0 - top / 240.0,
     ]
+}
+
+/// The square in the middle of a picture, as tall as it, made `size` across: each pixel the mean of those it covers.
+fn middle_square(img: &kotor_image::Image, size: usize) -> Option<kotor_image::Image> {
+    let (w, h) = (img.width as usize, img.height as usize);
+    let side = w.min(h);
+    if side == 0 || img.rgba.len() < w * h * 4 || size == 0 {
+        return None;
+    }
+    let (left, top) = ((w - side) / 2, (h - side) / 2);
+    let mut rgba = vec![0u8; size * size * 4];
+    for y in 0..size {
+        for x in 0..size {
+            let (x0, y0) = (x * side / size, y * side / size);
+            let x1 = ((x + 1) * side / size).max(x0 + 1);
+            let y1 = ((y + 1) * side / size).max(y0 + 1);
+            let mut sum = [0u32; 3];
+            for py in y0..y1 {
+                for px in x0..x1 {
+                    let at = ((top + py) * w + left + px) * 4;
+                    for (s, v) in sum.iter_mut().zip(&img.rgba[at..at + 3]) {
+                        *s += *v as u32;
+                    }
+                }
+            }
+            let count = ((x1 - x0) * (y1 - y0)) as u32;
+            let at = (y * size + x) * 4;
+            for k in 0..3 {
+                rgba[at + k] = (sum[k] / count) as u8;
+            }
+            // A portrait is solid: the figure's background shows as it was drawn.
+            rgba[at + 3] = 255;
+        }
+    }
+    Some(kotor_image::Image {
+        width: size as u32,
+        height: size as u32,
+        rgba,
+    })
 }
 
 impl Stage {
@@ -351,6 +400,98 @@ impl Stage {
             self.fit_figure(&rig, &wear);
         }
         scene
+    }
+
+    /// The name of a portrait made from the player's face, when the face is not the game's own: its sliders or marks
+    /// moved. The name changes with the face, so a changed face is drawn again.
+    fn face_portrait_name(&self) -> Option<String> {
+        use std::hash::{Hash, Hasher};
+        let w = &self.game.world;
+        let o = w.object(w.pc)?;
+        let keys = kotor_render::face::FACE_SLIDERS
+            .iter()
+            .copied()
+            .chain(kotor_render::marks::MARKS.iter().map(|m| m.0));
+        let shaped: Vec<(&str, i32)> = keys
+            .filter_map(|k| o.look.sliders.get(k).map(|v| (k, *v)))
+            .filter(|(_, v)| *v != 0)
+            .collect();
+        if shaped.is_empty() {
+            return None;
+        }
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (o.appearance, &o.portrait, &shaped).hash(&mut h);
+        Some(format!("{FACE_PORTRAIT_PREFIX}{:016x}", h.finish()))
+    }
+
+    /// The player's picture: the one made from their face once there is one, else the game's.
+    pub fn pc_portrait(&self) -> String {
+        if let Some(name) = self
+            .face_portrait_name()
+            .filter(|n| self.face_portraits.contains(n))
+        {
+            return name;
+        }
+        let w = &self.game.world;
+        w.object(w.pc)
+            .map(|o| o.portrait.clone())
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "po_pfha2".to_string())
+    }
+
+    /// For the window: the player's head to draw for a portrait made from their face, the name it will go by, and the
+    /// camera. Each face is asked for once: None when it is made or asked for already, or the face is the game's own.
+    /// The window draws it with only the figure, and gives the picture to `set_face_portrait`.
+    pub fn face_portrait_wanted(&mut self) -> Option<(String, Scene, Camera)> {
+        let name = self.face_portrait_name()?;
+        if self.face_portraits.contains(&name) || self.face_portrait_asked.as_deref() == Some(&name)
+        {
+            return None;
+        }
+        let pc = self.game.world.pc;
+        let rig = self.rig_of(pc)?;
+        self.face_portrait_asked = Some(name.clone());
+        let mut scene = Scene::default();
+        let clip = self.idling(0);
+        let wear = self.dress_of(pc);
+        self.add_creature(
+            &mut scene,
+            &rig,
+            &[],
+            &clip,
+            [0.0; 3],
+            FACE_PORTRAIT_HEADING,
+            &wear,
+        );
+        let points = || scene.meshes.iter().flat_map(|m| m.positions.iter());
+        let top = points().fold(f32::MIN, |top, p| top.max(p[2]));
+        // The head's middle across, from what is near the top: a body may not stand on its own middle.
+        let head = points().filter(|p| p[2] > top - FACE_PORTRAIT_SPAN / 2.0);
+        let (low_x, high_x) =
+            head.fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p[0]), b.max(p[0])));
+        if low_x > high_x {
+            return None;
+        }
+        let across = (low_x + high_x) / 2.0;
+        let middle = top - FACE_PORTRAIT_BELOW_TOP;
+        let depth = FACE_PORTRAIT_SPAN / 2.0 / (FACE_PORTRAIT_FOV.to_radians() / 2.0).tan();
+        let camera = Camera {
+            eye: [across, -depth, middle],
+            target: [across, 0.0, middle],
+            fov: FACE_PORTRAIT_FOV,
+        };
+        Some((name, scene, camera))
+    }
+
+    /// The window drew the head `face_portrait_wanted` asked for: the middle square of its picture is the portrait.
+    pub fn set_face_portrait(&mut self, name: &str, drawn: &kotor_image::Image) {
+        let Some(square) = middle_square(drawn, FACE_PORTRAIT_SIZE) else {
+            return;
+        };
+        self.ui.set_texture(name, square);
+        self.face_portraits.insert(name.to_string());
+        self.overlay_key.clear();
+        self.refresh_overlay();
     }
 
     /// The leader alone, or whoever the party screen has chosen. They stand idle with empty hands, as the video has it at

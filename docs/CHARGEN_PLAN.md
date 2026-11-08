@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, stage 7, stage 5 for women, and stage 4 without pictures; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, stage 7, stage 5 for women, stage 4 without pictures, and stage 8; stage 6 is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -78,6 +78,8 @@ For a finger, a choice row's arrows answer over the row's whole height and a lit
 **Stage 4.** Nine rows after the face's sliders, each from None to 100% in steps of 10: three scars (nose, lip, chin), three tattoos (cheeks, brow, chin) and three make-ups (eyes, lips, cheeks). A look keeps them with its sliders, so saved looks and saves keep them too. They need no pictures: [marks.rs](../crates/kotor-render/src/marks.rs) draws each in code, as a line or a soft patch given in metres on the face at rest, and paints it into the head's texture as it loads. A head with marks has its texture's name followed by `#` and the marks, so each set is painted once. A mark's arrow brings the view to the head.
 
 **Found in stage 4:** the heads' textures are mirrored, so one half of the picture paints both sides of the face. A scar on one side shows on both. So every mark is the same on both sides, or on the middle line. The game's points of the face are not all at the features: the jaw's is its hinge, and the mouth's middle is above the lips. The marks go by the brows, the points under the eyes and the mouth's corners. **Assumed:** each mark's shape, place and colour, by eye from frames of `PFHA01`. Not checked on the other 29 heads.
+
+**Stage 8.** A player whose face sliders or marks are moved gets a portrait made from their face. The game's window draws the head once, off the screen with the figure alone, and the stage keeps the square in the middle of that picture, 128 pixels across, as `kotorrs_face_` and a number from the face. The HUD, the character sheet and the other screens that show the player's picture use it from then on. A changed face is drawn again. Body sliders alone keep the game's portrait, as a portrait does not show them. Until the window has drawn it, and in tests with no window, the game's portrait stands in. **Assumed:** the camera's view, the head's turn and the picture's size, by eye. The light is the renderer's one lamp, so the picture is darker than the game's painted portraits.
 
 ## What each stage must not break
 

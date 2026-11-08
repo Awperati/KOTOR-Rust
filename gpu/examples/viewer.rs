@@ -526,6 +526,15 @@ impl App {
                 (_, picture) => st.presenter.set_overlay(&st.gpu, picture),
             }
         }
+        // The player's portrait made from their face: drawn once for each face, off the screen, the figure alone.
+        if let Some((name, scene, cam)) = stage.face_portrait_wanted() {
+            st.gpu.set_figure_only(true);
+            st.gpu.set_particles(Vec::new());
+            st.gpu.set_motion_blur_suspended(true);
+            if let Ok(img) = st.gpu.render(&scene, &mut |n| stage.texture(n), &cam) {
+                stage.set_face_portrait(&name, &img);
+            }
+        }
         let upload_ms = ms(uploading);
         let building = std::time::Instant::now();
         let mut scene_ms = 0.0;
