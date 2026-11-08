@@ -1,0 +1,2 @@
+# Every text file is kept with LF endings, in the repository and in each checkout. Git tells binary files apart by itself.
+* text=auto eol=lf
