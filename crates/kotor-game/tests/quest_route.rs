@@ -2,6 +2,7 @@
 use kotor_archive::Install;
 use kotor_game::quest_route::{parse_routes, prepare_index, QuestIndex, RouteRow};
 use kotor_game::{Kind, StepKind, World};
+use std::collections::BTreeMap;
 
 fn at(module: &str) -> Option<World> {
     let dir = kotor_core::install_dir()?;
@@ -236,6 +237,74 @@ fn from_each_landing_the_main_quests_lead_on_towards_their_row() {
         });
         assert!(!to_the_ship, "{quest} {state}: {step:?}");
     }
+}
+
+/// Every quest of the journal has a next step from where it starts, or `docs/quest_no_route.tsv` says why not.
+#[test]
+fn every_journal_quest_has_a_step_or_a_reason() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let index = prepare_index(&dir, None);
+    let why: BTreeMap<String, String> = include_str!("../../../docs/quest_no_route.tsv")
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .map(|l| {
+            let (q, w) = l.split_once('\t').expect("quest, a tab, and why");
+            (q.to_ascii_lowercase(), w.to_string())
+        })
+        .collect();
+    let rows = parse_routes(include_str!("../../../docs/quest_routes.tsv")).unwrap();
+    let mut w = World::new(Install::open(&dir).unwrap()).unwrap();
+    let tags = w.quest_tags();
+    for (q, reason) in &why {
+        assert!(!reason.trim().is_empty(), "{q} has no reason");
+        assert!(
+            tags.iter().any(|t| t.eq_ignore_ascii_case(q)),
+            "{q} is not in the journal"
+        );
+    }
+    // Where each quest starts: its first hand row's module, else what sets its first state.
+    let mut by_home: BTreeMap<String, Vec<(String, Vec<i32>)>> = BTreeMap::new();
+    let mut missing = Vec::new();
+    for tag in &tags {
+        let q = tag.to_ascii_lowercase();
+        if why.contains_key(&q) {
+            continue;
+        }
+        let open: Vec<i32> = w
+            .quest_states(tag)
+            .into_iter()
+            .filter(|(_, ends)| !ends)
+            .map(|(s, _)| s)
+            .collect();
+        let home = rows
+            .iter()
+            .filter(|r| r.quest == q && !r.tag.is_empty())
+            .min_by_key(|r| r.state)
+            .map(|r| r.module.clone())
+            .or_else(|| index.home_module(&q).map(str::to_string));
+        match home {
+            Some(h) => by_home.entry(h).or_default().push((q, open)),
+            None => missing.push(format!("{q}: nothing sets it")),
+        }
+    }
+    for (home, quests) in by_home {
+        let Some(mut w) = at(&home) else {
+            return;
+        };
+        for (q, open) in quests {
+            let any = open.iter().any(|s| {
+                w.journal.clear();
+                w.journal.insert(q.clone(), *s);
+                w.next_step(&q).is_some()
+            });
+            if !any {
+                missing.push(format!("{q}: no step from {home}"));
+            }
+        }
+    }
+    assert!(missing.is_empty(), "{missing:#?}");
 }
 
 /// Anchorhead's way to the Dune Sea is a talk with the gate guard: the step is that person, and says so.

@@ -52,6 +52,28 @@ impl World {
         tags.map(|t| t.to_string()).collect()
     }
 
+    /// A quest's states in the file, and whether each ends it.
+    pub fn quest_states(&mut self, tag: &str) -> Vec<(i32, bool)> {
+        let Some(file) = self.journal_file() else {
+            return Vec::new();
+        };
+        let categories = file.root.list("Categories").unwrap_or_default();
+        let Some(c) = categories
+            .iter()
+            .find(|c| c.str("Tag").is_some_and(|t| t.eq_ignore_ascii_case(tag)))
+        else {
+            return Vec::new();
+        };
+        c.list("EntryList")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|e| {
+                let id = e.int("ID")? as i32;
+                Some((id, e.int("End").is_some_and(|n| n != 0)))
+            })
+            .collect()
+    }
+
     /// The quests the party has heard of, newest first. A tag the file does not have is left out.
     pub fn quests(&mut self) -> Vec<Quest> {
         let Some(file) = self.journal_file() else {

@@ -173,6 +173,12 @@ impl QuestIndex {
     }
 
     /// The exit out of `from` on a shortest way to `to`, and how many exits that way has.
+    /// Where the quest starts: the module of what sets its smallest state.
+    pub fn home_module(&self, quest: &str) -> Option<&str> {
+        let states = self.setters.get(&quest.to_ascii_lowercase())?;
+        states.values().flatten().next().map(|t| t.module.as_str())
+    }
+
     fn first_exit(&self, from: &str, to: &str) -> Option<(&Link, usize)> {
         let mut seen = BTreeSet::from([from]);
         let mut queue: VecDeque<(&str, Option<&Link>, usize)> = VecDeque::from([(from, None, 0)]);

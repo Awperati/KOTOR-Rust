@@ -59,3 +59,11 @@ kor33_enteracademy	46	korr_m33aa	area	k33_way_yuthura	Show the medallion to the 
 kor33_findstarmap	20	korr_m33ab	talk	k33_academyguard	Get into the Sith academy
 kor33_findstarmap	30	korr_m39aa	door	k39_door_starmap	Enter the tomb in the valley
 kor35_findingdustil	10	korr_m35aa	area	k35_way_dustil	Find Carth's son in the academy
+tar_meetcand	1	tar_m03ae	area		Meet Canderous in the cantina
+tat17ae_swoopracing	10	tat_m17ae	talk	tat17_04race_01	Race on the swoop track
+tat17ae_swoopracing	20	tat_m17ae	talk	tat17_04race_01	Race on the swoop track
+tat17ae_swoopracing	30	tat_m17ae	talk	tat17_04race_01	Race on the swoop track
+unk_trapped	10	unk_m42aa	kill	unk42_redelder	Deal with the Elders, as the One asks
+unk_trapped	15	unk_m43aa	talk	unk43_redpris	Free the Elder held in the One's camp
+unk_trapped	25	unk_m43aa	talk	unk43_theone	Bring the datapad to the One
+unk_trapped	33	unk_m42aa	talk	unk42_redelder	Go back to the Elders
