@@ -3605,6 +3605,50 @@ fn the_graphics_page_turns_mod_packs_on_for_the_next_start() {
 }
 
 #[test]
+fn every_gameplay_option_fits_on_its_page_apart_from_the_others() {
+    let Some((mut s, _)) = in_game("gameplay_fit") else {
+        return;
+    };
+    s.escape();
+    press(&mut s, "BTN_GAMEPLAY");
+    s.update(DT);
+    let tags = [
+        "BTN_DIFFICULTY",
+        "CB_LEVELUP",
+        "CB_AUTOSAVE",
+        "CB_INVERTCAM",
+        "CB_REVERSE",
+        "CB_DISABLEMOVE",
+        "CB_CLICK_TO_MOVE",
+        "CB_COMBAT_MODERN",
+        "BTN_MOUSE",
+        "BTN_KEYMAP",
+    ];
+    let points: Vec<(f32, f32)> = tags
+        .iter()
+        .map(|t| s.menu_pixel(t, None, SIZE).unwrap_or_else(|| panic!("{t}")))
+        .collect();
+    for (n, p) in points.iter().enumerate() {
+        // Inside the page, over Default and Close.
+        assert!(
+            p.0 > 0.0 && p.0 < SIZE.0 as f32 && p.1 > 0.0,
+            "{}: {p:?}",
+            tags[n]
+        );
+        assert!(p.1 < 400.0 * SIZE.1 as f32 / 480.0, "{}: {p:?}", tags[n]);
+        for (m, q) in points.iter().enumerate().skip(n + 1) {
+            let apart = (p.0 - q.0).abs() > 40.0 || (p.1 - q.1).abs() > 30.0;
+            assert!(apart, "{} and {} overlap", tags[n], tags[m]);
+        }
+    }
+    let (drawn, too_big) = {
+        frame(&mut s);
+        s.words_fit()
+    };
+    assert!(drawn > 0 && too_big.is_empty(), "{too_big:?}");
+}
+
+#[test]
 fn the_gameplay_page_has_click_to_move_off_at_first() {
     let Some((mut s, dir)) = in_game("click_row") else {
         return;

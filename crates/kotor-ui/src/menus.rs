@@ -282,6 +282,32 @@ fn stepper_rects(row: [i32; 4]) -> [[i32; 4]; 3] {
     ]
 }
 
+/// A control in another place: what is in it goes with it, its scroll bar stays at its right edge and takes its height.
+fn moved_control(c: &Control, [left, top, width, height]: [i32; 4]) -> Control {
+    let mut m = c.clone();
+    let e = c.extent.clone();
+    let (dx, dy, wider) = (left - e.left, top - e.top, width - e.width);
+    m.extent.left = left;
+    m.extent.top = top;
+    m.extent.width = width;
+    m.extent.height = height;
+    for k in &mut m.children {
+        k.extent.top += dy;
+        if k.kind == SCROLLBAR {
+            k.extent.left += dx + wider;
+            k.extent.height = height;
+        } else {
+            k.extent.left += dx;
+        }
+    }
+    if let Some(p) = m.proto_item.as_mut() {
+        p.extent.left += dx;
+        p.extent.top += dy;
+        p.extent.width += wider;
+    }
+    m
+}
+
 /// Whether a control of a screen is drawn differently in another view of it.
 fn control_changed(was: &MenuView, now: &MenuView, c: &Control) -> bool {
     let lit = |v: &MenuView| match &v.hover {
@@ -582,6 +608,12 @@ impl Ui<'_> {
             }
             let moved = view.patches.get(&c.tag).and_then(|p| p.place);
             if let Some([left, top, width, height]) = moved {
+                // A list moved by a screen is drawn as a list in its new place, its bar and rows with it.
+                if c.kind == LIST && !view.holes.contains(&c.tag) {
+                    let shifted = moved_control(c, [left, top, width, height]);
+                    self.draw_list(cv, view, &shifted, (ox, oy));
+                    continue;
+                }
                 let r = [ox + left, oy + top, width, height];
                 if view.holes.contains(&c.tag) {
                     cv.clear_rect(r[0], r[1], r[2], r[3], view.hole_veil);

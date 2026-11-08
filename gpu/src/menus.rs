@@ -1665,8 +1665,12 @@ impl Stage {
                 optionpages::CLICK_OFF
             },
         );
-        for (tag, at) in optionpages::UNDER_CLICK {
+        for (tag, at) in optionpages::GAMEPLAY_PLACES {
             v.patches.entry(tag.to_string()).or_default().place = Some(at);
+        }
+        for (tag, words, at) in optionpages::GAMEPLAY_HEADINGS {
+            v.copy_control("LBL_TITLE", tag, at);
+            v.text(tag, words);
         }
         v.value("CB_LEVELUP", s.auto_level as i32, 1);
         v.value("CB_DISABLEMOVE", s.combat_movement as i32, 1);

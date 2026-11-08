@@ -218,17 +218,35 @@ pub(super) const MOVEMENT_CLASSIC: &str = "Movement: Classic";
 const MOVEMENT_WORDS: &str = "Ticked, Modern: the keys go where the camera looks, with momentum, gravity, a sprint a quarter faster and a roll on its key. Not ticked, Classic: the walk as the game has it.";
 /// The box that picks the combat. The file has no such box, nor room in its column: it goes under the words, over Close.
 pub(super) const COMBAT_BOX: &str = "CB_COMBAT_MODERN";
-pub(super) const COMBAT_BOX_AT: [i32; 4] = [330, 368, 240, 40];
+pub(super) const COMBAT_BOX_AT: [i32; 4] = [338, 214, 240, 34];
 pub(super) const COMBAT_MODERN: &str = "Combat: Modern";
 pub(super) const COMBAT_CLASSIC: &str = "Combat: Classic";
 const COMBAT_WORDS: &str = "Ticked, Modern: a crosshair, aimed shots, sabre chains, and a key for every Force power. It needs Modern movement. Not ticked, Classic: the game's own rounds.";
-/// The box for Click to move: the owner, "Add a click to move toggleable setting in the menu settings". It goes under the
-/// file's column of boxes, and the two buttons under that go side by side to make room.
+/// The box for Click to move: the owner, "Add a click to move toggleable setting in the menu settings".
 pub(super) const CLICK_BOX: &str = "CB_CLICK_TO_MOVE";
-pub(super) const CLICK_BOX_AT: [i32; 4] = [60, 316, 240, 40];
-pub(super) const UNDER_CLICK: [(&str, [i32; 4]); 2] = [
-    ("BTN_MOUSE", [60, 360, 118, 23]),
-    ("BTN_KEYMAP", [182, 360, 118, 23]),
+pub(super) const CLICK_BOX_AT: [i32; 4] = [338, 180, 240, 34];
+/// The Gameplay page laid out again: the owner, "The gameplay options menu needs a revamp to fit all of the buttons properly".
+/// Two columns under headings: the game's own rules on the left, with the two pages of keys under them, and how you move and
+/// fight on the right, in the frame the page's picture has there, with what the cursor is on under them in the same frame. Rows
+/// 34 to 38 apart, every one inside the page.
+pub(super) const GAMEPLAY_PLACES: [(&str, [i32; 4]); 11] = [
+    ("BTN_DIFFICULTY", [60, 102, 240, 36]),
+    ("BTN_DIFFLEFT", [60, 108, 24, 25]),
+    ("BTN_DIFFRIGHT", [276, 108, 24, 25]),
+    ("CB_LEVELUP", [60, 140, 240, 36]),
+    ("CB_AUTOSAVE", [60, 178, 240, 36]),
+    ("CB_INVERTCAM", [60, 216, 240, 36]),
+    (MOVEMENT_BOX, [338, 112, 240, 34]),
+    ("CB_DISABLEMOVE", [338, 146, 240, 34]),
+    ("BTN_MOUSE", [60, 284, 240, 23]),
+    ("BTN_KEYMAP", [60, 312, 240, 23]),
+    ("LB_DESC", [334, 256, 248, 120]),
+];
+/// The headings: their copies of the title, their words and places.
+pub(super) const GAMEPLAY_HEADINGS: [(&str, &str, [i32; 4]); 3] = [
+    ("LBL_HEAD_GAME", "Game", [60, 82, 240, 18]),
+    ("LBL_HEAD_MOVE", "Movement and combat", [330, 92, 256, 18]),
+    ("LBL_HEAD_KEYS", "Keys, mouse and touch", [60, 262, 240, 18]),
 ];
 pub(super) const CLICK_ON: &str = "Click to move: On";
 pub(super) const CLICK_OFF: &str = "Click to move: Off";
