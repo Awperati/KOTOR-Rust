@@ -2843,10 +2843,10 @@ impl Stage {
                     .entry(key)
                     .or_insert_with(|| Rc::new(rig.dressed(garment)))
                     .clone();
-                return Some(dressed);
+                return Some(self.shaped_for(id, dressed));
             }
         }
-        Some(rig)
+        Some(self.shaped_for(id, rig))
     }
 
     /// A body in the clothes a character starts with, as the character's screens show it: the second set of `appearance.2da`.
@@ -3265,6 +3265,7 @@ impl Stage {
                     ) {
                         wear_underwear(&mut scene, start, &underwear);
                         scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
+                        self.grow_to_height(&mut scene, start, pose.id, pose.position);
                         continue;
                     }
                     let aim = self.aim_down_of(pose.id, &clip);
@@ -3280,6 +3281,7 @@ impl Stage {
                         aim,
                     );
                     scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
+                    self.grow_to_height(&mut scene, start, pose.id, pose.position);
                 }
                 Kind::Placeable => {
                     let Some(body) = self.chest_body(pose.id) else {

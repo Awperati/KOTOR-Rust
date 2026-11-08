@@ -8,6 +8,7 @@ pub mod custom_mesh;
 mod json;
 mod objects;
 mod scene;
+pub mod shape;
 mod soft;
 pub mod underwear;
 mod walk;

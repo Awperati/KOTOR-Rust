@@ -13,9 +13,11 @@ use crate::effects::{Effects, ParticleBatch};
 use kotor_game::{
     attribute_cost, BodySize, CharacterLook, CharacterSpec, Clip, ATTRIBUTE_BASE, POINT_POOL,
 };
+use kotor_render::shape::{BodyShape, BODY_SLIDERS, SLIDER_MOST, SLIDER_STEP};
 use kotor_render::underwear::{list_underwear_variants, UnderwearVariant};
 use kotor_render::{Camera, Rig, Scene};
 use kotor_ui::{Hit, MenuView, Row};
+use std::rc::Rc;
 
 const SOLDIER: i32 = 0;
 const SCOUT: i32 = 1;
@@ -89,12 +91,24 @@ const LIGHTS: [(&str, f32, f32); 4] = [
     ("Side", -1.03, 1.0),
     ("Low", 0.0, 0.6),
 ];
+/// The body's sliders' words, in the order of `BODY_SLIDERS`.
+const SLIDER_WORDS: [&str; 7] = [
+    "Height",
+    "Shoulders",
+    "Chest",
+    "Waist",
+    "Hips",
+    "Arms",
+    "Legs",
+];
 /// One row of that page.
 #[derive(Clone, Copy, PartialEq)]
 enum LookRow {
     Head,
     Body,
     Underwear,
+    /// A body slider, by its place in `BODY_SLIDERS`.
+    Slider(usize),
     View,
     Pose,
     Light,
@@ -178,8 +192,10 @@ pub(super) struct Draft {
     light: usize,
     /// The cursor is over the figure, for the wheel.
     over_figure: bool,
-    /// How a body stands at rest, so that the view does not breathe with the idle: for its appearance.
-    measured: Option<(i32, Stance)>,
+    /// How a body stands at rest, so that the view does not breathe with the idle: for its appearance and sliders.
+    measured: Option<(i32, CharacterLook, Stance)>,
+    /// What the Appearance page found of the sliders, for its Cancel.
+    page_look: CharacterLook,
 }
 
 /// How low and high a body stands at rest, facing the camera, and the middle across of what each view shows.
@@ -413,6 +429,7 @@ impl Stage {
             light: 0,
             over_figure: false,
             measured: None,
+            page_look: CharacterLook::default(),
         });
         self.sync_character();
         self.menus.stack.push(Screen::ChargenMain);
@@ -591,6 +608,7 @@ impl Stage {
                 if let Some(d) = self.menus.chargen.as_mut() {
                     d.page_underwear = d.underwear_pick;
                     d.page_body = d.spec.body;
+                    d.page_look = d.spec.look.clone();
                     d.body_on_show = false;
                 }
                 // Quick Character keeps the game's short page.
@@ -601,6 +619,7 @@ impl Stage {
                     Screen::ChargenPortrait
                 });
                 self.menus.hover = None;
+                self.menus.first = 0;
             }
             Step::Attributes => {
                 if let Some(d) = self.menus.chargen.as_mut() {
@@ -691,6 +710,7 @@ impl Stage {
         if choice {
             rows.push(LookRow::Underwear);
         }
+        rows.extend((0..BODY_SLIDERS.len()).map(LookRow::Slider));
         rows.extend([LookRow::View, LookRow::Pose, LookRow::Light]);
         rows
     }
@@ -733,6 +753,15 @@ impl Stage {
                             .get(d.underwear_pick)
                             .map_or(String::new(), |u| u.name.clone()),
                     ),
+                    LookRow::Slider(n) => {
+                        let v = slider(&d.spec.look, BODY_SLIDERS[n]);
+                        let words = if v == 0 {
+                            "0".to_string()
+                        } else {
+                            format!("{v:+}")
+                        };
+                        (SLIDER_WORDS[n].to_string(), words)
+                    }
                     LookRow::View => ("View".to_string(), VIEWS[d.view].0.to_string()),
                     LookRow::Pose => ("Pose".to_string(), POSES[d.pose].0.to_string()),
                     LookRow::Light => ("Lighting".to_string(), LIGHTS[d.light].0.to_string()),
@@ -744,7 +773,9 @@ impl Stage {
                 }
             })
             .collect();
-        v.lists.insert(LOOK_LIST.to_string(), (rows, 0));
+        // The list is longer than the page: the wheel and a drag go down it.
+        let first = self.menus.first;
+        v.lists.insert(LOOK_LIST.to_string(), (rows, first));
         v
     }
 
@@ -758,6 +789,19 @@ impl Stage {
                 if let Some(d) = self.menus.chargen.as_mut() {
                     let now = SIZES.iter().position(|b| *b == d.spec.body).unwrap_or(1);
                     d.spec.body = SIZES[(now as i32 + by).rem_euclid(3) as usize];
+                }
+                self.sync_character();
+            }
+            Some(LookRow::Slider(n)) => {
+                if let Some(d) = self.menus.chargen.as_mut() {
+                    let name = BODY_SLIDERS[*n];
+                    let v = (slider(&d.spec.look, name) + by * SLIDER_STEP)
+                        .clamp(-SLIDER_MOST, SLIDER_MOST);
+                    if v == 0 {
+                        d.spec.look.sliders.remove(name);
+                    } else {
+                        d.spec.look.sliders.insert(name.to_string(), v);
+                    }
                 }
                 self.sync_character();
             }
@@ -980,6 +1024,7 @@ impl Stage {
                 if let Some(d) = self.menus.chargen.as_mut() {
                     d.spec.body = d.page_body;
                     d.underwear_pick = d.page_underwear;
+                    d.spec.look = d.page_look.clone();
                 }
                 let pick = self.menus.chargen.as_ref().map_or(0, |d| d.page_pick);
                 self.set_portrait(pick);
@@ -1236,8 +1281,14 @@ impl Stage {
         let Some(rig) = self.bare_rig(appearance) else {
             return (scene, default_camera());
         };
+        let look = self
+            .menus
+            .chargen
+            .as_ref()
+            .map_or(CharacterLook::default(), |d| d.spec.look.clone());
+        let rig = self.shaped_rig(rig, &look);
         let wear = self.preview_underwear.clone();
-        let stance = self.look_stance(&rig, appearance, &wear);
+        let stance = self.look_stance(&rig, appearance, &look, &wear);
         let clip = Some(Clip {
             name: POSES[pose].1,
             time: self.idle_clock,
@@ -1245,13 +1296,24 @@ impl Stage {
         });
         let facing = FACING_CAMERA + turn;
         self.add_creature(&mut scene, &rig, &[], &clip, [0.0; 3], facing, &wear);
-        let from = VIEWS[view].1.map_or(stance.low, |down| stance.top - down);
+        grow(&mut scene, 0, [0.0; 3], body_shape(&look).height_scale());
+        // The whole body is framed for the tallest it can be, so that a taller one is seen to be. A close view follows the head.
+        let scale = body_shape(&look).height_scale();
+        let tallest = BodyShape {
+            height: 1.0,
+            ..BodyShape::default()
+        }
+        .height_scale();
+        let (from, top) = match VIEWS[view].1 {
+            None => (stance.low, stance.top * tallest),
+            Some(down) => (stance.top * scale - down, stance.top * scale),
+        };
         let aspect = self.ui_width as f32 / 480.0;
         // The middle of what is shown turns with the body.
-        let [x, y] = stance.middles[view];
+        let [x, y] = stance.middles[view].map(|v| v * scale);
         let (sin, cos) = turn.sin_cos();
         let middle = [cos * x - sin * y, sin * x + cos * y];
-        let camera = camera_on_hole(LOOK_HOLE, (from, stance.top), middle, aspect);
+        let camera = camera_on_hole(LOOK_HOLE, (from, top), middle, aspect);
         let (_, spin, bright) = LIGHTS[light];
         let mut scene = if spin == 0.0 {
             scene
@@ -1266,10 +1328,16 @@ impl Stage {
         (scene, spun(camera, spin))
     }
 
-    /// How a body stands at rest, measured once for each.
-    fn look_stance(&mut self, rig: &Rig, appearance: i32, wear: &str) -> Stance {
-        let known = self.menus.chargen.as_ref().and_then(|d| d.measured);
-        if let Some((_, stance)) = known.filter(|m| m.0 == appearance) {
+    /// How a body stands at rest, measured once for each body and look.
+    fn look_stance(
+        &mut self,
+        rig: &Rig,
+        appearance: i32,
+        look: &CharacterLook,
+        wear: &str,
+    ) -> Stance {
+        let known = self.menus.chargen.as_ref().and_then(|d| d.measured.clone());
+        if let Some((_, _, stance)) = known.filter(|m| m.0 == appearance && &m.1 == look) {
             return stance;
         }
         let mut scene = Scene::default();
@@ -1305,9 +1373,55 @@ impl Stage {
         });
         let stance = Stance { low, top, middles };
         if let Some(d) = self.menus.chargen.as_mut() {
-            d.measured = Some((appearance, stance));
+            d.measured = Some((appearance, look.clone(), stance));
         }
         stance
+    }
+
+    /// A body reshaped by a look's sliders, kept for the last body and look asked for: a slider's arrow reshapes it once.
+    fn shaped_rig(&mut self, rig: Rc<Rig>, look: &CharacterLook) -> Rc<Rig> {
+        let shape = body_shape(look);
+        if shape.is_plain() {
+            return rig;
+        }
+        let key = Rc::as_ptr(&rig) as usize;
+        if let Some((k, sliders, shaped)) = &self.menus.shaped {
+            if *k == key && *sliders == look.sliders {
+                return shaped.clone();
+            }
+        }
+        let shaped = Rc::new(rig.shaped(&shape));
+        self.menus.shaped = Some((key, look.sliders.clone(), shaped.clone()));
+        shaped
+    }
+
+    /// The player's body as their look has it: anyone else's as it is.
+    pub(in crate::stage) fn shaped_for(&mut self, id: kotor_game::ObjId, rig: Rc<Rig>) -> Rc<Rig> {
+        let w = &self.game.world;
+        if id != w.pc {
+            return rig;
+        }
+        let Some(look) = w.object(id).map(|o| o.look.clone()) else {
+            return rig;
+        };
+        self.shaped_rig(rig, &look)
+    }
+
+    /// The player drawn taller or shorter by their look, about their feet: the meshes from `from` on. Only for how it looks.
+    pub(in crate::stage) fn grow_to_height(
+        &self,
+        scene: &mut Scene,
+        from: usize,
+        id: kotor_game::ObjId,
+        feet: [f32; 3],
+    ) {
+        let w = &self.game.world;
+        if id != w.pc {
+            return;
+        }
+        if let Some(o) = w.object(id) {
+            grow(scene, from, feet, body_shape(&o.look).height_scale());
+        }
     }
 
     /// The head on the portrait page, large, in its hole.
@@ -1392,6 +1506,30 @@ fn owned_skills(s: &Stage) -> Vec<(usize, i32)> {
         .enumerate()
         .filter(|(_, r)| *r > 0)
         .collect()
+}
+
+/// A slider of a look, in per cent: 0 when it was never moved.
+fn slider(look: &CharacterLook, name: &str) -> i32 {
+    look.sliders.get(name).copied().unwrap_or(0)
+}
+
+/// The body's sliders of a look.
+fn body_shape(look: &CharacterLook) -> BodyShape {
+    BodyShape::from_sliders(|name| slider(look, name))
+}
+
+/// Meshes from `from` on, bigger or smaller about `feet`.
+fn grow(scene: &mut Scene, from: usize, feet: [f32; 3], scale: f32) {
+    if scale == 1.0 {
+        return;
+    }
+    for m in &mut scene.meshes[from..] {
+        for p in &mut m.positions {
+            for k in 0..3 {
+                p[k] = feet[k] + (p[k] - feet[k]) * scale;
+            }
+        }
+    }
 }
 
 /// One step round a list of `len`, either way.

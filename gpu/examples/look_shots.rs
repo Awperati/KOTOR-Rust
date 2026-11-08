@@ -56,9 +56,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Stage 1: a drag turns the figure, and the rows give views, poses and lights.
     let row = |s: &mut Stage, name: &str| {
         let rows = s.menu_rows("LB_OPTIONS");
-        rows.iter().position(|r| r.text == name).expect("the row")
+        rows.iter().position(|r| r.text == name).unwrap_or_else(|| {
+            panic!(
+                "no {name} on {}: {:?}",
+                s.menu_name(),
+                rows.iter().map(|r| r.text.clone()).collect::<Vec<_>>()
+            )
+        })
+    };
+    // The list shows six rows: it goes to the top, and then down until this one is in it.
+    let bring = |s: &mut Stage, row: usize| {
+        s.hover((width as f32 * 0.25, height as f32 * 0.4), size);
+        for _ in 0..20 {
+            s.menu_wheel(1.0);
+        }
+        for _ in 0..20 {
+            let shown = s
+                .menu_step_pixel("LB_OPTIONS", row, 1, size)
+                .is_some_and(|p| p.1 < 345.0 * height as f32 / 480.0);
+            if shown {
+                break;
+            }
+            s.menu_wheel(-1.0);
+        }
     };
     let step = |s: &mut Stage, row: usize| {
+        bring(s, row);
         if let Some(p) = s.menu_step_pixel("LB_OPTIONS", row, 1, size) {
             s.hover(p, size);
             s.click(p, size);
@@ -87,5 +110,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     s.update(2.0);
     shot(&mut s, "look_pose3");
     println!("{:?}", s.look_preview());
+
+    // Stage 2: the body's sliders, all at one end and then the other, seen whole and from the side.
+    let pose = row(&mut s, "Pose");
+    step(&mut s, pose);
+    step(&mut s, pose);
+    let sliders = [
+        "Height",
+        "Shoulders",
+        "Chest",
+        "Waist",
+        "Hips",
+        "Arms",
+        "Legs",
+    ];
+    shot(&mut s, "look_body_plain");
+    for (name, by) in [("look_body_most", 1), ("look_body_least", -1)] {
+        for slider in sliders {
+            let n = row(&mut s, slider);
+            bring(&mut s, n);
+            for _ in 0..20 {
+                if let Some(p) = s.menu_step_pixel("LB_OPTIONS", n, by, size) {
+                    s.hover(p, size);
+                    s.click(p, size);
+                }
+            }
+        }
+        shot(&mut s, name);
+        s.mouse_down_on_layer(middle, size);
+        s.mouse_moved_on_layer((middle.0 + width as f32 * 0.12, middle.1), size);
+        s.mouse_up_on_layer();
+        shot(&mut s, &format!("{name}_side"));
+        s.mouse_down_on_layer(middle, size);
+        s.mouse_moved_on_layer((middle.0 - width as f32 * 0.12, middle.1), size);
+        s.mouse_up_on_layer();
+    }
+    for slider in sliders {
+        let n = row(&mut s, slider);
+        println!("{slider}: {:?}", s.menu_rows("LB_OPTIONS")[n].choice);
+    }
     Ok(())
 }

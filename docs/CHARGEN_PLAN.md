@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stages 0 and 1 are built; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built, and stage 2 but its skin tone; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -62,6 +62,10 @@ That is about 4,700 lines before the hair pieces' art. Stages 0 to 3 are the hea
 - **Lighting:** Standard, Front, Side and Low. The renderer has one lamp, fixed in the world, that lights both faces of a surface alike. So a light turns the figure and camera together under the lamp, and makes the figure brighter or darker. Left and right are the same light.
 
 For a finger, a choice row's arrows answer over the row's whole height and a little beyond their pictures, and a tap on the row's words goes on to the next choice. **Assumed:** the views' sizes, the turn's speed, the lights' names and strengths, and the poses' names. I have not seen a real touch screen run it.
+
+**Stage 2.** Seven rows of sliders on the Appearance page: Height, Shoulders, Chest, Waist, Hips, Arms and Legs, from -100 to +100 in steps of 10, kept in the look by their names (`height` and so on) only when not 0. The list is longer than the page now, and the wheel or a finger's drag goes down it. [shape.rs](../crates/kotor-render/src/shape.rs) moves the vertices of the body at rest by the bones that carry them, once for each look: the arms' and legs' bones push their vertices out from or in to the line down the bone, the shoulders take the arms and the top of the torso out, and the chest, waist and hips are bands of the torso round the skeleton's own heights. It works on every body of the player, bare or in armour, as they share one skeleton, and the head is left as it is. Height scales the whole posed figure about the feet, from 0.92 to 1.08, only for how it looks: doors, walking and fights keep their sizes. In the game the player's body is shaped by the look the save keeps, on the screens' figures too. The page's whole view is framed for the tallest body, so that a taller one is seen to be taller.
+
+**Not built in stage 2:** skin tone. The game ties the skin to the head: the A, B and C heads are its tones. A tone of its own would recolour the body's and head's skin in their textures. **Assumed:** each slider's size at its ends, by eye from frames: shoulders 3.5 cm each side, chest 3 cm forward, waist 16%, hips 12%, arms 25% and legs 20% thicker or thinner. Checked on the bare bodies only, not on each armour.
 
 ## What each stage must not break
 

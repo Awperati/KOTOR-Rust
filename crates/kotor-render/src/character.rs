@@ -142,6 +142,13 @@ impl Rig {
         }
     }
 
+    /// This body reshaped at rest by character creation's sliders: see [`crate::shape`].
+    pub fn shaped(&self, shape: &crate::shape::BodyShape) -> Rig {
+        let mut rig = self.clone();
+        crate::shape::shape_body(&mut rig.body, shape);
+        rig
+    }
+
     /// The body, then its chain of supermodels: a droid or a rakghoul carries its clips in its own model, with no chain.
     fn models(&self) -> impl Iterator<Item = &Model> {
         std::iter::once(&self.body).chain(&self.sup)

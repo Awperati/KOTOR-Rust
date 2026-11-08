@@ -3991,6 +3991,23 @@ fn the_messages_tab_shows_what_was_said_and_fought() {
     assert_eq!(frame(&mut s), last);
 }
 
+/// The Appearance page's list scrolled so that a row is on it, with the cursor on the list.
+fn bring_row(s: &mut Stage, row: usize) {
+    s.hover((300.0, 300.0), SIZE);
+    for _ in 0..20 {
+        s.menu_wheel(1.0);
+    }
+    for _ in 0..20 {
+        let shown = s
+            .menu_step_pixel("LB_OPTIONS", row, 1, SIZE)
+            .is_some_and(|p| p.1 < 345.0 * SIZE.1 as f32 / 480.0);
+        if shown {
+            break;
+        }
+        s.menu_wheel(-1.0);
+    }
+}
+
 /// A click on an arrow of a row of the Appearance page.
 fn look_arrow(s: &mut Stage, row: usize, by: i32) {
     s.update(DT);
@@ -4137,6 +4154,7 @@ fn the_appearance_figure_turns_by_a_drag_and_has_views_poses_and_lights() {
 
     // The views come closer, and the top of the head stays in the hole.
     let view = row_of(&mut s, "View");
+    bring_row(&mut s, view);
     let tall = |p: &[[f32; 2]]| {
         let lo = p.iter().map(|q| q[1]).fold(f32::MAX, f32::min);
         let hi = p.iter().map(|q| q[1]).fold(f32::MIN, f32::max);
@@ -4169,6 +4187,7 @@ fn the_appearance_figure_turns_by_a_drag_and_has_views_poses_and_lights() {
 
     // Another pose.
     let pose = row_of(&mut s, "Pose");
+    bring_row(&mut s, pose);
     let before = seen(&mut s);
     look_arrow(&mut s, pose, 1);
     assert_eq!(preview(&s).2, "Idle 2");
@@ -4179,6 +4198,7 @@ fn the_appearance_figure_turns_by_a_drag_and_has_views_poses_and_lights() {
 
     // A light: the figure is brighter, and stays where it was in the hole. No time passes between, as the idle goes on.
     let light = row_of(&mut s, "Lighting");
+    bring_row(&mut s, light);
     let plain = seen(&mut s);
     let at = s.menu_step_pixel("LB_OPTIONS", light, 1, SIZE).unwrap();
     s.click(at, SIZE);
@@ -4208,6 +4228,131 @@ fn the_appearance_figure_turns_by_a_drag_and_has_views_poses_and_lights() {
     press(&mut s, "BTN_ACCEPT");
     assert_eq!(s.menu_name(), "chargen");
     assert_eq!(portrait(&s), face);
+}
+
+/// How wide and how tall what a scene holds is, near a point on the floor: across and up.
+fn bounds_near(scene: &kotor_render::Scene, at: [f32; 3]) -> (f32, f32) {
+    let near: Vec<[f32; 3]> = scene
+        .meshes
+        .iter()
+        .flat_map(|m| m.positions.iter().copied())
+        .filter(|p| (p[0] - at[0]).hypot(p[1] - at[1]) < 0.7)
+        .collect();
+    let wide = near.iter().fold((f32::MAX, f32::MIN), |(a, b), p| {
+        let r = (p[0] - at[0]).hypot(p[1] - at[1]);
+        (a.min(-r), b.max(r))
+    });
+    let top = near.iter().fold(f32::MIN, |a, p| a.max(p[2] - at[2]));
+    (wide.1, top)
+}
+
+#[test]
+fn the_body_sliders_reshape_the_figure_cancel_puts_them_back_and_ok_keeps_them() {
+    let Some(mut s) = at_chargen("body_sliders") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    assert_eq!(s.menu_name(), "chargen_look");
+    s.update(DT);
+    let names: Vec<String> = s
+        .menu_rows("LB_OPTIONS")
+        .iter()
+        .map(|r| r.text.clone())
+        .collect();
+    for name in [
+        "Height",
+        "Shoulders",
+        "Chest",
+        "Waist",
+        "Hips",
+        "Arms",
+        "Legs",
+    ] {
+        assert!(names.iter().any(|n| n == name), "{name}: {names:?}");
+    }
+    let row_of = |s: &mut Stage, name: &str| {
+        let rows = s.menu_rows("LB_OPTIONS");
+        rows.iter().position(|r| r.text == name).unwrap()
+    };
+    let choice = |s: &mut Stage, row: usize| s.menu_rows("LB_OPTIONS")[row].choice.clone().unwrap();
+    let sliders = |s: &Stage| {
+        let w = &s.game.world;
+        w.object(w.pc).unwrap().look.sliders.clone()
+    };
+    // The rows past the page's end are reached with the wheel, and their arrows work.
+    let legs = row_of(&mut s, "Legs");
+    assert!(s.menu_step_pixel("LB_OPTIONS", legs, 1, SIZE).unwrap().1 > 400.0);
+    for _ in 0..10 {
+        s.menu_wheel(-1.0);
+    }
+    let at = s.menu_step_pixel("LB_OPTIONS", legs, 1, SIZE).unwrap();
+    assert!(at.1 < 380.0 * SIZE.1 as f32 / 480.0, "{at:?}");
+    s.click(at, SIZE);
+    assert_eq!(choice(&mut s, legs), "+10");
+    assert_eq!(sliders(&s).get("legs"), Some(&10));
+    for _ in 0..10 {
+        s.menu_wheel(1.0);
+    }
+
+    // Wider shoulders: the figure on the page is wider at the same moment, and it stops at +100.
+    let (plain, _) = bounds_near(&s.frame_scene().0, [0.0; 3]);
+    let shoulders = row_of(&mut s, "Shoulders");
+    let at = s.menu_step_pixel("LB_OPTIONS", shoulders, 1, SIZE).unwrap();
+    for _ in 0..12 {
+        s.click(at, SIZE);
+    }
+    assert_eq!(choice(&mut s, shoulders), "+100");
+    let (wider, _) = bounds_near(&s.frame_scene().0, [0.0; 3]);
+    assert!(wider > plain + 0.02, "{plain} {wider}");
+
+    // Cancel puts back what the page found; OK keeps it, on the character.
+    press(&mut s, "BTN_BACK");
+    assert!(sliders(&s).is_empty(), "{:?}", sliders(&s));
+    press(&mut s, "BTN_STEPNAME1");
+    let height = row_of(&mut s, "Height");
+    let at = s.menu_step_pixel("LB_OPTIONS", height, -1, SIZE).unwrap();
+    s.click(at, SIZE);
+    s.click(at, SIZE);
+    assert_eq!(choice(&mut s, height), "-20");
+    press(&mut s, "BTN_ACCEPT");
+    assert_eq!(s.menu_name(), "chargen");
+    assert_eq!(sliders(&s).get("height"), Some(&-20));
+}
+
+#[test]
+fn a_players_look_shapes_their_body_in_the_game_and_their_height_is_drawn() {
+    let Some((mut s, _)) = in_game("body_in_game") else {
+        return;
+    };
+    s.update(DT);
+    let pc = s.game.world.pc;
+    let feet = s.game.world.object(pc).unwrap().position;
+    let (_, tall) = bounds_near(&s.dynamic_scene(), feet);
+    s.game
+        .world
+        .object_mut(pc)
+        .unwrap()
+        .look
+        .sliders
+        .insert("height".to_string(), 100);
+    let (_, taller) = bounds_near(&s.dynamic_scene(), feet);
+    assert!((taller / tall - 1.08).abs() < 0.02, "{tall} {taller}");
+    // The character sheet's figure has the body too: wider shoulders, wider figure.
+    s.open_character();
+    s.update(DT);
+    let at = s.game.world.object(pc).unwrap().position;
+    let (plain, _) = bounds_near(&s.figure_scene(), at);
+    s.game
+        .world
+        .object_mut(pc)
+        .unwrap()
+        .look
+        .sliders
+        .insert("shoulders".to_string(), 100);
+    let (wider, _) = bounds_near(&s.figure_scene(), at);
+    assert!(wider > plain + 0.02, "{plain} {wider}");
 }
 
 #[test]

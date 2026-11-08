@@ -708,6 +708,12 @@ struct SaveFile {
 #[derive(Default)]
 pub(super) struct Menus {
     pub stack: Vec<Screen>,
+    /// The player's body reshaped by their look: for which body, which sliders, and the body.
+    pub(super) shaped: Option<(
+        usize,
+        std::collections::BTreeMap<String, i32>,
+        std::rc::Rc<kotor_render::Rig>,
+    )>,
     pub(super) hover: Option<Hit>,
     message: String,
     /// Exit was pressed: the window should close.
