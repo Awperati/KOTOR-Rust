@@ -1055,7 +1055,8 @@ fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
         ("Space", "Jump"),
         ("KeyB", "Pause"),
         ("KeyX", "AttackMode"),
-        ("KeyF", "Pickup"),
+        ("KeyT", "Pickup"),
+        ("KeyF", "CancelCombat"),
         ("F6", "Nameplates"),
         ("F7", "CelShading"),
         ("F8", "ReloadCustom"),
@@ -1084,7 +1085,7 @@ fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
     for word in [
         "Jump: Space",
         "Attack Mode: X",
-        "Pickup: F",
+        "Pickup: T",
         "Nameplates: F6",
         "Cel Shading: F7",
         "Reload Custom: F8",
@@ -1124,7 +1125,7 @@ fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
     assert_eq!(s.action_for_key("F9"), Some("CelShading"));
     assert_eq!(s.action_for_key("KeyG"), Some("CustomClip"));
 
-    // Pickup can leave F to Cancel Combat.
+    // Pickup moves like any other.
     let pickup = game
         .iter()
         .position(|r| r.text.starts_with("Pickup"))
@@ -1133,6 +1134,7 @@ fn every_key_of_the_game_is_on_the_page_can_be_moved_and_none_clash() {
     assert!(s.capture_key("KeyH"));
     assert_eq!(s.action_for_key("KeyF"), Some("CancelCombat"));
     assert_eq!(s.action_for_key("KeyH"), Some("Pickup"));
+    assert_eq!(s.action_for_key("KeyT"), None);
 }
 
 #[test]
@@ -1515,6 +1517,17 @@ fn pickup_opens_what_is_near_as_one_container_and_what_is_taken_leaves_its_own()
         2,
     );
     let (far, sword) = remains_at(&mut s, far_at, "g_w_lngswrd01", 1);
+
+    // The key opens the panel, and again shuts it, as Escape does.
+    s.pickup();
+    assert_eq!(s.menu_name(), "container");
+    s.pickup();
+    assert_eq!(s.menu_name(), "-");
+    s.pickup();
+    assert_eq!(s.menu_name(), "container");
+    s.escape();
+    assert_eq!(s.menu_name(), "-");
+    s.update(DT);
 
     // The slot is the Pickup button, with its name under the cursor.
     let slot = s.hud_pixel("BTN_ACTION0", SIZE).unwrap();
@@ -3441,8 +3454,8 @@ fn the_keys_can_be_changed_kept_and_put_back() {
         ("KeyW", "MoveForward"),
         ("KeyS", "MoveBack"),
         ("KeyR", "Use"),
-        // F is Cancel Combat too, in a fight: see the end of this test.
-        ("KeyF", "Pickup"),
+        // The game's table has nothing for Pickup: it keeps ours, T. F is the table's Cancel Combat.
+        ("KeyT", "Pickup"),
         ("KeyO", "Options"),
         ("KeyU", "Equip"),
         ("KeyI", "Inventory"),
@@ -3478,7 +3491,7 @@ fn the_keys_can_be_changed_kept_and_put_back() {
     assert_eq!(s.action_for_key("KeyF"), Some("CancelCombat"));
     s.hud_disengage();
     assert_eq!(s.game.world.combat.target.get(&pc), None);
-    assert_eq!(s.action_for_key("KeyF"), Some("Pickup"));
+    assert_eq!(s.action_for_key("KeyT"), Some("Pickup"));
 }
 
 #[test]

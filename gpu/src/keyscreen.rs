@@ -35,7 +35,8 @@ const KEY_ACTIONS: [(&str, u32, usize, &str); 29] = [
     ("Options", 48052, 1, "KeyO"),
     ("Pause", 48019, 1, "KeyB"),
     ("CancelCombat", 48315, 1, "KeyF"),
-    ("Pickup", NOT_IN_TALK_TABLE, 1, "KeyF"),
+    // The owner: "Pressing T opens the Proximity Container Pickup". F was Pickup's out of a fight and Cancel Combat's in one.
+    ("Pickup", NOT_IN_TALK_TABLE, 1, "KeyT"),
     ("AttackMode", NOT_IN_TALK_TABLE, 1, "KeyX"),
     ("LockOn", NOT_IN_TALK_TABLE, 1, "KeyQ"),
     ("SoloMode", 48035, 1, "KeyV"),
@@ -146,11 +147,15 @@ const LOOK_ABOUT: &str =
     "How fast the on-screen look stick turns the camera. The Invert Camera box goes for it too.";
 const TOUCH_BOX_ABOUT: &str = "A stick, round buttons and bigger menu keys on the HUD, for a touch screen or the mouse. The blue button at the top right turns them on and off too.";
 const LIST: &str = "LST_EventList";
-/// A settings file written since the owner's "Make X attack mode and B the Pause button rather" says so.
-const KEY_DEFAULTS_LINE: &str = "key_defaults=2";
-/// Each of the two: what the key was, and what it is.
-const MOVED_DEFAULTS: [(&str, &str, &str); 2] =
-    [("Pause", "KeyX", "KeyB"), ("AttackMode", "KeyB", "KeyX")];
+/// A settings file written since the owner's "Make X attack mode and B the Pause button rather", and his "Pressing T opens the
+/// Proximity Container Pickup", says so.
+const KEY_DEFAULTS_LINE: &str = "key_defaults=3";
+/// Each moved default: what the key was, and what it is.
+const MOVED_DEFAULTS: [(&str, &str, &str); 3] = [
+    ("Pause", "KeyX", "KeyB"),
+    ("AttackMode", "KeyB", "KeyX"),
+    ("Pickup", "KeyF", "KeyT"),
+];
 /// Keys that always mean the same, whatever the page says.
 const FIXED_KEYS: [&str; 15] = [
     "Escape",
@@ -202,9 +207,23 @@ impl KeyMap {
         let unmoved = |k: &KeyMap, (action, old, _): (&str, &str, &str)| {
             k.0.get(action).is_some_and(|key| key == old)
         };
-        if MOVED_DEFAULTS.iter().all(|m| unmoved(self, *m)) {
+        // One a file never named has its new key already, as the defaults give it.
+        let moved_already = |k: &KeyMap, (action, _, new): (&str, &str, &str)| {
+            k.0.get(action).is_some_and(|key| key == new)
+        };
+        if MOVED_DEFAULTS
+            .iter()
+            .all(|m| unmoved(self, *m) || moved_already(self, *m))
+        {
             for (action, _, new) in MOVED_DEFAULTS {
-                self.0.insert(action, new.to_string());
+                // A key the player gave to something else stays theirs: no two on one.
+                let taken = self
+                    .0
+                    .iter()
+                    .any(|(a, k)| k == new && !MOVED_DEFAULTS.iter().any(|m| m.0 == *a));
+                if !taken {
+                    self.0.insert(action, new.to_string());
+                }
             }
             return;
         }
@@ -605,6 +624,20 @@ mod tests {
         assert_eq!(k.0["Pause"], "KeyB");
         assert_eq!(k.0["Jump"], "Space");
         assert_eq!(k.0["Inventory"], "KeyY");
+    }
+
+    #[test]
+    fn pickup_goes_from_f_to_t_unless_t_is_taken() {
+        // A file from after the X and B swap, with Pickup on F as it was.
+        let mut k = KeyMap::default();
+        k.read("key_defaults=2\nkey.Pickup=KeyF\nkey.CancelCombat=KeyF\n");
+        assert_eq!(k.0["Pickup"], "KeyT");
+        assert_eq!(k.0["CancelCombat"], "KeyF");
+        // The player put something on T: Pickup stays where it was.
+        let mut k = KeyMap::default();
+        k.read("key_defaults=2\nkey.Pickup=KeyF\nkey.Inventory=KeyT\n");
+        assert_eq!(k.0["Pickup"], "KeyF");
+        assert_eq!(k.0["Inventory"], "KeyT");
     }
 
     #[test]

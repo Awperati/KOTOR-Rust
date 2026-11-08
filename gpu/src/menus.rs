@@ -1940,8 +1940,14 @@ impl Stage {
         }
     }
 
-    /// The Pickup button and its key: what is near opens as one container, or the player says there is nothing.
+    /// The Pickup button and its key: what is near opens as one container, or the player says there is nothing. The key again
+    /// shuts it, as Escape does.
     pub fn pickup(&mut self) {
+        if self.top() == Some(Screen::Container) {
+            self.game.world.close_container();
+            self.menus.hover = None;
+            return;
+        }
         if self.menu_open() || self.choice_view().is_some() {
             return;
         }
