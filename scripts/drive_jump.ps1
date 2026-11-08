@@ -1,5 +1,6 @@
 # The owner's Space and B in the running window: Space jumps and never pauses, B pauses, both can be rebound, and no jump in a
-# conversation or in Classic movement. A minigame's Space is in drive_race.ps1, and being down in gpu/tests/movement.rs.
+# conversation or in Classic. Jumping is Modern's and the pause key Classic's: Modern has no pause in play, so B does nothing
+# there. Each run names its mode (--game-mode), in memory only: Classic is the default. A minigame's Space is in drive_race.ps1, and being down in gpu/tests/movement.rs.
 # Like the other drivers it posts messages to the viewer's own handle only. With KOTOR_HIDDEN set nothing shows. It works on
 # settings files of its own, in the temp folder, and writes no saves.
 param([string]$Size = "1280x720")
@@ -42,51 +43,52 @@ function Press1($k) {
 }
 $PLACE = @("--module", "danm14aa", "--place", "165.17,136.66,1.85,1.767")
 
-# As it comes: Modern.
-Open "modern" "movement_modern=true" $PLACE
+# Modern.
+Open "modern" "" ($PLACE + @("--game-mode", "modern"))
 Settle
 $r = Press1 $SPACE
 Report "Space jumps" ($r.air -and $r.up -gt 0.5 -and $r.up -lt 1.2) "up $([Math]::Round($r.up, 2)) m, air seen $($r.air)"
 Report "Space does not pause" (-not $r.paused) "paused=$($r.paused)"
-$before = (Press1 $PAUSE)
-Report "B pauses" $before.paused "paused=$($before.paused)"
-$r = @{ s = State }
-$z = [double]$r.s.pcz
-Key $SPACE[0] $SPACE[1]
-$r = State; $r = State
-Report "Space in a pause does nothing" ($r.paused -eq "true" -and $r.air -ne "true" -and [double]$r.pcz -eq $z) "paused=$($r.paused) air=$($r.air) z=$($r.pcz)"
-Key $PAUSE[0] $PAUSE[1]
-$r = WaitFor "paused" "false"
-Report "B goes on" ($r.paused -eq "false") "paused=$($r.paused)"
-WaitSteps 20
-Report "And no jump was kept for after" ($r.air -ne "true") "air=$($r.air)"
+$r = Press1 $PAUSE
+Report "Modern: B does not pause" (-not $r.paused -and -not $r.air) "paused=$($r.paused) air=$($r.air)"
 Close
 
 # Rebound in the settings file, as the Key Mapping page writes it. gpu/tests/menus.rs goes through the page itself.
-Open "rebound" "movement_modern=true`nkey.Jump=KeyY`nkey.Pause=KeyG" $PLACE
+Open "rebound" "key.Jump=KeyY`nkey.Pause=KeyG" ($PLACE + @("--game-mode", "modern"))
 Settle
 $r = Press1 $SPACE
 Report "Rebound: Space does nothing" (-not $r.air -and -not $r.paused) "air=$($r.air) paused=$($r.paused)"
-$r = Press1 $PAUSE
-Report "Rebound: B does nothing" (-not $r.air -and -not $r.paused) "air=$($r.air) paused=$($r.paused)"
 $r = Press1 $Y
 Report "Rebound: Y jumps" ($r.air -and $r.up -gt 0.5) "up $([Math]::Round($r.up, 2)) m"
+Close
+# The pause rebound, in Classic, which has a pause key.
+Open "rebound_classic" "key.Jump=KeyY`nkey.Pause=KeyG" ($PLACE + @("--game-mode", "classic"))
+Settle
+$r = Press1 $PAUSE
+Report "Rebound: B does nothing" (-not $r.air -and -not $r.paused) "air=$($r.air) paused=$($r.paused)"
 $r = Press1 $G
 Report "Rebound: G pauses" $r.paused "paused=$($r.paused)"
 Close
 
 # Classic: no jump, and the pause all the same.
-Open "classic" "movement_modern=false" ($PLACE + @("--classic-movement"))
+Open "classic" "" ($PLACE + @("--game-mode", "classic"))
 Settle
 $r = Press1 $SPACE
 Report "Classic: Space does not jump" (-not $r.air -and $r.up -lt 0.05) "up $([Math]::Round($r.up, 2)) m, air seen $($r.air)"
 Report "Classic: Space does not pause" (-not $r.paused) "paused=$($r.paused)"
 $r = Press1 $PAUSE
 Report "Classic: B pauses" $r.paused "paused=$($r.paused)"
+$z = [double]$r.s.pcz
+Key $SPACE[0] $SPACE[1]
+$r = State; $r = State
+Report "Classic: Space in a pause does nothing" ($r.paused -eq "true" -and $r.air -ne "true" -and [double]$r.pcz -eq $z) "paused=$($r.paused) air=$($r.air) z=$($r.pcz)"
+Key $PAUSE[0] $PAUSE[1]
+$r = WaitFor "paused" "false"
+Report "Classic: B goes on" ($r.paused -eq "false") "paused=$($r.paused)"
 Close
 
 # A conversation: Space goes on with the line and the player stays on the floor.
-Open "talk" "movement_modern=true" @("--no-chargen", "--near", "end_locker01")
+Open "talk" "" @("--no-chargen", "--near", "end_locker01", "--game-mode", "modern")
 $s = State
 for ($i = 0; $i -lt 300 -and $s.dlg -ne "true"; $i++) { $s = State }
 Report "A conversation is under way" ($s.dlg -eq "true") "dlg=$($s.dlg)"

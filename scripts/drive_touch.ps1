@@ -60,7 +60,8 @@ function LogSays([long]$mark, [string]$words, [int]$seconds) {
 # The mouse is not listened to just after a finger: Windows can follow one with a mouse message of its own.
 function AfterFingers { Start-Sleep -Milliseconds 900 }
 
-$s = Open
+# Modern: the sticks and the jump. Each run names its mode, in memory only: Classic is the default, with no jump.
+$s = Open @("--game-mode", "modern")
 Report "Off until asked" ($s.touch -eq "false") "touch=$($s.touch)"
 
 # The mouse: the blue button, then the stick held and pushed up.
@@ -149,10 +150,9 @@ Report "Let go, the camera stays" ($s.lookstick -eq "0.00,0.00" -and $s.yaw -eq 
 
 # Each button.
 Start-Sleep -Milliseconds 800
+# Modern has no pause in play: the Pause key is dimmed and does nothing. Classic's is below.
 $s = Tap 4 (PartAt $s "pause")
-Report "Pause" ($s.paused -eq "true") "paused=$($s.paused)"
-$s = Tap 4 (PartAt $s "pause")
-Report "And go on" ($s.paused -eq "false") "paused=$($s.paused)"
+Report "Modern: Pause does nothing" ($s.paused -eq "false") "paused=$($s.paused)"
 $s = Tap 4 (PartAt $s "mode")
 Report "Attack mode" ($s.mode -eq "true") "mode=$($s.mode)"
 $s = Tap 4 (PartAt $s "mode")
@@ -180,7 +180,7 @@ Stop-Process -Id $script:v.Id -Force
 Start-Sleep -Milliseconds 300
 
 # A new start, in Classic movement: it is still on, and the stick steers there too.
-$s = Open @("--classic-movement")
+$s = Open @("--game-mode", "classic")
 Report "A new start remembers" ($s.touch -eq "true") "touch=$($s.touch)"
 $thumb = PartAt $s "stick"
 $from = $s
@@ -190,6 +190,12 @@ $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ((Moved $from $s) -lt 0.3 -and (Get-Date) -lt $until)
 Report "The stick in Classic" ((Moved $from $s) -ge 0.3) "moved $(Moved $from $s)"
 Finger "up" 1 $thumb[0] ($thumb[1] - $push)
+$s = WaitFor "fingers" "0"
+Start-Sleep -Milliseconds 800
+$s = Tap 4 (PartAt $s "pause")
+Report "Classic: Pause" ($s.paused -eq "true") "paused=$($s.paused)"
+$s = Tap 4 (PartAt $s "pause")
+Report "And go on" ($s.paused -eq "false") "paused=$($s.paused)"
 FocusReport
 Stop-Process -Id $script:v.Id -Force
 Start-Sleep -Milliseconds 200

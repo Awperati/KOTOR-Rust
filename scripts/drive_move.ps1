@@ -16,6 +16,8 @@ function Open($name, $module, $extra) {
   $script:stateFile = "$scratch\kotor_move_$name.out"
   Remove-Item $script:stateFile -ErrorAction SilentlyContinue
   $argv = @("--mute","--no-tutorials","--no-auto-pause","--no-early-force","--module",$module,"--skip-menu","--state-log","--size",$Size,"--frames","100000") + $extra
+  # Modern movement is Modern mode, movement and combat both; Classic is the default. A run says which, in memory only.
+  if ($extra -notcontains "--game-mode") { $argv += @("--game-mode", "modern") }
   $script:v = Start-Process -FilePath "gpu\target\release\examples\viewer.exe" -ArgumentList $argv -RedirectStandardOutput $script:stateFile -RedirectStandardError "$scratch\kotor_move_$name.err" -PassThru -NoNewWindow
   $script:h = WaitWindow $script:v; [Drv]::NeverActive($script:h)
   WaitLog
@@ -146,7 +148,7 @@ if ($Shots) {
   FocusReport
   Close
 }
-# Space jumps and B pauses, in the window.
+# Space jumps, in the window. Modern has no pause in play: B does nothing there. Classic's B is in the turn runs below.
 $SPACE = @(0x20, 0x39); $PAUSE = @(0x42, 0x30)
 $s = Open "jump" $RUN_MODULE @("--place", "165.17,136.66,1.85,1.767")
 $floor = [double]$s.pcz
@@ -161,11 +163,9 @@ Report "Space jumps" ($top - $floor -gt 0.5 -and $top - $floor -lt 1.2) "$([Math
 Report "Space does not pause" ($after.paused -eq "false") "paused=$($after.paused)"
 Report "It comes down" ([Math]::Abs([double]$after.pcz - $floor) -lt 0.05 -and $after.air -eq "false") "z=$($after.pcz) air=$($after.air)"
 Key $PAUSE[0] $PAUSE[1]
-$s = WaitFor "paused" "true"
-Report "B pauses" ($s.paused -eq "true") "paused=$($s.paused)"
-Key $PAUSE[0] $PAUSE[1]
-$s = WaitFor "paused" "false"
-Report "B goes on" ($s.paused -eq "false") "paused=$($s.paused)"
+WaitSteps 30
+$s = State
+Report "Modern: B does not pause" ($s.paused -eq "false") "paused=$($s.paused)"
 FocusReport
 Close
 # The jump at a tenth of the speed, for pictures through it.
@@ -181,7 +181,7 @@ if ($Shots) {
 # Hold W and drag the camera a quarter turn right, with the look button: the path curves to the new way. Both modes.
 function Off($a, $b) { $d = [Math]::Abs($a - $b) % (2 * [Math]::PI); [Math]::Min($d, 2 * [Math]::PI - $d) }
 foreach ($mode in @("modern", "classic")) {
-  $extra = @("--place", "165.17,136.66,1.85,1.767"); if ($mode -eq "classic") { $extra += "--classic-movement" }
+  $extra = @("--place", "165.17,136.66,1.85,1.767", "--game-mode", $mode)
   $s = Open "turn_$mode" $RUN_MODULE $extra
   # The picture first: one can take a second or two, and the ground ends 20 m on.
   Shot "move_turn_before_${mode}_$tag"
@@ -230,6 +230,12 @@ foreach ($mode in @("modern", "classic")) {
     Report "classic: the run is today's" ([Math]::Abs($fastest - 5.4) -lt 0.6) "$([Math]::Round($fastest, 2)) m/s over the ground, want 5.4"
     $before = State; Down $CTRL; Start-Sleep -Milliseconds 80; Up $CTRL; WaitSteps 10; $after = State
     Report "classic: no roll" ($after.roll -ne "true") "roll=$($after.roll)"
+    Key $PAUSE[0] $PAUSE[1]
+    $s = WaitFor "paused" "true"
+    Report "classic: B pauses" ($s.paused -eq "true") "paused=$($s.paused)"
+    Key $PAUSE[0] $PAUSE[1]
+    $s = WaitFor "paused" "false"
+    Report "classic: B goes on" ($s.paused -eq "false") "paused=$($s.paused)"
   }
   FocusReport
   Close
