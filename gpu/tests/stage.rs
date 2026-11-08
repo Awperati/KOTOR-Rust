@@ -1826,7 +1826,9 @@ fn a_stored_weapon_hangs_at_its_holster() {
             for state in ["stored", "drawn"] {
                 if state == "drawn" {
                     s.game.hold_stance(pc);
-                    s.update(DT);
+                    for _ in 0..(0.3 / DT) as usize {
+                        s.update(DT);
+                    }
                 }
                 let at = s.game.world.object(pc).unwrap().position;
                 let heading = s.game.world.pc_mover.heading;
@@ -1864,8 +1866,52 @@ fn a_stored_weapon_hangs_at_its_holster() {
             continue;
         }
         s.game.hold_stance(pc);
-        s.update(DT);
+        for _ in 0..(0.3 / DT) as usize {
+            s.update(DT);
+        }
         assert_eq!(count(&mut s), before, "{item}: no holster in the hand");
         s.game.world.object_mut(pc).unwrap().equipped.remove(&4);
     }
+}
+
+/// Entering attack mode draws the weapon (the draw clip plays and the weapon is in the hand part way through), and leaving it
+/// holsters the same way (`docs/HOLSTERS.md`, stages 2 and 3).
+#[test]
+fn attack_mode_draws_and_holsters_the_weapon() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    let gun = s.game.world.spawn_item("g_w_blstrpstl001");
+    s.game.world.object_mut(pc).unwrap().equipped.insert(4, gun);
+    for _ in 0..4 {
+        s.update(DT);
+    }
+    assert!(!s.game.weapons_drawn(pc), "holstered out of a fight");
+    s.game.world.set_attack_mode(true);
+    s.update(DT);
+    assert!(
+        !s.game.weapons_drawn(pc),
+        "still in the holster as the draw begins"
+    );
+    assert_eq!(
+        s.game.clip(pc).map(|c| c.name),
+        Some("equip"),
+        "the draw clip plays"
+    );
+    let steps = (0.3 / DT) as usize;
+    for _ in 0..steps {
+        s.update(DT);
+    }
+    assert!(
+        s.game.weapons_drawn(pc),
+        "in the hand part way through the draw"
+    );
+    s.game.world.set_attack_mode(false);
+    // The stance from the fight holds a few seconds; wait it out, then the holster plays.
+    let mut left = 0;
+    while s.game.weapons_drawn(pc) && left < 3000 {
+        s.update(DT);
+        left += 1;
+    }
+    assert!(left < 3000, "the weapon goes back");
+    assert!(!s.game.weapons_drawn(pc));
 }

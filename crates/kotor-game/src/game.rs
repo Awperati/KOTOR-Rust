@@ -114,6 +114,11 @@ pub struct Game {
     scripted: HashMap<ObjId, &'static str>,
     /// Until what step a creature that fought keeps its combat stance.
     ready_until: HashMap<ObjId, u64>,
+    /// Whether a creature's weapons are in its hands (drawn) or on its body, and for how long it has been so: a draw or a holster
+    /// takes a moment, and the weapon changes place part way through (`docs/HOLSTERS.md`).
+    hand_state: HashMap<ObjId, (bool, f32)>,
+    /// The last step a creature wanted its weapons out: a fight that flickers (a target lost for a moment) does not holster.
+    wanted_at: HashMap<ObjId, u64>,
     log_seen: usize,
     /// The clip of a Modern chain of blows, and how fast it plays.
     blow_clip: Option<(&'static str, f32)>,
@@ -166,6 +171,13 @@ pub fn item_use_clip(label: &str) -> Option<(&'static str, f32)> {
 }
 const CAST_START_SECONDS: f32 = 0.333;
 const STANCE_HOLD_SECONDS: f32 = 3.5;
+/// The draw clip, and when in it the weapon is in the hand. The holster is the same clip, and the weapon leaves the hand at its
+/// `HOLSTER_HAND_UNTIL`.
+/// A weapon is put away this long after the wish for it ends.
+const HOLSTER_DELAY_SECONDS: f32 = 1.0;
+const DRAW_SECONDS: f32 = 0.5;
+const DRAW_HAND_AT: f32 = 0.2;
+const HOLSTER_HAND_UNTIL: f32 = 0.3;
 
 #[derive(Clone, Copy)]
 enum Move {
@@ -200,6 +212,8 @@ impl Game {
             once: HashMap::new(),
             knocked: Default::default(),
             ready_until: HashMap::new(),
+            hand_state: HashMap::new(),
+            wanted_at: HashMap::new(),
             scripted: HashMap::new(),
             log_seen: 0,
             blow_clip: None,
@@ -288,6 +302,7 @@ impl Game {
             } else if self.knocked.remove(&id) && !down {
                 self.play_once(id, "getupdead", GET_UP_SECONDS);
             }
+            self.track_draw(id, down || knocked);
             let mut moved = false;
             let mut ran = false;
             if let Some(l) = self.last_pos.insert(id, pos) {
@@ -643,11 +658,52 @@ impl Game {
         }
     }
 
-    /// Whether creature `id` has its weapons in its hands: it is in a fight, or its stance from the last one holds. Until the combat
-    /// mode flag is merged (`docs/HOLSTERS.md`, stage 3) this is the fight stance.
+    /// Whether creature `id` wants its weapons in its hands: it is in attack mode or a fight (the one flag of `stance.rs`), or its
+    /// stance from the last fight holds (Modern aim).
+    fn wants_weapons(&self, id: ObjId) -> bool {
+        self.world.in_attack_mode(id) || self.ready_until.get(&id).is_some_and(|u| *u > self.steps)
+    }
+
+    /// Draw and holster: when the wish changes, the draw clip plays and the weapon changes place part way through it. A creature
+    /// seen for the first time has it at once, and one that is down keeps what it had.
+    fn track_draw(&mut self, id: ObjId, down: bool) {
+        if self.wants_weapons(id) {
+            self.wanted_at.insert(id, self.steps);
+        }
+        let want = self
+            .wanted_at
+            .get(&id)
+            .is_some_and(|w| self.steps - w <= (HOLSTER_DELAY_SECONDS / self.dt) as u64);
+        let dt = self.dt;
+        let armed = self
+            .world
+            .object(id)
+            .is_some_and(|o| o.equipped.contains_key(&4) || o.equipped.contains_key(&5));
+        match self.hand_state.get(&id).copied() {
+            None => {
+                self.hand_state.insert(id, (want, 10.0));
+            }
+            // A creature that is down keeps what it had in its hands.
+            Some(_) if down => {}
+            Some((was, _)) if was != want => {
+                self.hand_state.insert(id, (want, 0.0));
+                if armed {
+                    self.play_once(id, "equip", DRAW_SECONDS);
+                }
+            }
+            Some((was, t)) => {
+                self.hand_state.insert(id, (was, t + dt));
+            }
+        }
+    }
+
+    /// Whether creature `id` has its weapons in its hands right now, part way through a draw or a holster included.
     pub fn weapons_drawn(&self, id: ObjId) -> bool {
-        self.ready_until.get(&id).is_some_and(|u| *u > self.steps)
-            || self.world.combat.target.contains_key(&id)
+        match self.hand_state.get(&id) {
+            Some((true, t)) => *t >= DRAW_HAND_AT,
+            Some((false, t)) => *t < HOLSTER_HAND_UNTIL,
+            None => self.wants_weapons(id),
+        }
     }
 
     /// The clip an object is playing right now.
