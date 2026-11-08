@@ -338,12 +338,11 @@ impl Stage {
             && (looking || self.aiming() || self.turret_on() || (free && self.mouse_looks()))
     }
 
-    /// Modern mode, the Single Player choice: Modern movement and Modern combat both, as the menus builder's `GameMode`
-    /// bridge has it until the world's own flag is on master. Classic is the game as it was: tank controls, its pauses.
+    /// Modern mode, the Single Player choice the world keeps. Classic is the game as it was: tank controls, its pauses.
     /// The owner: "Modern mode does not feature pauseable gameplay, the only way you can pause in singeplayer on modern is
-    /// by pressing the escape key".
+    /// by pressing the escape key". A scripted player keeps the game's own pauses.
     pub fn modern_mode(&self) -> bool {
-        self.modern_combat()
+        self.game_mode() == kotor_game::GameMode::Modern && self.pilot.is_none()
     }
 
     /// The mouse turns the camera by itself: Modern mode, with Caps Lock not giving the cursor back, in play.
