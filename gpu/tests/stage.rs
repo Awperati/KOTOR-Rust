@@ -1707,6 +1707,8 @@ fn a_creature_that_dies_keeps_the_armour_it_was_drawn_in() {
     else {
         return;
     };
+    let at = s.game.world.object(pc).unwrap().position;
+    s.game.world.teleport(npc, [at[0] + 1.5, at[1], at[2]]);
     s.game.world.object_mut(npc).unwrap().appearance = 137;
     let it = s.game.world.spawn_item("g_a_class8001");
     s.game.world.object_mut(npc).unwrap().feats.extend(0..300);
@@ -1715,10 +1717,11 @@ fn a_creature_that_dies_keeps_the_armour_it_was_drawn_in() {
         for _ in 0..4 {
             s.update(DT);
         }
-        s.dynamic_scene()
-            .meshes
-            .iter()
-            .any(|m| m.texture.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("PMBG01")))
+        s.dynamic_scene().meshes.iter().any(|m| {
+            m.texture
+                .as_deref()
+                .is_some_and(|t| t.eq_ignore_ascii_case("PMBG01"))
+        })
     };
     assert!(armoured(&mut s), "alive, in the armour");
     let hp = s.game.world.object(npc).unwrap().hp.max(1);
@@ -1728,6 +1731,25 @@ fn a_creature_that_dies_keeps_the_armour_it_was_drawn_in() {
         s.game.world.object(npc).unwrap().equipped.is_empty(),
         "the armour is on the remains, not on the body"
     );
+    // FRAME_OUT: the creature as it lies, beside the frame of the same with the fix off (git stash it), for a look.
+    if let Ok(path) = std::env::var("FRAME_OUT") {
+        s.set_view((800, 600));
+        for _ in 0..60 {
+            s.update(DT);
+        }
+        let at = s.game.world.object(npc).unwrap().position;
+        let cam = kotor_render::Camera {
+            eye: [at[0] + 2.2, at[1] - 1.2, at[2] + 1.4],
+            target: [at[0], at[1], at[2] + 0.2],
+            fov: 40.0,
+        };
+        let mut gpu = GpuRenderer::new(800, 600).unwrap();
+        let still = s.static_scene().clone();
+        gpu.set_static_scene(&still, &mut |n| s.texture(n));
+        let moving = s.dynamic_scene();
+        let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+        std::fs::write(path, kotor_image::to_png(&img)).unwrap();
+    }
     assert!(armoured(&mut s), "dead, still in the armour");
 }
 
