@@ -1993,3 +1993,27 @@ fn a_soldier_draws_its_weapon_when_a_fight_starts() {
     assert!(reached, "the soldier's hand reaches for its weapon");
     assert!(s.game.weapon_ready(foe));
 }
+
+/// How long a frame's scene step takes in a busy area (`cargo test --test stage skinning_cost -- --nocapture`): printed, and held
+/// to a loose limit. Bodies far from the eye or behind the camera are skinned less often or not at all.
+#[test]
+fn skinning_cost_of_a_busy_area_stays_small() {
+    let Some(mut s) = stage() else { return };
+    for _ in 0..60 {
+        s.update(DT);
+    }
+    let mut times: Vec<f64> = Vec::new();
+    for _ in 0..120 {
+        s.update(DT);
+        let t = std::time::Instant::now();
+        let scene = s.dynamic_scene();
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+        std::hint::black_box(scene.meshes.len());
+    }
+    times.sort_by(|a, b| a.total_cmp(b));
+    eprintln!(
+        "scene step: median {:.2} ms, worst {:.2} ms",
+        times[times.len() / 2],
+        times[times.len() - 1]
+    );
+}

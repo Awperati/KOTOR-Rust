@@ -179,6 +179,16 @@ fn placement_flat(p: [f32; 3], angle: f32, over: f32) -> Mat {
 /// How long a body with no death clip takes to fall back, in seconds.
 const FALL_SECONDS: f32 = 0.5;
 
+/// A creature beyond this many metres of the eye is skinned at `FAR_RATE` poses a second, and one behind the camera not at all.
+const FAR_FROM_EYE: f32 = 12.0;
+const FAR_RATE: f32 = 10.0;
+/// From `MID_FROM_EYE` metres it is skinned at `MID_RATE` a second.
+const MID_FROM_EYE: f32 = 6.0;
+const MID_RATE: f32 = 20.0;
+/// Past this far off the camera's axis (cosine of 75 degrees), and more than `BEHIND_FROM` metres away, a body is out of the view.
+const BEHIND_COS: f32 = 0.26;
+const BEHIND_FROM: f32 = 4.0;
+
 /// Steps of `Stage::voice_energy` in a second.
 const VOICE_RATE: f32 = kotor_render::VOICE_STEPS;
 
@@ -630,6 +640,8 @@ pub struct Stage {
     idle_clock: f32,
     /// For a frame or a test: hold every reach at this far (0 to 1) instead of the draw's own.
     pub reach_hold: Option<f32>,
+    /// The last skinned body of each creature far from the eye, and what it was skinned for: it is reused until that changes.
+    far_bodies: HashMap<ObjId, (u64, Vec<kotor_render::SceneMesh>)>,
     /// The `name` of each row of `dialoganimations.2da`.
     dialogue_labels: Vec<String>,
     models: HashMap<String, Option<Rc<Model>>>,
@@ -817,6 +829,7 @@ impl Stage {
             stunts: Vec::new(),
             idle_clock: 0.0,
             reach_hold: None,
+            far_bodies: HashMap::new(),
             dialogue_labels: Vec::new(),
             models: HashMap::new(),
             fixed_cameras: HashMap::new(),
@@ -3547,7 +3560,17 @@ impl Stage {
         }
         let here = self.pc_position();
         // A shot of someone far from the player (Carth on the comm) is a view from beside them.
-        let eye = self.camera().eye;
+        let cam = self.camera();
+        let eye = cam.eye;
+        let look = {
+            let d = [
+                cam.target[0] - eye[0],
+                cam.target[1] - eye[1],
+                cam.target[2] - eye[2],
+            ];
+            let n = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-6);
+            [d[0] / n, d[1] / n, d[2] / n]
+        };
         let talking = self.game.world.dialogue_pair();
         // The area seen through a doorway stands where some of this one's doors and creatures stand: they are not drawn
         // there, or a door shows in the other area with none of its wall.
@@ -3592,6 +3615,25 @@ impl Stage {
                     if fade >= 1.0 {
                         continue;
                     }
+                    let near_the_action = pose.id == own
+                        || in_the_talk
+                        || self.game.world.party.contains(&pose.id)
+                        || self.forced_clip.is_some_and(|(f, _)| f == pose.id);
+                    // Behind the camera, well off its axis: not in the picture, so not skinned.
+                    if !near_the_action {
+                        let d = [
+                            pose.position[0] - eye[0],
+                            pose.position[1] - eye[1],
+                            pose.position[2] + 1.0 - eye[2],
+                        ];
+                        let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                        if len > BEHIND_FROM {
+                            let dot = d[0] * look[0] + d[1] * look[1] + d[2] * look[2];
+                            if dot / len < BEHIND_COS {
+                                continue;
+                            }
+                        }
+                    }
                     let Some(rig) = self.rig_of(pose.id) else {
                         continue;
                     };
@@ -3618,6 +3660,42 @@ impl Stage {
                         _ => self.dialogue_clip(pose.id).or_else(|| pose.clip.clone()),
                     };
                     let start = scene.meshes.len();
+                    // A body away from the eye, standing or walking on its own, is skinned at a twentieth or a tenth of a second and kept between.
+                    let far_key = (!near_the_action
+                        && from(eye) > MID_FROM_EYE
+                        && clip.as_ref().is_some_and(|c| c.fade.is_none())
+                        && self.game.draw_progress(pose.id).is_none()
+                        && self.game.shot_age(pose.id).is_none())
+                    .then(|| {
+                        use std::hash::{Hash, Hasher};
+                        let c = clip.as_ref().unwrap();
+                        let mut h = std::collections::hash_map::DefaultHasher::new();
+                        let rate = if from(eye) > FAR_FROM_EYE {
+                            FAR_RATE
+                        } else {
+                            MID_RATE
+                        };
+                        (pose.id, c.name, (c.time * rate) as i64).hash(&mut h);
+                        pose.position.map(f32::to_bits).hash(&mut h);
+                        pose.heading.to_bits().hash(&mut h);
+                        (Rc::as_ptr(&rig) as usize).hash(&mut h);
+                        underwear.hash(&mut h);
+                        for (node, item) in &hands {
+                            (node, Rc::as_ptr(item) as usize).hash(&mut h);
+                        }
+                        h.finish()
+                    });
+                    if let Some(key) = far_key {
+                        if let Some((k, meshes)) = self.far_bodies.get(&pose.id) {
+                            if *k == key {
+                                scene.meshes.extend(meshes.iter().cloned().map(|mut m| {
+                                    m.fade = fade;
+                                    m
+                                }));
+                                continue;
+                            }
+                        }
+                    }
                     if self.add_bent_body(
                         &mut scene,
                         pose.id,
@@ -3656,6 +3734,10 @@ impl Stage {
                     );
                     scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                     self.grow_to_height(&mut scene, start, pose.id, pose.position);
+                    if let Some(key) = far_key {
+                        self.far_bodies
+                            .insert(pose.id, (key, scene.meshes[start..].to_vec()));
+                    }
                 }
                 Kind::Placeable => {
                     let Some(body) = self.chest_body(pose.id) else {
