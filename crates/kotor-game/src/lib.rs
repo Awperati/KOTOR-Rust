@@ -34,7 +34,9 @@ mod slots;
 mod soundset;
 pub use medication::{MedicationTable, Sickness, UseOutcome, UseRequest};
 mod stance;
-pub use detection::DetectionMark;
+pub use detection::{
+    DetectionMark, NOISE_FIGHT, NOISE_RUN, NOISE_STEALTH, NOISE_STILL, NOISE_WALK,
+};
 mod story_branches;
 pub use story_branches::{
     StoryState, ABANDONED_CLIP, BANDON_BLOWS, BANDON_FULL_HEALTH, BANDON_HEALTH, STORY_POINTS,

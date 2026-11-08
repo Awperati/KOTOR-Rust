@@ -101,3 +101,30 @@ fn attack_mode_goes_off_ten_seconds_after_the_last_enemy_has_lost_them() {
     run(&mut w, 6.0);
     assert!(w.attack_mode(), "seen again: the count stood still");
 }
+
+#[test]
+fn the_party_is_louder_running_and_fighting_and_quieter_still_or_in_stealth() {
+    let Some((mut w, foe)) = scene() else { return };
+    w.combat.target.clear();
+    let still = w.noise_rate();
+    assert_eq!(still, kotor_game::NOISE_STILL, "standing still is quiet");
+    w.pc_body.vel = [kotor_game::RUN_SPEED, 0.0];
+    let run = w.noise_rate();
+    assert_eq!(run, kotor_game::NOISE_RUN);
+    w.pc_body.vel = [1.5, 0.0];
+    assert_eq!(w.noise_rate(), kotor_game::NOISE_WALK);
+    w.stealth_mode = true;
+    assert_eq!(
+        w.noise_rate(),
+        kotor_game::NOISE_WALK * kotor_game::NOISE_STEALTH
+    );
+    w.stealth_mode = false;
+    let pc = w.pc;
+    w.combat.target.insert(foe, pc);
+    assert_eq!(
+        w.noise_rate(),
+        kotor_game::NOISE_FIGHT,
+        "a fight is loudest"
+    );
+    assert!(still < run && run < kotor_game::NOISE_FIGHT);
+}

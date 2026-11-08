@@ -28,5 +28,5 @@ Attack mode goes off by itself (with Auto attack mode on) only when nobody is fi
 
 - The game's AI is not slowed by the number: an enemy that perceives the party reacts at once, as it always did. So the bar mostly
   fills while it is already coming.
-- Light and sound do not change the rate. The game has no rule for either in noticing.
+- **Sound** scales the fill rate: standing still x0.7, walking x1, running x1.3, rolling x1.6, a fight x1.8, and Stealth mode halves it. The numbers are mine (`NOISE_*` in detection.rs). **Light** has no factor: the files give no light level for a place.
 - The sizes, colours and the 8 are mine. The owner gave none.
