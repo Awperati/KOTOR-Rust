@@ -6756,7 +6756,10 @@ fn auto_attack_mode_has_a_switch_and_an_automatic_mode_goes_off_after_the_fight(
     for _ in 0..30 {
         s.update(DT);
     }
-    assert!(s.game.world.attack_mode(), "a fight turns it on all the same");
+    assert!(
+        s.game.world.attack_mode(),
+        "a fight turns it on all the same"
+    );
     assert!(s.game.world.in_attack_mode(pc));
     // With the switch off it is not turned off by itself.
     s.game.world.object_mut(foe).unwrap().dead = true;
