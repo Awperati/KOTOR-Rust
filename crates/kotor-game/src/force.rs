@@ -471,8 +471,9 @@ impl World {
                 return Err("out of range".into());
             }
         }
-        // The player's own: under a stronger power of its line the power's script puts nothing on, so nothing is paid.
-        if !cheat && caster == self.pc {
+        // The player's own on themselves: under a stronger power of its line the power's script puts nothing on, so nothing is
+        // paid. Measured for powers on the caster only: what a power on an enemy does under another is not looked at.
+        if !cheat && caster == self.pc && target == caster {
             if let Some(on) = self.stronger_on(target, spell) {
                 return Err(format!("power {on}, a stronger one, is on"));
             }
