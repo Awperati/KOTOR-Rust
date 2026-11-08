@@ -2017,3 +2017,44 @@ fn skinning_cost_of_a_busy_area_stays_small() {
         times[times.len() - 1]
     );
 }
+
+/// The owner, 8 Nov: "Carth isnt speaking and is still displaying facial animations". A line with no voice clip (a hint, the
+/// narrator, a voice this install lacks) moves no mouth and starts no talk gesture: nobody's `mouth_of` is set, and the speaker does not
+/// play the talk clip.
+#[test]
+fn a_line_with_no_voice_moves_no_mouth() {
+    let Some(mut s) = stage() else { return };
+    let (mut silent, mut voiced) = (0, 0);
+    for f in 0..3000 {
+        s.update(DT);
+        let w = &s.game.world;
+        if f > 30 && w.in_dialogue() {
+            let ids: Vec<_> = w
+                .objects
+                .values()
+                .filter(|o| o.kind == kotor_game::Kind::Creature)
+                .map(|o| o.id)
+                .collect();
+            if s.line_has_voice() {
+                voiced += 1;
+            } else {
+                silent += 1;
+                for id in ids {
+                    assert!(
+                        s.mouth_of(id).is_none(),
+                        "a silent line moves a mouth (frame {f})"
+                    );
+                    assert_ne!(
+                        s.dialogue_clip(id).map(|c| c.name),
+                        Some("tlknorm"),
+                        "and starts a talk gesture (frame {f})"
+                    );
+                }
+            }
+            if f % 15 == 0 {
+                s.game.world.dialogue_choose(0);
+            }
+        }
+    }
+    eprintln!("silent frames {silent}, voiced frames {voiced}");
+}

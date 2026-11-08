@@ -189,6 +189,41 @@ const MID_RATE: f32 = 20.0;
 const BEHIND_COS: f32 = 0.26;
 const BEHIND_FROM: f32 = 4.0;
 
+/// The `.lip` keys of a voice clip, from the install's `lips` folder (one ERF for each module, and `global.mod`): empty if it has none.
+fn lip_of(resref: &str) -> Vec<(f32, u8)> {
+    use std::sync::OnceLock;
+    static INDEX: OnceLock<std::collections::HashMap<String, std::path::PathBuf>> = OnceLock::new();
+    let index = INDEX.get_or_init(|| {
+        let mut all = std::collections::HashMap::new();
+        let Some(dir) = kotor_core::install_dir() else {
+            return all;
+        };
+        let mut files: Vec<_> = std::fs::read_dir(dir.join("lips"))
+            .map(|d| d.filter_map(|e| e.ok().map(|e| e.path())).collect())
+            .unwrap_or_default();
+        files.sort();
+        for f in files {
+            if let Ok(erf) = kotor_archive::Erf::open(kotor_archive::Source::file(f.clone())) {
+                for e in erf
+                    .entries
+                    .iter()
+                    .filter(|e| e.restype == kotor_core::ResType(3004))
+                {
+                    all.entry(e.resref.as_str().to_ascii_lowercase())
+                        .or_insert_with(|| f.clone());
+                }
+            }
+        }
+        all
+    });
+    index
+        .get(&resref.to_ascii_lowercase())
+        .and_then(|f| kotor_archive::Erf::open(kotor_archive::Source::file(f.clone())).ok())
+        .and_then(|erf| erf.get(resref, kotor_core::ResType(3004)).ok())
+        .map(|b| kotor_render::parse_lip(&b))
+        .unwrap_or_default()
+}
+
 /// Steps of `Stage::voice_energy` in a second.
 const VOICE_RATE: f32 = kotor_render::VOICE_STEPS;
 
@@ -629,6 +664,9 @@ pub struct Stage {
     /// How loud the voice of the line on now is, in 50ths of a second from 0 to 1: what opens the speaker's mouth. Empty for a
     /// line with no voice, which is then spoken by its length alone.
     voice_energy: Vec<f32>,
+    /// The line's `.lip` keys (time, shape), empty when it has none, and whether it has a voice clip that plays at all.
+    lip: Vec<(f32, u8)>,
+    line_voiced: bool,
     /// Voice lines whose files the install does not have, said once each.
     voice_missing: std::collections::HashSet<String>,
     /// A creature held in one clip for a look at it (`force_clip`), and the clip's name.
@@ -823,6 +861,8 @@ impl Stage {
             beat: None,
             beat_time: 0.0,
             voice_energy: Vec::new(),
+            lip: Vec::new(),
+            line_voiced: false,
             voice_missing: Default::default(),
             forced_clip: None,
             camera_model: String::new(),
@@ -1385,10 +1425,14 @@ impl Stage {
             });
             self.beat = self.game.world.dialogue_beat();
             self.beat_time = 0.0;
-            self.voice_energy = self
-                .sound_file(&vo)
-                .map(|p| voice_energy(&p))
-                .unwrap_or_default();
+            let voice = self.sound_file(&vo);
+            self.line_voiced = voice.is_some();
+            self.voice_energy = voice.map(|p| voice_energy(&p)).unwrap_or_default();
+            self.lip = if self.line_voiced {
+                lip_of(&vo)
+            } else {
+                Vec::new()
+            };
             if let Some(c) = self.game.world.dialogue_conversation() {
                 self.camera_model = c.camera_model;
                 self.stunts = c.stunts;
@@ -1486,6 +1530,11 @@ impl Stage {
         self.forced_at = self.idle_clock;
     }
 
+    /// Whether the line on now has a voice clip that plays: the hint, the narrator and a line whose voice this install lacks do not.
+    pub fn line_has_voice(&self) -> bool {
+        self.line_voiced
+    }
+
     /// How far the mouth of creature `id` is open while it says the line on now, from 0 to 1, with the clock of its talking
     /// loop: `None` when it is not the speaker, or the line is said. It follows the voice's loudness, and a line with no voice
     /// is spoken at an even pace for its length.
@@ -1499,9 +1548,24 @@ impl Stage {
         } else {
             o.tag.eq_ignore_ascii_case(&speaker)
         };
-        let said = self.beat.as_ref().map_or(0.0, |b| b.length);
-        if !says || self.beat_time >= said {
+        // A line nobody can hear (a hint, the narrator, a voice this install lacks) moves no mouth.
+        if !says || !self.line_voiced {
             return None;
+        }
+        // The voice clip's own length, when it is known: the mouth shuts when the clip ends.
+        let mut said = self.beat.as_ref().map_or(0.0, |b| b.length);
+        if !self.voice_energy.is_empty() {
+            said = said.min(self.voice_energy.len() as f32 / VOICE_RATE);
+        }
+        if self.beat_time >= said {
+            return None;
+        }
+        if !self.lip.is_empty() {
+            return Some(kotor_render::mouth_from_lip(
+                &self.lip,
+                self.beat_time,
+                said,
+            ));
         }
         Some(kotor_render::mouth_at(
             &self.voice_energy,
@@ -1593,7 +1657,7 @@ impl Stage {
         });
         let name = named.or_else(|| {
             let says = w.dialogue_pair().is_some_and(|(speaker, _)| speaker == id);
-            if says && id != w.pc && !self.answering() {
+            if says && id != w.pc && !self.answering() && self.line_voiced {
                 Some("tlknorm")
             } else if id == w.pc {
                 Some("listen")

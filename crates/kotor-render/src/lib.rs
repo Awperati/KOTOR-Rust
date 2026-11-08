@@ -18,8 +18,9 @@ pub mod underwear;
 mod walk;
 
 pub use character::{
-    load_character, load_character_with, load_creature, mouth_at, rig_for_appearance,
-    rig_for_outfit, rig_for_outfit_with_head, rig_for_race_body, Rig, MOUTH_RATE, VOICE_STEPS,
+    load_character, load_character_with, load_creature, mouth_at, mouth_from_lip, parse_lip,
+    rig_for_appearance, rig_for_outfit, rig_for_outfit_with_head, rig_for_race_body, Rig,
+    LIP_SHAPE_OPEN, MOUTH_RATE, TALK_PEAK, VOICE_STEPS,
 };
 pub use objects::{
     add_area_creatures, add_area_objects, add_area_objects_except, add_area_objects_with,

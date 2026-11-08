@@ -54,6 +54,52 @@ pub struct Rig {
 /// second. The clip is played at this share of its own speed, so that the mouth follows the voice: 4 to 5.5 times a second.
 pub const MOUTH_RATE: f32 = 0.3;
 
+/// The `.lip` file of a voice clip: `LIP V1.0`, its length, and the shape (0 to 15) the mouth takes from each time on. Empty if the
+/// bytes are not one.
+pub fn parse_lip(b: &[u8]) -> Vec<(f32, u8)> {
+    if b.len() < 16 || &b[..8] != b"LIP V1.0" {
+        return Vec::new();
+    }
+    let n = u32::from_le_bytes([b[12], b[13], b[14], b[15]]) as usize;
+    (0..n)
+        .filter_map(|k| {
+            let o = 16 + k * 5;
+            let t = f32::from_le_bytes(b.get(o..o + 4)?.try_into().ok()?);
+            Some((t, *b.get(o + 4)?))
+        })
+        .collect()
+}
+
+/// How far the jaw opens for each of a `.lip` file's 16 shapes, in the `talk` loop's own range (1 is its widest opening, 0.10 s into
+/// the loop). **The game's files give the shapes and no table of what they do to the face**, so this is assumed from their names:
+/// 0 neutral, 1 EE, 2 EH, 3 schwa, 4 AH, 5 OH, 6 OOH, 7 Y, 8 S/T/S, 9 F/V, 10 NG, 11 TH, 12 M/P/B, 13 T/D, 14 SH, 15 L.
+pub const LIP_SHAPE_OPEN: [f32; 16] = [
+    0.0, 0.5, 0.8, 0.7, 1.5, 1.0, 0.6, 0.5, 0.3, 0.2, 0.4, 0.5, 0.0, 0.5, 0.5, 0.6,
+];
+
+/// Where in the `talk` loop the jaw is widest, in seconds.
+pub const TALK_PEAK: f32 = 0.10;
+
+/// How far the mouth is open at `t` seconds into a voice clip, and the clock of the `talk` loop to pose it with, from the clip's
+/// `.lip` keys: the opening eases from each key's shape to the next, and the mouth shuts after the last key and in the first 0.04 s.
+/// `said` is the clip's length in seconds.
+pub fn mouth_from_lip(keys: &[(f32, u8)], t: f32, said: f32) -> (f32, f32) {
+    let open_of = |k: usize| LIP_SHAPE_OPEN[(keys[k].1 as usize).min(15)];
+    let open = match keys.iter().rposition(|k| k.0 <= t) {
+        None => 0.0,
+        Some(i) if i + 1 >= keys.len() => open_of(i),
+        Some(i) => {
+            let span = (keys[i + 1].0 - keys[i].0).max(1e-4);
+            let f = ((t - keys[i].0) / span).clamp(0.0, 1.0);
+            // The mouth moves to the next shape in the first part of the gap and holds it: lips are quick.
+            let f = (f * 2.0).min(1.0);
+            open_of(i) + (open_of(i + 1) - open_of(i)) * f
+        }
+    };
+    let edge = (t / 0.04).min((said - t) / 0.04).clamp(0.0, 1.0);
+    (open * edge, TALK_PEAK)
+}
+
 /// Steps of a voice's loudness in a second (see `mouth_at`).
 pub const VOICE_STEPS: f32 = 50.0;
 
@@ -253,6 +299,17 @@ impl Rig {
                 .or_else(|| has("cvictory")),
             _ => None,
         }
+    }
+
+    /// The names of the head's own nodes, sorted: what a face is made of.
+    pub fn head_node_names(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .head
+            .as_ref()
+            .map(|h| h.bind_pose().keys().cloned().collect())
+            .unwrap_or_default();
+        v.sort();
+        v
     }
 
     /// Every animation the body and its supermodels carry, nearest first.

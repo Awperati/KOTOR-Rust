@@ -75,3 +75,41 @@ fn a_fast_speaker_turns_the_mouth_faster_than_a_slow_one() {
     assert!(b > a * 1.7 && b < a * 2.3, "slow {a}, fast {b}");
     assert!(a > 0.0);
 }
+
+/// The mouth of a voice clip follows its `.lip` file: shut before the first key and after the last, wide on an AH, shut on an M.
+#[test]
+fn the_mouth_follows_the_lip_keys() {
+    use kotor_render::{mouth_from_lip, parse_lip};
+    // Two keys' worth of a file: neutral, AH at 0.2 s, MPB at 0.5 s, neutral at 0.8 s.
+    let mut b = b"LIP V1.0".to_vec();
+    b.extend_from_slice(&0.8f32.to_le_bytes());
+    b.extend_from_slice(&4u32.to_le_bytes());
+    for (t, s) in [(0.0f32, 0u8), (0.2, 4), (0.5, 12), (0.8, 0)] {
+        b.extend_from_slice(&t.to_le_bytes());
+        b.push(s);
+    }
+    let keys = parse_lip(&b);
+    assert_eq!(keys.len(), 4);
+    let open = |t: f32| mouth_from_lip(&keys, t, 0.8).0;
+    assert!(open(0.0) < 0.01, "shut at the start");
+    assert!(open(0.22) > 1.0, "wide on the AH");
+    assert!(open(0.55) < 0.05, "shut on the M");
+    assert!(open(0.79) < 0.1, "shut at the end");
+    assert!(parse_lip(b"not a lip file at all").is_empty());
+    // A real file of the install, if there is one: ordered keys within the clip's length.
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let erf = kotor_archive::Erf::open(kotor_archive::Source::file(
+        dir.join("lips").join("end_m01aa_loc.mod"),
+    ));
+    if let Ok(erf) = erf {
+        let e = erf
+            .entries
+            .iter()
+            .find(|e| e.restype == kotor_core::ResType(3004))
+            .unwrap();
+        let k = parse_lip(&erf.read(e).unwrap());
+        assert!(k.len() > 2 && k.windows(2).all(|w| w[0].0 <= w[1].0));
+    }
+}
