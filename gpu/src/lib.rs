@@ -244,6 +244,19 @@ const APERTURE_WAY_THROUGH: f32 = 1.0;
 /// How far beside the opening still counts as going through it, in metres, as the crossing has it.
 const APERTURE_EDGE: f32 = 0.5;
 
+/// A lift ride's picture: the area the party leaves slides one way and the one it arrives in comes in from the other, the
+/// camera held. The doorway's portal holds the arrival area; this cuts both at one height.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiftView {
+    /// How far each picture has slid up, in metres: the one left (the world's), and the one arriving (the portal's).
+    pub left_up: f32,
+    pub arriving_up: f32,
+    /// The height, in the camera's own frame, below which the arriving area is drawn and above which the left one is.
+    pub boundary: f32,
+    /// The arriving area is above the boundary, not below it: a ride up.
+    pub arriving_above: bool,
+}
+
 struct Portal {
     draws: Vec<Draw>,
     /// What moves in it, drawn afresh each frame.
@@ -819,6 +832,8 @@ pub struct GpuRenderer {
     static_draws: Vec<Draw>,
     /// Another area seen through a doorway.
     portal: Option<Portal>,
+    /// A lift ride, drawn with the portal: see `LiftView`.
+    lift_view: Option<LiftView>,
     /// Draw only what each frame passes in: a figure on a screen.
     figure_only: bool,
     /// Cel shading: 0 off, 1 subtle, 2 strong. The moving meshes get a thin dark outline from the second pipeline.
@@ -1035,6 +1050,7 @@ impl GpuRenderer {
             tex_cache: HashMap::new(),
             static_draws: Vec::new(),
             portal: None,
+            lift_view: None,
             figure_only: false,
             cel: 0,
             outline_pipeline,
@@ -1223,6 +1239,11 @@ impl GpuRenderer {
             moving: Vec::new(),
             aperture,
         });
+    }
+
+    /// Draw the portal's area as a lift ride's arrival, or go back to the doorway's view with `None`.
+    pub fn set_lift_view(&mut self, view: Option<LiftView>) {
+        self.lift_view = view;
     }
 
     /// What moves in the area seen through the doorway, for the frames from now on: the creatures standing in it.
@@ -1450,8 +1471,48 @@ impl GpuRenderer {
         });
         let draws = self.build_draws(scene, textures);
         // Binds 1 and 2 cut a doorway view out of one picture and keep nothing else of the other.
+        let lift = self
+            .lift_view
+            .filter(|_| self.portal.is_some() && !self.figure_only);
         let (portal_binds, on_world_side): (Option<[wgpu::BindGroup; 2]>, bool) =
             match (&self.portal, self.figure_only) {
+                (Some(_), false) if lift.is_some() => {
+                    let lv = lift.unwrap();
+                    let make = |mode: f32, up: f32| {
+                        let mut planes = [[0.0, 0.0, 0.0, 1.0]; 5];
+                        planes[0] = if lv.arriving_above {
+                            [0.0, 0.0, 1.0, up - lv.boundary]
+                        } else {
+                            [0.0, 0.0, -1.0, lv.boundary - up]
+                        };
+                        let g = Globals {
+                            view_proj: (proj * view * Mat4::from_translation(Vec3::Z * up))
+                                .to_cols_array_2d(),
+                            planes,
+                            mode: [mode, globals.mode[1], globals.mode[2], globals.mode[3]],
+                            ..globals
+                        };
+                        let buf =
+                            self.device
+                                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                    label: Some("lift globals"),
+                                    contents: bytemuck::bytes_of(&g),
+                                    usage: wgpu::BufferUsages::UNIFORM,
+                                });
+                        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("lift globals"),
+                            layout: &self.globals_layout,
+                            entries: &[wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: buf.as_entire_binding(),
+                            }],
+                        })
+                    };
+                    (
+                        Some([make(1.0, lv.left_up), make(2.0, lv.arriving_up)]),
+                        true,
+                    )
+                }
                 (Some(p), false) if p.aperture.in_the_picture(eye, Vec3::from(cam.target)) => {
                     let (planes, on_world_side) = p.aperture.planes(eye);
                     let make = |mode: f32| {

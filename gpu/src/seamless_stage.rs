@@ -176,6 +176,8 @@ pub(super) struct Preloaded {
     talk: Option<[f32; 3]>,
     /// The bodies of its creatures, built on the thread.
     rigs: Vec<RigEntry>,
+    /// Its waypoints by lower-case tag: where, and facing which way in radians. A lift ride lines its arrival up by one.
+    waypoints: std::collections::BTreeMap<String, ([f32; 3], f32)>,
 }
 
 /// The text constants of a compiled script: an instruction `CONST string` is `04 05`, a length of two bytes and the text.
@@ -342,6 +344,36 @@ impl Stage {
         self.seam.portal.as_ref().map(|(s, a)| (s, *a))
     }
 
+    /// The picture of a module loaded ahead, in its own space, for a lift ride to arrive in, and where its waypoint is.
+    pub(super) fn lift_arrival(
+        &self,
+        module: &str,
+        waypoint: &str,
+    ) -> Option<(Scene, [f32; 3], f32)> {
+        let p = self
+            .seam
+            .pre
+            .as_ref()
+            .filter(|p| p.module.eq_ignore_ascii_case(module))?;
+        let (at, face) = *p.waypoints.get(&waypoint.to_ascii_lowercase())?;
+        Some((p.scene.clone(), at, face))
+    }
+
+    /// Show `scene` as the area a lift ride is arriving in, or nothing.
+    pub(super) fn lift_set_arrival(&mut self, scene: Option<Scene>) {
+        self.seam.portal = scene.map(|s| {
+            (
+                s,
+                Aperture {
+                    at: [0.0; 3],
+                    out: 0.0,
+                    half: 0.1,
+                },
+            )
+        });
+        self.seam.portal_version += 1;
+    }
+
     /// Goes up whenever `portal` changes.
     pub fn portal_version(&self) -> u64 {
         self.seam.portal_version
@@ -505,12 +537,23 @@ impl Stage {
                     )
                     .ok()?;
                     // The creatures' bodies and their textures too, which the stage would otherwise build on the main thread.
-                    let rigs = Install::open(&dir)
+                    let (rigs, waypoints) = Install::open(&dir)
                         .ok()
                         .and_then(|i| kotor_game::World::new(i).ok())
                         .and_then(|mut w| {
                             w.load_module(&name).ok()?;
-                            Some(prepare_rigs(&mut inst, &w.scenery()))
+                            let waypoints = w
+                                .objects
+                                .values()
+                                .filter(|o| o.kind == Kind::Waypoint)
+                                .map(|o| {
+                                    (
+                                        o.tag.to_ascii_lowercase(),
+                                        (o.position, o.facing.to_radians()),
+                                    )
+                                })
+                                .collect();
+                            Some((prepare_rigs(&mut inst, &w.scenery()), waypoints))
                         })
                         .unwrap_or_default();
                     let mut names = texture_names(&scene);
@@ -541,6 +584,7 @@ impl Stage {
                             chests,
                             talk: talk.is_some().then_some(here),
                             rigs,
+                            waypoints,
                         },
                         images,
                     ))

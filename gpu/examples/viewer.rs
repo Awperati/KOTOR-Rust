@@ -532,6 +532,7 @@ impl App {
         if self.frames.is_multiple_of(self.render_every) {
             let (scene, cam, figure) = stage.frame_scene();
             st.gpu.set_figure_only(figure);
+            st.gpu.set_lift_view(stage.lift_view());
             // Idle bodies seen through a doorway move at 20 frames a second: nobody can tell, and each costs a rebuild.
             if !figure && self.frames.is_multiple_of(3) && stage.portal().is_some() {
                 let moving = stage.portal_figures();
