@@ -4602,6 +4602,8 @@ impl Stage {
         let o = w.object(id)?;
         let name = if o.name.is_empty() {
             o.tag.clone()
+        } else if nameplates::nameless_door(o) {
+            String::new()
         } else {
             o.name.clone()
         };

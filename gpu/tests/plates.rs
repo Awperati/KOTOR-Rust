@@ -472,6 +472,42 @@ fn plates_stack_and_stay_out_of_menus() {
 }
 
 #[test]
+fn a_door_still_named_static_has_no_plate() {
+    let Some(mut s) = stage("static", "door_labels=true\n") else {
+        return;
+    };
+    let w = &mut s.game.world;
+    let ids: Vec<ObjId> = w.objects.keys().copied().collect();
+    let Some(door) = ids
+        .iter()
+        .copied()
+        .find(|id| w.object_label(*id) == Some(ObjectLabel::Door))
+    else {
+        return;
+    };
+    let o = w.object_mut(door).unwrap();
+    o.position = [
+        SPOT[0] + FACING.cos() * 4.0,
+        SPOT[1] + FACING.sin() * 4.0,
+        SPOT[2],
+    ];
+    o.name = "Gate".to_string();
+    s.update(DT);
+    assert!(plate_of(&s, door).is_some(), "a named door has its plate");
+    // TarisDoor3 in tar_m02af is named "static" in the game's own files.
+    for name in ["static", " Static "] {
+        s.game.world.object_mut(door).unwrap().name = name.to_string();
+        s.update(DT);
+        assert!(plate_of(&s, door).is_none(), "{name:?}");
+        assert!(!s
+            .plates_drawn()
+            .iter()
+            .any(|p| p.text.to_ascii_lowercase().contains("static")));
+        assert!(!target_name(&mut s).to_ascii_lowercase().contains("static"));
+    }
+}
+
+#[test]
 fn a_label_says_what_a_thing_holds() {
     let Some(mut s) = stage("labels", "") else {
         return;

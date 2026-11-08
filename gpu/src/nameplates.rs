@@ -82,6 +82,11 @@ pub(super) struct PlateState {
     heads: HashMap<ObjId, f32>,
 }
 
+/// A door still named the toolset's "static", like TarisDoor3 in tar_m02af, has no name to show.
+pub(super) fn nameless_door(o: &kotor_game::Object) -> bool {
+    o.kind == kotor_game::Kind::Door && o.name.trim().eq_ignore_ascii_case("static")
+}
+
 #[derive(Clone, Copy)]
 struct Chip {
     health: f32,
@@ -257,7 +262,7 @@ impl Stage {
                         | kotor_game::Kind::Placeable
                 ),
             );
-            if !kind_ok {
+            if !kind_ok || nameless_door(o) {
                 continue;
             }
             let far = (at[0] - here[0]).hypot(at[1] - here[1]);
