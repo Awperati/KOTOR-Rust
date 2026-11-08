@@ -78,7 +78,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_default()
         };
         println!("{who}: {}", step(&mut s, "Race", 1));
-        let heads = if who == "woman" { 4 } else { 3 };
+        // "Twi'lek 1 of N": every head, the mod packs' too when they are on.
+        let first = s.menu_rows("LB_OPTIONS")[row(&mut s, "Preset")]
+            .choice
+            .clone()
+            .unwrap_or_default();
+        let heads: usize = first
+            .rsplit(' ')
+            .next()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(1);
         for h in 0..heads {
             if h > 0 {
                 println!("{who}: {}", step(&mut s, "Preset", 1));

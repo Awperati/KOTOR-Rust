@@ -24,13 +24,53 @@ const TWILEK_MEN: [(&str, &str); 3] = [
     ("twilek_m03", "twilek_m03"),
 ];
 
-/// A race's heads for a woman or a man: model and texture.
-pub fn heads(race: usize, woman: bool) -> &'static [(&'static str, &'static str)] {
-    match (race, woman) {
-        (TWILEK, true) => &TWILEK_WOMEN,
-        (TWILEK, false) => &TWILEK_MEN,
-        _ => &[],
+/// Twi'lek women's heads from the player's mod packs, after the game's own: model and texture.
+static MOD_TWILEK_WOMEN: std::sync::RwLock<Vec<(&'static str, &'static str)>> =
+    std::sync::RwLock::new(Vec::new());
+
+/// The heads the mod packs bring for Twi'lek women, model and texture, in place of any before. Each name is kept for the
+/// whole run, as the heads are few.
+pub fn set_mod_twilek_women(heads: Vec<(String, String)>) {
+    let leak = |s: String| -> &'static str { Box::leak(s.to_ascii_lowercase().into_boxed_str()) };
+    let mut list = MOD_TWILEK_WOMEN.write().unwrap_or_else(|e| e.into_inner());
+    if list.len() == heads.len()
+        && list
+            .iter()
+            .zip(&heads)
+            .all(|(a, b)| a.0.eq_ignore_ascii_case(&b.0))
+    {
+        return;
     }
+    *list = heads.into_iter().map(|(m, t)| (leak(m), leak(t))).collect();
+}
+
+fn mod_twilek_women() -> Vec<(&'static str, &'static str)> {
+    MOD_TWILEK_WOMEN
+        .read()
+        .map(|l| l.clone())
+        .unwrap_or_default()
+}
+
+/// A race's heads for a woman or a man: model and texture. The game's own come first, then any from the mod packs.
+pub fn heads(race: usize, woman: bool) -> Vec<(&'static str, &'static str)> {
+    match (race, woman) {
+        (TWILEK, true) => TWILEK_WOMEN
+            .iter()
+            .copied()
+            .chain(mod_twilek_women())
+            .collect(),
+        (TWILEK, false) => TWILEK_MEN.to_vec(),
+        _ => Vec::new(),
+    }
+}
+
+fn every_head() -> Vec<(&'static str, &'static str)> {
+    TWILEK_WOMEN
+        .iter()
+        .chain(TWILEK_MEN.iter())
+        .copied()
+        .chain(mod_twilek_women())
+        .collect()
 }
 
 /// The race a look keeps, by its numbers: 0, Human, for one it does not know.
@@ -56,20 +96,16 @@ pub fn head_of(get: impl Fn(&str) -> i32, woman: bool) -> Option<(&'static str, 
 /// Whether a texture is a race's head: its marks are painted on it, as on a player's own.
 pub fn is_race_head(texture: &str) -> bool {
     let t = texture.to_ascii_lowercase();
-    TWILEK_WOMEN
-        .iter()
-        .chain(TWILEK_MEN.iter())
-        .any(|(_, tex)| *tex == t)
+    every_head().iter().any(|(_, tex)| *tex == t)
 }
 
 /// The model a race head's texture belongs to.
 pub fn model_of_head(texture: &str) -> Option<&'static str> {
     let t = texture.to_ascii_lowercase();
-    TWILEK_WOMEN
-        .iter()
-        .chain(TWILEK_MEN.iter())
+    every_head()
+        .into_iter()
         .find(|(_, tex)| *tex == t)
-        .map(|(model, _)| *model)
+        .map(|(model, _)| model)
 }
 
 /// Whether a texture is one of the player's bodies, bare or in armour, whose skin takes a race head's tone.
@@ -99,5 +135,14 @@ mod tests {
         assert!(is_race_head("Twilek_F01") && !is_race_head("pfha01"));
         assert_eq!(model_of_head("twilek_m01"), Some("twilek_m"));
         assert!(is_player_body("PFBAM01") && !is_player_body("twilek_f01"));
+        // A mod pack's heads come after the game's own, for women only.
+        set_mod_twilek_women(vec![("P_TwiH1".to_string(), "P_Twi1".to_string())]);
+        assert_eq!(heads(TWILEK, true).len(), 5);
+        assert_eq!(heads(TWILEK, true)[4], ("p_twih1", "p_twi1"));
+        assert_eq!(heads(TWILEK, false).len(), 3);
+        assert!(is_race_head("P_Twi1"));
+        assert_eq!(model_of_head("p_twi1"), Some("p_twih1"));
+        set_mod_twilek_women(Vec::new());
+        assert_eq!(heads(TWILEK, true).len(), 4);
     }
 }

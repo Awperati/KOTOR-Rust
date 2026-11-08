@@ -85,6 +85,8 @@ const DOOR_SLAB: f32 = 0.35;
 const ARMOUR_SLOT: i32 = 1;
 /// A woman's `gender`, as `portraits.2da` gives it.
 const GENDER_FEMALE: i32 = 1;
+/// What the Twi'lek pack's playable heads' models are called.
+const MOD_TWILEK_HEAD: &str = "p_twih";
 /// A body with another race's head: appearance, texture variation, armour's letter, and the head's model.
 type RaceRigKey = (i32, u32, Option<char>, &'static str);
 /// `baseitems.2da` row of the disguise item, and the `appearance.2da` row (Sith soldier) its wearer is drawn as.
@@ -806,6 +808,7 @@ impl Stage {
         s.ui.set_hd_dir(hd);
         s.ui.set_assets_dir(default_assets_dir());
         s.set_view((1280, 720));
+        s.find_mod_heads();
         Ok(s)
     }
 
@@ -3040,6 +3043,32 @@ impl Stage {
             |k| o.look.sliders.get(k).copied().unwrap_or(0),
             o.gender == GENDER_FEMALE,
         )
+    }
+
+    /// The Twi'lek women's heads the player's mod packs bring, for the Race row: each `P_TwiH` model and the texture of its
+    /// head. None when the packs are off.
+    pub(crate) fn find_mod_heads(&mut self) {
+        let mut heads = Vec::new();
+        for name in self.inst.pack_names(ResType::MDL) {
+            if !name.starts_with(MOD_TWILEK_HEAD) {
+                continue;
+            }
+            let Some(model) = self.model(&name) else {
+                continue;
+            };
+            fn head_texture(n: &kotor_model::Node) -> Option<String> {
+                if n.name.eq_ignore_ascii_case("head") {
+                    if let Some(t) = n.mesh.as_ref().and_then(|m| m.texture.clone()) {
+                        return Some(t);
+                    }
+                }
+                n.children.iter().find_map(head_texture)
+            }
+            if let Some(texture) = head_texture(&model.root) {
+                heads.push((name, texture));
+            }
+        }
+        kotor_render::races::set_mod_twilek_women(heads);
     }
 
     /// A body with another race's head on it, kept by body and head.

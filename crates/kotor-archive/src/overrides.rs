@@ -235,12 +235,14 @@ pub fn override_problems() -> Vec<String> {
 static MOD_PACKS: AtomicBool = AtomicBool::new(false);
 
 /// A pack: the start of its folder's name, the folder inside it that holds the files (empty for the folder itself), the types it
-/// brings, and the starts of names it leaves alone. Later packs come before earlier ones where they hold the same name.
+/// brings, the starts of names it leaves alone, and, when not empty, the starts of the only names it brings. Later packs come
+/// before earlier ones where they hold the same name.
 struct Pack {
     folder: &'static str,
     inside: &'static str,
     types: &'static [&'static str],
     leave: &'static [&'static str],
+    only: &'static [&'static str],
 }
 
 const PACKS: &[Pack] = &[
@@ -250,12 +252,14 @@ const PACKS: &[Pack] = &[
         inside: "Override",
         types: &["tga", "tpc", "txi", "mdl", "mdx", "lyt", "vis", "are"],
         leave: &[],
+        only: &[],
     },
     Pack {
         folder: "High Resolution Lightsaber Beams",
         inside: "",
         types: &["tga", "txi"],
         leave: &[],
+        only: &[],
     },
     // The characters' pictures; the hero's own bodies and heads are painted by this game, so they stay.
     Pack {
@@ -263,18 +267,30 @@ const PACKS: &[Pack] = &[
         inside: "KOTORII - Ultimate Character Overhaul 3.0 LITE - TPC",
         types: &["tpc"],
         leave: &["pfb", "pmb", "pfh", "pmh"],
+        only: &[],
     },
     Pack {
         folder: "Kotor Weapon Model Overhaul",
         inside: "KoTOR Weapon Model Overhaul/Override",
         types: &["mdl", "mdx", "tga", "txi"],
         leave: &[],
+        only: &[],
     },
     Pack {
         folder: "Weapon Model Overhaul Texture Rework",
         inside: "Weapon Model Overhaul Texture Rework/tslpatchdata",
         types: &["tga", "txi"],
         leave: &[],
+        only: &[],
+    },
+    // Playable Twi'lek women: only the new heads, their pictures and their portraits. The pack's characters, bodies and tables
+    // are for its installer, which changes the game's own; the Race row puts these heads on the player's body instead.
+    Pack {
+        folder: "K1 HD Female Twilek Diversity",
+        inside: "tslpatchdata/Default",
+        types: &["mdl", "mdx", "tpc", "tga", "txi"],
+        leave: &[],
+        only: &["p_twi", "po_ptwi"],
     },
 ];
 
@@ -343,6 +359,7 @@ pub(crate) fn scan_packs(root: &Path) -> Loose {
             let ext = ext.to_string_lossy().to_ascii_lowercase();
             if !pack.types.contains(&ext.as_str())
                 || pack.leave.iter().any(|l| stem.starts_with(l))
+                || (!pack.only.is_empty() && !pack.only.iter().any(|o| stem.starts_with(o)))
                 || stem.len() > 16
             {
                 continue;

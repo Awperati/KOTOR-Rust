@@ -509,6 +509,8 @@ impl Stage {
             return;
         };
         self.set_preview_underwear("");
+        // The mod packs may have been switched on since the game began.
+        self.find_mod_heads();
         self.menus.chargen = Some(Draft {
             // One that does not fit yet is not offered.
             underwear: list_underwear_variants()

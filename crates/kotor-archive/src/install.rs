@@ -233,6 +233,18 @@ impl Install {
         self.bif(bif)?.read(idx)
     }
 
+    /// The names of one type that the player's mod packs bring, sorted: none when the packs are off.
+    pub fn pack_names(&self, restype: ResType) -> Vec<String> {
+        let mut v: Vec<String> = self.packs.as_ref().map_or(Vec::new(), |p| {
+            p.keys()
+                .filter(|(_, t)| *t == restype)
+                .map(|(n, _)| n.clone())
+                .collect()
+        });
+        v.sort();
+        v
+    }
+
     /// All resource names in the base data of one type, sorted.
     pub fn list(&self, restype: ResType) -> Vec<String> {
         let mut v: Vec<String> = self

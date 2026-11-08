@@ -63,5 +63,37 @@ fn the_mod_packs_are_used_when_on_and_read_from_the_mods_folder() {
         }
     }
     assert!(models >= 3, "{models} models from the packs");
+
+    // The Twi'lek pack, when the player has it: its playable heads and their pictures, and nothing of its characters or bodies.
+    let heads: Vec<String> = inst
+        .pack_names(ResType::MDL)
+        .into_iter()
+        .filter(|n| n.starts_with("p_twih"))
+        .collect();
+    let has_twileks = std::fs::read_dir(&root).ok().is_some_and(|r| {
+        r.flatten().any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("K1 HD Female Twilek Diversity")
+        })
+    });
+    if has_twileks {
+        assert!(heads.len() >= 26, "{heads:?}");
+        assert!(
+            !inst.in_override("n_twilekf", ResType::MDL),
+            "an NPC's body is left"
+        );
+        let (mdl, mdx) = (
+            inst.read(&heads[0], ResType::MDL).unwrap(),
+            inst.read(&heads[0], ResType(3008)).unwrap(),
+        );
+        let head = kotor_model::parse_model(&mdl, &mdx).unwrap();
+        assert!(
+            head.root.find("f_mdbrw_g").is_some(),
+            "the face's points, for its sliders"
+        );
+    } else {
+        assert!(heads.is_empty());
+    }
     kotor_archive::set_mod_packs(false);
 }
