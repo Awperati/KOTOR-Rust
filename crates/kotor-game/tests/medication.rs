@@ -68,13 +68,20 @@ fn a_medpack_used_inside_the_cooldown_heals_half_and_then_a_quarter() {
     // Inside the cooldown: the menus must ask first.
     assert_eq!(w.use_consumable_request(pc, item), UseRequest::NeedsConfirm);
     w.accept_medication_warning(pc);
-    assert_eq!(w.use_consumable_request(pc, item), UseRequest::Ready, "once for a window");
+    assert_eq!(
+        w.use_consumable_request(pc, item),
+        UseRequest::Ready,
+        "once for a window"
+    );
     let half = heal_of_one_use(&mut w, item);
     assert_eq!(w.medication_stack(pc), 1);
     assert!((half - full / 2).abs() <= 1, "half: {half} of {full}");
     let quarter = heal_of_one_use(&mut w, item);
     assert_eq!(w.medication_stack(pc), 2);
-    assert!((quarter - full / 4).abs() <= 1, "a quarter: {quarter} of {full}");
+    assert!(
+        (quarter - full / 4).abs() <= 1,
+        "a quarter: {quarter} of {full}"
+    );
     let again = heal_of_one_use(&mut w, item);
     assert_eq!(w.medication_stack(pc), 2, "no worse than that");
     assert!((again - full / 4).abs() <= 1);
@@ -92,7 +99,10 @@ fn the_cooldown_runs_down_on_the_clock_and_each_use_restarts_it() {
     let full = heal_of_one_use(&mut w, item);
     run(&mut w, 10.0);
     let left = w.medication_cooldown(pc);
-    assert!((left - 0.5).abs() < 0.05, "half of the 20 seconds left: {left}");
+    assert!(
+        (left - 0.5).abs() < 0.05,
+        "half of the 20 seconds left: {left}"
+    );
     // A use now restarts the 20 seconds and is the first extra.
     w.accept_medication_warning(pc);
     heal_of_one_use(&mut w, item);
@@ -105,7 +115,10 @@ fn the_cooldown_runs_down_on_the_clock_and_each_use_restarts_it() {
     assert_eq!(w.medication_stack(pc), 0, "and the stack is gone");
     assert_eq!(w.use_consumable_request(pc, item), UseRequest::Ready);
     let healed = heal_of_one_use(&mut w, item);
-    assert!((healed - full).abs() <= 1, "in full again: {healed} of {full}");
+    assert!(
+        (healed - full).abs() <= 1,
+        "in full again: {healed} of {full}"
+    );
     // A new window asks again.
     assert_eq!(w.use_consumable_request(pc, item), UseRequest::NeedsConfirm);
 }
@@ -151,7 +164,8 @@ fn damage_dealt(stack: u8, seconds: f32) -> i32 {
     w.seed_dice(11);
     let pc = w.pc;
     let p = w.object(pc).unwrap().position;
-    let foe = w.spawn_creature("n_calonord", [p[0] + 0.5, p[1], p[2]]);
+    // One of the ship's own soldiers: Calo Nord is too hard for a first level player to hit.
+    let foe = w.spawn_creature("end_trask", [p[0] + 0.5, p[1], p[2]]);
     {
         let o = w.object_mut(foe).unwrap();
         o.faction = 1;

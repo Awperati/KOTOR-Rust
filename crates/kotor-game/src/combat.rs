@@ -634,7 +634,8 @@ impl World {
         }
         // Medication Sickness: a share of the user's hits are misses.
         let sick_aim = self.medication_aim_penalty(attacker);
-        if sick_aim > 0.0 && outcome != Outcome::Miss && (self.roll(100) as f32) <= sick_aim * 100.0 {
+        if sick_aim > 0.0 && outcome != Outcome::Miss && (self.roll(100) as f32) <= sick_aim * 100.0
+        {
             outcome = Outcome::Miss;
         }
         // A blow that would have missed: against the player's side it still misses, narrowly (the window shows a near miss), and
