@@ -1421,6 +1421,17 @@ fn every_kind_on_the_bench_has_its_picture_and_what_cannot_be_chosen_is_greyed()
         bright(&mut s, "BTN_RANGED", 200) < 300,
         "this still has nothing"
     );
+    // BENCH_FRAME names a PNG to write: the kinds as the player sees them.
+    if let Ok(path) = std::env::var("BENCH_FRAME") {
+        s.update(DT);
+        let o = s.overlay().unwrap();
+        let img = kotor_image::Image {
+            width: o.width,
+            height: o.height,
+            rgba: o.rgba.clone(),
+        };
+        std::fs::write(path, kotor_image::to_png(&img)).unwrap();
+    }
 }
 
 /// A creature's remains here, holding this template.
