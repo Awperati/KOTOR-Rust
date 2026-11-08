@@ -24,6 +24,10 @@ fn scene() -> Option<(World, ObjId)> {
         w.object_mut(id).unwrap().dead = true;
     }
     w.combat.target.clear();
+    (
+        w.object_mut(pc).unwrap().hp,
+        w.object_mut(pc).unwrap().max_hp,
+    ) = (20_000, 20_000);
     let p = w.object(pc).unwrap().position;
     let foe = w.spawn_creature("n_calonord", [p[0] + 4.0, p[1], p[2]]);
     let o = w.object_mut(foe).unwrap();

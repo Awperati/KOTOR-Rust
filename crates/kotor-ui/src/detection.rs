@@ -65,14 +65,12 @@ impl Ui<'_> {
         let reach = (RING + (LENGTH + HALF_WIDTH) * k) * short + 2.0;
         let (left, top) = ((w / 2.0 - reach).max(0.0), (h / 2.0 - reach).max(0.0));
         let (right, bottom) = ((w / 2.0 + reach).min(w), (h / 2.0 + reach).min(h));
-        (right > left && bottom > top).then(|| {
-            [
-                left as u32,
-                top as u32,
-                (right - left) as u32,
-                (bottom - top) as u32,
-            ]
-        })
+        (right > left && bottom > top).then_some([
+            left as u32,
+            top as u32,
+            (right - left) as u32,
+            (bottom - top) as u32,
+        ])
     }
 
     /// The pixels that change between two views of the bars.

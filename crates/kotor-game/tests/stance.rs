@@ -199,7 +199,8 @@ fn a_companion_told_to_stop_holds_fire_until_the_fight_is_over() {
     assert!(!w.combat.target.contains_key(&mate), "and it stopped");
     run(&mut w, 2.0);
     assert!(!w.combat.target.contains_key(&mate), "it holds fire");
-    // Once the fight is over, it is free again.
+    // Once the fight is over, and nobody out there is watching, it is free again.
+    w.object_mut(foe).unwrap().dead = true;
     w.combat.target.clear();
     w.stop_attacking(pc);
     run(&mut w, 1.0);
