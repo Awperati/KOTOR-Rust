@@ -367,6 +367,9 @@ pub struct Settings {
     pub override_tables: bool,
     pub override_screens: bool,
     pub override_talk: bool,
+    /// The packs in the player's own mods folder (`KOTOR_MODS_ROOT`) are used: skyboxes, saber beams, character pictures, weapon
+    /// models. Read from there at run time. Takes hold at the next start. Kept in the settings file only: no row of the menu yet.
+    pub mod_packs: bool,
 }
 
 impl Default for Settings {
@@ -431,6 +434,7 @@ impl Default for Settings {
             override_tables: false,
             override_screens: false,
             override_talk: false,
+            mod_packs: false,
         }
     }
 }
@@ -442,7 +446,7 @@ impl Settings {
             .map_or("-".to_string(), |(w, h)| format!("{w}x{h}"));
         format!(
             "music={}\nvoice={}\neffects={}\nbrightness={}\ninvert_y={}\nautosave={}\ndifficulty={}\nsize={size}\ntutorials={}\nauto_level={}\ncombat_movement={}\nhide_unequippable={}\nsubtitles={}\nminimap={}\nfloating_numbers={}\npause_round={}\npause_enemy={}\npause_party={}\npause_action={}\npause_target={}\nmouse_sensitivity={}\nreverse_buttons={}\nvsync={}\nconventional_underwear={}\nearly_force={}\nauto_advance={}\nnoto_font={}\nglow_boxes={}\nmovement_modern={}\ncombat_modern={}\nclick_to_walk={}\nseamless_areas={}\naustralian_english={}\nnameplates={}\nnameplates_neutral={}\nnameplates_friendly={}\nobject_labels={}\ndoor_labels={}\nhide_empty={}\nnameplate_range={}\nnameplate_size={}\nextended_story={}\nground_finishers={}\nrespawn={}
-auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\ncompass={}\ncompass_size={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\n",
+auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_radius={}\ntouch_controls={}\nlook_stick_speed={}\ncompass={}\ncompass_size={}\noverride_folder={}\noverride_scripts={}\noverride_tables={}\noverride_screens={}\noverride_talk={}\nmod_packs={}\n",
             self.music,
             self.voice,
             self.effects,
@@ -499,7 +503,8 @@ auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_ra
             self.override_scripts,
             self.override_tables,
             self.override_screens,
-            self.override_talk
+            self.override_talk,
+            self.mod_packs
         )
     }
 
@@ -575,6 +580,7 @@ auto_attack_mode={}\ncel_shading={}\nanti_aliasing={}\nmotion_blur={}\npickup_ra
                 "override_tables" => s.override_tables = v == "true",
                 "override_screens" => s.override_screens = v == "true",
                 "override_talk" => s.override_talk = v == "true",
+                "mod_packs" => s.mod_packs = v == "true",
                 "size" => {
                     s.size = v
                         .split_once('x')
@@ -602,6 +608,7 @@ pub fn choose_override_use(settings_file: Option<PathBuf>) {
         screens: s.override_screens,
         talk: s.override_talk,
     });
+    kotor_archive::set_mod_packs(s.mod_packs);
     if let (true, Some(folder), Some(game)) =
         (s.override_folder, file.parent(), kotor_core::install_dir())
     {

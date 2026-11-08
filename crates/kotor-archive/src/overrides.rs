@@ -5,7 +5,8 @@ use kotor_core::ResType;
 use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// What of the folder is used.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -226,4 +227,130 @@ pub fn override_problems() -> Vec<String> {
     NOTES
         .lock()
         .map_or(Vec::new(), |n| n.problems.iter().cloned().collect())
+}
+
+/// Mod packs the player keeps in a folder of their own (`KOTOR_MODS_ROOT`, else `Mods` beside the projects): each is a modder's
+/// folder, read from there at run time like the `Override` folder and never copied into the repository or a build. The player
+/// switches them on as a whole. The install's own `Override` files come before them, and the game's own files after.
+static MOD_PACKS: AtomicBool = AtomicBool::new(false);
+
+/// A pack: the start of its folder's name, the folder inside it that holds the files (empty for the folder itself), the types it
+/// brings, and the starts of names it leaves alone. Later packs come before earlier ones where they hold the same name.
+struct Pack {
+    folder: &'static str,
+    inside: &'static str,
+    types: &'static [&'static str],
+    leave: &'static [&'static str],
+}
+
+const PACKS: &[Pack] = &[
+    // The skyboxes' models and the pictures made for them go together: the new pictures do not fit the old models.
+    Pack {
+        folder: "High Quality Skyboxes II",
+        inside: "Override",
+        types: &["tga", "tpc", "txi", "mdl", "mdx", "lyt", "vis", "are"],
+        leave: &[],
+    },
+    Pack {
+        folder: "High Resolution Lightsaber Beams",
+        inside: "",
+        types: &["tga", "txi"],
+        leave: &[],
+    },
+    // The characters' pictures; the hero's own bodies and heads are painted by this game, so they stay.
+    Pack {
+        folder: "Ultimate Character Overhaul",
+        inside: "KOTORII - Ultimate Character Overhaul 3.0 LITE - TPC",
+        types: &["tpc"],
+        leave: &["pfb", "pmb", "pfh", "pmh"],
+    },
+    Pack {
+        folder: "Kotor Weapon Model Overhaul",
+        inside: "KoTOR Weapon Model Overhaul/Override",
+        types: &["mdl", "mdx", "tga", "txi"],
+        leave: &[],
+    },
+    Pack {
+        folder: "Weapon Model Overhaul Texture Rework",
+        inside: "Weapon Model Overhaul Texture Rework/tslpatchdata",
+        types: &["tga", "txi"],
+        leave: &[],
+    },
+];
+
+/// The player's choice, for every `Install` opened from now on.
+pub fn set_mod_packs(on: bool) {
+    MOD_PACKS.store(on, Ordering::Relaxed);
+}
+
+/// The folder that holds modders' folders: `KOTOR_MODS_ROOT` if set, else `Mods` beside the projects.
+pub fn mods_root() -> PathBuf {
+    std::env::var_os("KOTOR_MODS_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Users\User\Projects\Mods"))
+}
+
+/// The files of the packs this install uses, or none. `KOTOR_MOD_PACKS` (`on` or `off`) wins over the player's choice, for a
+/// driver or the gate. Only the first game's install has them, and tests and tools see none unless they ask.
+pub(crate) fn mod_pack_files(dir: &Path) -> Option<Arc<Loose>> {
+    if kotor_core::install_dir().as_deref() != Some(dir) {
+        return None;
+    }
+    let on = match std::env::var("KOTOR_MOD_PACKS").as_deref() {
+        Ok("on") => true,
+        Ok("off") => false,
+        _ => MOD_PACKS.load(Ordering::Relaxed),
+    };
+    if !on {
+        return None;
+    }
+    static FILES: OnceLock<Arc<Loose>> = OnceLock::new();
+    Some(
+        FILES
+            .get_or_init(|| Arc::new(scan_packs(&mods_root())))
+            .clone(),
+    )
+}
+
+/// Every file the packs bring, by name and type, from the folders under `root`. A name too long for the game's files can never be
+/// asked for.
+pub(crate) fn scan_packs(root: &Path) -> Loose {
+    let mut files = Loose::new();
+    let Ok(folders) = std::fs::read_dir(root) else {
+        return files;
+    };
+    let folders: Vec<_> = folders.flatten().map(|e| e.path()).collect();
+    for pack in PACKS {
+        let Some(folder) = folders.iter().find(|f| {
+            f.is_dir()
+                && f.file_name().is_some_and(|n| {
+                    n.to_string_lossy()
+                        .to_ascii_lowercase()
+                        .starts_with(&pack.folder.to_ascii_lowercase())
+                })
+        }) else {
+            continue;
+        };
+        let Ok(read) = std::fs::read_dir(folder.join(pack.inside)) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            let path = entry.path();
+            let (Some(stem), Some(ext)) = (path.file_stem(), path.extension()) else {
+                continue;
+            };
+            let stem = stem.to_string_lossy().to_ascii_lowercase();
+            let ext = ext.to_string_lossy().to_ascii_lowercase();
+            if !pack.types.contains(&ext.as_str())
+                || pack.leave.iter().any(|l| stem.starts_with(l))
+                || stem.len() > 16
+            {
+                continue;
+            }
+            if let Some(restype) = ResType::from_extension(&ext) {
+                files.insert((stem, restype), path);
+            }
+        }
+    }
+    files
 }

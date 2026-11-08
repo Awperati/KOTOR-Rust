@@ -24,6 +24,8 @@ pub struct Install {
     /// What is read from `<install>/Override` first. None, unless the player has chosen it.
     override_use: OverrideUse,
     loose: Option<Arc<Loose>>,
+    /// What the player's mod packs bring, after the `Override` folder's files and before the game's own. None unless chosen.
+    packs: Option<Arc<Loose>>,
     /// Load a module from its original `.rim` pair even when a `.mod` of the same name exists. Off by default.
     prefer_rim: bool,
 }
@@ -43,6 +45,7 @@ impl Install {
         let bifs = vec![None; key.bifs.len()];
         let override_use = overrides::override_use_for(&dir);
         let loose = override_use.folder.then(|| overrides::loose_files(&dir));
+        let packs = overrides::mod_pack_files(&dir);
         Ok(Install {
             dir,
             key,
@@ -51,6 +54,7 @@ impl Install {
             overlays: Vec::new(),
             override_use,
             loose,
+            packs,
             prefer_rim: false,
         })
     }
@@ -86,11 +90,13 @@ impl Install {
     }
 
     fn override_file(&self, resref: &str, restype: ResType) -> Option<&PathBuf> {
-        if !self.override_use.would_read(restype) {
-            return None;
-        }
         let key = (resref.to_ascii_lowercase(), restype);
-        self.loose.as_ref()?.get(&key)
+        if self.override_use.would_read(restype) {
+            if let Some(p) = self.loose.as_ref().and_then(|l| l.get(&key)) {
+                return Some(p);
+            }
+        }
+        self.packs.as_ref()?.get(&key)
     }
 
     /// Is this in the `Override` folder, and used? A picture there wins whatever type the game's own is.
