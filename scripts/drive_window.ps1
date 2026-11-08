@@ -71,9 +71,10 @@ $moved = Moved $a $b
 if ($Mode -eq "modern") {
     Report "D moves" ($moved -gt 0.3) "$($a.pc) -> $($b.pc)"
 } else {
-    $turned = [Math]::Abs([double]$b.heading - [double]$a.heading) % (2 * [Math]::PI)
+    # The camera's yaw: the turn is the camera's and the body's behind it, and the body's own heading follows when it moves.
+    $turned = [Math]::Abs([double]$b.yaw - [double]$a.yaw) % (2 * [Math]::PI)
     $turned = [Math]::Min($turned, 2 * [Math]::PI - $turned)
-    Report "D turns" ($turned -gt 0.3) "heading $($a.heading) -> $($b.heading)"
+    Report "D turns" ($turned -gt 0.3) "yaw $($a.yaw) -> $($b.yaw)"
 }
 
 # B pauses out of a conversation: W does nothing until B again. Modern has no pause but Escape's menu, so not there.
