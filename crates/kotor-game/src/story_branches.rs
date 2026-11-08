@@ -30,7 +30,7 @@ pub const BANDON_HEALTH: f32 = 0.5;
 pub const BANDON_FULL_HEALTH: i32 = 135;
 /// Hit points per point of damage a round of the player and Trask is expected to deal him. **Tuned:** so that each class at each
 /// level of 1 to 4, with the starting kit and Trask beside, wins about 65 of 100 (the owner's "intermediate"). `bandon_odds`.
-pub const BANDON_HEALTH_PER_DAMAGE: f32 = 8.7;
+pub const BANDON_HEALTH_PER_DAMAGE: f32 = 8.4;
 /// The player's own power counts this many times over Trask's: the same damage from the one who is being hunted shortens the
 /// fight more than a share of it does. **Tuned** with the number above.
 pub const BANDON_PLAYER_WEIGHT: f32 = 2.0;
@@ -273,9 +273,10 @@ impl World {
                 Some((projected, seen)) if now - seen <= step => now.min(projected),
                 _ => now,
             };
-            let dealt = ladder_blow(whole, eff, steps);
-            self.story.ladder = Some((eff - dealt, now));
-            dealt
+            let step_down = ladder_blow(whole, eff, steps);
+            self.story.ladder = Some((eff - step_down, now));
+            // The small heal that was not counted comes off with the blow, so they land on the rung and not above it.
+            step_down + (now - eff).max(0)
         } else {
             dealt
         }

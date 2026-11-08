@@ -102,12 +102,20 @@ fn fight(
     let began = g.world.time;
     let from = g.world.combat.log.len();
     let mut r = Result::default();
+    let mut last_hp = g.world.object(pc).map_or(0, |o| o.hp);
     for _ in 0..(600 * 60) {
         g.step_once();
         let w = &mut g.world;
         // What Trask has left to say from the opening, which this measure skips.
         if w.dialogue_view().is_some() && !w.conversation_paused() {
             w.dialogue_choose(0);
+        }
+        if std::env::var("BANDON_TRACE").is_ok() {
+            let hp = w.object(pc).map_or(0, |o| o.hp);
+            if hp != last_hp {
+                eprintln!("t {:.1} player hp {last_hp} -> {hp}", w.time - began);
+                last_hp = hp;
+            }
         }
         let over = w.game_over || w.object(pc).is_some_and(|o| o.dead || o.down);
         let fled = w.by_tag("end_bandon").is_empty() || w.object(bandon).is_some_and(|o| o.hp <= 1);
