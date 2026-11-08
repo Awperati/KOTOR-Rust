@@ -678,6 +678,8 @@ impl World {
             if target == self.pc || self.party.contains(&target) {
                 dealt = ((dealt as f32 * self.difficulty_multiplier()).round() as i32).max(1);
             }
+            // A force shield (an item's or a power's) takes what it can of the blow.
+            dealt = self.absorb_with_shields(target, dealt, kind);
         }
         let fell = self.hurt(attacker, target, dealt);
         if let (Some(ability), true, false) = (boost.stun_ability, outcome != Outcome::Miss, fell) {

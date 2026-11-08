@@ -263,6 +263,7 @@ impl World {
                 // `EffectDamage(amount, type, power)`: the type is a set of `DAMAGE_TYPE_*` bits.
                 let kind = rec.nums.get(1).copied().unwrap_or(UNIVERSAL as f32) as i32;
                 let amount = self.adjust_damage(target, n0, kind);
+                let amount = self.absorb_with_shields(target, amount, kind);
                 self.hurt(creator, target, amount);
             }
             "EffectDeath" => {
@@ -306,6 +307,9 @@ impl World {
                 if self.spell.id >= 0 {
                     self.effect_spell.insert(handle, self.spell.id);
                 }
+                if rec.name == "EffectForceShield" {
+                    self.arm_shield(handle);
+                }
                 if let Some(o) = self.objects.get_mut(&target) {
                     o.effects.push(handle);
                 }
@@ -314,6 +318,72 @@ impl World {
                 }
             }
         }
+    }
+
+    /// A force shield goes on: its row in `forceshields.2da` gives what it takes in (`damageflags`, the `DAMAGE_TYPE_*` bits)
+    /// and how much (`amount`). The record keeps `[row, what is left, bits]`.
+    ///
+    /// **Assumed:** `amount` is the shield's whole store: it takes that much damage of those types, from any number of hits,
+    /// and is gone when it is spent or its time (200 s from the item's script) runs out. The table's `resistance` (300 on
+    /// every row) and `vulnerflags` (ion damage) are not used.
+    fn arm_shield(&mut self, handle: u32) {
+        let Some(row) = self
+            .effects
+            .get(handle.wrapping_sub(1) as usize)
+            .and_then(|e| e.nums.first())
+            .map(|n| *n as usize)
+        else {
+            return;
+        };
+        let Some(t) = self.table("forceshields") else {
+            return;
+        };
+        let amount = t.int(row, "amount").unwrap_or(0) as f32;
+        let bits = t.int(row, "damageflags").unwrap_or(0) as f32;
+        if let Some(e) = self.effects.get_mut(handle.wrapping_sub(1) as usize) {
+            e.nums = vec![row as f32, amount, bits];
+        }
+    }
+
+    /// An effect's record by its handle (the tests set a shield's store through it).
+    pub fn effect_record_mut(&mut self, handle: u32) -> Option<&mut crate::world::EffectRec> {
+        self.effects.get_mut(handle.wrapping_sub(1) as usize)
+    }
+
+    /// What is left of a hit of `kind` after the force shields on the target take what they can. A shield that is spent goes.
+    pub fn absorb_with_shields(&mut self, target: ObjId, amount: i32, kind: i32) -> i32 {
+        if amount <= 0 || kind & UNIVERSAL != 0 {
+            return amount.max(0);
+        }
+        let held: Vec<u32> = self
+            .objects
+            .get(&target)
+            .map(|o| o.effects.clone())
+            .unwrap_or_default();
+        let mut left = amount;
+        for h in held {
+            let Some(e) = self.effects.get_mut(h.wrapping_sub(1) as usize) else {
+                continue;
+            };
+            if e.name != "EffectForceShield" || e.nums.len() < 3 || e.nums[2] as i32 & kind == 0 {
+                continue;
+            }
+            let store = e.nums[1] as i32;
+            let take = store.min(left);
+            e.nums[1] = (store - take) as f32;
+            left -= take;
+            if store - take <= 0 {
+                self.effect_expiry.remove(&h);
+                self.effect_spell.remove(&h);
+                if let Some(o) = self.objects.get_mut(&target) {
+                    o.effects.retain(|x| *x != h);
+                }
+            }
+            if left == 0 {
+                break;
+            }
+        }
+        left
     }
 
     /// Throw `target` back from `from` along the floor, as far as the floor, walls, doors and other creatures allow.
