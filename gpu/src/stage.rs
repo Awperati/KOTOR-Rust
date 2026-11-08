@@ -91,6 +91,8 @@ const RIGHT_HAND_SLOT: i32 = 4;
 const LEFT_HAND_SLOT: i32 = 5;
 /// Metres within which the E key finds something to use.
 const USE_REACH: f32 = 2.5;
+/// How far off the E key goes for what the camera faces, walking up to it. **Assumed.**
+const USE_FAR: f32 = 8.0;
 const CAMERA_BEHIND: f32 = 3.3;
 const CAMERA_ABOVE: f32 = 1.7;
 const CAMERA_LOOKS_AT: f32 = 1.2;
@@ -1843,14 +1845,27 @@ impl Stage {
         }
     }
 
-    /// The E key: use the nearest thing in reach.
+    /// The E key: talk, open or use at once, with no menu between. First what the camera faces within reach; then the target the
+    /// HUD shows, wherever it is; then what the camera faces further off; then the nearest within reach. Out of reach the
+    /// player walks up to it first. The owner: "Pressing E automatically performing talk and open actions". It never takes
+    /// things from round about: that is the pickup key's.
     pub fn interact(&mut self) {
         if self.menu_open() || self.choice_view().is_some() {
             return;
         }
-        if let Some(id) = self.game.world.usable_in_view(USE_REACH, self.yaw) {
+        if let Some(id) = self.use_choice() {
             self.use_thing(id);
         }
+    }
+
+    /// What the E key would work on now.
+    fn use_choice(&self) -> Option<ObjId> {
+        let w = &self.game.world;
+        let chosen = self.hover_target.filter(|id| w.usable(*id));
+        w.usable_in_view_only(USE_REACH, self.yaw)
+            .or(chosen)
+            .or_else(|| w.usable_in_view_only(USE_FAR, self.yaw))
+            .or_else(|| w.nearest_usable(USE_REACH))
     }
 
     /// A left click at `pixel` of a window of `size`: acknowledge a line, or use what is under the cursor, or walk.
@@ -3949,7 +3964,7 @@ impl Stage {
             self.game.steps,
             self.target_view().map_or("-".to_string(), |t| t.0.replace(' ', "_")),
             // What the use key would work on now, by tag.
-            w.usable_in_view(USE_REACH, self.yaw)
+            self.use_choice()
                 .and_then(|i| w.object(i))
                 .map_or("-".to_string(), |o| o.tag.clone()),
         )

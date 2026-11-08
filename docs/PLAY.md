@@ -90,6 +90,8 @@ From Gameplay. Key Mapping lists what can be moved, on Movement and Game. A clic
 
 A settings file from before X and B changed places goes over to them when it is read, if its two keys were never moved. A key the player moved stays.
 
+E talks, opens or uses at once, with no menu between: what the camera faces within reach, else the target on show wherever it is, else what the camera faces up to 8 m off, and last the nearest within reach. Out of reach, the player walks up to it first. An enemy is attacked. E never takes things from round about: that is the pickup key's.
+
 ## Compass
 A strip at the top middle of the screen shows north, east, south and west sliding by as the camera turns, with what is near marked on it: shops, ways out of the area, elevators, people to talk to, containers with something in them, the party, and enemies you have seen. A mark fades and shrinks with distance. Options, Feedback has a Compass row and a Compass size row. A tracked quest's next step is the pin on the strip, held at its end when the step is behind you; there is no arrow on the screen.
 

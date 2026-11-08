@@ -89,3 +89,120 @@ fn after_trask_s_talk_e_opens_the_footlocker_in_view_and_w_d_and_b_work() {
     assert!((a[0] - b[0]).hypot(a[1] - b[1]) > 0.3, "goes on");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// Trask's talk over, the player standing by the footlocker.
+fn after_the_talk(name: &str) -> Option<(Stage, std::path::PathBuf)> {
+    kotor_core::install_dir()?;
+    let dir = std::env::temp_dir().join(format!("kotor_use_{name}_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = Stage::open("end_m01aa", true).unwrap();
+    s.set_saves_dir(dir.join("saves"));
+    s.use_settings_file(dir.join("settings.txt"));
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    s.set_view((1280, 720));
+    s.update(DT);
+    assert!(s.stand_near("end_locker01"));
+    for _ in 0..3000 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            s.continue_line();
+            s.number_key(1);
+        } else if s.game.world.transcript.len() > 16 {
+            break;
+        }
+    }
+    run(&mut s, 30, (0.0, 0.0));
+    assert!(!s.game.world.in_dialogue());
+    Some((s, dir))
+}
+
+/// Put the player about 3 to 4.5 m from `id`, on the floor, facing it. How far that is.
+fn stand_off(s: &mut Stage, id: u32) -> Option<f32> {
+    let at = s.game.world.object(id)?.position;
+    let from = s.game.world.pc_mover.pos;
+    let (dx, dy) = (from[0] - at[0], from[1] - at[1]);
+    let long = dx.hypot(dy).max(0.01);
+    for far in [3.2f32, 3.6, 4.0, 4.5] {
+        let spot = [at[0] + dx / long * far, at[1] + dy / long * far, from[2]];
+        s.place_player(spot, 0.0);
+        run(s, 2, (0.0, 0.0));
+        let now = s.game.world.pc_mover.pos;
+        if (now[0] - spot[0]).hypot(now[1] - spot[1]) < 0.3 {
+            s.yaw = (at[1] - now[1]).atan2(at[0] - now[0]);
+            run(s, 3, (0.0, 0.0));
+            return Some((at[0] - now[0]).hypot(at[1] - now[1]));
+        }
+    }
+    None
+}
+
+#[test]
+fn e_walks_up_to_someone_the_camera_faces_further_off_and_talks() {
+    let Some((mut s, dir)) = after_the_talk("talk") else {
+        return;
+    };
+    let trask = s.game.world.by_tag("end_trask")[0];
+    // The footlocker stands between, nearer: E would rightly open it. It goes.
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    s.game.world.objects.remove(&locker);
+    let Some(far) = stand_off(&mut s, trask) else {
+        return;
+    };
+    assert!(far > 2.5, "out of reach: {far}");
+    let line = s.state_line();
+    let chose = line
+        .split(' ')
+        .find(|w| w.starts_with("use="))
+        .unwrap_or("-")
+        .to_string();
+    s.interact();
+    let talks = (0..600).any(|_| {
+        s.update(DT);
+        s.game.world.in_dialogue()
+    });
+    let now = s.game.world.pc_mover.pos;
+    let t = s.game.world.object(trask).unwrap().position;
+    let ev: Vec<_> = s
+        .game
+        .world
+        .events
+        .iter()
+        .filter(|e| e.contains("rask") || e.contains("reach") || e.contains("onversation"))
+        .rev()
+        .take(8)
+        .cloned()
+        .collect();
+    assert!(
+        talks,
+        "walked up and talked, from {far} m, now {now:?} trask {t:?} {ev:?} {chose}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn e_walks_up_to_a_footlocker_the_camera_faces_further_off_and_opens_it() {
+    let Some((mut s, dir)) = after_the_talk("open") else {
+        return;
+    };
+    // Trask comes up to talk by himself as the player walks off, and E would rightly talk to him: he goes.
+    let trask = s.game.world.by_tag("end_trask")[0];
+    s.game.world.objects.remove(&trask);
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    let Some(far) = stand_off(&mut s, locker) else {
+        return;
+    };
+    assert!(far > 2.5, "out of reach: {far}");
+    s.interact();
+    let opens = (0..600).any(|_| {
+        s.update(DT);
+        s.game.world.opened == Some(locker)
+    });
+    let now = s.game.world.pc_mover.pos;
+    assert!(
+        opens,
+        "walked up and opened, from {far} m, now at {now:?}, talk {}",
+        s.game.world.in_dialogue()
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

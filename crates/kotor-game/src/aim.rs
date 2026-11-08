@@ -211,10 +211,22 @@ impl World {
     /// footlocker the camera faces opens, and not Trask beside it, a hand's width nearer. Top Dog's rule, with the owner's go.
     /// **Assumed:** the view's cone, `USE_VIEW_CONE`, and how much a metre counts against the angle, `USE_PER_METRE`.
     pub fn usable_in_view(&self, reach: f32, view_yaw: f32) -> Option<ObjId> {
+        self.usable_in_view_only(reach, view_yaw)
+            .or_else(|| self.nearest_usable(reach))
+    }
+
+    /// Whether the player can use this: a creature, door or placeable, alive or with loot, not of the party.
+    pub fn usable(&self, id: ObjId) -> bool {
+        self.objects
+            .get(&id)
+            .is_some_and(|o| self.usable_by_player(o))
+    }
+
+    /// Like [`World::usable_in_view`], with nothing when nothing is in view.
+    pub fn usable_in_view_only(&self, reach: f32, view_yaw: f32) -> Option<ObjId> {
         let here = self.objects.get(&self.pc)?.position;
         let tau = std::f32::consts::TAU;
-        let in_view = self
-            .objects
+        self.objects
             .values()
             .filter(|o| self.usable_by_player(o))
             .filter_map(|o| {
@@ -224,8 +236,7 @@ impl World {
                 (d <= reach && off <= USE_VIEW_CONE).then_some((off + d * USE_PER_METRE, o.id))
             })
             .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(_, id)| id);
-        in_view.or_else(|| self.nearest_usable(reach))
+            .map(|(_, id)| id)
     }
 
     /// Where a shot leaves the player.
