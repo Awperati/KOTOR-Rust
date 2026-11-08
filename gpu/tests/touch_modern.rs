@@ -236,6 +236,13 @@ fn lock_on_locks_and_lets_go_and_is_lit_while_it_holds() {
     tap(&mut s, TouchKey::Lock);
     assert_eq!(s.locked_on(), Some(id));
     assert!(s.touch_key_word(TouchKey::Lock).1, "lit");
+    // In a fight the Action key names the enemy fought: the Attack key beside it says Attack.
+    let pc = s.game.world.pc;
+    s.game.world.attack(pc, id);
+    run(&mut s, 2);
+    let name = s.game.world.object(id).unwrap().name.clone();
+    assert!(!name.is_empty());
+    assert_eq!(s.touch_key_word(TouchKey::Action).0, name);
     tap(&mut s, TouchKey::Lock);
     assert_eq!(s.locked_on(), None);
     assert!(!s.touch_key_word(TouchKey::Lock).1);

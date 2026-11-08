@@ -219,7 +219,12 @@ impl Stage {
                 .collect(),
             lit,
             dim,
-            action: self.target_view_action().unwrap_or("Action").to_string(),
+            // On an enemy it names the enemy: the Attack key beside it already says Attack (Top Dog, 8 Nov).
+            action: match self.target_view() {
+                Some((name, _, _, "Attack")) => name,
+                Some((_, _, _, word)) => word.to_string(),
+                None => "Action".to_string(),
+            },
         }
     }
 
@@ -596,6 +601,7 @@ impl Stage {
         let word = match key {
             TouchKey::Attack if !view.attack.is_empty() => view.attack.clone(),
             TouchKey::Aim if !view.aim.is_empty() => view.aim.clone(),
+            TouchKey::Action => view.action.clone(),
             TouchKey::Power(n) => view.powers.get(n as usize).cloned().unwrap_or_default(),
             other => format!("{other:?}"),
         };
