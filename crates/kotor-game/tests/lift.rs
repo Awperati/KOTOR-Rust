@@ -61,3 +61,23 @@ fn a_plain_door_is_not_a_ride() {
     assert!(g.world.lift_ride().is_none());
     assert!(g.world.transition_request.is_some());
 }
+
+/// The Upper City's lift down to the Lower City has neither "elevator" nor "lift" in its tag or template (`tar02_lowdoor`):
+/// the table's row for its two modules makes it a ride, and not a doorway into the Lower City joined at the same height.
+#[test]
+fn the_upper_city_lift_whose_tag_says_neither_is_a_ride_down() {
+    let Some(mut g) = at("tar_m02ab") else { return };
+    let door = g.world.by_tag("tar02_lowdoor")[0];
+    assert!(g.world.is_lift_door(door));
+    g.world.use_door(door);
+    let ride = g.world.lift_ride().cloned().expect("a ride starts");
+    assert_eq!((ride.to.as_str(), ride.way), ("tar_m03aa", LiftWay::Down));
+    for _ in 0..(ride.seconds as usize + 2) * STEPS_A_SECOND {
+        g.step_once();
+    }
+    assert_eq!(g.world.module, "tar_m03aa", "arrived");
+    // Its other doors are still doors.
+    let Some(g) = at("tar_m02ab") else { return };
+    let other = g.world.by_tag("UpperSouth")[0];
+    assert!(!g.world.is_lift_door(other));
+}

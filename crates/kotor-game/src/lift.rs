@@ -1,4 +1,5 @@
-//! Lift rides. A door whose tag or template says elevator or lift, and that leads to another module, does not change module at
+//! Lift rides. A door whose tag or template says elevator or lift, or whose two modules have a row in the table, and that leads
+//! to another module, does not change module at
 //! once: the party stands in the lift for a ride of some seconds and then arrives, so that the lower cities are felt to be lower.
 //! The scripts and the arrival are the door's own; only the time between is new.
 //!
@@ -43,6 +44,11 @@ impl LiftRide {
 
 /// The way and the seconds of a ride from `from` to `to`.
 pub fn ride_between(from: &str, to: &str) -> (LiftWay, f32) {
+    table_row(from, to).unwrap_or((LiftWay::Level, DEFAULT_SECONDS))
+}
+
+/// The table's row for a ride from `from` to `to`, read either way round.
+fn table_row(from: &str, to: &str) -> Option<(LiftWay, f32)> {
     for line in TABLE_TEXT.lines() {
         let line = line.trim_end_matches('\r');
         if line.starts_with('#') || line.trim().is_empty() {
@@ -59,7 +65,7 @@ pub fn ride_between(from: &str, to: &str) -> (LiftWay, f32) {
             _ => LiftWay::Level,
         };
         if c[0].eq_ignore_ascii_case(from) && c[1].eq_ignore_ascii_case(to) {
-            return (way, seconds);
+            return Some((way, seconds));
         }
         if c[0].eq_ignore_ascii_case(to) && c[1].eq_ignore_ascii_case(from) {
             let back = match way {
@@ -67,21 +73,24 @@ pub fn ride_between(from: &str, to: &str) -> (LiftWay, f32) {
                 LiftWay::Up => LiftWay::Down,
                 LiftWay::Level => LiftWay::Level,
             };
-            return (back, seconds);
+            return Some((back, seconds));
         }
     }
-    (LiftWay::Level, DEFAULT_SECONDS)
+    None
 }
 
 impl World {
-    /// Whether `door` is a lift's door that leads to another module.
+    /// Whether `door` is a lift's door that leads to another module: its tag or template says elevator or lift, or the table
+    /// has a row for its two modules. The Upper City's lift down (`tar02_lowdoor`) says neither, and was a doorway the party
+    /// walked through into the Lower City joined at its own height (the owner: "Elevator is broken").
     pub fn is_lift_door(&self, door: ObjId) -> bool {
         self.objects.get(&door).is_some_and(|o| {
             !o.link_module.is_empty()
-                && [o.tag.as_str(), o.template.as_str()].iter().any(|s| {
+                && ([o.tag.as_str(), o.template.as_str()].iter().any(|s| {
                     let s = s.to_ascii_lowercase();
                     s.contains("elev") || s.contains("lift")
-                })
+                }) || (o.kind == crate::Kind::Door
+                    && table_row(&self.module, &o.link_module).is_some()))
         })
     }
 

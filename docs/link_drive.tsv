@@ -118,7 +118,7 @@ unk_m44ac	unk44_tpllckdoor	door	unk_m44aa	joined	0.3	0	0	0	0
 tar_m02aa	tar02_aprtdoor	door	tar_m02af	joined	0.0	0	0	0	0
 tar_m02aa	ptar_stnddr	door	tar_m02ac	joined	0.5	0	0	0	0
 tar_m02ab	tar02_sithdoor	door	tar_m09aa	joined	0.4	0	0	0	0
-tar_m02ab	tar02_lowdoor	door	tar_m03aa	joined	0.2	0	0	0	0
+tar_m02ab	tar02_lowdoor	door	tar_m03aa	ahead	0.8	0	58	113	171
 tar_m02ab	tar02_door02ad	door	tar_m02ad	joined	0.5	0	0	0	0
 tar_m02ab	UpperSouth	door	tar_m02ac	joined	0.7	0	0	0	0
 tar_m02ac	tar02_cantdoor	door	tar_m02ae	joined	0.9	0	0	0	0
