@@ -173,3 +173,38 @@ fn a_shop_door_dips_to_black_while_the_module_behind_it_is_put_up() {
     );
     assert_eq!(black(&s), 0.0, "light again within a second and a half");
 }
+
+#[test]
+fn a_ladder_that_is_a_script_dips_to_black_before_the_module_changes() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("kotor_ladder_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = Stage::open("tar_m05aa", true).unwrap();
+    s.set_saves_dir(dir.join("saves"));
+    s.use_settings_file(dir.join("settings.txt"));
+    s.enable_tutorials(false);
+    s.enable_auto_pause(false);
+    s.set_view((1280, 720));
+    s.set_door_dip(0.3);
+    s.update(DT);
+    assert!(s.stand_near("tar05_lad04aai"));
+    let ladder = s.game.world.by_tag("tar05_lad04aai")[0];
+    assert!(s.game.world.click(ladder));
+    let mut dipped = false;
+    let mut dark_at_change = None;
+    for _ in 0..600 {
+        s.update(DT);
+        dipped |= s.game.world.lift_ride().is_some_and(|r| r.dip);
+        if dark_at_change.is_none() && s.game.world.module == "tar_m04aa" {
+            dark_at_change = Some(black(&s));
+        }
+    }
+    assert!(dipped, "a dip began");
+    assert!(
+        dark_at_change.expect("it changed module") > 0.9,
+        "in the dark"
+    );
+    assert_eq!(black(&s), 0.0, "light again");
+}

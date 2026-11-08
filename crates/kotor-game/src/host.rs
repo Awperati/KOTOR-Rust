@@ -1228,7 +1228,16 @@ impl Host for Adapter<'_> {
             "GetSelectedPlanet" => Some(Value::Int(self.world.selected_planet)),
             // ---- module, party and area queries
             "StartNewModule" => {
-                self.world.transition_request = Some((string(args, 0), string(args, 1)));
+                let (module, waypoint) = (string(args, 0), string(args, 1));
+                // A door's, trigger's or placeable's script (a ladder, a door that fails to open) dips to black first, if dips
+                // are on; the game's start, a cut scene and the end of a conversation start theirs at once.
+                let by_object = matches!(
+                    self.world.object(caller).map(|o| o.kind),
+                    Some(Kind::Door | Kind::Trigger | Kind::Placeable)
+                ) && !self.world.in_dialogue();
+                if !(by_object && self.world.begin_script_dip(caller, &module, &waypoint)) {
+                    self.world.transition_request = Some((module, waypoint));
+                }
                 self.record(name, args);
                 None
             }

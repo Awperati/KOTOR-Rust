@@ -118,6 +118,27 @@ impl World {
         true
     }
 
+    /// The dip for a module an object's script starts. False when dips are off or a ride is going on.
+    pub(crate) fn begin_script_dip(&mut self, object: ObjId, module: &str, waypoint: &str) -> bool {
+        if self.door_dip <= 0.0
+            || self.lift_ride.is_some()
+            || module.is_empty()
+            || module.eq_ignore_ascii_case(&self.module)
+        {
+            return false;
+        }
+        let seconds = self.door_dip;
+        self.start_ride(
+            object,
+            module.to_string(),
+            waypoint.to_string(),
+            LiftWay::Level,
+            seconds,
+            true,
+        );
+        true
+    }
+
     fn start_ride(
         &mut self,
         door: ObjId,
