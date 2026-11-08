@@ -10,9 +10,10 @@ fn the_mod_packs_are_used_when_on_and_read_from_the_mods_folder() {
     };
     let root = kotor_archive::mods_root();
     let beams = std::fs::read_dir(&root).ok().and_then(|r| {
-        r.flatten()
-            .map(|e| e.path())
-            .find(|p| p.to_string_lossy().contains("High Resolution Lightsaber Beams"))
+        r.flatten().map(|e| e.path()).find(|p| {
+            p.to_string_lossy()
+                .contains("High Resolution Lightsaber Beams")
+        })
     });
     let Some(beams) = beams else {
         return;
@@ -34,14 +35,26 @@ fn the_mod_packs_are_used_when_on_and_read_from_the_mods_folder() {
     let mut models = 0;
     for name in ["lts_sky0001", "lda_sky0001", "lka_sky0001"] {
         assert!(
-            inst.in_override(name, ResType::TPC) || inst.in_override(name, ResType::TGA) || !root.exists(),
+            inst.in_override(name, ResType::TPC)
+                || inst.in_override(name, ResType::TGA)
+                || !root.exists(),
             "{name}"
         );
     }
     for stem in [
-        "m02aa_sky", "m02ab_sky", "m14aa_01h", "m18aa_05a", "m26aa_set", "m41aa_02d", "w_blstrcrbn_001", "w_blstrpstl_001",
+        "m02aa_sky",
+        "m02ab_sky",
+        "m14aa_01h",
+        "m18aa_05a",
+        "m26aa_set",
+        "m41aa_02d",
+        "w_blstrcrbn_001",
+        "w_blstrpstl_001",
     ] {
-        let (Ok(mdl), Ok(mdx)) = (inst.read(stem, ResType::MDL), inst.read(stem, ResType(3008))) else {
+        let (Ok(mdl), Ok(mdx)) = (
+            inst.read(stem, ResType::MDL),
+            inst.read(stem, ResType(3008)),
+        ) else {
             continue;
         };
         if inst.in_override(stem, ResType::MDL) {
