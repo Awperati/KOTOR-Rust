@@ -22,7 +22,7 @@ fn the_table_says_which_way_and_reads_both_ways() {
     assert_eq!(ride_between("tar_m03aa", "tar_m02ab").0, LiftWay::Up);
     assert_eq!(ride_between("tar_m03aa", "tar_m04aa").0, LiftWay::Down);
     assert_eq!(
-        ride_between("tar_m10aa", "tar_m10ac"),
+        ride_between("tar_m09aa", "tar_m09ab"),
         (LiftWay::Level, 4.0)
     );
 }

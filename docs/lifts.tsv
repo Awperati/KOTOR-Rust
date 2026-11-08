@@ -3,3 +3,7 @@
 # A row is also read the other way round (down becomes up). A lift with no row is level and takes the default.
 tar_m02ab	tar_m03aa	down	6
 tar_m03aa	tar_m04aa	down	6
+# GUESSED from the names (Upper City > Lower City > Outcasts/Undercity); the owner edits these. Add more rows the same way.
+tar_m05ab	tar_m10aa	down	6
+tar_m10aa	tar_m10ac	down	5
+# Level on purpose (a car module whose floor is on both sides of the door): tar_m09aa/tar_m09ab, tar_m10ab/tar_m10ac, Leviathan.
