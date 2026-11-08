@@ -469,7 +469,9 @@ pub fn sound_file(root: &std::path::Path, resref: &str) -> Option<std::path::Pat
                         };
                         for e in entries.flatten() {
                             let p = e.path();
-                            if p.is_dir() {
+                            // The entry's own type, read with the listing: `Path::is_dir` asks the disk again for
+                            // each of some 15,000 files, which made the first line of a game wait over 2 s.
+                            if e.file_type().is_ok_and(|t| t.is_dir()) {
                                 todo.push(p);
                             } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("wav")) {
                                 if let Some(n) = p.file_stem().and_then(|s| s.to_str()) {

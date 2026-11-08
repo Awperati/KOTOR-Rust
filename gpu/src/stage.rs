@@ -689,6 +689,10 @@ impl Stage {
     fn boot(original: bool) -> Result<Stage, String> {
         let e = |e: kotor_core::Error| e.to_string();
         let dir = kotor_core::install_dir().ok_or("no KotOR install found")?;
+        // The install's sound files are listed on a thread of their own, so that the first line spoken does not wait for the
+        // listing (in tar_m02aa a talk starts on the first frame).
+        let root = dir.clone();
+        std::thread::spawn(move || kotor_game::sound_file(&root, "-"));
         let world = Stage::fresh_world(&dir, original)?;
         let mut inst = Install::open(&dir).map_err(e)?;
         inst.set_prefer_rim(original);
