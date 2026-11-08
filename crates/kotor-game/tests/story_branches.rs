@@ -248,3 +248,26 @@ fn the_hold_on_the_player_is_as_the_game_has_it_outside_the_fight() {
         "and afterwards it is as the game has it"
     );
 }
+
+#[test]
+fn bandons_hit_points_follow_how_hard_the_player_hits() {
+    let Some(mut g) = at_scene(true) else { return };
+    let w = &mut g.world;
+    let pc = w.pc;
+    let pistol = w.spawn_item("g_w_blstrpstl001");
+    w.carry(pc, pistol);
+    w.equip(pc, pistol, Some(4)).unwrap();
+    let plain = w.bandon_full_health();
+    // Bendak's pistol is the same kind with an enhancement of 1.
+    let better = w.spawn_item("g_w_blstrpstl005");
+    w.carry(pc, better);
+    w.equip(pc, better, Some(4)).unwrap();
+    let armed = w.bandon_full_health();
+    assert!(
+        armed > plain,
+        "a stronger player faces more: {plain} then {armed}"
+    );
+    let bare = plain;
+    // Trask alone is worth the rest: it is never a trifle.
+    assert!(bare >= 40, "{bare}");
+}

@@ -11,6 +11,12 @@ struct Result {
     trask_blows: usize,
     trask_hit: i32,
     player_hit: i32,
+    /// Blows of Bandon at the player: tried, and landed.
+    bandon_tried: usize,
+    bandon_landed: usize,
+    player_max: i32,
+    bandon_max: i32,
+    player_defense: i32,
 }
 
 fn fight(
@@ -34,11 +40,23 @@ fn fight(
     w.extended_story = true;
     w.story.bandon_health = Some(health);
     w.story.trask_damage = Some(damage);
-    w.story.bandon_full = Some(full);
+    // 0 hit points means his own rule: so many for each point of damage the player and Trask deal.
+    w.story.bandon_full = (full > 0).then_some(full);
+    w.story.bandon_per_damage = std::env::var("BANDON_K").ok().and_then(|k| k.parse().ok());
     w.story.bandon_blows = Some(blow);
     let pc = w.pc;
     if xp > 0 {
         w.grant_xp(pc, xp);
+    }
+    // The starting kit: the character begins with nothing worn, so each fights with one weapon of the Endar Spire's first
+    // rooms (`BANDON_KIT`, a blaster pistol unless it says otherwise), and bare-handed if it says "none".
+    {
+        let kit = std::env::var("BANDON_KIT").unwrap_or_else(|_| "g_w_blstrpstl001".to_string());
+        if kit != "none" {
+            let item = w.spawn_item(&kit);
+            w.carry(pc, item);
+            w.equip(pc, item, Some(4)).ok()?;
+        }
     }
     let mut g = Game::new(w);
     for _ in 0..600 {
@@ -102,7 +120,14 @@ fn fight(
         }
     }
     r.seconds = g.world.time - began;
+    r.player_max = g.world.object(pc).map_or(0, |o| o.max_hp);
+    r.player_defense = g.world.defense_of(pc);
+    r.bandon_max = g.world.object(bandon).map_or(0, |o| o.max_hp);
     for l in &g.world.combat.log[from..] {
+        if l.attacker == bandon {
+            r.bandon_tried += 1;
+            r.bandon_landed += (l.damage > 0) as usize;
+        }
         if l.attacker == trask {
             r.trask_blows += 1;
             r.trask_hit += l.damage;
@@ -134,6 +159,16 @@ fn trooper(class: i32, xp: i32, seed: u64) -> Option<Result> {
     let pc = w.pc;
     if xp > 0 {
         w.grant_xp(pc, xp);
+    }
+    // The starting kit: the character begins with nothing worn, so each fights with one weapon of the Endar Spire's first
+    // rooms (`BANDON_KIT`, a blaster pistol unless it says otherwise), and bare-handed if it says "none".
+    {
+        let kit = std::env::var("BANDON_KIT").unwrap_or_else(|_| "g_w_blstrpstl001".to_string());
+        if kit != "none" {
+            let item = w.spawn_item(&kit);
+            w.carry(pc, item);
+            w.equip(pc, item, Some(4)).ok()?;
+        }
     }
     let mut g = Game::new(w);
     for _ in 0..600 {
@@ -212,7 +247,10 @@ fn main() {
     // The player's level: 1 is a new character, and the others get the experience that level starts at.
     let levels: Vec<i32> = list(args.next(), &[1]);
     let xp_of = |level: i32| level * (level - 1) * 500;
-    for &level in &levels {
+    for &level in levels
+        .iter()
+        .filter(|_| std::env::var("NO_TROOPER").is_err())
+    {
         println!("--- one Sith trooper, beside Trask, level {level}");
         for (name, class) in [("soldier", 0), ("scout", 1), ("scoundrel", 2)] {
             let (mut wins, mut time) = (0, 0.0);
@@ -236,7 +274,8 @@ fn main() {
                     for &level in &levels {
                         for (name, class) in [("soldier", 0), ("scout", 1), ("scoundrel", 2)] {
                             let (mut wins, mut time) = (0, 0.0);
-                            let (mut hit, mut taken) = (0, 0);
+                            let (mut hit, mut taken, mut tried, mut landed) = (0, 0, 0, 0);
+                            let (mut max_hp, mut defense, mut whole) = (0, 0, 0);
                             for k in 0..n {
                                 if let Some(r) =
                                     fight(class, xp_of(level), k + 1, health, damage, full, blow)
@@ -245,13 +284,20 @@ fn main() {
                                     time += r.seconds;
                                     hit += r.player_hit;
                                     taken += r.trask_hit;
+                                    tried += r.bandon_tried;
+                                    landed += r.bandon_landed;
+                                    max_hp = r.player_max;
+                                    whole = r.bandon_max;
+                                    defense = r.player_defense;
                                 }
                             }
                             println!(
-                                "{name} level {level}: won {wins} of {n}, {:.0} s a fight, the player dealt {} and Trask {} a fight",
+                                "{name} level {level}: won {wins} of {n}, {:.0} s a fight, the player dealt {} and Trask {} a fight; player {max_hp} hp, defense {defense}, Bandon {whole} hp, landed {} of {} blows",
                                 time / n as f32,
                                 hit / n as i32,
-                                taken / n as i32
+                                taken / n as i32,
+                                landed / n as usize,
+                                tried / n as usize
                             );
                         }
                     }

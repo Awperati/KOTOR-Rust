@@ -25,8 +25,16 @@ pub const STORY_POINTS: i32 = 5;
 /// Won of 100 by `bandon_odds`, level 1, the player only attacking, from where a walk-in stands: soldier 78, scout 44, scoundrel
 /// 35, in 16 to 18 s. One Sith trooper: 100, 95 and 92, in 12 to 13 s.
 pub const BANDON_HEALTH: f32 = 0.5;
+/// His hit points when the player's side does no damage worth counting; `bandon_full_health` replaces it with a number that
+/// follows how hard the player and Trask hit.
 pub const BANDON_FULL_HEALTH: i32 = 135;
-pub const BANDON_BLOWS: f32 = 0.22;
+/// Hit points per point of damage a round of the player and Trask is expected to deal him. **Tuned:** so that each class at each
+/// level of 1 to 4, with the starting kit and Trask beside, wins about 65 of 100 (the owner's "intermediate"). `bandon_odds`.
+pub const BANDON_HEALTH_PER_DAMAGE: f32 = 8.7;
+/// The player's own power counts this many times over Trask's: the same damage from the one who is being hunted shortens the
+/// fight more than a share of it does. **Tuned** with the number above.
+pub const BANDON_PLAYER_WEIGHT: f32 = 2.0;
+pub const BANDON_BLOWS: f32 = 0.2;
 pub const TRASK_DAMAGE: i32 = 6;
 /// The owner's clip, by this name in his animation folder; until it exists a stock attack stands in.
 pub const ABANDONED_CLIP: &str = "end_trask_abandoned";
@@ -60,9 +68,23 @@ pub struct StoryState {
     pub bandon_health: Option<f32>,
     pub trask_damage: Option<i32>,
     pub bandon_full: Option<i32>,
+    /// The player's hit points once the blows rolled so far have landed, and what they were last seen at.
+    ladder: Option<(i32, i32)>,
+    /// In place of `BANDON_HEALTH_PER_DAMAGE`.
+    pub bandon_per_damage: Option<f32>,
     pub bandon_blows: Option<f32>,
     /// For the stage: a clip to show on this one, if the owner has made it.
     pub cue: Option<(ObjId, &'static str)>,
+}
+
+/// A blow that takes someone of `now` hit points out of `whole` to the next rung down of `steps` equal ones.
+fn ladder_blow(whole: i32, now: i32, steps: i32) -> i32 {
+    let rung = (0..steps)
+        .map(|j| whole * j / steps)
+        .filter(|r| *r < now)
+        .max()
+        .unwrap_or(0);
+    (now - rung).max(1)
 }
 
 fn words(text: &str) -> Option<LocString> {
@@ -231,7 +253,7 @@ impl World {
     }
 
     /// What a blow does in this fight: Bandon's on the player takes a share of the player's whole health.
-    pub(crate) fn story_soften(&self, attacker: ObjId, target: ObjId, dealt: i32) -> i32 {
+    pub(crate) fn story_soften(&mut self, attacker: ObjId, target: ObjId, dealt: i32) -> i32 {
         let in_fight = self
             .global_booleans
             .get(FIGHT_FLAG)
@@ -239,11 +261,52 @@ impl World {
             .unwrap_or(false);
         if in_fight && target == self.pc && self.object(attacker).is_some_and(|o| o.tag == BANDON) {
             let share = self.story.bandon_blows.unwrap_or(BANDON_BLOWS);
-            let whole = self.object(target).map_or(1, |o| o.max_hp);
-            ((whole as f32 * share).round() as i32).max(1)
+            // His blows take the player down a ladder of equal steps, so every player, from 6 hit points to 48, falls to the same
+            // number of landed blows (`1 / share`, 5 by default) whatever rounding would say, and a heal puts them back up.
+            let (whole, now) = self.object(target).map_or((1, 1), |o| (o.max_hp, o.hp));
+            let steps = (1.0 / share.max(0.01)).round().max(1.0) as i32;
+            // A blow lands a moment after it is rolled, so the one before it may not have taken its hit points yet: count it.
+            let eff = match self.story.ladder {
+                Some((projected, seen)) if now <= seen => now.min(projected),
+                _ => now,
+            };
+            let dealt = ladder_blow(whole, eff, steps);
+            self.story.ladder = Some((eff - dealt, now));
+            dealt
         } else {
             dealt
         }
+    }
+
+    /// What a swing of `who` at `target` is worth on average: the chance to hit times the middle of the damage.
+    fn expected_swing(&mut self, who: ObjId, target: ObjId) -> f32 {
+        let (Some((lo, hi)), bonus, defense) = (
+            self.damage_range_of(who, 4),
+            self.attack_bonus_of(who, 4),
+            self.defense_of(target),
+        ) else {
+            return 0.0;
+        };
+        let chance = ((21 - (defense - bonus)) as f32 / 20.0).clamp(0.05, 0.95);
+        chance * (lo + hi) as f32 / 2.0
+    }
+
+    /// His whole hit points: a share of what the player and Trask are expected to deal him a round, so a stronger player does not
+    /// end the fight sooner than a weaker one. The player's own power counts, level, class and gear together.
+    pub fn bandon_full_health(&mut self) -> i32 {
+        let (Some(bandon), Some(trask)) = (self.first_by_tag(BANDON), self.first_by_tag(TRASK))
+        else {
+            return BANDON_FULL_HEALTH;
+        };
+        let pc = self.pc;
+        let power = self.expected_swing(pc, bandon) * BANDON_PLAYER_WEIGHT
+            + self.expected_swing(trask, bandon)
+            + self.story.trask_damage.unwrap_or(TRASK_DAMAGE) as f32;
+        let per = self
+            .story
+            .bandon_per_damage
+            .unwrap_or(BANDON_HEALTH_PER_DAMAGE);
+        ((power * per).round() as i32).max(20)
     }
 
     fn first_by_tag(&self, tag: &str) -> Option<ObjId> {
@@ -277,8 +340,12 @@ impl World {
         let pc = self.pc;
         if !self.story.fight_started {
             self.story.fight_started = true;
+            self.story.ladder = None;
             let fraction = self.story.bandon_health.unwrap_or(BANDON_HEALTH);
-            let full = self.story.bandon_full.unwrap_or(BANDON_FULL_HEALTH);
+            let full = self
+                .story
+                .bandon_full
+                .unwrap_or_else(|| self.bandon_full_health());
             // He starts wounded, and cannot die here: the story wants him later.
             if let Some(o) = self.object_mut(bandon) {
                 o.max_hp = full;
