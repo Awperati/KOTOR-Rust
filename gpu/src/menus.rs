@@ -53,6 +53,8 @@ mod workbenchscreen;
 
 /// Longest name a save can be given, and the characters the interface font has.
 const SAVE_NAME_MAX: usize = 32;
+/// The character panel's line while Medication Sickness lasts.
+const SICK_WORDS: &str = "Medication Sickness";
 /// The owner's title card on the main menu, in layout units: how wide, over the middle of the buttons, and above their panel.
 const TITLE_WIDE: i32 = 380;
 const TITLE_MIDDLE: i32 = 386;
@@ -1977,11 +1979,17 @@ impl Stage {
     fn character_view(&mut self) -> MenuView {
         let mut v = MenuView::new("character");
         self.change_buttons(&mut v);
-        v.hide(&["LBL_CLASS2", "LBL_LEVEL2"]);
+        v.hide(&["LBL_LEVEL2"]);
         v.inert(&["BTN_SCRIPTS"]);
         v.holes.push("LBL_3DCHAR".to_string());
         let w = &mut self.game.world;
         let pc = w.pc;
+        // The second class line is free, as no one has a second class yet: it says when they are sick.
+        match w.medication_stack(pc) {
+            0 => v.hide(&["LBL_CLASS2"]),
+            1 => v.text("LBL_CLASS2", SICK_WORDS),
+            _ => v.text("LBL_CLASS2", format!("{SICK_WORDS} x2")),
+        }
         if !w.level_ready(pc) {
             v.hide(&["BTN_AUTO", "BTN_LEVELUP"]);
         }

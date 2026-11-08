@@ -798,6 +798,16 @@ fn a_medpac_in_its_cooldown_asks_first_and_its_slot_shows_the_cooldown() {
     assert_eq!(s.menu_name(), "-");
     assert_eq!(count(&s), had - 2);
     assert_eq!(s.game.world.medication_stack(pc), 1);
+    // The character panel says so.
+    s.open_character();
+    assert_eq!(
+        s.menu_button_words("LBL_CLASS2").as_deref(),
+        Some("Medication Sickness")
+    );
+    let (_, too_big) = s.words_fit();
+    assert!(too_big.is_empty(), "{too_big:?}");
+    s.open_character();
+    assert_eq!(s.menu_name(), "-");
     // Once a cooldown: the next use in it does not ask again.
     s.click(slot, SIZE);
     assert_eq!(s.menu_name(), "-");

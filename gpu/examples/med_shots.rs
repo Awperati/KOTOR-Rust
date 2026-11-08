@@ -60,5 +60,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     shot(&mut s, "med_slot_50");
     s.click(slot, size);
     shot(&mut s, "med_warning");
+    s.capture_key("KeyY");
+    s.open_character();
+    shot(&mut s, "med_character");
     Ok(())
 }
