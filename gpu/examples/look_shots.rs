@@ -52,6 +52,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         s.click(p, size);
     }
     shot(&mut s, "look_large");
+    // Stage 5: None for underwear, the game's own painted body, one to the left of Standard.
+    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 2, -1, size) {
+        s.hover(p, size);
+        s.click(p, size);
+    }
+    shot(&mut s, "look_underwear_none");
+    if let Some(p) = s.menu_step_pixel("LB_OPTIONS", 2, 1, size) {
+        s.hover(p, size);
+        s.click(p, size);
+    }
 
     // Stage 1: a drag turns the figure, and the rows give views, poses and lights.
     let row = |s: &mut Stage, name: &str| {

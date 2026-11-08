@@ -2119,7 +2119,9 @@ impl Stage {
                     }
                 }
                 let mut img = stock?;
-                let body = kotor_render::underwear::body_of_texture(name).filter(|_| conventional);
+                // A character who chose none of ours wears the game's own paint.
+                let ours = conventional && variant != menus::STOCK_UNDERWEAR;
+                let body = kotor_render::underwear::body_of_texture(name).filter(|_| ours);
                 if let Some(body) = body {
                     let plan = plans
                         .entry(body.clone())
@@ -2133,7 +2135,7 @@ impl Stage {
                         }
                     }
                 }
-                if conventional && kotor_render::underwear::is_hero_head(name) {
+                if ours && kotor_render::underwear::is_hero_head(name) {
                     let plan = necks
                         .entry(name.to_ascii_lowercase())
                         .or_insert_with(|| kotor_render::underwear::neck_plan_for(inst, name));

@@ -2,7 +2,7 @@
 
 The owner: "Or just have selectable 'underwear' meshes in the character creation screen. I want the character creation to be complex and detailed like the skyrim one".
 
-This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, and stage 7; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
+This is a plan. Stages 0 and 1 are built, stage 2 but its skin tone, stage 3 but its eye colour, stage 7, and stage 5 for women; the rest is not. Sizes are my estimates of lines of Rust with tests, not measurements. It builds on [CHARGEN.md](CHARGEN.md).
 
 ## What the game's files allow
 
@@ -72,6 +72,8 @@ For a finger, a choice row's arrows answer over the row's whole height and a lit
 **Not built in stage 3:** eye colour. The eyes are painted in the head's own texture, and a colour of their own would need a texture made at run time for them. **Assumed:** each face slider's size at its ends, a few millimetres, by eye from frames of one head, `PFHA01`. Not checked on the other 29.
 
 **Stage 7.** Four rows after the sliders. Random look rolls every slider, most of them a little way from 0 and some at 0, at most 60 either way, and a head and a body of the chosen sex. Sliders puts every slider back to 0. Save this look keeps the head, the body and the sliders as the next "Look" by number in `looks.txt` beside the settings file, one look a line. Saved look goes through them with its arrows, and each goes on the figure; a look saved with a head of the other sex keeps this head. **Assumed:** the names "Look 1" and so on, as the page has no box to type in, and the random range.
+
+**Stage 5.** A woman's Underwear row has Standard, the packs and folders in the mods folder as before, and last "None (the game's own)": the game's body with its painted top, as decided. Its id, `*none`, cannot be a folder's name. The texture of a body or head that wears it has no paint of ours. It is the player's in the new game, as the other choices are. **Not built:** a man's row. A man's body has no paint of ours and wears the game's own already, and a plan of underwear for men is new work in `underwear.rs`, not begun. **Assumed:** with None, the chest keeps the small shape the standard paint gives it under its cups.
 
 ## What each stage must not break
 

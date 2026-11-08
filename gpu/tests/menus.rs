@@ -4491,6 +4491,52 @@ fn a_look_can_be_saved_loaded_rolled_at_random_and_reset() {
 }
 
 #[test]
+fn none_for_underwear_is_the_games_own_painted_body() {
+    let Some(mut s) = at_chargen("stock_underwear") else {
+        return;
+    };
+    press(&mut s, "BTN_SEL4");
+    press(&mut s, "CUST_CHAR_BTN");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    let rows = s.menu_rows("LB_OPTIONS");
+    let wear = rows
+        .iter()
+        .position(|r| r.text == "Underwear")
+        .expect("a woman's row");
+    assert_eq!(rows[wear].choice.as_deref(), Some("Standard"));
+    // The last choice, one to the left of the first.
+    look_arrow(&mut s, wear, -1);
+    assert_eq!(
+        s.menu_rows("LB_OPTIONS")[wear].choice.as_deref(),
+        Some("None (the game's own)")
+    );
+    // The figure's body wears its texture with no paint of ours: not as the standard paint has it.
+    let (scene, _, _) = s.frame_scene();
+    let body = scene
+        .meshes
+        .iter()
+        .filter_map(|m| m.texture.clone())
+        .find(|t| {
+            let (plain, variant) = kotor_render::underwear::split_variant(t);
+            variant == "*none" && kotor_render::underwear::body_of_texture(plain).is_some()
+        })
+        .expect("a body texture with no paint of ours");
+    let plain = kotor_render::underwear::split_variant(&body).0.to_string();
+    let stock = s.texture(&body).expect("the game's own");
+    let ours = s.texture(&plain).expect("the standard paint");
+    assert!(stock.rgba != ours.rgba, "{body}");
+    // Cancel puts back the standard.
+    press(&mut s, "BTN_BACK");
+    press(&mut s, "BTN_STEPNAME1");
+    s.update(DT);
+    assert_eq!(
+        s.menu_rows("LB_OPTIONS")[wear].choice.as_deref(),
+        Some("Standard")
+    );
+}
+
+#[test]
 fn a_players_look_shapes_their_body_in_the_game_and_their_height_is_drawn() {
     let Some((mut s, _)) = in_game("body_in_game") else {
         return;

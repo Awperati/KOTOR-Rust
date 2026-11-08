@@ -15,6 +15,9 @@ use std::path::{Path, PathBuf};
 mod abilityscreen;
 #[path = "chargenscreen.rs"]
 mod chargenscreen;
+/// The underwear that is none of ours: the game's own body and its painted top, unchanged. Decided 2026-11-07: "None" is the
+/// stock body. Its id cannot be a folder's name, so no mod's folder takes it.
+pub(in crate::stage) const STOCK_UNDERWEAR: &str = "*none";
 #[path = "fightscreen.rs"]
 mod fightscreen;
 #[path = "figure.rs"]

@@ -111,6 +111,8 @@ const SLIDERS: [(&str, &str, bool); 13] = [
 ];
 /// The view a face slider brings the figure to, from the whole body.
 const FACE_VIEW: usize = 2;
+use super::STOCK_UNDERWEAR;
+const STOCK_UNDERWEAR_NAME: &str = "None (the game's own)";
 /// Saved looks: the file beside the settings that keeps them, and how far a random look's sliders go each way, in per cent.
 const LOOKS_FILE: &str = "looks.txt";
 const RANDOM_MOST: i32 = 60;
@@ -500,6 +502,12 @@ impl Stage {
             underwear: list_underwear_variants()
                 .into_iter()
                 .filter(|v| v.fits)
+                .chain(std::iter::once(UnderwearVariant {
+                    id: STOCK_UNDERWEAR.to_string(),
+                    name: STOCK_UNDERWEAR_NAME.to_string(),
+                    fits: true,
+                    note: "The game's own body, as it is painted".to_string(),
+                }))
                 .collect(),
             underwear_pick: 0,
             page_underwear: 0,
