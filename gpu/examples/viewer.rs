@@ -414,8 +414,10 @@ impl App {
             }
         }
         self.stage.turn = self.turning;
+        // In Modern the mouse looks by itself while it is held: the camera is the mouse's, as with the button.
+        let mouse_looks = self.turret_cursor && self.stage.mouse_looks();
         self.stage
-            .set_looking(self.looking || self.stage.touch_looking());
+            .set_looking(self.looking || self.stage.touch_looking() || mouse_looks);
         self.stage.set_aim_held(self.looking);
         let held = self.stage.cursor_held(self.looking, st.window.has_focus());
         if self.turret_cursor != held {
@@ -693,6 +695,13 @@ impl App {
         if pressed && self.stage.capture_key(&name) {
             return;
         }
+        // Modern: the cursor comes back for clicking, or the mouse turns the camera again.
+        if code == KeyCode::CapsLock {
+            if pressed {
+                self.stage.caps_lock_key();
+            }
+            return;
+        }
         match self.stage.action_for_key(&name) {
             Some("Jump") if self.stage.turret_on() => return self.stage.turret_fire(pressed),
             Some("MoveForward") => return self.keys[0] = pressed,
@@ -806,7 +815,8 @@ impl ApplicationHandler for App {
                         self.cursor = middle;
                         return;
                     }
-                } else if self.looking {
+                } else if self.looking || self.turret_cursor {
+                    // The look button, or in Modern the mouse by itself.
                     self.stage
                         .look(now.0 - self.cursor.0, now.1 - self.cursor.1);
                     // Held, the hidden cursor goes back to the middle before an edge can stop it.
@@ -912,7 +922,7 @@ impl ApplicationHandler for App {
         let (dx, dy) = (delta.0 as f32, delta.1 as f32);
         if self.stage.turret_on() {
             self.stage.turret_look(dx, dy);
-        } else if self.looking {
+        } else {
             self.stage.look(dx, dy);
         }
     }

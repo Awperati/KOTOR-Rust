@@ -514,6 +514,8 @@ pub struct Stage {
     steer_yaw: f32,
     /// The look button is held.
     looking: bool,
+    /// Caps Lock gave the cursor back, in Modern, where the mouse otherwise turns the camera.
+    free_cursor: bool,
     /// How far behind the player the camera's focus is, and the height it was last at.
     camera_lag: [f32; 3],
     /// How far out the camera stands, easing in Modern. None: as the room says, at once.
@@ -718,6 +720,7 @@ impl Stage {
             steer: (0.0, 0.0, false),
             steer_yaw: 0.0,
             looking: false,
+            free_cursor: false,
             camera_lag: [0.0; 3],
             camera_arm: None,
             arm_at: [0.0; 3],

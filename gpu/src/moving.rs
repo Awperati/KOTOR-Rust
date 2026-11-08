@@ -17,6 +17,9 @@ use std::f32::consts::TAU;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+/// What Caps Lock says over the player in Modern: the cursor is back, or the mouse turns the camera again.
+const CURSOR_ON_WORDS: &str = "Cursor on (Caps Lock)";
+const CURSOR_OFF_WORDS: &str = "Mouse look (Caps Lock)";
 /// Seconds the camera's focus is behind the player, at speed.
 const LAG_SECONDS: f32 = 0.07;
 /// How quickly the lag closes on what it should be, per second.
@@ -323,9 +326,44 @@ impl Stage {
     /// button is down, while aiming, and at the turret. The owner: "Upon holding right click to pan the mouse around make the
     /// cursor invisible and infinitely repeat across the borders of the window". A menu, a conversation's replies or a window
     /// without focus let it go, so the cursor is there to click with, and a driver's window, which never has focus, never holds it.
+    ///
+    /// In Modern the mouse turns the camera with no button held, and Caps Lock gives the cursor back for a while. The owner:
+    /// "By default within modern mode have the mouse control the look of the camera automatically, upon pressing caps lock
+    /// enable the on-screen mouse". The on-screen controls keep the cursor: fingers and the mouse use them.
     pub fn cursor_held(&self, look_button: bool, focused: bool) -> bool {
-        let looking = look_button && self.choice_view().is_none();
-        focused && !self.menu_open() && (looking || self.aiming() || self.turret_on())
+        let free = self.choice_view().is_none() && !self.game.world.in_dialogue();
+        let looking = look_button && free;
+        focused
+            && !self.menu_open()
+            && (looking || self.aiming() || self.turret_on() || (free && self.mouse_looks()))
+    }
+
+    /// The mouse turns the camera by itself: Modern, with Caps Lock not giving the cursor back, in play.
+    pub fn mouse_looks(&self) -> bool {
+        self.settings().movement_modern
+            && !self.free_cursor
+            && !self.touch_on()
+            && !self.game.world.in_race()
+            && self.in_game()
+    }
+
+    /// Caps Lock: the cursor comes back, or goes again. Modern only. It says which, over the player.
+    pub fn caps_lock_key(&mut self) {
+        if !self.settings().movement_modern {
+            return;
+        }
+        self.free_cursor = !self.free_cursor;
+        let words = if self.free_cursor {
+            CURSOR_ON_WORDS
+        } else {
+            CURSOR_OFF_WORDS
+        };
+        self.say_over_player(words.to_string());
+    }
+
+    /// Caps Lock has given the cursor back.
+    pub fn cursor_freed(&self) -> bool {
+        self.free_cursor
     }
 
     /// The look button is held or let go.
