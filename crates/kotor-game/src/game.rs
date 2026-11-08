@@ -129,6 +129,8 @@ pub struct Game {
 const COMBAT_CLIP_SECONDS: f32 = 1.5;
 /// How long the `getupdead` clip plays when a push or knockdown ends. **Assumed**, not read from the model.
 const GET_UP_SECONDS: f32 = 3.0;
+/// Where in its fall a body is when it is first seen already down: past the end of any clip, so it lies in the last frame.
+const LIES_AT: f32 = 1000.0;
 const DODGE_CLIP_SECONDS: f32 = 0.43;
 /// How long a creature that took part in a fight keeps its combat stance after its last blow. A round is 3 s.
 ///
@@ -338,9 +340,15 @@ impl Game {
                     .unwrap_or("pause1")
             };
             let dt = self.dt;
+            // A body already down when it is first seen (an area entered, a game loaded, a corpse the module placed) lies in the last
+            // frame of its fall: it does not fall again. The clip's time is held at its end by the screen.
             let c = self.clips.entry(id).or_insert(Clip {
                 name: want,
-                time: (id % 7) as f32 * 0.37,
+                time: if down {
+                    LIES_AT
+                } else {
+                    (id % 7) as f32 * 0.37
+                },
                 fade: None,
             });
             c.fade = c.fade.and_then(|f| {

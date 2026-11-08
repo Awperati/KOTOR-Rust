@@ -385,3 +385,39 @@ fn an_item_without_a_clip_of_its_own_never_gets_a_powers() {
     );
     assert_eq!(clip("force_push"), None, "a power's label is not an item's");
 }
+
+/// Owner, 8 Nov: "upon entering a new area all of the dead npcs replay the death animation". A body that is down when it is first
+/// seen (an area entered, a game loaded) lies at the end of its fall, and one that falls in front of us falls from the start.
+#[test]
+fn a_body_already_down_lies_still_and_one_that_falls_now_falls() {
+    let Some(mut g) = game() else { return };
+    let pc = g.world.pc;
+    let mut others = g
+        .world
+        .objects
+        .values()
+        .filter(|o| o.kind == kotor_game::Kind::Creature && o.id != pc)
+        .map(|o| o.id);
+    let (Some(corpse), Some(victim)) = (others.next(), others.next()) else {
+        return;
+    };
+    // The corpse is down before the game has seen anything: as a new area or a loaded game starts. The victim is seen standing.
+    g.world.object_mut(corpse).unwrap().dead = true;
+    g.step_once();
+    g.world.object_mut(victim).unwrap().dead = true;
+    g.step_once();
+    let lies = g.clip(corpse).unwrap();
+    assert_eq!(lies.name, "die");
+    assert!(
+        lies.time > 100.0,
+        "a body first seen down is at {}",
+        lies.time
+    );
+    let falls = g.clip(victim).unwrap();
+    assert_eq!(falls.name, "die");
+    assert!(
+        falls.time < 0.5,
+        "a body that falls now is at {}",
+        falls.time
+    );
+}
