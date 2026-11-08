@@ -652,9 +652,11 @@ struct Post {
     blur_ms: wgpu::RenderPipeline,
 }
 
-/// How long the shutter stays open for each motion blur level, in seconds, and the longest blur in picture widths.
-const BLUR_EXPOSURE: [f32; 4] = [0.0, 0.010, 0.020, 0.036];
-const BLUR_LONGEST: [f32; 4] = [0.0, 0.012, 0.026, 0.05];
+/// How long the shutter stays open for each motion blur level, in seconds, and the longest blur in picture widths: off, subtle,
+/// moderate and intense. The owner: "Make the subtle motion blur more subtle. Make the current subtle the moderate and then make
+/// the intense the moderate". **Assumed:** Subtle half of the old Subtle, Moderate the old Subtle, Intense the old Moderate.
+const BLUR_EXPOSURE: [f32; 4] = [0.0, 0.005, 0.010, 0.020];
+const BLUR_LONGEST: [f32; 4] = [0.0, 0.006, 0.012, 0.026];
 
 fn make_post(device: &wgpu::Device) -> Post {
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {

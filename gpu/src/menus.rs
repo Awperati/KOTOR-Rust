@@ -2496,14 +2496,13 @@ impl Stage {
             (Screen::Graphics, "BTN_DEFAULT") => {
                 let d = Settings::default();
                 let s = &mut self.menus.settings;
-                (s.brightness, s.anti_aliasing, s.motion_blur) =
-                    (d.brightness, d.anti_aliasing, d.motion_blur);
+                (s.brightness, s.motion_blur, s.mod_packs) =
+                    (d.brightness, d.motion_blur, d.mod_packs);
                 self.settings_changed();
             }
-            (
-                Screen::Graphics,
-                optionpages::AA_BUTTON | optionpages::BLUR_BUTTON | optionpages::MOD_PACKS_BUTTON,
-            ) => self.graphics_effect_press(tag),
+            (Screen::Graphics, optionpages::BLUR_BUTTON | optionpages::MOD_PACKS_BUTTON) => {
+                self.graphics_effect_press(tag)
+            }
             (Screen::Graphics, "BTN_ADVANCED") => self.open_graphics_advanced(),
             (Screen::GraphicsAdvanced, _) => self.graphics_advanced_press(tag),
             (Screen::Graphics, "BTN_RESOLUTION") => {

@@ -3648,22 +3648,29 @@ fn the_graphics_pages_show_anti_aliasing_and_motion_blur() {
     assert_eq!(s.menu_name(), "graphics");
     s.update(DT);
     let words = |s: &mut Stage, tag: &str| s.menu_button_words(tag).unwrap_or_default();
-    assert_eq!(words(&mut s, "BTN_AA"), "Anti-aliasing: 4x", "the default");
+    // Anti-aliasing is only on the Advanced page: the owner, "Make it only show in the advanced options".
+    assert!(s.menu_pixel("BTN_AA", None, SIZE).is_none());
     assert_eq!(words(&mut s, "BTN_MOTIONBLUR"), "Motion blur: Subtle");
     let (_, too_big) = s.words_fit();
     assert!(too_big.is_empty(), "{too_big:?}");
 
     // A click goes on to the next level, round again, and the file keeps it.
-    for (aa, name) in [(2, "8x"), (3, "16x"), (0, "Off"), (1, "4x"), (2, "8x")] {
-        press(&mut s, "BTN_AA");
-        assert_eq!(s.anti_aliasing(), aa);
-        assert_eq!(words(&mut s, "BTN_AA"), format!("Anti-aliasing: {name}"));
+    for (blur, name) in [
+        (2, "Moderate"),
+        (3, "Intense"),
+        (0, "Off"),
+        (1, "Subtle"),
+        (2, "Moderate"),
+    ] {
+        press(&mut s, "BTN_MOTIONBLUR");
+        assert_eq!(s.motion_blur(), blur);
+        assert_eq!(
+            words(&mut s, "BTN_MOTIONBLUR"),
+            format!("Motion blur: {name}")
+        );
     }
-    press(&mut s, "BTN_MOTIONBLUR");
-    assert_eq!(s.motion_blur(), 2);
-    assert_eq!(words(&mut s, "BTN_MOTIONBLUR"), "Motion blur: Moderate");
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(text.contains("anti_aliasing=2") && text.contains("motion_blur=2"));
+    assert!(text.contains("motion_blur=2"), "{text}");
 
     // The cursor on one says what it does.
     let plain = frame(&mut s);
@@ -3674,7 +3681,12 @@ fn the_graphics_pages_show_anti_aliasing_and_motion_blur() {
     // The Advanced page's own Anti-Aliasing works too, with its arrows, and Cancel puts it back.
     press(&mut s, "BTN_ADVANCED");
     assert_eq!(s.menu_name(), "graphics_advanced");
-    assert_eq!(words(&mut s, "BTN_ANTIALIAS"), "Anti-aliasing: 8x");
+    assert_eq!(
+        words(&mut s, "BTN_ANTIALIAS"),
+        "Anti-aliasing: 4x",
+        "the default"
+    );
+    press(&mut s, "BTN_ANTIALIASRIGHT");
     press(&mut s, "BTN_ANTIALIASRIGHT");
     assert_eq!(s.anti_aliasing(), 3);
     assert!(
@@ -3682,15 +3694,22 @@ fn the_graphics_pages_show_anti_aliasing_and_motion_blur() {
         "the top"
     );
     press(&mut s, "BTN_ANTIALIASLEFT");
+    assert_eq!(s.anti_aliasing(), 2);
+    press(&mut s, "BTN_BACK");
+    assert_eq!(s.menu_name(), "graphics");
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("anti_aliasing=2"));
+    press(&mut s, "BTN_ADVANCED");
     press(&mut s, "BTN_ANTIALIASLEFT");
     assert_eq!(s.anti_aliasing(), 1);
     press(&mut s, "BTN_CANCEL");
     assert_eq!(s.menu_name(), "graphics");
-    assert_eq!(s.anti_aliasing(), 2);
+    assert_eq!(s.anti_aliasing(), 2, "Cancel puts it back");
 
-    // Default brings both back.
+    // Default on the main page brings the blur back; anti-aliasing is the Advanced page's.
     press(&mut s, "BTN_DEFAULT");
-    assert_eq!((s.anti_aliasing(), s.motion_blur()), (1, 1));
+    assert_eq!((s.anti_aliasing(), s.motion_blur()), (2, 1));
 }
 
 #[test]
