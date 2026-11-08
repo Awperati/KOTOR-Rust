@@ -831,6 +831,105 @@ const NECK_JOINTS: [&str; 3] = ["necklwr_g", "neck_g", "head_g"];
 /// a turn about a parent's own x goes a different way on each side, and twists the limb. So each line is said in the body's
 /// frame of the standing pose, and carried into the frame of the joint's parent there. A knee's line still turns with the thigh.
 /// The weapon arm pitched down at something on the floor: the spine leans forward and the arms drop, `degrees` in all.
+/// Modern aim on the move. The owner: "When aiming in modern combat the character plays the walking animation despite
+/// actively aiming/shooting. Make special omnidirectional walking animations for aiming states". The game has no strafe
+/// clips, so this is built from its own: the legs walk or run toward where the body goes, played backwards going back, with
+/// the hips turned to that way; the upper body is held as the weapon's fighting stance has it, turned back to the aim.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct AimLegs {
+    /// The weapon's stance clip, `g5r1` with a pistol, for all above the hips.
+    pub ready: &'static str,
+    /// How far the hips turn from the aim toward the way the body goes, in degrees.
+    pub turn: f32,
+    /// Going back: the walk or run plays backwards.
+    pub back: bool,
+}
+
+/// What is the legs' in a body, kept from the walk or run: the rest is the stance's.
+const LOWER_BODY: [&str; 10] = [
+    "rootdummy",
+    "pelvis_g",
+    "lthigh_g",
+    "rthigh_g",
+    "lshin_g",
+    "rshin_g",
+    "lfoot_g",
+    "rfoot_g",
+    "ltoe_g",
+    "rtoe_g",
+];
+/// **Assumed:** the most the hips turn from the aim, and from how far off the aim a way counts as going back, in degrees.
+const LEGS_TURN_MOST: f32 = 75.0;
+const BACK_FROM: f32 = 100.0;
+/// Slower than this, in m/s, the body stands: the stance clip has it all.
+const AIM_LEGS_FROM: f32 = 0.3;
+
+/// The legs' turn and whether they go back, for a body moving `way` radians while it aims along `aim`.
+pub(super) fn aim_legs_turn(way: f32, aim: f32) -> (f32, bool) {
+    let tau = TAU;
+    let wrap = |a: f32| (a + tau / 2.0).rem_euclid(tau) - tau / 2.0;
+    let rel = wrap(way - aim).to_degrees();
+    let back = rel.abs() > BACK_FROM;
+    let turn = if back {
+        wrap((rel + 180.0).to_radians()).to_degrees()
+    } else {
+        rel
+    };
+    (turn.clamp(-LEGS_TURN_MOST, LEGS_TURN_MOST), back)
+}
+
+impl Stage {
+    /// While the player aims, or is locked on, and goes along in a walk or run: how the legs go under the aim.
+    pub(super) fn aim_legs(&mut self, clip: &Option<Clip>) -> Option<AimLegs> {
+        let w = &self.game.world;
+        let aim = w.pc_aim?;
+        let name = clip.as_ref()?.name;
+        if name != "walk" && name != "run" {
+            return None;
+        }
+        let v = w.pc_body.vel;
+        if v[0].hypot(v[1]) < AIM_LEGS_FROM {
+            return None;
+        }
+        let (turn, back) = aim_legs_turn(v[1].atan2(v[0]), aim);
+        let pc = w.pc;
+        let ready = self.game.ready_clip(pc);
+        Some(AimLegs { ready, turn, back })
+    }
+
+    /// How the legs go under the aim now, for a test: the hips' turn in degrees, and whether the walk plays backwards.
+    pub fn aim_legs_now(&mut self) -> Option<(f32, bool, &'static str)> {
+        let pc = self.game.world.pc;
+        let clip = self.game.clip(pc).cloned();
+        self.aim_legs(&clip).map(|l| (l.turn, l.back, l.ready))
+    }
+}
+
+/// The aim's stance over the legs: all above the hips from `ready`, and the hips turned by `turn` degrees with the body
+/// turned back by as much, so the upper body stays on the aim.
+pub(super) fn aim_layer(pose: &mut Pose, ready: Option<&Pose>, rig: &Rig, turn: f32) {
+    if let Some(ready) = ready {
+        for (name, node) in ready {
+            if !LOWER_BODY.contains(&name.as_str()) {
+                pose.insert(name.clone(), *node);
+            }
+        }
+    }
+    // The body's back turns back only if it hangs from the hips: in some skeletons the hips hang from it.
+    let frames = rig.joint_frames(None);
+    let world = |n: &str| frames.iter().find(|f| f.0 == n).map(|f| f.1);
+    let parent = |n: &str| frames.iter().find(|f| f.0 == n).map(|f| f.2);
+    let back_on_hips = world("pelvis_g").is_some_and(|p| parent("torso_g") == Some(p));
+    let back = if back_on_hips { -turn } else { 0.0 };
+    let mut angles = vec![[0.0f32; 3]; JOINTS.len()];
+    for (name, twist) in [("pelvis_g", turn), ("torso_g", back)] {
+        if let Some(i) = JOINTS.iter().position(|j| j.name == name) {
+            angles[i][2] = twist;
+        }
+    }
+    turn_joints(pose, rig, &angles);
+}
+
 pub(super) fn aim_down(pose: &mut Pose, rig: &Rig, degrees: f32) {
     let mut angles = vec![[0.0f32; 3]; JOINTS.len()];
     for (name, share) in [

@@ -532,6 +532,11 @@ impl Game {
         self.queue_once(id, hold, b);
     }
 
+    /// The fighting stance's clip for the weapon a creature holds: `g5r1` with a pistol. Modern aim's upper body on the move.
+    pub fn ready_clip(&mut self, id: ObjId) -> &'static str {
+        self.style_clip(id, Move::Ready)
+    }
+
     /// The clip for a move with the weapon a creature holds.
     fn style_clip(&mut self, id: ObjId, how: Move) -> &'static str {
         let (stance, ranged) = self.weapon_stance(id);

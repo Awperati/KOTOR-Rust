@@ -3270,6 +3270,11 @@ impl Stage {
                         continue;
                     }
                     let aim = self.aim_down_of(pose.id, &clip);
+                    let legs = if pose.id == own {
+                        self.aim_legs(&clip)
+                    } else {
+                        None
+                    };
                     self.add_speaking_creature(
                         &mut scene,
                         &rig,
@@ -3280,6 +3285,7 @@ impl Stage {
                         &underwear,
                         self.mouth_of(pose.id),
                         aim,
+                        legs,
                     );
                     scene.meshes[start..].iter_mut().for_each(|m| m.fade = fade);
                     self.grow_to_height(&mut scene, start, pose.id, pose.position);
@@ -3342,7 +3348,9 @@ impl Stage {
         heading: f32,
         underwear: &str,
     ) {
-        self.add_speaking_creature(scene, rig, hands, clip, at, heading, underwear, None, 0.0);
+        self.add_speaking_creature(
+            scene, rig, hands, clip, at, heading, underwear, None, 0.0, None,
+        );
     }
 
     /// How far down, in degrees, creature `id` pitches its weapon: with a ranged weapon in its ranged clips, at a target lying on the floor.
@@ -3374,6 +3382,7 @@ impl Stage {
         underwear: &str,
         mouth: Option<(f32, f32)>,
         aim_down: f32,
+        legs: Option<moving::AimLegs>,
     ) {
         // Models face +y at rest; turn so +y points along the heading.
         let angle = heading - std::f32::consts::FRAC_PI_2;
@@ -3390,6 +3399,11 @@ impl Stage {
         let t = len
             .filter(|l| *l > 0.0)
             .map_or(0.0, |l| if name == "die" { t.min(l) } else { t % l });
+        // Going back while aiming, the walk or run plays backwards.
+        let t = match (legs, len) {
+            (Some(l), Some(n)) if l.back && n > 0.0 => n - t,
+            _ => t,
+        };
         let mut pose = len.and_then(|_| rig.sample(name, t));
         // The clip this one took over from still shows through, fading out.
         if let (Some(f), Some(now)) = (clip.as_ref().and_then(|c| c.fade), pose.as_ref()) {
@@ -3404,6 +3418,14 @@ impl Stage {
             Some((open, clock)) => rig.speaking_face(name, t, open, clock),
             None => rig.sample_face(name, t),
         });
+        if let (Some(l), Some(p)) = (legs, pose.as_mut()) {
+            // The stance breathes on the game's clock.
+            let ready = rig
+                .animation_length(l.ready)
+                .filter(|n| *n > 0.0)
+                .and_then(|n| rig.sample(l.ready, self.idle_clock % n));
+            moving::aim_layer(p, ready.as_ref(), rig, l.turn);
+        }
         if aim_down > 0.0 {
             if let Some(p) = pose.as_mut() {
                 moving::aim_down(p, rig, aim_down);

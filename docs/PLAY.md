@@ -169,7 +169,7 @@ The Combat box on the Gameplay page turns it on, with Modern movement. Classic i
 
 | Input | What it does in Modern combat |
 |---|---|
-| Right button held, in a fight, locked on, with an enemy seen or with Attack mode on | aim over the shoulder with a crosshair, which drifts more on the move and after a shot |
+| Right button held, in a fight, locked on, with an enemy seen or with Attack mode on | aim over the shoulder with a crosshair, which drifts more on the move and after a shot. On the move the weapon stays held on the aim and the legs walk or run the way you go, backwards too |
 | Left click while aiming, with a blaster | one shot, at most one in 0.5 s, up to 30 m. A wall or a closed door stops it |
 | Left click in a fight, with a blade | a blow. Clicks in time chain five. Right held with a blade guards |
 | Q (Key Mapping, under Lock On) | lock on to the creature nearest the middle of the view, or let go. The wheel goes to the next |

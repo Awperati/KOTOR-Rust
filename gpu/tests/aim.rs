@@ -866,3 +866,49 @@ fn a_click_while_aiming_does_not_walk() {
     assert!(s.game.world.pc_walking());
     std::fs::remove_file(&file).ok();
 }
+
+#[test]
+fn aiming_on_the_move_the_legs_go_the_way_of_the_body_and_the_upper_body_keeps_the_stance() {
+    let Some((mut s, file)) = stage("legs", "") else {
+        return;
+    };
+    if !blaster_in_hand(&mut s) {
+        return;
+    }
+    aim_at(&mut s);
+    assert!(s.aiming());
+    run(&mut s, 5);
+    assert_eq!(
+        s.aim_legs_now(),
+        None,
+        "standing, the stance clip has it all"
+    );
+    // Each way round the aim: the hips' turn, and whether the walk plays backwards.
+    for (ahead, right, turn, back) in [
+        (1.0, 0.0, 0.0, false),
+        (0.7, 0.7, -45.0, false),
+        (0.0, 1.0, -75.0, false),
+        (-0.7, 0.7, 45.0, true),
+        (-1.0, 0.0, 0.0, true),
+        (0.0, -1.0, 75.0, false),
+    ] {
+        for _ in 0..40 {
+            s.steer = (ahead, right, false);
+            s.update(DT);
+        }
+        let (t, b, ready) = s.aim_legs_now().expect("moving");
+        assert!((t - turn).abs() < 3.0, "{ahead},{right}: {t}");
+        assert_eq!(b, back, "{ahead},{right}");
+        assert_eq!(ready, "g5r1", "the pistol's stance");
+    }
+    // Not aiming, the walk is the walk.
+    s.set_aim_held(false);
+    s.attack_mode_key();
+    for _ in 0..40 {
+        s.steer = (1.0, 0.0, false);
+        s.update(DT);
+    }
+    assert!(!s.aiming());
+    assert_eq!(s.aim_legs_now(), None);
+    std::fs::remove_file(&file).ok();
+}
