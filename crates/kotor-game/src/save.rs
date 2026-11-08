@@ -578,6 +578,14 @@ impl World {
             ("Facing", Value::Float(o.facing)),
             ("HP", Value::Int(o.hp)),
             ("Dead", Value::Byte(o.dead as u8)),
+            (
+                "DressedBase",
+                Value::Int(o.dressed_as.as_ref().map_or(0, |d| d.0)),
+            ),
+            (
+                "DressedItem",
+                s(o.dressed_as.as_ref().map_or("", |d| d.1.as_str())),
+            ),
             ("PartyMember", Value::Byte(o.party_member as u8)),
             ("Locked", Value::Byte(o.locked as u8)),
             ("Level", Value::Int(o.level)),
@@ -814,6 +822,10 @@ impl World {
             o.facing = e.float("Facing").unwrap_or(0.0) as f32;
             o.hp = e.int("HP").unwrap_or(0) as i32;
             o.dead = flag("Dead");
+            o.dressed_as = e
+                .str("DressedItem")
+                .filter(|t| !t.is_empty())
+                .map(|t| (e.int("DressedBase").unwrap_or(0) as i32, t.to_string()));
             o.party_member = flag("PartyMember");
             o.spawned = true;
             o.min_one_hp = flag("MinOneHP");

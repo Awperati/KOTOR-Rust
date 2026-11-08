@@ -1691,6 +1691,46 @@ fn armour_on_the_hero_is_drawn_in_its_own_model() {
     }
 }
 
+/// Owner, 8 Nov: "Upon dying an NPC's clothes will change". The armour on a creature goes to its remains when it dies, and the
+/// body was drawn without it, in the clothes of its template. A body keeps the look it had.
+#[test]
+fn a_creature_that_dies_keeps_the_armour_it_was_drawn_in() {
+    let Some(mut s) = stage() else { return };
+    let pc = s.game.world.pc;
+    let Some(npc) = s
+        .game
+        .world
+        .objects
+        .values()
+        .find(|o| o.kind == kotor_game::Kind::Creature && o.id != pc && !o.dead)
+        .map(|o| o.id)
+    else {
+        return;
+    };
+    s.game.world.object_mut(npc).unwrap().appearance = 137;
+    let it = s.game.world.spawn_item("g_a_class8001");
+    s.game.world.object_mut(npc).unwrap().feats.extend(0..300);
+    s.game.world.equip(npc, it, None).unwrap();
+    let armoured = |s: &mut Stage| {
+        for _ in 0..4 {
+            s.update(DT);
+        }
+        s.dynamic_scene()
+            .meshes
+            .iter()
+            .any(|m| m.texture.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("PMBG01")))
+    };
+    assert!(armoured(&mut s), "alive, in the armour");
+    let hp = s.game.world.object(npc).unwrap().hp.max(1);
+    s.game.world.hurt(pc, npc, hp + 100);
+    assert!(s.game.world.object(npc).unwrap().dead);
+    assert!(
+        s.game.world.object(npc).unwrap().equipped.is_empty(),
+        "the armour is on the remains, not on the body"
+    );
+    assert!(armoured(&mut s), "dead, still in the armour");
+}
+
 #[test]
 fn the_sith_armour_draws_its_wearer_as_a_sith_soldier() {
     let Some(mut s) = stage() else { return };

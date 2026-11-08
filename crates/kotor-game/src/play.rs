@@ -1584,10 +1584,18 @@ impl World {
             }
         }
         let mut stripped = Vec::new();
+        let mut dressed_as = None;
         for (slot, i) in worn {
             if drops(&i) {
                 stripped.push(slot);
                 loot.push(i);
+                // The body keeps the look of the armour it wore: it is looted, and not undressed.
+                if slot == 1 {
+                    dressed_as = self
+                        .objects
+                        .get(&i)
+                        .map(|o| (o.base_item, o.template.clone()));
+                }
             }
         }
         let remains = self
@@ -1598,6 +1606,9 @@ impl World {
         if let Some(o) = self.objects.get_mut(&id) {
             for s in stripped {
                 o.equipped.remove(&s);
+            }
+            if dressed_as.is_some() {
+                o.dressed_as = dressed_as;
             }
             o.inventory = loot;
             if let (false, Some(name)) = (o.inventory.is_empty(), remains) {

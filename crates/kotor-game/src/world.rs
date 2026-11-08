@@ -140,6 +140,8 @@ pub struct Object {
     /// Items carried, and which are equipped by slot.
     pub inventory: Vec<ObjId>,
     pub equipped: BTreeMap<i32, ObjId>,
+    /// The armour a body died in, as its base item and template: the items on it go to its remains, and the body keeps its clothes.
+    pub dressed_as: Option<(i32, String)>,
     /// Items: the `baseitems.2da` row.
     pub base_item: i32,
     /// Items: the `upgrade.2da` row in each slot of the upgrade bench.
@@ -253,6 +255,7 @@ impl Object {
             polygon: Vec::new(),
             inventory: Vec::new(),
             equipped: BTreeMap::new(),
+            dressed_as: None,
             base_item: 0,
             xp: 0,
             faction: 0,

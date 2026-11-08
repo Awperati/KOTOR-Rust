@@ -2830,7 +2830,8 @@ impl Stage {
                 .equipped
                 .get(&ARMOUR_SLOT)
                 .and_then(|i| w.object(*i))
-                .map(|i| (i.base_item, i.template.clone()));
+                .map(|i| (i.base_item, i.template.clone()))
+                .or_else(|| o.dressed_as.clone());
             (o.appearance, o.template.clone(), armour)
         };
         let rig = self.rig_for(appearance, &template, armour)?;
