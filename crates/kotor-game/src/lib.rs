@@ -29,6 +29,8 @@ pub mod quest_route;
 mod respawn;
 mod slots;
 mod soundset;
+mod medication;
+pub use medication::{MedicationTable, Sickness, UseOutcome, UseRequest};
 mod stance;
 mod story_branches;
 pub use story_branches::{

@@ -549,6 +549,10 @@ pub struct World {
     pub(crate) flights: Vec<crate::flight::Flight>,
     /// Attack mode: the player may attack anyone. `docs/law.tsv` says what that costs.
     pub stance: crate::stance::StanceState,
+    /// Medication Sickness, for everyone who has used a medical item lately.
+    pub medication: BTreeMap<ObjId, crate::medication::Sickness>,
+    /// What a medical item being used heals, as a share of its full heal.
+    pub(crate) heal_scale: f32,
     /// For a test driver: this creature stays at this place, and the player at this other, while this item still has at least this
     /// many in its stack.
     pub hold_in_place: Option<HoldInPlace>,
@@ -731,6 +735,8 @@ impl World {
             casts: Vec::new(),
             flights: Vec::new(),
             stance: Default::default(),
+            medication: BTreeMap::new(),
+            heal_scale: 1.0,
             hold_in_place: None,
             law: Default::default(),
             lost_quests: Vec::new(),

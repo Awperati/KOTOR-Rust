@@ -632,6 +632,11 @@ impl World {
         if outcome == Outcome::Miss && self.has_assured_hit(attacker) {
             outcome = Outcome::Hit;
         }
+        // Medication Sickness: a share of the user's hits are misses.
+        let sick_aim = self.medication_aim_penalty(attacker);
+        if sick_aim > 0.0 && outcome != Outcome::Miss && (self.roll(100) as f32) <= sick_aim * 100.0 {
+            outcome = Outcome::Miss;
+        }
         // A blow that would have missed: against the player's side it still misses, narrowly (the window shows a near miss), and
         // anyone else's glances for the least damage it can do.
         if outcome == Outcome::Miss
@@ -671,6 +676,11 @@ impl World {
                 dealt = ((dealt as f32 * share).round() as i32).max(1);
             }
             dealt = self.story_soften(attacker, target, dealt);
+            // Medication Sickness takes a share off the damage.
+            let sick_damage = self.medication_damage_penalty(attacker);
+            if sick_damage > 0.0 {
+                dealt = ((dealt as f32 * (1.0 - sick_damage)).round() as i32).max(1);
+            }
             // The weapon's own damage type (`damageflags` of `baseitems.2da`) meets the target's resistances.
             let kind = self.weapon_damage_type(attacker, slot);
             dealt = self.adjust_damage(target, dealt, kind);

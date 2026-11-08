@@ -1,0 +1,8 @@
+key	value	meaning
+cooldown_seconds	20	How long Medication Sickness lasts after a medical item is used. Each use restarts it.
+heal_scale_1	0.5	What a medical item heals on the first use inside the cooldown, as a share of its full heal.
+heal_scale_2	0.25	The same on the second use inside the cooldown, and every one after.
+aim_penalty_1	0.5	Share of the sick character's hits that become misses, after one use inside the cooldown.
+aim_penalty_2	0.8	The same after two or more.
+damage_penalty_1	0.25	Share taken off the damage of the sick character's blows, after one use inside the cooldown.
+damage_penalty_2	0.5	The same after two or more.

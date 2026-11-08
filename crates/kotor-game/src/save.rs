@@ -367,6 +367,20 @@ impl World {
                     Value::String(self.tracked_quest.clone().unwrap_or_default()),
                 ),
                 ("GameMode", Value::Byte(self.game_mode.number())),
+                (
+                    "Medication",
+                    list_of(
+                        self.medication.iter().filter(|(_, m)| self.time < m.until),
+                        |(who, m)| {
+                            st(vec![
+                                ("Who", Value::Int(*who as i32)),
+                                ("Left", Value::Float(m.until - self.time)),
+                                ("Stack", Value::Byte(m.stack)),
+                                ("Warned", Value::Byte(m.warned as u8)),
+                            ])
+                        },
+                    ),
+                ),
                 ("LawWanted", Value::Byte(self.law.wanted)),
                 ("LawCrimeSeen", Value::Byte(self.law.crime_seen as u8)),
                 (
@@ -1052,6 +1066,7 @@ impl World {
         self.last_power.clear();
         self.effect_expiry.clear();
         self.effect_spell.clear();
+        self.medication.clear();
         self.effect_cursor.clear();
         self.party.clear();
         self.npc_slots.clear();
@@ -1095,6 +1110,19 @@ impl World {
         // A save from before modes keeps the mode the world had: what Options had when it was loaded.
         if let Some(n) = globals.root.int("GameMode") {
             self.game_mode = crate::GameMode::from_number(n);
+        }
+        for m in globals.root.list("Medication").unwrap_or_default() {
+            let (Some(who), Some(left)) = (m.int("Who"), m.float("Left")) else {
+                continue;
+            };
+            self.medication.insert(
+                who as ObjId,
+                crate::medication::Sickness {
+                    until: self.time + left as f32,
+                    stack: m.int("Stack").unwrap_or(0) as u8,
+                    warned: m.int("Warned").unwrap_or(0) != 0,
+                },
+            );
         }
         self.law = Default::default();
         self.law.wanted = globals.root.int("LawWanted").unwrap_or(0) as u8;

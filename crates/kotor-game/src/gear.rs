@@ -304,7 +304,7 @@ impl World {
 
     /// Reads the files of the items there are, for what asks about them without being able to read.
     /// What kind of thing a carried item is, from `baseitems.2da`.
-    fn base_label(&mut self, item: ObjId) -> String {
+    pub(crate) fn base_label(&mut self, item: ObjId) -> String {
         let Some(row) = self.object(item).map(|o| o.base_item) else {
             return String::new();
         };

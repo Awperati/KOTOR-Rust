@@ -94,8 +94,22 @@ impl World {
         let spell = self.item_view(item).and_then(|v| v.power);
         let spell = spell.ok_or(CannotUse::NoPower)?;
         self.thrown_item = self.objects.get(&item).map(|o| o.template.clone());
+        // A medical item used inside the cooldown heals less, by the stack this use makes.
+        let medical = self.is_medical(item);
+        let before = self.medication.get(&who).cloned();
+        if medical {
+            self.medication_used(who);
+            self.heal_scale = self.medication_heal_scale(who);
+        }
         let cast = self.cast_spell(who, spell, at, true);
         self.thrown_item = None;
+        self.heal_scale = 1.0;
+        if cast.is_err() && medical {
+            match before {
+                Some(s) => self.medication.insert(who, s),
+                None => self.medication.remove(&who),
+            };
+        }
         cast.map_err(|_| CannotUse::Failed)?;
         self.spend_one(who, item);
         Ok(())

@@ -273,6 +273,11 @@ impl World {
             "EffectHeal" => {
                 if let Some(o) = self.objects.get_mut(&target) {
                     if !o.dead {
+                        let n0 = if self.heal_scale < 1.0 {
+                            ((n0 as f32 * self.heal_scale).round() as i32).max(1)
+                        } else {
+                            n0
+                        };
                         o.hp = (o.hp + n0).min(o.max_hp);
                     }
                 }
