@@ -63,6 +63,17 @@ function Drive([string]$mode) {
   Key $SPACE[0] $SPACE[1]
   $s = WaitFor "opened" "false"
 
+  # Turn the view away from the footlocker, which E had it face, so that a click below finds the floor and not the locker. The
+  # left arrow, held until the camera is half round.
+  $a = State
+  WatchFocus
+  [void][Drv]::PostMessage($script:h, 0x100, [IntPtr]0x25, [IntPtr](1 -bor (0x4B -shl 16) -bor (1 -shl 24)))
+  $s = $a
+  for ($t = 0; $t -lt 300 -and (Turned $a $s) -lt 2.6; $t++) { $s = State }
+  [void][Drv]::PostMessage($script:h, 0x101, [IntPtr]0x25, [IntPtr][long]([long]0xC0000001 -bor (0x4B -shl 16) -bor (1 -shl 24)))
+  [void](State)
+  "$mode`: turned from the locker by $([Math]::Round((Turned $a (State)), 2)) rad"
+
   # Caps Lock: nothing in Classic. In Modern the mouse looks by itself until Caps Lock gives the cursor back.
   $a = State
   Key $CAPS[0] $CAPS[1]
