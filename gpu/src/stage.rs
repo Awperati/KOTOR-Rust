@@ -714,6 +714,20 @@ impl Stage {
         Ok(s)
     }
 
+    /// A new game in `module` in this mode from its first moment, as Single Player's Classic or Modern question starts it.
+    pub fn open_in_mode(
+        module: &str,
+        original: bool,
+        mode: kotor_game::GameMode,
+    ) -> Result<Stage, String> {
+        let mut s = Stage::boot(original)?;
+        s.first_module = module.to_string();
+        s.menus.new_game_mode = Some(mode);
+        s.start_module(module)?;
+        s.set_game_mode(mode);
+        Ok(s)
+    }
+
     /// Open on the main menu, with no game running. New Game starts `module`.
     pub fn menu(module: &str, original: bool) -> Result<Stage, String> {
         let mut s = Stage::boot(original)?;

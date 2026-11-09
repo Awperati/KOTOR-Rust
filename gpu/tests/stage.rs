@@ -2090,3 +2090,46 @@ fn a_line_with_no_voice_moves_no_mouth() {
     }
     eprintln!("silent frames {silent}, voiced frames {voiced}");
 }
+
+/// The owner: "Trask's voicelines dont play upon starting a new game in modern mode". A new game says the same lines with the same
+/// voices in both modes: the files asked for in the first thirty seconds, with nobody pressing a key.
+#[test]
+fn a_new_game_asks_for_the_same_voices_in_both_modes() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut asked: Vec<Vec<String>> = Vec::new();
+    for mode in [kotor_game::GameMode::Classic, kotor_game::GameMode::Modern] {
+        let mut s = Stage::open_in_mode("end_m01aa", true, mode).unwrap();
+        let mut voices = Vec::new();
+        let (mut shown, mut stops) = (0, 0);
+        for step in 0..3600 {
+            if s.game.world.in_dialogue() && step % 20 == 0 {
+                s.continue_line();
+                s.number_key(1);
+            }
+            for cue in s.update(DT) {
+                match cue {
+                    Cue::Voice(p) => {
+                        voices.push(format!(
+                            "{step}:{}",
+                            p.file_stem().unwrap().to_string_lossy()
+                        ));
+                    }
+                    Cue::StopVoice => stops += 1,
+                    _ => {}
+                }
+            }
+            shown = s.lines_shown;
+        }
+        eprintln!("{mode:?}: lines shown {shown}, stops {stops}, voices {voices:?}");
+        asked.push(
+            voices
+                .into_iter()
+                .map(|v| v.split(':').nth(1).unwrap().to_string())
+                .collect(),
+        );
+    }
+    assert!(!asked[0].is_empty(), "Classic asks for no voice at all");
+    assert_eq!(asked[0], asked[1], "the two modes ask for other voices");
+}
