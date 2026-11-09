@@ -88,6 +88,9 @@ fn folder_stamp(folder: &Path) -> Option<String> {
 
 /// Look through the folder on a thread, unless the problems file already says how it stands.
 pub fn scan_override_in_background(folder: PathBuf, problems: PathBuf) {
+    if !super::may_write(&problems) {
+        return;
+    }
     let Some(stamp) = folder_stamp(&folder) else {
         return;
     };

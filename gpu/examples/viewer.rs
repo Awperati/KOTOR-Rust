@@ -1006,6 +1006,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let driver = flag("--state-log") || flag("--autopilot");
     let scratch =
         driver.then(|| std::env::temp_dir().join(format!("kotor_driver_{}", std::process::id())));
+    // The game the player plays, and only it, writes in their folder.
+    if !driver {
+        kotor_gpu::stage::allow_player_folder();
+    }
     let saves_flag = opt("--saves").map(std::path::PathBuf::from);
     if driver {
         if let (Some(asked), Some(players)) = (&saves_flag, kotor_gpu::stage::default_saves_dir()) {

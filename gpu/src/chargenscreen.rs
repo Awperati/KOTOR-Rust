@@ -1124,10 +1124,15 @@ impl Stage {
         d.saved_pick = Some(d.saved.len() - 1);
         let text: String = d.saved.iter().map(|l| l.to_line() + "\n").collect();
         let name = format!("Look {number}");
-        let written = file
-            .parent()
-            .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&file, text));
+        let written = if super::may_write(&file) {
+            file.parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&file, text))
+        } else {
+            Err(std::io::Error::other(
+                "only the game writes the player's folder",
+            ))
+        };
         self.menus.message = match written {
             Ok(()) => format!("Saved as {name}."),
             Err(e) => format!("Cannot keep the look: {e}"),

@@ -52,7 +52,8 @@ mod roomshell;
 #[path = "seamless_stage.rs"]
 mod seamless_stage;
 pub use menus::{
-    about_words, choose_override_use, default_saves_dir, default_settings_file, Settings,
+    about_words, allow_player_folder, choose_override_use, default_saves_dir,
+    default_settings_file, may_write, Settings,
 };
 #[path = "overridescan.rs"]
 mod overridescan;
@@ -407,6 +408,13 @@ pub fn default_assets_dir() -> Option<PathBuf> {
 }
 
 /// Where upscaled pictures live: outside the repository and the install, since they are made from game files.
+/// A report for the reader, where the game may write it. The game goes on without it.
+fn write_report(path: &std::path::Path, text: &str) {
+    if may_write(path) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
 pub fn default_hd_dir() -> Option<PathBuf> {
     Some(
         PathBuf::from(std::env::var_os("LOCALAPPDATA")?)
@@ -2501,7 +2509,7 @@ impl Stage {
             text.push('\n');
         }
         // Only a help to the reader: the game goes on without it.
-        let _ = std::fs::write(folder.join("texture_problems.txt"), text);
+        write_report(&folder.join("texture_problems.txt"), &text);
     }
 
     /// F8: look at the owner's textures again. Pictures already drawn are asked for afresh.
@@ -2510,8 +2518,8 @@ impl Stage {
         self.textures.clear();
         self.texture_problems.clear();
         if let Some(folder) = &self.texture_folder {
-            let _ = std::fs::write(
-                folder.join("texture_problems.txt"),
+            write_report(
+                &folder.join("texture_problems.txt"),
                 "No problems found so far: the game is using your pictures.\n",
             );
         }
@@ -2565,7 +2573,7 @@ impl Stage {
             text.push('\n');
         }
         // Only a help to the reader: the game goes on without it.
-        let _ = std::fs::write(folder.join("anim_problems.txt"), text);
+        write_report(&folder.join("anim_problems.txt"), &text);
         self.anim_problems = problems;
         kotor_render::custom_clip::set_all(clips);
     }
@@ -2676,7 +2684,7 @@ impl Stage {
             text.push('\n');
         }
         // Only a help to the reader: the game goes on without it.
-        let _ = std::fs::write(folder.join("mesh_problems.txt"), text);
+        write_report(&folder.join("mesh_problems.txt"), &text);
         if self.worn_garment.is_some_and(|g| g >= self.garments.len()) {
             self.worn_garment = None;
         }

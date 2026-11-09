@@ -638,6 +638,31 @@ pub fn choose_override_use(settings_file: Option<PathBuf>) {
     }
 }
 
+/// Whether this program is the game, and may write in the player's folder.
+static PLAYER_FOLDER_OPEN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// This program is the game the player plays: it may write their settings, saves, looks and pose files. Nothing else
+/// calls this, so tests, drivers and probes never change them, whatever they call. A probe once did, through
+/// `use_saved_settings`.
+pub fn allow_player_folder() {
+    PLAYER_FOLDER_OPEN.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether this program may write `path`: anywhere but the player's folder, `%LOCALAPPDATA%\kotor-rs`, unless it is
+/// the game.
+pub fn may_write(path: &Path) -> bool {
+    if PLAYER_FOLDER_OPEN.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
+    let Some(home) = default_settings_file().and_then(|f| f.parent().map(Path::to_path_buf)) else {
+        return true;
+    };
+    let plain = |p: &Path| p.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
+    let (path, home) = (plain(path), plain(&home));
+    path != home && !path.starts_with(&(home + "\\"))
+}
+
 /// `%LOCALAPPDATA%\kotor-rs\settings.txt`, outside the install and the repository.
 pub fn default_settings_file() -> Option<PathBuf> {
     Some(
@@ -1623,7 +1648,7 @@ impl Stage {
         self.apply_difficulty();
         self.set_conventional_underwear(s.conventional_underwear);
         self.overlay_key.clear();
-        if let Some(path) = &self.menus.settings_file {
+        if let Some(path) = self.menus.settings_file.as_ref().filter(|p| may_write(p)) {
             let written = path
                 .parent()
                 .map_or(Ok(()), std::fs::create_dir_all)
@@ -1694,7 +1719,7 @@ impl Stage {
         if self.menus.saves_dir.is_none() {
             self.menus.saves_dir = default_saves_dir();
         }
-        let Some(dir) = self.menus.saves_dir.clone() else {
+        let Some(dir) = self.menus.saves_dir.clone().filter(|d| may_write(d)) else {
             return;
         };
         let written = std::fs::create_dir_all(&dir)
@@ -2971,6 +2996,11 @@ impl Stage {
                 .find(|p| !p.exists())
                 .expect("a free name"),
         };
+        if !may_write(&path) {
+            self.menus.message = "Only the game writes the player's saves.".to_string();
+            self.menus.stack.pop();
+            return;
+        }
         if self.save_is_guarded(&path) {
             self.menus.message =
                 "A test driver may not overwrite a save it did not make.".to_string();
@@ -3011,6 +3041,10 @@ impl Stage {
         };
         if self.save_is_guarded(&path) {
             self.menus.message = "A test driver may not delete a save it did not make.".to_string();
+            return;
+        }
+        if !may_write(&path) {
+            self.menus.message = "Only the game deletes the player's saves.".to_string();
             return;
         }
         if self.menus.delete_armed.as_ref() != Some(&path) {

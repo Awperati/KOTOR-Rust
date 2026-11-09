@@ -190,6 +190,9 @@ fn read_pose(
     let path = folder.join(from.name);
     let default = from.default;
     let write_default = |problems: &mut Vec<String>| {
+        if !super::menus::may_write(&path) {
+            return;
+        }
         let written =
             std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, from.default_text));
         if let Err(e) = written {
@@ -264,7 +267,10 @@ impl Stage {
             report.push('\n');
         }
         // Only a help to the reader: the game goes on without it.
-        let _ = std::fs::write(folder.join("pose_problems.txt"), report);
+        let file = folder.join("pose_problems.txt");
+        if super::menus::may_write(&file) {
+            let _ = std::fs::write(file, report);
+        }
         self.body_poses.problems = problems;
     }
 
