@@ -6518,7 +6518,7 @@ fn at_shop(name: &str) -> Option<(Stage, u32, u32)> {
     let w = &mut s.game.world;
     let keeper = w.spawn_creature("n_calonord", [0.0; 3]);
     let cheap = w.spawn_item("g_i_medeqpmnt01");
-    let dear = w.spawn_item("g_a_class5001");
+    let dear = w.spawn_item("g_a_class8001");
     w.object_mut(keeper).unwrap().inventory = vec![cheap, dear];
     w.gold = 1000;
     w.store = Some(kotor_game::StoreOpen {
@@ -6575,7 +6575,7 @@ fn a_shop_buys_and_sells_asks_over_a_dear_item_and_holds_the_game() {
 
     // Too dear says so, and no question.
     let w = &mut s.game.world;
-    let also = w.spawn_item("g_a_class5001");
+    let also = w.spawn_item("g_a_class8001");
     let keeper = w.store.as_ref().unwrap().store;
     w.object_mut(keeper).unwrap().inventory.push(also);
     w.gold = 1;

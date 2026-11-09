@@ -2,8 +2,9 @@
 //! the viewer's, and the rules are here.
 //!
 //! **Read from the install:** `MarkUp`, `MarkDown`, `BuySellFlag`, `ItemList` with `InventoryRes` and `Infinite`, and the
-//! items' `Cost` and `AddCost`. **Assumed, not compared with the game:** a price is `(Cost + AddCost) * percent / 100`,
-//! at least 1, and an item is sold one at a time. `BuySellFlag` bit 1 lets the party buy and bit 2 lets it sell. Stock
+//! items' `Cost` and `AddCost`. An item is worth its `Cost`, which already holds `AddCost` (see `item_value`), or its
+//! `AddCost` where a template left `Cost` at 0. **Assumed, not compared with the game running:** a price is the worth
+//! times the percent over 100, at least 1, and an item is sold one at a time. `BuySellFlag` bit 1 lets the party buy and bit 2 lets it sell. Stock
 //! comes back when a module is entered again. Plot items cannot be sold.
 
 use crate::world::{Kind, ObjId, World};
@@ -118,7 +119,13 @@ impl World {
         else {
             return 0;
         };
-        (g.root.int("Cost").unwrap_or(0) + g.root.int("AddCost").unwrap_or(0)) as i32
+        let (cost, add) = (
+            g.root.int("Cost").unwrap_or(0),
+            g.root.int("AddCost").unwrap_or(0),
+        );
+        // `Cost` already holds `AddCost`: of the 557 item templates in the BIFs, 438 set `AddCost`, 367 of them with
+        // `Cost` the same and 35 more; the other 36 left `Cost` at 0. Adding them doubled the price.
+        cost.max(add) as i32
     }
 
     fn line(&mut self, item: ObjId, percent: i32) -> StoreLine {

@@ -262,7 +262,8 @@ fn a_shop_sells_for_its_mark_up_and_buys_for_its_mark_down() {
     };
     let mut w = World::new(Install::open(dir).unwrap()).unwrap();
     w.load_module("tar_m02ac").unwrap();
-    // `zelkastore001`, tag `zelkastore2`: mark-up 100, mark-down 40, and a medpack worth 40 + 40.
+    // `zelkastore001`, tag `zelkastore2`: mark-up 100, mark-down 40, and a medpack worth 40: its `Cost` of 40 already
+    // holds its `AddCost` of 40.
     let store = w.by_tag("zelkastore2")[0];
     assert_eq!(w.object(store).unwrap().kind, Kind::Store);
     let open = kotor_script_open(&mut w, store);
@@ -280,8 +281,8 @@ fn a_shop_sells_for_its_mark_up_and_buys_for_its_mark_down() {
         .unwrap()
         .clone();
     assert!(pack.infinite);
-    assert_eq!(pack.price, 80);
-    w.gold = 200;
+    assert_eq!(pack.price, 40);
+    w.gold = 100;
     let pc = w.pc;
     let carried = |w: &World, t: &str| {
         w.carried(w.pc)
@@ -294,7 +295,7 @@ fn a_shop_sells_for_its_mark_up_and_buys_for_its_mark_down() {
     let had = carried(&w, "g_i_medeqpmnt01");
     w.store_buy(pack.item).unwrap();
     w.store_buy(pack.item).unwrap();
-    assert_eq!(w.gold, 40);
+    assert_eq!(w.gold, 20);
     assert_eq!(carried(&w, "g_i_medeqpmnt01"), had + 2);
     assert_eq!(
         w.store_buy(pack.item),
@@ -308,7 +309,7 @@ fn a_shop_sells_for_its_mark_up_and_buys_for_its_mark_down() {
         .find(|i| w.object(*i).unwrap().template == "g_i_medeqpmnt01")
         .unwrap();
     w.store_sell(mine).unwrap();
-    assert_eq!(w.gold, 72);
+    assert_eq!(w.gold, 36);
     assert_eq!(carried(&w, "g_i_medeqpmnt01"), had + 1);
     assert_eq!(w.store_lines().len(), 14, "what it bought is for sale");
     w.close_store();
