@@ -51,28 +51,28 @@ $s = FindFoe
 Report "The cursor finds them" ($s.target -like "Sith*" -and $s.slot1 -ne "-") "foe=$($s.foe) target=$($s.target) slot0=$($s.slot0) slot1=$($s.slot1)"
 Shot "fight_target"
 
-# The left slot attacks, and the Disengage button leaves it. All of this in the pause, so that the Sith is still there.
+# The left slot attacks, and F (Cancel Combat) leaves it. All of this in the pause, so that the Sith is still there.
 ClickSlot $s "slot0"
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ($s.engaged -ne "true" -and (Get-Date) -lt $until)
 Report "The left slot attacks" ($s.engaged -eq "true") "engaged=$($s.engaged) target=$($s.target)"
 Shot "fight_attack_slot"
-$p = ToPixel $s $s.disengage
-Click $p[0] $p[1]
+# The Disengage button is gone: F is Cancel Combat, as a click on the lit Attack mode button is.
+Key 0x46 0x21
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ($s.engaged -eq "true" -and (Get-Date) -lt $until)
-Report "The Disengage button" ($s.engaged -eq "false") "engaged=$($s.engaged) disengage=$($s.disengage)"
-Shot "fight_disengage_button"
+Report "F cancels combat" ($s.engaged -eq "false") "engaged=$($s.engaged)"
+Shot "fight_cancel_combat"
 $s = FindFoe
 Report "The cursor finds them again" ($s.target -like "Sith*") "foe=$($s.foe) target=$($s.target)"
 
-# Key 1 is the left slot, and Disengage leaves it again.
+# Key 1 is the left slot, and F leaves it again.
 Key 0x31 0x02
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ($s.engaged -ne "true" -and (Get-Date) -lt $until)
 Report "Key 1 is the left slot" ($s.engaged -eq "true") "engaged=$($s.engaged) target=$($s.target)"
-$p = ToPixel $s $s.disengage
-Click $p[0] $p[1]
+# The Disengage button is gone: F is Cancel Combat, as a click on the lit Attack mode button is.
+Key 0x46 0x21
 $until = (Get-Date).AddSeconds(5)
 do { $s = State } while ($s.engaged -eq "true" -and (Get-Date) -lt $until)
 $s = FindFoe
