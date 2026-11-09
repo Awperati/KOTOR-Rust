@@ -835,8 +835,9 @@ fn the_jump_button_does_nothing_under_a_light_push_of_the_stick() {
     assert!(s.touch_steer().unwrap().2, "a light push walks");
     run(&mut s, 20);
     let jump = key(&mut s, TouchKey::Jump);
+    // Ten frames: past the 0.1 s wind-up of a jump.
     s.finger_down(12, jump, SIZE);
-    run(&mut s, 2);
+    run(&mut s, 10);
     assert!(s.game.world.pc_body.grounded, "no jump at a walk");
     s.finger_up(12, jump, SIZE);
     // A full push runs, and the same button jumps.
@@ -844,6 +845,6 @@ fn the_jump_button_does_nothing_under_a_light_push_of_the_stick() {
     assert!(!s.touch_steer().unwrap().2);
     run(&mut s, 20);
     s.finger_down(12, jump, SIZE);
-    run(&mut s, 2);
+    run(&mut s, 10);
     assert!(!s.game.world.pc_body.grounded, "a jump at a run");
 }

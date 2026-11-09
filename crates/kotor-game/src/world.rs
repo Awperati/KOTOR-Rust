@@ -853,7 +853,11 @@ impl World {
             pc_body: crate::movement::Body::new([0.0; 3], 0.0),
             pc_aim: None,
             body_mark: [0.0; 3],
-            tuning: crate::movement::Tuning::default(),
+            // The player's body: a jump winds up for 0.1 s on its feet, so the legs can bend into it.
+            tuning: crate::movement::Tuning {
+                jump_windup: 0.1,
+                ..crate::movement::Tuning::default()
+            },
             roll_request: false,
             jump_request: false,
             body_cues: crate::movement::Events::default(),

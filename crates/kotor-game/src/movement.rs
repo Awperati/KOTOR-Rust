@@ -103,6 +103,9 @@ pub struct Tuning {
     pub roll_exit: f32,
     /// How high a jump lifts the feet, metres. Assumed: over a crate, under most ceilings.
     pub jump_height: f32,
+    /// Seconds the body stays on its feet after the jump key before it leaves the floor; 0 leaves at once. The Modern
+    /// player has 0.1, a wind-up the legs can bend into.
+    pub jump_windup: f32,
 }
 
 impl Default for Tuning {
@@ -134,6 +137,7 @@ impl Default for Tuning {
             roll_cooldown: 0.3,
             roll_exit: 0.7,
             jump_height: 1.1,
+            jump_windup: 0.0,
         }
     }
 }
@@ -242,6 +246,8 @@ pub struct Body {
     land_jumped: bool,
     /// In the air by its own jump.
     jumping: bool,
+    /// Seconds still to wait before a jump leaves the floor; 0 when no jump is winding up.
+    windup: f32,
     fall_from: f32,
     last_stood: [f32; 3],
     /// Out over a gap: the spot on the lower floor it set out for, with the floor's height. It always gets there.
@@ -268,6 +274,7 @@ impl Body {
             land_light: false,
             land_jumped: false,
             jumping: false,
+            windup: 0.0,
             fall_from: pos[2],
             last_stood: pos,
             gap_to: None,
@@ -303,17 +310,59 @@ impl Body {
         (2.0 * t.gravity * t.jump_height).sqrt()
     }
 
-    /// Leave the floor, if the body is on it, on its feet and not rolling. Says whether it did.
+    /// Leave the floor, if the body is on it, on its feet, not rolling and not already winding up a jump. Says whether it
+    /// did. With a wind-up in the tuning, it leaves when the wind-up is over.
     pub fn jump(&mut self, t: &Tuning) -> bool {
-        if !self.grounded || self.roll.is_some() || (self.landing() && !self.land_light) {
+        if !self.grounded
+            || self.roll.is_some()
+            || self.windup > 0.0
+            || (self.landing() && !self.land_light)
+        {
             return false;
         }
+        if t.jump_windup > 0.0 {
+            self.windup = t.jump_windup;
+        } else {
+            self.launch(t);
+        }
+        true
+    }
+
+    fn launch(&mut self, t: &Tuning) {
         self.vz = Self::jump_speed(t);
         self.grounded = false;
         self.jumping = true;
         self.fall_from = self.pos[2];
         self.land_left = 0.0;
-        true
+    }
+
+    /// A jump's wind-up runs down, and the body leaves the floor when it is over. Off the floor or in a roll, it is lost.
+    fn wind_up(&mut self, t: &Tuning, dt: f32, ev: &mut Events) {
+        if self.windup <= 0.0 {
+            return;
+        }
+        if !self.grounded || self.roll.is_some() {
+            self.windup = 0.0;
+            return;
+        }
+        self.windup -= dt;
+        // A little slack, so 0.1 s is six steps at 60 a second and not seven.
+        if self.windup <= 1e-4 {
+            self.windup = 0.0;
+            self.launch(t);
+            ev.jumped = true;
+        }
+    }
+
+    /// Waiting on its feet for a jump to leave the floor.
+    pub fn winding_up(&self) -> bool {
+        self.windup > 0.0
+    }
+
+    /// 0 to 1 through a jump's wind-up, before it leaves the floor. None when no jump is winding up.
+    pub fn jump_windup_progress(&self, t: &Tuning) -> Option<f32> {
+        (self.windup > 0.0 && t.jump_windup > 0.0)
+            .then(|| (1.0 - self.windup / t.jump_windup).clamp(0.0, 1.0))
     }
 
     /// 0 to 1 through a jump, by how fast the body rises and falls: 0.5 at the top. None when not jumping.
@@ -395,6 +444,7 @@ impl Body {
         let stood = self.grounded;
         self.cooldown = (self.cooldown - dt).max(0.0);
         self.land_left = (self.land_left - dt).max(0.0);
+        self.wind_up(t, dt, ev);
         if input.roll && self.grounded && self.roll.is_none() && self.cooldown <= 0.0 {
             let dir = input
                 .dir
@@ -684,6 +734,7 @@ impl Body {
         self.heading = heading;
         self.cooldown = (self.cooldown - dt).max(0.0);
         self.land_left = (self.land_left - dt).max(0.0);
+        self.wind_up(t, dt, &mut ev);
         self.vertical(ground, t, dt, &mut ev);
         ev
     }
@@ -1549,6 +1600,66 @@ mod tests {
         b.step(roll, &g, &t, 1.0 / 60.0);
         assert!(b.rolling());
         assert!(!b.jump(&t), "not in a roll");
+    }
+
+    /// The anim builder's ask: a 0.1 s wind-up on the feet, then the same jump as ever, and no second jump in it.
+    #[test]
+    fn a_wind_up_holds_the_jump_on_the_floor_then_it_leaves() {
+        let t = Tuning {
+            jump_windup: 0.1,
+            ..Tuning::default()
+        };
+        let g = flat();
+        let mut b = Body::new([0.0, 0.0, 0.0], 0.0);
+        assert!(b.jump(&t));
+        assert!(b.grounded && b.winding_up());
+        assert!(b.jump_progress(&t).is_none());
+        assert_eq!(b.jump_windup_progress(&t), Some(0.0));
+        assert!(!b.jump(&t), "no second jump in the wind-up");
+        // It runs as it waits: the input still moves it.
+        let input = Input {
+            dir: Some([1.0, 0.0]),
+            ..Input::default()
+        };
+        let (mut steps, mut last, mut cue) = (0, 0.0f32, false);
+        while b.grounded && steps < 30 {
+            let ev = b.step(input, &g, &t, 1.0 / 60.0);
+            cue |= ev.jumped;
+            steps += 1;
+            if let Some(p) = b.jump_windup_progress(&t) {
+                assert!(p > last, "{p} after {last}");
+                last = p;
+            }
+        }
+        assert_eq!(steps, 6, "0.1 s");
+        assert!(cue, "the step that leaves says so");
+        assert!(b.pos[0] > 0.0, "moved while winding up");
+        assert!(b.jump_windup_progress(&t).is_none());
+        assert!(b.jump_progress(&t).is_some());
+        // The rest is the jump it always was.
+        let mut top = 0.0f32;
+        for _ in 0..120 {
+            b.step(Input::default(), &g, &t, 1.0 / 60.0);
+            top = top.max(b.pos[2]);
+        }
+        assert!((top - t.jump_height).abs() < 0.06, "{top}");
+        assert!(b.grounded);
+        // A wind-up lost: off the floor or into a roll, nothing leaves later.
+        assert!(b.jump(&t));
+        b.step(
+            Input {
+                roll: true,
+                ..Input::default()
+            },
+            &g,
+            &t,
+            1.0 / 60.0,
+        );
+        assert!(b.rolling());
+        for _ in 0..10 {
+            b.step(Input::default(), &g, &t, 1.0 / 60.0);
+        }
+        assert!(!b.winding_up() && b.jump_progress(&t).is_none());
     }
 
     #[test]

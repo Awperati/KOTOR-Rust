@@ -844,7 +844,8 @@ impl World {
         // The owner: "Disable the ability to jump while walking and not running". From a stand it still jumps.
         let walking = self.steer.is_some_and(|(_, run)| !run);
         let jump = std::mem::take(&mut self.jump_request) && modern && !walking && self.may_roll();
-        if jump && self.pc_body.jump(&self.tuning) {
+        // With a wind-up, the cue comes from the step that leaves the floor.
+        if jump && self.pc_body.jump(&self.tuning) && !self.pc_body.winding_up() {
             self.body_cues.jumped = true;
         }
         let roll = std::mem::take(&mut self.roll_request) && modern && self.may_roll();

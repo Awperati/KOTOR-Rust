@@ -816,10 +816,14 @@ fn space_does_not_jump_at_a_walk_and_does_at_a_run_or_from_a_stand() {
     };
     s.yaw = clear_way(&mut s);
     let leaves_the_floor = |s: &mut Stage| {
+        // Past the 0.1 s wind-up.
         s.jump_key();
-        s.update(DT);
-        let left = !s.game.world.pc_body.grounded;
-        run(s, 80);
+        let mut left = false;
+        for _ in 0..10 {
+            s.update(DT);
+            left |= !s.game.world.pc_body.grounded;
+        }
+        run(s, 70);
         left
     };
     // Walking: nothing, and the press is not kept for later.
@@ -868,7 +872,8 @@ fn space_jumps_and_b_pauses() {
     assert_eq!(pc_at(&s)[2], floor, "and back down");
     // In the air it does not jump again.
     s.jump_key();
-    s.update(DT);
+    run(&mut s, 8);
+    assert!(!s.game.world.pc_body.grounded, "up after the wind-up");
     let rising = s.game.world.pc_body.vz;
     s.jump_key();
     s.update(DT);
@@ -883,7 +888,7 @@ fn space_jumps_and_b_pauses() {
     assert!(s.game.world.pc_body.grounded, "nor jump in one");
     s.pause_key();
     assert!(!s.paused());
-    s.update(DT);
+    run(&mut s, 10);
     assert!(
         s.game.world.pc_body.grounded,
         "and no jump was kept for after it"
@@ -913,7 +918,7 @@ fn a_jump_is_only_for_the_modern_body_on_its_feet() {
     assert_eq!(pc_at(&s)[2], z);
     s.game.world.objects.get_mut(&pc).unwrap().down = true;
     s.jump_key();
-    s.update(DT);
+    run(&mut s, 10);
     assert_eq!(pc_at(&s)[2], z, "while down");
     assert!(s.game.world.pc_body.grounded, "while down");
     std::fs::remove_file(&file).ok();
