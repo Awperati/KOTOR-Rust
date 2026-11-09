@@ -40,8 +40,8 @@ pub use detection::{
 };
 mod story_branches;
 pub use story_branches::{
-    StoryState, ABANDONED_CLIP, BANDON_BLOWS, BANDON_FULL_HEALTH, BANDON_HEALTH, STORY_POINTS,
-    TRASK_DAMAGE,
+    StoryState, ABANDONED_CLIP, BANDON_BLOWS, BANDON_FULL_HEALTH, BANDON_HEALTH, DARK_JEDI_NAME,
+    STORY_POINTS, TRASK_DAMAGE,
 };
 mod volley;
 pub use items::name_is_a_tag;

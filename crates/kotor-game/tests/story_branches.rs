@@ -271,3 +271,157 @@ fn bandons_hit_points_follow_how_hard_the_player_hits() {
     // Trask alone is worth the rest: it is never a trifle.
     assert!(bare >= 40, "{bare}");
 }
+
+/// The fight beside Trask, begun: the scene over and one step on.
+fn in_the_fight() -> Option<(Game, kotor_game::ObjId)> {
+    let mut g = at_scene(true)?;
+    answer(&mut g, 1, "together");
+    until_over(&mut g);
+    g.step_once();
+    let bandon = by_tag(&g, "end_bandon")?;
+    Some((g, bandon))
+}
+
+/// Until he has run off and Trask's word is up.
+fn beaten(g: &mut Game, bandon: kotor_game::ObjId) {
+    g.world.object_mut(bandon).unwrap().hp = 1;
+    for _ in 0..(5 * 60) {
+        g.step_once();
+        if g.world.by_tag("end_bandon").is_empty() {
+            break;
+        }
+    }
+}
+
+/// The owner's words of 9 Nov: "Darth Bandon needs to be named "Dark Jedi"". Only the name shown: his tag and template stay
+/// for the scripts.
+#[test]
+fn on_the_endar_spire_he_is_the_dark_jedi() {
+    let Some(g) = at_scene(false) else { return };
+    let bandon = by_tag(&g, "end_bandon").unwrap();
+    let o = g.world.object(bandon).unwrap();
+    assert_eq!(o.name, kotor_game::DARK_JEDI_NAME);
+    assert_eq!(o.name, "Dark Jedi");
+    assert_eq!(o.template, "g_bandon001");
+}
+
+/// "He needs a lightsaber": his own double-bladed one from his bag, which `k_pend_cut23` takes up at the explosion's line. The
+/// fight beside Trask skips that line, so he fought bare-handed.
+#[test]
+fn in_the_fight_he_holds_his_own_lightsaber() {
+    let Some((g, bandon)) = in_the_fight() else {
+        return;
+    };
+    let w = &g.world;
+    let held = w.object(bandon).unwrap().equipped.get(&4).copied();
+    let saber = held
+        .and_then(|i| w.object(i))
+        .expect("something in his right hand");
+    assert_eq!(saber.template, "g_w_drkjdisbr002");
+    assert_eq!(saber.base_item, 9, "the double-bladed lightsaber");
+}
+
+/// "Make him use the wounded walking animation and attack patterns": he moves with the injured clips, and swings one blade
+/// every other round.
+#[test]
+fn wounded_he_limps_and_swings_one_blade_every_other_round() {
+    let Some((mut g, bandon)) = in_the_fight() else {
+        return;
+    };
+    assert!(g.world.is_wounded_dark_jedi(bandon));
+    let from = g.world.combat.log.len();
+    let mut clips = std::collections::BTreeSet::new();
+    for _ in 0..(12 * 60) {
+        g.step_once();
+        if g.world.dialogue_view().is_some() && !g.world.conversation_paused() {
+            g.world.dialogue_choose(0);
+        }
+        // Kept from falling, so the rounds can be counted.
+        let w = &mut g.world;
+        let pc = w.pc;
+        w.object_mut(pc).unwrap().hp = 30;
+        if let Some(o) = w.object_mut(bandon) {
+            o.hp = o.hp.max(5);
+        }
+        if let Some(c) = g.clip(bandon) {
+            clips.insert(c.name);
+        }
+    }
+    let rounds: Vec<u32> = g.world.combat.log[from..]
+        .iter()
+        .filter(|l| l.attacker == bandon)
+        .map(|l| l.round)
+        .collect();
+    assert!(!rounds.is_empty(), "he fights");
+    let mut once = rounds.clone();
+    once.dedup();
+    assert_eq!(once, rounds, "one blow a round: {rounds:?}");
+    assert!(
+        rounds.windows(2).all(|r| r[1] - r[0] >= 2),
+        "a round between blows: {rounds:?}"
+    );
+    // He comes through the door at the player, limping.
+    assert!(
+        clips.iter().any(|c| c.ends_with("inj")),
+        "the injured clips: {clips:?}"
+    );
+    for c in &clips {
+        assert!(
+            !["walk", "run", "pause1"].contains(c),
+            "he moves as the injured do: {clips:?}"
+        );
+    }
+}
+
+/// The owner's "Killing the Dark Jedi on the endar spire softlocks the game". The explosion's line waits for him to light his
+/// saber, and he had gone: the talk stood still for a minute. Now it goes on as the game's own does, in a few seconds.
+#[test]
+fn after_he_is_beaten_the_scene_goes_on_at_once() {
+    let Some((mut g, bandon)) = in_the_fight() else {
+        return;
+    };
+    beaten(&mut g, bandon);
+    until_line(&mut g, "hold this corridor");
+    let at = g.world.time;
+    until_over(&mut g);
+    let took = g.world.time - at;
+    assert!(took < 10.0, "the rest of the scene took {took} s");
+    assert!(
+        !g.world.errors.iter().any(|e| e.contains("pause ran out")),
+        "{:?}",
+        g.world.errors
+    );
+    let door = by_tag(&g, "end_door07").unwrap();
+    assert!(!g.world.object(door).unwrap().open, "the explosion shut it");
+}
+
+/// Another talk up as he goes, Trask's own for one, made his word be lost: the door stayed open and the scene never ended. It
+/// waits for that talk instead.
+#[test]
+fn trasks_word_waits_for_a_talk_in_the_way() {
+    let Some((mut g, bandon)) = in_the_fight() else {
+        return;
+    };
+    g.world.object_mut(bandon).unwrap().hp = 1;
+    for _ in 0..10 {
+        g.step_once();
+    }
+    let (trask, pc) = (by_tag(&g, "end_trask").unwrap(), g.world.pc);
+    g.world.queue(
+        trask,
+        Action::StartConversation {
+            target: pc,
+            dialogue: "end_trask01".to_string(),
+            anywhere: true,
+        },
+    );
+    // Nobody answers it till he has gone.
+    for _ in 0..(5 * 60) {
+        g.step_once();
+    }
+    assert!(g.world.by_tag("end_bandon").is_empty());
+    until_line(&mut g, "hold this corridor");
+    until_over(&mut g);
+    let door = by_tag(&g, "end_door07").unwrap();
+    assert!(!g.world.object(door).unwrap().open);
+}

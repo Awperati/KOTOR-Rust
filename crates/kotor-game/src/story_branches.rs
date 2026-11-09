@@ -17,6 +17,13 @@ const EXPLOSION: usize = 4;
 const TRASK: &str = "end_trask";
 const BANDON: &str = "end_bandon";
 const SCENE_OBJECT: &str = "end01_sceneobj03";
+/// The name he goes by on the Endar Spire, the owner's: his file says "Darth Bandon". Only what is shown changes.
+pub const DARK_JEDI_NAME: &str = "Dark Jedi";
+/// His own double-bladed lightsaber, in his bag. `k_pend_cut23` equips it and lights it when the explosion's line signals him
+/// (event 10). The fight beside Trask skips that line, so the fight does it.
+const SABER: &str = "g_w_drkjdisbr002";
+/// `INVENTORY_SLOT_RIGHTWEAPON`.
+const RIGHT_HAND: i32 = 4;
 /// Alignment points for either side's answer.
 pub const STORY_POINTS: i32 = 5;
 /// The fight beside Trask. The owner asked for half health, then for "intermediate difficulty. Definitely harder than the sith
@@ -34,7 +41,11 @@ pub const BANDON_HEALTH_PER_DAMAGE: f32 = 8.4;
 /// The player's own power counts this many times over Trask's: the same damage from the one who is being hunted shortens the
 /// fight more than a share of it does. **Tuned** with the number above.
 pub const BANDON_PLAYER_WEIGHT: f32 = 2.0;
-pub const BANDON_BLOWS: f32 = 0.2;
+/// The share of the player's whole health one landed blow of his takes: a third, so three fell anyone. Wounded he swings every
+/// other round, one blade of his saber (`story_rests`): at a fifth, five blows, he swung every round. **Tuned** by `bandon_odds`,
+/// 100 fights each: won at levels 1 to 4, 67, 66, 58 and 59 of 100 for every class; at a fifth and every round it was 70, 70,
+/// 65 and 59.
+pub const BANDON_BLOWS: f32 = 0.34;
 pub const TRASK_DAMAGE: i32 = 6;
 /// The owner's clip, by this name in his animation folder; until it exists a stock attack stands in.
 pub const ABANDONED_CLIP: &str = "end_trask_abandoned";
@@ -75,6 +86,10 @@ pub struct StoryState {
     pub bandon_blows: Option<f32>,
     /// For the stage: a clip to show on this one, if the owner has made it.
     pub cue: Option<(ObjId, &'static str)>,
+    /// Wounded, he swung last round: this one he gathers himself.
+    swung: bool,
+    /// He has gone, and Trask's word is still to be said: tried each step until no other talk is in the way.
+    word_due: bool,
 }
 
 /// A blow that takes someone of `now` hit points out of `whole` to the next rung down of `steps` equal ones.
@@ -176,6 +191,9 @@ fn add_the_question(d: &mut Dialog) {
 
 /// After the fight: Trask's word, then the game's explosion and what follows it.
 fn add_the_word_after(d: &mut Dialog) {
+    // The explosion's line pauses the talk and signals him to light his saber, and his script lifts the pause. He has gone, so
+    // nothing lifted it: the talk stood still for a minute, until the pause ran out. Only that script is dropped.
+    d.entries[EXPLOSION].script = None;
     let on = add(&mut d.replies, reply("", None, EXPLOSION));
     let word = add(
         &mut d.entries,
@@ -317,8 +335,77 @@ impl World {
         self.by_tag(tag).first().copied()
     }
 
+    /// On the Endar Spire he shows as the owner's "Dark Jedi". His tag and template stay, for the scripts.
+    pub(crate) fn name_the_dark_jedi(&mut self) {
+        if !self.module.to_ascii_lowercase().starts_with("end_m01") {
+            return;
+        }
+        for id in self.by_tag(BANDON) {
+            if let Some(o) = self.object_mut(id) {
+                o.name = DARK_JEDI_NAME.to_string();
+            }
+        }
+    }
+
+    /// The wounded Dark Jedi of the fight beside Trask, while it is on and as he runs: he moves as the injured do, and fights
+    /// slower.
+    pub fn is_wounded_dark_jedi(&self, id: ObjId) -> bool {
+        self.story.fight_started && self.object(id).is_some_and(|o| o.tag == BANDON)
+    }
+
+    /// Whether he sits this round out: wounded, he swings one round and gathers himself the next. **Tuned** with the numbers
+    /// above, by `bandon_odds`.
+    pub(crate) fn story_rests(&mut self, attacker: ObjId) -> bool {
+        if !self.is_wounded_dark_jedi(attacker) {
+            return false;
+        }
+        self.story.swung = !self.story.swung;
+        !self.story.swung
+    }
+
+    /// His saber has two blades, and wounded he swings only one of them a round.
+    pub(crate) fn story_one_blade(&self, attacker: ObjId) -> bool {
+        self.is_wounded_dark_jedi(attacker)
+    }
+
+    /// He takes his own saber up, as `k_pend_cut23` does, unless his hand already holds one.
+    fn story_draw_saber(&mut self, bandon: ObjId) {
+        let Some(o) = self.object(bandon) else {
+            return;
+        };
+        if o.equipped.contains_key(&RIGHT_HAND) {
+            return;
+        }
+        let saber = o.inventory.iter().copied().find(|i| {
+            self.object(*i)
+                .is_some_and(|x| x.template.eq_ignore_ascii_case(SABER))
+        });
+        if let Some(saber) = saber {
+            let _ = self.equip(bandon, saber, Some(RIGHT_HAND));
+        }
+    }
+
+    /// Trask's word after the fight, once no other talk is in the way: one that was up when he went made it be lost.
+    fn story_say_the_word(&mut self) {
+        if self.in_dialogue() || self.in_conversation {
+            return;
+        }
+        self.story.word_due = false;
+        let Some(scene) = self.first_by_tag(SCENE_OBJECT) else {
+            return;
+        };
+        self.story.after_fight = true;
+        let pc = self.pc;
+        let _ = self.converse(scene, pc, SCENE, &mut crate::FirstReply);
+        self.story.after_fight = false;
+    }
+
     /// The fight together: each step while it is on.
     pub(crate) fn update_story(&mut self, dt: f32) {
+        if self.story.word_due {
+            self.story_say_the_word();
+            return;
+        }
         if let Some(left) = self.story.flee_left.as_mut() {
             *left -= dt;
             if *left <= 0.0 {
@@ -345,6 +432,8 @@ impl World {
         if !self.story.fight_started {
             self.story.fight_started = true;
             self.story.ladder = None;
+            self.story.swung = false;
+            self.story_draw_saber(bandon);
             let fraction = self.story.bandon_health.unwrap_or(BANDON_HEALTH);
             let full = self
                 .story
@@ -396,8 +485,7 @@ impl World {
         let Some(at) = self.object(bandon).map(|o| o.position) else {
             return;
         };
-        let (dx, dy) = (at[0] - from[0], at[1] - from[1]);
-        let len = dx.hypot(dy).max(0.01);
+        let to = self.flee_to(at, from);
         if let Some(o) = self.object_mut(bandon) {
             o.faction = NEUTRAL;
             o.actions.clear();
@@ -406,7 +494,7 @@ impl World {
             bandon,
             Action::MoveTo {
                 target: None,
-                to: [at[0] + dx / len * 12.0, at[1] + dy / len * 12.0, at[2]],
+                to,
                 range: 1.0,
                 run: true,
                 walker: None,
@@ -415,23 +503,39 @@ impl World {
         self.story.flee_left = Some(FLEE_SECONDS);
     }
 
+    /// Where he runs: away from the player, as far as there is a way. Straight back was off the floor where they meet, so he
+    /// stood still and vanished. The nearest turn from straight back, then a shorter run, that has a way wins.
+    fn flee_to(&mut self, at: [f32; 3], from: [f32; 3]) -> [f32; 3] {
+        let away = (at[1] - from[1]).atan2(at[0] - from[0]);
+        // Never back towards the player.
+        let turns = [0.0f32, 30.0, -30.0, 60.0, -60.0, 90.0, -90.0];
+        for reach in [12.0f32, 8.0, 5.0, 3.0] {
+            for turn in turns {
+                let a = away + turn.to_radians();
+                let p = [at[0] + a.cos() * reach, at[1] + a.sin() * reach];
+                let Some(z) = self
+                    .nav
+                    .as_ref()
+                    .and_then(|n| n.walkable_at(p[0], p[1], at[2] + 1.0))
+                else {
+                    continue;
+                };
+                if self.route_through_doors(at, [p[0], p[1], z]).is_some() {
+                    return [p[0], p[1], z];
+                }
+            }
+        }
+        let a = away;
+        [at[0] + a.cos() * 12.0, at[1] + a.sin() * 12.0, at[2]]
+    }
+
     /// He has gone. Trask says his word, and the scene goes on as the game has it.
     fn story_bandon_gone(&mut self) {
         if let Some(bandon) = self.first_by_tag(BANDON) {
             self.objects.remove(&bandon);
         }
-        let Some(scene) = self.first_by_tag(SCENE_OBJECT) else {
-            return;
-        };
-        self.story.after_fight = true;
-        let pc = self.pc;
-        self.queue(
-            scene,
-            Action::StartConversation {
-                target: pc,
-                dialogue: SCENE.to_string(),
-                anywhere: true,
-            },
-        );
+        self.story.fight_started = false;
+        self.story.word_due = true;
+        self.story_say_the_word();
     }
 }

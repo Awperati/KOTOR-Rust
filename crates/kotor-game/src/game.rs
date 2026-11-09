@@ -374,6 +374,13 @@ impl Game {
                     .or(ready)
                     .unwrap_or("pause1")
             };
+            // The wounded Dark Jedi of the fight beside Trask limps: the person model's injured walk, run and idle.
+            let want = match want {
+                "walk" if self.world.is_wounded_dark_jedi(id) => "walkinj",
+                "run" if self.world.is_wounded_dark_jedi(id) => "runinj",
+                "pause1" if self.world.is_wounded_dark_jedi(id) => "pauseinj",
+                other => other,
+            };
             let dt = self.dt;
             let dying = self
                 .world

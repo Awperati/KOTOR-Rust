@@ -258,6 +258,10 @@ impl Rig {
             "pause1" => &["cpause1", "creadyr"],
             "walk" => &["cwalk", "crun"],
             "run" => &["crun", "cwalk"],
+            // The injured set, where a body has none: its own walk, run and idle.
+            "walkinj" => &["walk", "cwalk", "crun"],
+            "runinj" => &["run", "crun", "cwalk"],
+            "pauseinj" => &["pause1", "cpause1", "creadyr"],
             "die" => &["cdie"],
             "dead" => &["cdead"],
             "taunt" => &["ctaunt"],

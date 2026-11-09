@@ -1294,6 +1294,7 @@ impl World {
             }
         }
         self.module = module.to_string();
+        self.name_the_dark_jedi();
         self.traps.retain(|id, _| self.objects.contains_key(id));
         // A new area has its own law: no one there has seen anything.
         self.law = Default::default();

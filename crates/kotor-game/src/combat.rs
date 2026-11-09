@@ -477,7 +477,8 @@ impl World {
             .objects
             .get(&target)
             .is_some_and(|t| !t.dead && !t.down);
-        if let (Some(slot), true) = (self.off_hand(attacker), standing) {
+        let one_blade = self.story_one_blade(attacker);
+        if let (Some(slot), true, false) = (self.off_hand(attacker), standing, one_blade) {
             let (_, penalty) = self.two_weapon_penalties(attacker);
             self.resolve_hand(attacker, target, Default::default(), slot, penalty);
         }
@@ -1205,6 +1206,10 @@ impl World {
             }
             involved.insert(a);
             involved.insert(t);
+            // The wounded Dark Jedi beside Trask gathers himself every other round.
+            if self.story_rests(a) {
+                continue;
+            }
             self.resolve(a, t);
         }
         for id in involved {
