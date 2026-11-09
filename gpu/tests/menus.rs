@@ -5606,6 +5606,11 @@ fn a_party_member_at_the_cameras_eye_is_not_drawn() {
     let Some((mut s, _)) = in_game("at_the_eye") else {
         return;
     };
+    // Past the arrival, in which the far bodies come a few a scene (`ARRIVAL_SCENES`): the counts below compare scenes.
+    for _ in 0..60 {
+        s.update(DT);
+        let _ = s.dynamic_scene();
+    }
     let pc = s.game.world.pc;
     let p = s.game.world.object(pc).unwrap().position;
     let friend = s

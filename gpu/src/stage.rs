@@ -189,7 +189,7 @@ fn placement_flat(p: [f32; 3], angle: f32, over: f32) -> Mat {
 /// How long a body with no death clip takes to fall back, in seconds.
 const FALL_SECONDS: f32 = 0.5;
 
-/// After a module is entered, for this many scenes, at most `ARRIVAL_SKINS` creatures away from the action are skinned fresh in each:
+/// After a module is entered, for this many scenes, at most `ARRIVAL_SKINS` creatures far (over `MID_FROM_EYE`) from the eye and the action are skinned fresh in each:
 /// the rest keep the body they had, or wait their turn. The first scene of an area otherwise skinned every creature in it at once (36 ms).
 const ARRIVAL_SCENES: u32 = 40;
 const ARRIVAL_SKINS: usize = 4;
@@ -3898,7 +3898,7 @@ impl Stage {
                         }
                     }
                     // On arrival in a module only a few bodies are skinned in a scene: the rest keep the last one, or wait.
-                    if !near_the_action {
+                    if !near_the_action && from(eye) > MID_FROM_EYE {
                         if capped && fresh >= ARRIVAL_SKINS {
                             if let Some((_, meshes)) = self.far_bodies.get(&pose.id) {
                                 scene.meshes.extend(meshes.iter().cloned().map(|mut m| {
