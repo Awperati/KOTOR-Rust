@@ -205,7 +205,7 @@ const MAX_CATCH_UP: f32 = 0.25;
 pub const MAX_STEPS_PER_CALL: usize = 4096;
 
 /// A chain's clips, as written. Assumed: how long what a chain hits staggers, and how much of a parry clip plays.
-const BLOW_CLIP_SECONDS: f32 = 1.467;
+pub const BLOW_CLIP_SECONDS: f32 = 1.467;
 const STAGGER_SECONDS: f32 = 0.4;
 const PARRY_SECONDS: f32 = 0.6;
 /// Under this speed in m/s an aimed shot plays its clip. Assumed.
@@ -275,6 +275,7 @@ impl Game {
         let walking = self.world.pc_walking();
         self.world.step(self.dt);
         self.steps += 1;
+        self.face_foes();
         self.start_combat_clips();
         // A power has its own gesture. A body without the clip keeps its idle.
         for (id, spell) in std::mem::take(&mut self.world.casts) {
@@ -649,6 +650,44 @@ impl Game {
             _ => 8,
         };
         (stance as i32, ranged)
+    }
+
+    /// Everyone with a combat target turns toward it (`World::face_foes`), the window's headings and the player's included.
+    fn face_foes(&mut self) {
+        let dt = self.dt;
+        let pc = self.world.pc;
+        let pc_heading = self.world.pc_mover.heading;
+        let still: std::collections::HashSet<ObjId> = self
+            .world
+            .combat
+            .target
+            .keys()
+            .copied()
+            .filter(
+                |id| match (self.before_step.get(id), self.world.object(*id)) {
+                    (Some(was), Some(o)) => {
+                        (o.position[0] - was[0]).hypot(o.position[1] - was[1]) <= 0.002
+                    }
+                    _ => true,
+                },
+            )
+            .collect();
+        let headings = std::mem::take(&mut self.headings);
+        let turned = self.world.face_foes(
+            dt,
+            &|id| {
+                if id == pc {
+                    Some(pc_heading)
+                } else {
+                    headings.get(&id).copied()
+                }
+            },
+            &|id| still.contains(&id),
+        );
+        self.headings = headings;
+        for (id, angle) in turned {
+            self.face(id, angle);
+        }
     }
 
     /// Whoever says a line and whoever it is said to turn to each other, as the line's Speaker and Listener have it, and not

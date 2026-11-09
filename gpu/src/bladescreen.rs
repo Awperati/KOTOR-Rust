@@ -85,7 +85,8 @@ impl Stage {
             self.blows.hit_at = None;
             self.strike();
         }
-        if self.blows.hit_at.is_none() && self.blows.wanted {
+        // The swing before it must have played out: a click in the meantime waits, once, and is not a second swing.
+        if self.blows.hit_at.is_none() && self.blows.wanted && !self.game.world.attack_busy(pc) {
             self.blows.wanted = false;
             self.start_blow();
         }
@@ -156,6 +157,7 @@ impl Stage {
             }
         }
         self.game.play_blow(pc, stance, step, BLOW_RATE);
+        self.game.world.commit_attack(pc, kotor_game::BLOW_CLIP_SECONDS / BLOW_RATE);
         self.game.hold_stance(pc);
         let row = (stance - 2).clamp(0, 2) as usize;
         let at = now + HIT_SECONDS[row][step] / BLOW_RATE;

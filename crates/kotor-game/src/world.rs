@@ -463,6 +463,8 @@ pub struct World {
     pub(crate) blow_share: Option<f32>,
     /// The player is in a Modern chain of blows: its log lines are not rounds, and it is not stopped by a flinch.
     pub pc_blowing: bool,
+    /// Until when each creature's committed attack is still playing: no new attack of the player's starts before it (`attack_busy`).
+    pub(crate) attack_until: BTreeMap<ObjId, f32>,
     /// The player guards, right held with a blade in hand: an attack that fails on them is parried.
     pub pc_guard: bool,
     /// Melee blows struck as ground finishers since the window last looked: attacker and victim. For the attacker's clip.
@@ -816,6 +818,7 @@ impl World {
             aimed: false,
             blow_share: None,
             pc_blowing: false,
+            attack_until: BTreeMap::new(),
             pc_guard: false,
             finishers: Vec::new(),
             route_walkers: Default::default(),

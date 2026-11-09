@@ -69,7 +69,7 @@ mod weapon_focus;
 mod workbench;
 mod world;
 
-pub use aim::{sway_path, AimHit, AIM_REACH};
+pub use aim::{sway_path, AimHit, AIMED_SHOT_SECONDS, AIM_REACH};
 pub use area_map::{AreaMap, MapNote, SEEN_COLS, SEEN_ROWS};
 pub use autopilot::{lead_with_the_best_at, state_digest, Autopilot, FightResult, Stall};
 pub use chargen::{
@@ -78,7 +78,7 @@ pub use chargen::{
 };
 pub use combat::{
     ability_mod, damage, resolve_attack, AttackLog, CombatState, Outcome, Weapon,
-    HEARTBEAT_SECONDS, MELEE_REACH, RANGED_REACH, ROUND_SECONDS,
+    HEARTBEAT_SECONDS, LINE_OF_FIRE_WIDTH, MELEE_REACH, RANGED_REACH, ROUND_SECONDS, TURN_RATE,
 };
 pub use combat_actions::{CombatAction, CombatChoice};
 pub use cutscene::{
@@ -95,7 +95,7 @@ pub use force::{
 pub use force::{SpellContext, DURATION_INSTANT, DURATION_PERMANENT, DURATION_TEMPORARY};
 pub use galaxy::{GalaxyOpen, PlanetLine};
 pub use game::item_use_clip as item_use_clip_for_test;
-pub use game::{Clip, Game, Pose, DRAW_SECONDS, SHOT_LAYER_SECONDS};
+pub use game::{Clip, Game, Pose, BLOW_CLIP_SECONDS, DRAW_SECONDS, SHOT_LAYER_SECONDS};
 pub use game_mode::GameMode;
 pub use host::RoutineStatus;
 pub use items::{

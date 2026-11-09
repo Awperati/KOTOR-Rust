@@ -42,6 +42,9 @@ pub fn sway_path(time: f32) -> (f32, f32) {
     )
 }
 
+/// How long an aimed shot's clip plays, in seconds: the next shot waits for it.
+pub const AIMED_SHOT_SECONDS: f32 = 0.5;
+
 /// What a ray through the crosshair comes to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AimHit {
@@ -253,6 +256,11 @@ impl World {
         if !self.weapon_of(pc).ranged {
             return None;
         }
+        // The shot before it is still playing: a click now does nothing, and starts no second one.
+        if self.attack_busy(pc) {
+            return None;
+        }
+        self.commit_attack(pc, AIMED_SHOT_SECONDS);
         let hit = self.aim_hit(eye, dir, reach);
         if let Some(who) = hit.who {
             self.combat.last_hostile.insert(pc, who);

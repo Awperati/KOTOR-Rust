@@ -319,6 +319,18 @@ impl World {
             .unwrap_or(0) as i32
     }
 
+    /// Whether `id` is still in the attack it committed to. A click for a new one is ignored until it is over.
+    pub fn attack_busy(&self, id: ObjId) -> bool {
+        self.attack_until
+            .get(&id)
+            .is_some_and(|until| self.time < *until)
+    }
+
+    /// `id` has begun an attack whose clip plays for `seconds`.
+    pub fn commit_attack(&mut self, id: ObjId, seconds: f32) {
+        self.attack_until.insert(id, self.time + seconds);
+    }
+
     /// Start attacking `target` (what `ActionAttack` does).
     pub fn attack(&mut self, attacker: ObjId, target: ObjId) {
         if attacker != target
@@ -331,10 +343,50 @@ impl World {
                 .get(&attacker)
                 .is_some_and(|a| !a.dead && !a.down)
             && !(self.on_player_side(attacker) && self.on_player_side(target))
+            && !self.is_friend(attacker, target)
         {
             self.combat.target.insert(attacker, target);
             self.combat.last_hostile.insert(attacker, target);
         }
+    }
+
+    /// Whether `a` counts `b` a friend, as `GetIsFriend` does (a reputation of 90 or more), or they are on the player's side
+    /// together. Nobody picks a friend as a target, and nobody fires through one.
+    pub fn is_friend(&self, a: ObjId, b: ObjId) -> bool {
+        // The neutral faction is every placed dummy's: two of them are alike, not friends.
+        let neutral = |id: ObjId| {
+            self.objects
+                .get(&id)
+                .is_none_or(|o| o.faction == NEUTRAL_FACTION)
+        };
+        a != b
+            && ((self.on_player_side(a) && self.on_player_side(b))
+                || (!neutral(a) && self.reputation(a, b) >= FRIEND_REPUTATION))
+    }
+
+    /// A friend of `shooter`, other than the target, standing on the line a bolt takes to `target`: within [`LINE_OF_FIRE_WIDTH`]
+    /// of it and not behind the target.
+    pub fn friend_in_line(&self, shooter: ObjId, target: ObjId) -> Option<ObjId> {
+        let (a, t) = (
+            self.objects.get(&shooter)?.position,
+            self.objects.get(&target)?.position,
+        );
+        let (dx, dy) = (t[0] - a[0], t[1] - a[1]);
+        let len2 = dx * dx + dy * dy;
+        if len2 < 1e-4 {
+            return None;
+        }
+        self.objects
+            .values()
+            .filter(|o| o.kind == Kind::Creature && !o.dead && !o.down)
+            .filter(|o| o.id != shooter && o.id != target && self.is_friend(shooter, o.id))
+            .find(|o| {
+                let along = ((o.position[0] - a[0]) * dx + (o.position[1] - a[1]) * dy) / len2;
+                let (px, py) = (a[0] + dx * along, a[1] + dy * along);
+                (0.0..1.0).contains(&along)
+                    && (o.position[0] - px).hypot(o.position[1] - py) <= LINE_OF_FIRE_WIDTH
+            })
+            .map(|o| o.id)
     }
 
     /// The player or one of the party: they never turn on each other (bug 21, Trask shooting the player).
@@ -1199,9 +1251,18 @@ impl World {
                 involved.insert(a);
                 continue;
             }
+            // Nobody turns on a friend, whatever put them in this fight (a reputation that changed under it).
+            if self.is_friend(a, t) {
+                self.combat.target.remove(&a);
+                continue;
+            }
             let reach = self.reach_of(a);
             let (ap, tp) = (self.objects[&a].position, self.objects[&t].position);
             if dist2d(ap, tp) > reach {
+                continue;
+            }
+            // A shooter holds fire with a friend in the line, and shoots when the line is clear.
+            if self.weapon_of(a).ranged && self.friend_in_line(a, t).is_some() {
                 continue;
             }
             involved.insert(a);
@@ -1217,6 +1278,67 @@ impl World {
                 self.run_event(id, "ScriptEndRound");
             }
         }
+    }
+}
+
+/// How fast a fighter turns to face its target, in radians a second: a half turn in about half a second.
+///
+/// **Assumption:** my number. The game has no turn rate in the files read here.
+pub const TURN_RATE: f32 = 6.0;
+
+/// A reputation this high is a friend (`GetIsFriend`).
+const FRIEND_REPUTATION: i32 = 90;
+/// How close to the line of a shot a friend must stand to be in the way, in metres.
+///
+/// **Assumption:** my number, about a body's width.
+pub const LINE_OF_FIRE_WIDTH: f32 = 0.5;
+
+impl World {
+    /// Everyone with a combat target turns toward it, by at most [`TURN_RATE`] a second: before a shot or a swing and through it,
+    /// enemies and the party alike. Someone running at their target keeps the heading of the run until they are in reach.
+    /// `heading_of` is where each creature faces now when the window keeps it, `still` is who did not move this step. It returns
+    /// each new heading in radians, and the creature's own `facing` (degrees) follows.
+    ///
+    /// The player is left alone while aiming or striking: the aim and the blow steer the body then.
+    pub fn face_foes(
+        &mut self,
+        dt: f32,
+        heading_of: &dyn Fn(ObjId) -> Option<f32>,
+        still: &dyn Fn(ObjId) -> bool,
+    ) -> Vec<(ObjId, f32)> {
+        let pairs: Vec<(ObjId, ObjId)> = self.combat.target.iter().map(|(a, t)| (*a, *t)).collect();
+        let mut turned = Vec::new();
+        for (a, t) in pairs {
+            if a == self.pc && (self.pc_aim.is_some() || self.pc_blowing) {
+                continue;
+            }
+            let ok = |id: ObjId| {
+                self.objects
+                    .get(&id)
+                    .is_some_and(|o| o.kind == Kind::Creature && !o.dead && !o.down)
+            };
+            if !ok(a) || !ok(t) || self.is_disabled(a) || self.is_knocked_down(a) {
+                continue;
+            }
+            let (ap, tp) = (self.objects[&a].position, self.objects[&t].position);
+            if !still(a) && dist2d(ap, tp) > self.reach_of(a) {
+                continue;
+            }
+            let want = (tp[1] - ap[1]).atan2(tp[0] - ap[0]);
+            let now = heading_of(a).unwrap_or_else(|| self.objects[&a].facing.to_radians());
+            let tau = std::f32::consts::TAU;
+            let off = (want - now + tau / 2.0).rem_euclid(tau) - tau / 2.0;
+            if off.abs() < 1e-3 {
+                continue;
+            }
+            let step = off.clamp(-TURN_RATE * dt, TURN_RATE * dt);
+            let next = now + step;
+            if let Some(o) = self.objects.get_mut(&a) {
+                o.facing = next.to_degrees();
+            }
+            turned.push((a, next));
+        }
+        turned
     }
 }
 

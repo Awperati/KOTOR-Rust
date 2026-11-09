@@ -27,7 +27,7 @@ const PLAIN_LOWEST: f32 = -0.2;
 const PITCH_BACK_RATE: f32 = 6.0;
 const LAYOUT_HIGH: i32 = 480;
 /// The least time between aimed shots, in seconds. `kotor_game::fire_times` has the clips' shots about this far apart.
-const SHOT_SECONDS: f32 = 0.5;
+const SHOT_SECONDS: f32 = kotor_game::AIMED_SHOT_SECONDS;
 /// Where a bolt goes from over the player's middle, and how far short of where the ray ends, in metres.
 const BOLT_SHORT: f32 = 0.05;
 /// How fast the drift's size follows the body, a second.
