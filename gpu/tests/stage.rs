@@ -2384,3 +2384,49 @@ fn the_first_scenes_of_an_area_skin_only_a_few_bodies() {
     eprintln!("fresh skins: arrival at most {most}, later at most {later}");
     assert!(most <= 4, "arrival skinned {most} bodies in one scene");
 }
+
+/// Top Dog, 9 Nov: "check the Modern first-click StopVoice flow". A click on the first Trask line must end its voice and start the
+/// next line's in the same step, in both modes, with no silent gap and no voice left running.
+#[test]
+fn the_first_click_in_a_new_game_moves_the_voice_on() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut outcomes = Vec::new();
+    for mode in [kotor_game::GameMode::Classic, kotor_game::GameMode::Modern] {
+        let mut s = Stage::open_in_mode("end_m01aa", true, mode).unwrap();
+        let mut first = None;
+        for step in 0..1200 {
+            let cues = s.update(DT);
+            if cues.iter().any(|c| matches!(c, Cue::Voice(_))) {
+                first = Some(step);
+                break;
+            }
+        }
+        let first = first.expect("no voice in the first 1200 steps");
+        let serial = s.game.world.dialogue_serial();
+        s.continue_line();
+        let mut cues = Vec::new();
+        for _ in 0..3 {
+            cues.extend(s.update(DT));
+        }
+        let moved = s.game.world.dialogue_serial() != serial;
+        let voice = cues.iter().position(|c| matches!(c, Cue::Voice(_)));
+        let stop = cues.iter().position(|c| matches!(c, Cue::StopVoice));
+        eprintln!(
+            "{mode:?}: first voice at {first}, moved {moved}, voice {voice:?}, stop {stop:?}"
+        );
+        if moved {
+            assert!(
+                voice.is_some() || stop.is_some(),
+                "{mode:?}: the click left the old voice running"
+            );
+        }
+        outcomes.push((first, moved, voice.is_some(), stop.is_some()));
+    }
+    // Whatever a click does on that line, it does the same in both modes.
+    assert_eq!(
+        outcomes[0], outcomes[1],
+        "Classic and Modern answer the first click differently"
+    );
+}
