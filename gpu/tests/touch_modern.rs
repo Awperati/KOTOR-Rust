@@ -208,7 +208,8 @@ fn with_a_blade_attack_held_chains_blows_and_aim_is_the_guard() {
     let fire = at(&mut s, TouchKey::Attack).unwrap();
     s.finger_down(2, fire, SIZE);
     let mut clips = Vec::new();
-    for _ in 0..150 {
+    // A blow takes 0.73 s: four of them and a little more.
+    for _ in 0..230 {
         s.update(DT);
         let name = s
             .game

@@ -127,10 +127,10 @@ fn clicks_in_time_chain_the_five_clips_and_a_wait_starts_over() {
         ["c2a1", "c2a2", "c2a3", "c2a4", "c2a5", "c2a1"],
         "{seen:?}"
     );
-    // Five blows in the time their written clips take by half and cut at the blow: 5.03 s as written, so about 2.5 s.
+    // Each blow waits for the whole of the one before it: a clip as written is 1.467 s and plays at twice the speed, so 0.73 s.
     let blows = blows_on(&s, id, logged);
     let each = taken / blows as f32;
-    assert!((0.4..0.6).contains(&each), "{blows} blows in {taken} s");
+    assert!((0.7..0.9).contains(&each), "{blows} blows in {taken} s");
     // A wait starts it over.
     s.update(DT);
     run(&mut s, 120);
@@ -251,7 +251,9 @@ fn right_held_with_a_blade_parries_what_fails_and_a_bolt_goes_back() {
     run(&mut s, 2);
     s.set_aim_held(true);
     run(&mut s, 30);
-    assert!(s.aiming());
+    // With a blade the button is the Block, and not the aim.
+    assert!(!s.aiming());
+    assert!(s.game.world.pc_guard);
     // The player cannot be hit, here: every shot of theirs fails.
     let me = s.game.world.object_mut(pc).unwrap();
     me.level = 40;

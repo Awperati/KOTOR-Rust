@@ -230,6 +230,8 @@ fn a_shot_on_the_body_always_lands_and_rolls_a_graze_a_hit_or_a_critical() {
     s.game.world.no_misses = false;
     let logged = s.game.world.combat.log.len();
     for _ in 0..200 {
+        // A shot waits for the one before it: half a second between clicks.
+        s.game.world.time += 1.0;
         s.game.world.fire_aimed(eye, dir, 30.0).unwrap();
         s.game.world.object_mut(foe).unwrap().hp = 5000;
     }

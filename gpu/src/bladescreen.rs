@@ -9,8 +9,9 @@ use kotor_game::ObjId;
 
 /// How much faster than written the clips play.
 const BLOW_RATE: f32 = 2.0;
-/// How much of an ordinary attack's damage a blow does. One blow in about 0.5 s against one attack in 3 s, so a blow must do less.
-const BLOW_SHARE: f32 = 0.25;
+/// How much of an ordinary attack's damage a blow does. One blow in about 0.75 s (a blow waits for the clip before it) against one
+/// attack in 3 s, so a blow must do less.
+const BLOW_SHARE: f32 = 0.375;
 /// How long after a blow the next click goes on with the chain, in seconds.
 const CHAIN_WINDOW: f32 = 0.7;
 /// The arc a blow strikes: how far from the feet in metres, and how far each way from the facing in radians.
