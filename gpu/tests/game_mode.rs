@@ -47,6 +47,18 @@ fn classic_has_tank_controls_left_and_right_turn_and_there_is_no_strafe() {
     run(&mut s, 30, (0.0, 1.0));
     assert!(s.yaw < yaw - 0.5, "turned right: {yaw} to {}", s.yaw);
     assert!(gone(at, s.game.world.pc_mover.pos) < 0.05, "no strafe");
+    // The body turned with it, standing: the camera is still behind it (the preview of 9 Nov had it in front).
+    let tau = std::f32::consts::TAU;
+    let off = |a: f32, b: f32| ((a - b + tau / 2.0).rem_euclid(tau) - tau / 2.0).abs();
+    let heading = s.game.world.pc_mover.heading;
+    assert!(
+        off(heading, s.yaw) < 0.05,
+        "body {heading}, camera {}",
+        s.yaw
+    );
+    let pc = s.game.world.pc;
+    let drawn = s.game.poses().iter().find(|p| p.id == pc).unwrap().heading;
+    assert!(off(drawn, s.yaw) < 0.05, "drawn {drawn}, camera {}", s.yaw);
     // W goes the way it now faces.
     let at = s.game.world.pc_mover.pos;
     run(&mut s, 40, (1.0, 0.0));

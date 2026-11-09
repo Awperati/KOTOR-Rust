@@ -1109,6 +1109,11 @@ impl Stage {
             && self.game.world.race.is_none()
         {
             self.yaw -= right * TANK_TURN * dt;
+            // The body turns in place with the camera, which stays behind it.
+            if right != 0.0 {
+                let pc = self.game.world.pc;
+                self.game.face(pc, self.yaw);
+            }
             right = 0.0;
         }
         self.steer.1 = right;
