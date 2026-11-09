@@ -698,6 +698,10 @@ pub struct Stage {
     /// Seconds of real time: what bodies shown on screens with no game running (the character picker, the party screen)
     /// idle by.
     idle_clock: f32,
+    /// The way the legs go against the aim, as they follow the body's (`Stage::aim_legs`), and when that was.
+    legs_rel: f32,
+    legs_clock: f32,
+    legs_live: bool,
     /// For a frame or a test: hold every reach at this far (0 to 1) instead of the draw's own.
     pub reach_hold: Option<f32>,
     /// The last skinned body of each creature far from the eye, and what it was skinned for: it is reused until that changes.
@@ -908,6 +912,9 @@ impl Stage {
             camera_model: String::new(),
             stunts: Vec::new(),
             idle_clock: 0.0,
+            legs_rel: 0.0,
+            legs_clock: 0.0,
+            legs_live: false,
             reach_hold: None,
             far_bodies: HashMap::new(),
             arrival_scenes: 0,
@@ -4099,12 +4106,24 @@ impl Stage {
         let t = len
             .filter(|l| *l > 0.0)
             .map_or(0.0, |l| if name == "die" { t.min(l) } else { t % l });
-        // Going back while aiming, the walk or run plays backwards.
-        let t = match (legs, len) {
-            (Some(l), Some(n)) if l.back && n > 0.0 => n - t,
+        // Going back while aiming, the walk or run plays backwards: forwards and backwards crossfaded where it changes over.
+        let back = match (legs, len) {
+            (Some(l), Some(n)) if n > 0.0 => Some((l.back, n)),
+            _ => None,
+        };
+        let forward = t;
+        let t = match back {
+            Some((b, n)) if b >= 1.0 => n - t,
             _ => t,
         };
         let mut pose = len.and_then(|_| rig.sample(name, t));
+        if let (Some((b, n)), Some(now)) = (back, pose.as_ref()) {
+            if b > 0.0 && b < 1.0 {
+                if let Some(behind) = rig.sample(name, n - forward) {
+                    pose = Some(kotor_model::blend(now, &behind, b));
+                }
+            }
+        }
         // The clip this one took over from still shows through, fading out.
         if let (Some(f), Some(now)) = (clip.as_ref().and_then(|c| c.fade), pose.as_ref()) {
             if let Some(l) = rig.animation_length(f.name).filter(|l| *l > 0.0) {

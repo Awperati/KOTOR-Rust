@@ -885,21 +885,23 @@ fn aiming_on_the_move_the_legs_go_the_way_of_the_body_and_the_upper_body_keeps_t
         None,
         "standing, the stance clip has it all"
     );
-    // Each way round the aim: the hips' turn, and whether the walk plays backwards.
+    // Each way round the aim: the hips' turn, and whether the walk plays backwards. The hips turn half the way, at most 45 degrees.
     for (ahead, right, turn, back) in [
         (1.0, 0.0, 0.0, false),
-        (0.7, 0.7, -45.0, false),
-        (0.0, 1.0, -75.0, false),
-        (-0.7, 0.7, 45.0, true),
+        (0.7, 0.7, -22.5, false),
+        (0.0, 1.0, -11.0, false),
+        (-0.7, 0.7, 22.5, true),
         (-1.0, 0.0, 0.0, true),
-        (0.0, -1.0, 75.0, false),
+        (0.0, -1.0, 11.0, false),
     ] {
         for _ in 0..40 {
             s.steer = (ahead, right, false);
             s.update(DT);
+            // The window draws every frame, and the legs follow the way in the drawing.
+            s.aim_legs_now();
         }
         let (t, b, ready) = s.aim_legs_now().expect("moving");
-        assert!((t - turn).abs() < 3.0, "{ahead},{right}: {t}");
+        assert!((t - turn).abs() < 4.0, "{ahead},{right}: {t}");
         assert_eq!(b, back, "{ahead},{right}");
         assert_eq!(ready, "g5r1", "the pistol's stance");
     }
@@ -1045,6 +1047,131 @@ fn a_shot_while_aim_walking_fires_with_the_arms_and_the_legs_keep_walking() {
             let moving = s.dynamic_scene();
             let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
             std::fs::write(format!("{dir}/walkshot-{n}.png"), kotor_image::to_png(&img)).unwrap();
+        }
+    }
+    std::fs::remove_file(&file).ok();
+}
+
+/// The owner, 9 Nov: "within modern combat mode that if you walk left the legs snap 90 degrees left or right for strafing".
+/// The way round the aim, 360 degrees in four seconds: the legs' turn never jumps.
+#[test]
+fn the_legs_never_snap_as_the_way_goes_round_the_aim() {
+    let Some((mut s, file)) = stage("sweep", "") else {
+        return;
+    };
+    if !blaster_in_hand(&mut s) {
+        return;
+    }
+    aim_at(&mut s);
+    let (mut last, mut most) = (None::<f32>, 0.0f32);
+    let frames = 480;
+    for k in 0..frames {
+        let way = k as f32 / 240.0 * std::f32::consts::TAU;
+        s.steer = (way.cos(), way.sin(), false);
+        s.update(DT);
+        if k < 60 {
+            continue; // the body gets up to speed
+        }
+        let Some((turn, _, _)) = s.aim_legs_now() else {
+            continue;
+        };
+        if let Some(l) = last {
+            most = most.max((turn - l).abs());
+        }
+        last = Some(turn);
+    }
+    assert!(last.is_some(), "the legs never went");
+    eprintln!("the most the hips turn in a frame {most}");
+    assert!(most < 4.0, "the hips turned {most} degrees in one frame");
+    // Flipped from left to right at once, the legs go through the forward at a rate, and not in one frame.
+    s.steer = (0.0, -1.0, false);
+    run(&mut s, 60);
+    let (mut last, mut most) = (s.aim_legs_now().unwrap().0, 0.0f32);
+    s.steer = (0.0, 1.0, false);
+    let mut live = true;
+    for _ in 0..60 {
+        s.update(DT);
+        // The body slows to a stop between the two ways, and the legs go from the stance: that is not a turn of them.
+        match (s.aim_legs_now(), live) {
+            (Some((turn, _, _)), true) => {
+                most = most.max((turn - last).abs());
+                last = turn;
+            }
+            (Some((turn, _, _)), false) => {
+                last = turn;
+                live = true;
+            }
+            (None, _) => live = false,
+        }
+    }
+    eprintln!("a flip from left to right: the most the hips turn in a frame {most}");
+    assert!(
+        most < 6.0,
+        "a flip turned the hips {most} degrees in one frame"
+    );
+    std::fs::remove_file(&file).ok();
+}
+
+/// With `FRAME_STRAFE` set to a folder: frames of the side steps and the diagonals, from the front and the side, one stride of each.
+#[test]
+fn frames_of_the_side_steps() {
+    let Ok(dir) = std::env::var("FRAME_STRAFE") else {
+        return;
+    };
+    let Some((mut s, file)) = stage("strafeframes", "") else {
+        return;
+    };
+    if !blaster_in_hand(&mut s) {
+        return;
+    }
+    s.set_view((480, 640));
+    aim_at(&mut s);
+    let mut gpu = kotor_gpu::GpuRenderer::new(480, 640).unwrap();
+    let count: usize = std::env::var("FRAME_STRAFE_COUNT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(12);
+    let every: usize = std::env::var("FRAME_STRAFE_EVERY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
+    let pc = s.game.world.pc;
+    for (name, ahead, right) in [
+        ("left", 0.0f32, -1.0f32),
+        ("right", 0.0, 1.0),
+        ("fwdleft", 0.7, -0.7),
+        ("fwdright", 0.7, 0.7),
+        ("backleft", -0.7, -0.7),
+        ("backright", -0.7, 0.7),
+        ("fwd", 1.0, 0.0),
+    ] {
+        s.steer = (ahead, right, false);
+        run(&mut s, 50);
+        for n in 0..count {
+            run(&mut s, every);
+            let at = s.game.world.object(pc).unwrap().position;
+            let heading = s.game.world.pc_aim.unwrap_or(s.game.world.pc_mover.heading);
+            for (view, front) in [("front", true), ("side", false)] {
+                let (dx, dy) = if front {
+                    (heading.cos(), heading.sin())
+                } else {
+                    (heading.sin(), -heading.cos())
+                };
+                let cam = kotor_render::Camera {
+                    eye: [at[0] + dx * 2.6, at[1] + dy * 2.6, at[2] + 1.2],
+                    target: [at[0], at[1], at[2] + 0.9],
+                    fov: 40.0,
+                };
+                let still = s.static_scene().clone();
+                gpu.set_static_scene(&still, &mut |n| s.texture(n));
+                let moving = s.dynamic_scene();
+                let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+                std::fs::write(
+                    format!("{dir}/{name}-{n:03}-{view}.png"),
+                    kotor_image::to_png(&img),
+                )
+                .unwrap();
+            }
         }
     }
     std::fs::remove_file(&file).ok();

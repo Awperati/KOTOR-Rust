@@ -903,8 +903,8 @@ pub(super) struct AimLegs {
     pub ready: &'static str,
     /// How far the hips turn from the aim toward the way the body goes, in degrees.
     pub turn: f32,
-    /// Going back: the walk or run plays backwards.
-    pub back: bool,
+    /// Going back: how much of the walk or run plays backwards, 0 to 1.
+    pub back: f32,
 }
 
 /// What is the legs' in a body, kept from the walk or run: the rest is the stance's.
@@ -920,41 +920,78 @@ const LOWER_BODY: [&str; 10] = [
     "ltoe_g",
     "rtoe_g",
 ];
-/// **Assumed:** the most the hips turn from the aim, and from how far off the aim a way counts as going back, in degrees.
-const LEGS_TURN_MOST: f32 = 75.0;
-const BACK_FROM: f32 = 100.0;
+/// **Assumed:** the owner, 9 Nov: "keep the originals but make the degree of rotation a bit less". The hips turn half of
+/// the way the body goes off the aim, at most this many degrees (they went the whole way, to 75).
+const LEGS_TURN_MOST: f32 = 45.0;
+const LEGS_TURN_SHARE: f32 = 0.5;
+/// **Assumed:** the walk's direction changes over this span of degrees off the aim, from the first to the second: forwards before,
+/// backwards after, and the two crossfaded between, so no step of it is a snap (it was one at 100 degrees).
+const BACK_FROM: f32 = 65.0;
+const BACK_TO: f32 = 125.0;
 /// Slower than this, in m/s, the body stands: the stance clip has it all.
 const AIM_LEGS_FROM: f32 = 0.3;
+/// **Assumed:** the way the legs go follows the body's at this rate (the share of the gap closed per second, as `1 - e^-k`), at
+/// most this many degrees a second: a key flipped from left to right turns the legs through the forward.
+const LEGS_FOLLOW: f32 = 12.0;
+const LEGS_TURN_RATE: f32 = 360.0;
+/// The back's share of the turn taken back at the middle of the spine, and the rest above it: the bend is spread over the
+/// spine, from the hips up, and not folded at one joint.
+const BACK_LOW_SHARE: f32 = 0.55;
 
-/// The legs' turn and whether they go back, for a body moving `way` radians while it aims along `aim`.
-pub(super) fn aim_legs_turn(way: f32, aim: f32) -> (f32, bool) {
+fn smoothstep(x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
+}
+
+/// The way the body goes against the aim, in degrees from -180 to 180: positive is to the left.
+pub(super) fn aim_rel(way: f32, aim: f32) -> f32 {
     let tau = TAU;
-    let wrap = |a: f32| (a + tau / 2.0).rem_euclid(tau) - tau / 2.0;
-    let rel = wrap(way - aim).to_degrees();
-    let back = rel.abs() > BACK_FROM;
-    let turn = if back {
-        wrap((rel + 180.0).to_radians()).to_degrees()
-    } else {
-        rel
-    };
-    (turn.clamp(-LEGS_TURN_MOST, LEGS_TURN_MOST), back)
+    ((way - aim + tau / 2.0).rem_euclid(tau) - tau / 2.0).to_degrees()
+}
+
+/// The legs for a body going `rel` degrees off the aim: the hips' turn, in degrees, and how much of the walk plays backwards
+/// (0 forwards, 1 backwards, between the two crossfaded). Walking backwards, the hips turn toward the way's opposite.
+pub(super) fn legs_for(rel: f32) -> (f32, f32) {
+    let ahead = (rel * LEGS_TURN_SHARE).clamp(-LEGS_TURN_MOST, LEGS_TURN_MOST);
+    let behind =
+        ((rel - 180.0 * rel.signum()) * LEGS_TURN_SHARE).clamp(-LEGS_TURN_MOST, LEGS_TURN_MOST);
+    let back = smoothstep((rel.abs() - BACK_FROM) / (BACK_TO - BACK_FROM));
+    (ahead + (behind - ahead) * back, back)
 }
 
 impl Stage {
     /// While the player aims, or is locked on, and goes along in a walk or run: how the legs go under the aim.
     pub(super) fn aim_legs(&mut self, clip: &Option<Clip>) -> Option<AimLegs> {
         let w = &self.game.world;
-        let aim = w.pc_aim?;
-        let name = clip.as_ref()?.name;
-        if name != "walk" && name != "run" {
+        let live = (|| {
+            let aim = w.pc_aim?;
+            let name = clip.as_ref()?.name;
+            if name != "walk" && name != "run" {
+                return None;
+            }
+            let v = w.pc_body.vel;
+            if v[0].hypot(v[1]) < AIM_LEGS_FROM {
+                return None;
+            }
+            Some(aim_rel(v[1].atan2(v[0]), aim))
+        })();
+        let Some(target) = live else {
+            self.legs_live = false;
             return None;
+        };
+        let dt = (self.idle_clock - self.legs_clock).clamp(0.0, 0.1);
+        self.legs_clock = self.idle_clock;
+        if self.legs_live {
+            let gap = (target - self.legs_rel + 180.0).rem_euclid(360.0) - 180.0;
+            let step = (gap * (1.0 - (-LEGS_FOLLOW * dt).exp()))
+                .clamp(-LEGS_TURN_RATE * dt, LEGS_TURN_RATE * dt);
+            self.legs_rel = (self.legs_rel + step + 180.0).rem_euclid(360.0) - 180.0;
+        } else {
+            self.legs_rel = target;
+            self.legs_live = true;
         }
-        let v = w.pc_body.vel;
-        if v[0].hypot(v[1]) < AIM_LEGS_FROM {
-            return None;
-        }
-        let (turn, back) = aim_legs_turn(v[1].atan2(v[0]), aim);
-        let pc = w.pc;
+        let (turn, back) = legs_for(self.legs_rel);
+        let pc = self.game.world.pc;
         let ready = self.game.ready_clip(pc);
         Some(AimLegs { ready, turn, back })
     }
@@ -963,7 +1000,8 @@ impl Stage {
     pub fn aim_legs_now(&mut self) -> Option<(f32, bool, &'static str)> {
         let pc = self.game.world.pc;
         let clip = self.game.clip(pc).cloned();
-        self.aim_legs(&clip).map(|l| (l.turn, l.back, l.ready))
+        self.aim_legs(&clip)
+            .map(|l| (l.turn, l.back > 0.5, l.ready))
     }
 }
 
@@ -984,7 +1022,11 @@ pub(super) fn aim_layer(pose: &mut Pose, ready: Option<&Pose>, rig: &Rig, turn: 
     let back_on_hips = world("pelvis_g").is_some_and(|p| parent("torso_g") == Some(p));
     let back = if back_on_hips { -turn } else { 0.0 };
     let mut angles = vec![[0.0f32; 3]; JOINTS.len()];
-    for (name, twist) in [("pelvis_g", turn), ("torso_g", back)] {
+    for (name, twist) in [
+        ("pelvis_g", turn),
+        ("torso_g", back * BACK_LOW_SHARE),
+        ("torsoupr_g", back * (1.0 - BACK_LOW_SHARE)),
+    ] {
         if let Some(i) = JOINTS.iter().position(|j| j.name == name) {
             angles[i][2] = twist;
         }
