@@ -688,7 +688,7 @@ impl App {
         }
     }
 
-    fn key(&mut self, code: KeyCode, pressed: bool) {
+    fn key(&mut self, code: KeyCode, pressed: bool, held: bool) {
         let digit = match code {
             KeyCode::Digit1 | KeyCode::Numpad1 => 1,
             KeyCode::Digit2 | KeyCode::Numpad2 => 2,
@@ -732,7 +732,7 @@ impl App {
             Some(action) => {
                 if pressed {
                     match action {
-                        "Use" => self.stage.interact(),
+                        "Use" => self.stage.use_key(held),
                         "ChangeLeader" => {
                             self.stage.next_leader();
                         }
@@ -917,7 +917,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
-                    self.key(code, event.state == ElementState::Pressed);
+                    self.key(code, event.state == ElementState::Pressed, event.repeat);
                 }
             }
             WindowEvent::RedrawRequested => self.frame(el),

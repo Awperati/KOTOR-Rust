@@ -1,5 +1,6 @@
 //! The use key after Trask's talk: it opens the footlocker the camera faces, though Trask stands a hand's width nearer, and the
 //! keys move and pause as ever, in Classic. `scripts\drive_window.ps1` does the same through the window.
+use kotor_game::GameMode;
 use kotor_gpu::stage::Stage;
 
 const DT: f32 = 1.0 / 60.0;
@@ -114,6 +115,57 @@ fn after_the_talk(name: &str) -> Option<(Stage, std::path::PathBuf)> {
     run(&mut s, 30, (0.0, 0.0));
     assert!(!s.game.world.in_dialogue());
     Some((s, dir))
+}
+
+#[test]
+fn e_closes_a_tutorial_pop_up_and_uses_nothing_in_classic_and_modern() {
+    let Some((mut s, dir)) = after_the_talk("popup") else {
+        return;
+    };
+    // Only the footlocker for E: Trask would come up to talk.
+    let trask = s.game.world.by_tag("end_trask")[0];
+    s.game.world.objects.remove(&trask);
+    let locker = s.game.world.by_tag("end_locker01")[0];
+    let at = s.game.world.object(locker).unwrap().position;
+    s.enable_tutorials(true);
+    for mode in [GameMode::Classic, GameMode::Modern] {
+        s.set_game_mode(mode);
+        let me = s.game.world.pc_mover.pos;
+        s.yaw = (at[1] - me[1]).atan2(at[0] - me[0]);
+        run(&mut s, 3, (0.0, 0.0));
+        // The party pop-up has two pages, Continue then OK.
+        s.game.world.tutorial_seen.clear();
+        s.game.world.tutorial_requests.push(41);
+        s.update(DT);
+        assert_eq!(s.menu_name(), "tutorial", "{mode:?}");
+        s.interact();
+        assert_eq!(s.menu_name(), "tutorial", "{mode:?}: the second page");
+        // A held key's repeats turn no page.
+        s.use_key(true);
+        assert_eq!(s.menu_name(), "tutorial", "{mode:?}: held");
+        s.interact();
+        assert_eq!(s.menu_name(), "-", "{mode:?}: closed");
+        // Still held after it: nothing is used.
+        for _ in 0..30 {
+            s.use_key(true);
+            s.update(DT);
+        }
+        let w = &s.game.world;
+        assert_eq!(w.opened, None, "{mode:?}: the footlocker stays shut");
+        assert!(!w.in_dialogue(), "{mode:?}");
+        // The next press is the footlocker's.
+        s.interact();
+        let opens = (0..600).any(|_| {
+            s.update(DT);
+            s.game.world.opened == Some(locker)
+        });
+        assert!(opens, "{mode:?}: E opens the footlocker again");
+        s.escape();
+        s.game.world.opened = None;
+        run(&mut s, 5, (0.0, 0.0));
+        assert_eq!(s.menu_name(), "-", "{mode:?}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Put the player about 3 to 4.5 m from `id`, on the floor, facing it. How far that is.

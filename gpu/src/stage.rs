@@ -2035,9 +2035,15 @@ impl Stage {
     /// The E key: talk, open or use at once, with no menu between. First what the camera faces within reach; then the target the
     /// HUD shows, wherever it is; then what the camera faces further off; then the nearest within reach. Out of reach the
     /// player walks up to it first. The owner: "Pressing E automatically performing talk and open actions". It never takes
-    /// things from round about: that is the pickup key's.
+    /// things from round about: that is the pickup key's. Over a tutorial pop-up it closes the pop-up, and that is all.
     pub fn interact(&mut self) {
-        if self.menu_open() || self.choice_view().is_some() {
+        self.use_key(false);
+    }
+
+    /// The E key as the window gives it, `held` for the repeats of a key held down. A press that closes a tutorial pop-up
+    /// uses nothing, nor do its repeats.
+    pub fn use_key(&mut self, held: bool) {
+        if self.tutorial_use_key(held) || self.menu_open() || self.choice_view().is_some() {
             return;
         }
         if let Some(id) = self.use_choice() {

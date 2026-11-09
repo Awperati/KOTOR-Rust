@@ -174,6 +174,22 @@ impl Stage {
         }
     }
 
+    /// The use key, `held` for its repeats. Over a pop-up it does what the button does. True when it is spent so, and uses
+    /// nothing: then, and while it stays down after. The owner: "Make pressing E also dismiss on-screen tutorial pop-ups".
+    pub(in crate::stage) fn tutorial_use_key(&mut self, held: bool) -> bool {
+        if self.top() == Some(Screen::Tutorial) {
+            if !held {
+                self.tutorial_next();
+            }
+            self.menus.use_spent = true;
+            return true;
+        }
+        if !held {
+            self.menus.use_spent = false;
+        }
+        self.menus.use_spent
+    }
+
     /// The button on a pop-up, or Esc.
     pub(super) fn tutorial_next(&mut self) {
         self.menus.tutorials.pop_front();

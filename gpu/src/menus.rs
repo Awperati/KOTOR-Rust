@@ -778,6 +778,8 @@ pub(super) struct Menus {
     /// Pages of tutorial pop-ups waiting, and whether they come up at all.
     tutorials: std::collections::VecDeque<u32>,
     tutorials_on: bool,
+    /// The use key closed a pop-up: held down, it does nothing more until it comes up.
+    use_spent: bool,
     /// The game is paused, why, and whether things pause it by themselves.
     paused: bool,
     pause_note: String,
