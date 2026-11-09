@@ -1101,6 +1101,7 @@ impl Stage {
         phase!(self, "thrower_tick", self.thrower_tick());
         phase!(self, "race_input", self.race_input());
         let (ahead, mut right, walk) = self.steer;
+        self.game.pc_turning = 0;
         // Classic movement is the game's own tank controls: left and right turn the body and the camera behind it, and
         // there is no strafe. A scripted player keeps its own walk, and in a swoop race left and right steer the bike in
         // either mode: turning them into the walk's turn took them from the race after its first frame.
@@ -1113,6 +1114,10 @@ impl Stage {
             if right != 0.0 {
                 let pc = self.game.world.pc;
                 self.game.face(pc, self.yaw);
+                // Standing, the feet step round with the turn clips; walking, the walk plays.
+                if ahead == 0.0 {
+                    self.game.pc_turning = if right > 0.0 { 1 } else { -1 };
+                }
             }
             right = 0.0;
         }

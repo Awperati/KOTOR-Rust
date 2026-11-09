@@ -59,6 +59,12 @@ fn classic_has_tank_controls_left_and_right_turn_and_there_is_no_strafe() {
     let pc = s.game.world.pc;
     let drawn = s.game.poses().iter().find(|p| p.id == pc).unwrap().heading;
     assert!(off(drawn, s.yaw) < 0.05, "drawn {drawn}, camera {}", s.yaw);
+    // Turning in place, the feet step round: D plays turnright, A turnleft, and letting go stands again.
+    assert_eq!(s.game.clip(pc).map(|c| c.name), Some("turnright"));
+    run(&mut s, 10, (0.0, -1.0));
+    assert_eq!(s.game.clip(pc).map(|c| c.name), Some("turnleft"));
+    run(&mut s, 10, (0.0, 0.0));
+    assert_ne!(s.game.clip(pc).map(|c| c.name), Some("turnleft"));
     // W goes the way it now faces.
     let at = s.game.world.pc_mover.pos;
     run(&mut s, 40, (1.0, 0.0));

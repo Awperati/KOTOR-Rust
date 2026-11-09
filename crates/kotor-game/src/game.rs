@@ -112,6 +112,9 @@ pub struct Game {
     knocked: std::collections::HashSet<ObjId>,
     /// The looping clip a script put a creature in, until it moves.
     scripted: HashMap<ObjId, &'static str>,
+    /// The player turning in place, as Classic's left and right keys do standing: -1 left, 1 right, 0 not. The screen sets it
+    /// each frame; the body plays `turnleft` or `turnright` (1.0 s each in the humanoid supermodels) while it lasts.
+    pub pc_turning: i8,
     /// Until what step a creature that fought keeps its combat stance.
     ready_until: HashMap<ObjId, u64>,
     /// Whether a creature's weapons are in its hands (drawn) or on its body, and for how long it has been so: a draw or a holster
@@ -224,6 +227,7 @@ impl Game {
             wanted_at: HashMap::new(),
             shot_at: HashMap::new(),
             scripted: HashMap::new(),
+            pc_turning: 0,
             log_seen: 0,
             blow_clip: None,
             names: HashMap::new(),
@@ -356,6 +360,13 @@ impl Game {
                 "run"
             } else if moved || (id == pc && (walking || self.world.pc_walking())) {
                 "walk"
+            } else if id == pc && self.pc_turning != 0 {
+                // Turning in place: the feet step round, as the original's tank turn does.
+                if self.pc_turning > 0 {
+                    "turnright"
+                } else {
+                    "turnleft"
+                }
             } else {
                 self.scripted
                     .get(&id)
