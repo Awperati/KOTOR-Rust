@@ -1384,13 +1384,16 @@ fn a_head_speaks_while_its_line_plays() {
     let mut opened = false;
     // Two seconds, six frames of them.
     let mut taken = 0;
-    for step in 0..60 {
+    // FRAME_STRIP_COUNT frames (6), FRAME_STRIP_EVERY steps apart (10).
+    let every: usize = std::env::var("FRAME_STRIP_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(10);
+    let count: usize = std::env::var("FRAME_STRIP_COUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(6);
+    for step in 0..every * count {
         s.update(DT);
         if s.mouth_of(speaker).is_none() {
             break;
         }
         opened |= s.mouth_of(speaker).is_some_and(|(open, _)| open > 0.2);
-        if step % 10 == 0 {
+        if step % every == 0 {
             let scene = s.dynamic_scene();
             shapes.insert(head_shape(&scene, at));
             if let (Some(dir), Some(gpu)) = (&strip, gpu.as_mut()) {
@@ -1400,7 +1403,7 @@ fn a_head_speaks_while_its_line_plays() {
                 let cam = s.speaker_camera().unwrap_or_else(|| s.camera());
                 let img = gpu.render(&scene, &mut |n| s.texture(n), &cam).unwrap();
                 std::fs::write(
-                    format!("{dir}/speak_{taken}.png"),
+                    format!("{dir}/speak_{taken:03}.png"),
                     kotor_image::to_png(&img),
                 )
                 .unwrap();
@@ -2025,6 +2028,8 @@ fn skinning_cost_of_a_busy_area_stays_small() {
 fn a_line_with_no_voice_moves_no_mouth() {
     let Some(mut s) = stage() else { return };
     let (mut silent, mut voiced) = (0, 0);
+    let mut shot = 0;
+    let mut gpu: Option<GpuRenderer> = None;
     for f in 0..3000 {
         s.update(DT);
         let w = &s.game.world;
@@ -2039,6 +2044,23 @@ fn a_line_with_no_voice_moves_no_mouth() {
                 voiced += 1;
             } else {
                 silent += 1;
+                // FRAME_SILENT=<dir>: up to 4 frames of the speaker, 12 steps apart, while the line has no voice.
+                if let Ok(dir) = std::env::var("FRAME_SILENT") {
+                    if silent % 12 == 1 && shot < 4 {
+                        let g = gpu.get_or_insert_with(|| {
+                            s.set_view((1280, 720));
+                            GpuRenderer::new(1280, 720).unwrap()
+                        });
+                        std::fs::create_dir_all(&dir).unwrap();
+                        let scene = s.dynamic_scene();
+                        let still = s.static_scene().clone();
+                        g.set_static_scene(&still, &mut |n| s.texture(n));
+                        let cam = s.speaker_camera().unwrap_or_else(|| s.camera());
+                        let img = g.render(&scene, &mut |n| s.texture(n), &cam).unwrap();
+                        std::fs::write(format!("{dir}/silent_{shot}.png"), kotor_image::to_png(&img)).unwrap();
+                        shot += 1;
+                    }
+                }
                 for id in ids {
                     assert!(
                         s.mouth_of(id).is_none(),

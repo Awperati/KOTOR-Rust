@@ -1295,7 +1295,10 @@ fn frames_of_a_jump_from_the_front_and_the_side() {
     s.set_view((480, 640));
     let pc = s.game.world.pc;
     let mut gpu = kotor_gpu::GpuRenderer::new(480, 640).unwrap();
-    for (n, p) in [0.05f32, 0.25, 0.5, 0.75, 0.95].iter().enumerate() {
+    // FRAME_JUMP_COUNT moments (5 by default) from just off the floor to just before the landing.
+    let count: usize = std::env::var("FRAME_JUMP_COUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let moments: Vec<f32> = (0..count).map(|k| 0.05 + 0.9 * k as f32 / (count.max(2) - 1) as f32).collect();
+    for (n, p) in moments.iter().enumerate() {
         s.preview_jump(*p);
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
@@ -1316,7 +1319,7 @@ fn frames_of_a_jump_from_the_front_and_the_side() {
             let moving = s.dynamic_scene();
             let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
             std::fs::write(
-                format!("{dir}/jump-{n}-{view}.png"),
+                format!("{dir}/jump-{n:03}-{view}.png"),
                 kotor_image::to_png(&img),
             )
             .unwrap();
