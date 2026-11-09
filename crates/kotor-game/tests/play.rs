@@ -319,6 +319,79 @@ fn a_shop_sells_for_its_mark_up_and_buys_for_its_mark_down() {
     );
 }
 
+#[test]
+fn a_save_made_in_a_shop_loads_with_the_shop_shut_and_its_stock_as_it_was() {
+    let Some(dir) = kotor_core::install_dir() else {
+        return;
+    };
+    let fresh = || {
+        let mut w = World::new(Install::open(dir.clone()).unwrap()).unwrap();
+        w.load_module("tar_m02ac").unwrap();
+        let spec = w.recommended_character("Player", 0, 1).unwrap();
+        w.create_character(&spec).unwrap();
+        w
+    };
+    let mut w = fresh();
+    let store = w.by_tag("zelkastore2")[0];
+    assert!(kotor_script_open(&mut w, store));
+    let template = |w: &World, i: u32| w.object(i).unwrap().template.clone();
+    let pack = w
+        .store_lines()
+        .into_iter()
+        .find(|l| template(&w, l.item) == "g_i_medeqpmnt01")
+        .unwrap();
+    // One of a kind, bought: it leaves the stock.
+    let single = w
+        .store_lines()
+        .into_iter()
+        .find(|l| !l.infinite && l.price <= 400)
+        .unwrap();
+    w.gold = 1000;
+    w.store_buy(pack.item).unwrap();
+    w.store_buy(single.item).unwrap();
+    let stock: Vec<(String, i32, bool)> = w
+        .store_lines()
+        .into_iter()
+        .map(|l| (template(&w, l.item), l.price, l.infinite))
+        .collect();
+    let bytes = w.save_bytes("Shopping").unwrap();
+
+    let mut b = fresh();
+    b.load_save(&bytes).unwrap();
+    assert_eq!(w.state_digest(), b.state_digest());
+    assert_eq!(b.store, None, "a load never opens a shop");
+    assert_eq!(b.gold, w.gold);
+    let store = b.by_tag("zelkastore2")[0];
+    assert!(kotor_script_open(&mut b, store));
+    let again: Vec<(String, i32, bool)> = b
+        .store_lines()
+        .into_iter()
+        .map(|l| (template(&b, l.item), l.price, l.infinite))
+        .collect();
+    assert_eq!(
+        again, stock,
+        "not filled again, and medpacs still never run out"
+    );
+    let pack = b
+        .store_lines()
+        .into_iter()
+        .find(|l| template(&b, l.item) == "g_i_medeqpmnt01")
+        .unwrap();
+    b.store_buy(pack.item).unwrap();
+    assert_eq!(b.store_lines().len(), again.len());
+    // Loaded over the world that is still in the shop: it is shut.
+    assert!(w.store.is_some());
+    w.load_save(&bytes).unwrap();
+    assert_eq!(w.store, None);
+    assert_eq!(w.state_digest(), fresh_loaded(&bytes, &fresh));
+}
+
+fn fresh_loaded(bytes: &[u8], fresh: &dyn Fn() -> World) -> String {
+    let mut w = fresh();
+    w.load_save(bytes).unwrap();
+    w.state_digest()
+}
+
 /// A script saying `OpenStore`.
 fn kotor_script_open(w: &mut World, store: u32) -> bool {
     let prog = call_program(w, &[("OpenStore/2", vec![co(1), co(0)])]);

@@ -56,13 +56,22 @@ fn a_footlocker_gives_its_item_list_once() {
     w.take_item(first);
     assert_eq!(w.container_items().len(), n - 1);
     assert!(!w.carried(pc).is_empty() || w.gold > 0);
+    // Saved with the locker still open.
+    assert_eq!(w.opened, Some(locker));
     let bytes = w.save_bytes("Looted").unwrap();
     let mut b = world_in("end_m01aa").unwrap();
     b.load_save(&bytes).unwrap();
     assert_eq!(w.state_digest(), b.state_digest());
+    assert_eq!(b.opened, None, "a load never opens a container");
     let locker = b.by_tag("end_locker01")[0];
     assert!(use_it(&mut b, locker));
     assert_eq!(b.container_items().len(), n - 1, "not filled again on load");
+    // Loaded over the world that has it open: it is shut, and the same.
+    w.load_save(&bytes).unwrap();
+    assert_eq!(w.opened, None);
+    let mut c = world_in("end_m01aa").unwrap();
+    c.load_save(&bytes).unwrap();
+    assert_eq!(w.state_digest(), c.state_digest());
 }
 
 #[test]

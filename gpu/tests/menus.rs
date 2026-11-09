@@ -468,6 +468,25 @@ fn a_conversation_cannot_be_saved_and_a_save_goes_only_to_its_folder() {
 }
 
 #[test]
+fn a_fight_cannot_be_saved_and_once_it_is_over_it_can() {
+    let Some((mut s, dir)) = in_game("fight") else {
+        return;
+    };
+    let pc = s.game.world.pc;
+    let at = s.game.world.object(pc).unwrap().position;
+    let foe = (s.game.world).spawn_creature("n_calonord", [at[0] + 2.0, at[1], at[2]]);
+    s.game.world.combat.target.insert(foe, pc);
+    s.escape();
+    press(&mut s, "BTN_SAVEGAME");
+    assert_eq!(s.menu_name(), "pause");
+    assert!(s.menu_message().contains("combat"), "{}", s.menu_message());
+    assert!(!dir.exists());
+    s.game.world.combat.target.clear();
+    press(&mut s, "BTN_SAVEGAME");
+    assert_eq!(s.menu_name(), "save");
+}
+
+#[test]
 fn the_inventory_lists_what_is_carried_and_a_click_shows_its_words() {
     let Some((mut s, _)) = in_game("inventory") else {
         return;

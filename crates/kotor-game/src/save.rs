@@ -609,6 +609,10 @@ impl World {
             ("DoorTime", Value::Float(door_t)),
             ("BaseItem", Value::Int(o.base_item)),
             ("Filled", Value::Byte(self.filled.contains(&o.id) as u8)),
+            (
+                "Infinite",
+                Value::Byte(self.store_infinite.contains(&o.id) as u8),
+            ),
             ("Droppable", Value::Byte(o.droppable as u8)),
             ("Conversation", s(&o.conversation)),
             (
@@ -828,6 +832,9 @@ impl World {
             }
             if e.int("Filled").is_some_and(|f| f != 0) {
                 self.filled.insert(id);
+            }
+            if e.int("Infinite").is_some_and(|f| f != 0) {
+                self.store_infinite.insert(id);
             }
             let Some(o) = self.objects.get_mut(&id) else {
                 continue;
@@ -1063,6 +1070,8 @@ impl World {
         self.opened = None;
         self.opened_too.clear();
         self.filled.clear();
+        self.store = None;
+        self.store_infinite.clear();
         self.steer = None;
         self.combat = crate::combat::CombatState::new();
         self.game_over = false;
@@ -1344,9 +1353,10 @@ impl World {
                 .map(|e| format!("{}{:?}", e.name, e.args))
                 .collect();
             rows.push(format!(
-                "{} filled={} drop={} stack={} name={:?} pos=({:.3},{:.3},{:.3}) face={:.2} hp={} dead={} party={} locked={} lvl={} open={} door={:?} base={} xp={} fac={}/{}/{} spells={:?} feats={:?} inv={inv:?} eq={eq:?} ln={ln:?} lb={lb:?} fx={fx:?}",
+                "{} filled={} inf={} drop={} stack={} name={:?} pos=({:.3},{:.3},{:.3}) face={:.2} hp={} dead={} party={} locked={} lvl={} open={} door={:?} base={} xp={} fac={}/{}/{} spells={:?} feats={:?} inv={inv:?} eq={eq:?} ln={ln:?} lb={lb:?} fx={fx:?}",
                 name(&o.id),
                 self.filled.contains(&o.id),
+                self.store_infinite.contains(&o.id),
                 o.droppable,
                 o.stack,
                 o.name,
