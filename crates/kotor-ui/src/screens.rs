@@ -533,6 +533,8 @@ impl<'a> Ui<'a> {
 
     /// Make a map as far as it has been seen: over the file's picture, what has not been seen shows a grid, as in the
     /// reference video at 1:25:00. `seen` covers the part of a 512 wide picture that is the map. The edge is soft.
+    /// The picture's black round the rooms keeps the grid, seen or not: the owner's "Endar Spire map is bugged" was a
+    /// black blob round the arrow wherever the player stood off the rooms drawn, as in a doorway.
     pub fn compose_seen_map(
         &mut self,
         out: &str,
@@ -603,6 +605,8 @@ impl<'a> Ui<'a> {
                 let line = x % grid == 0 || y % grid == 0;
                 let unseen = if line { MAP_GRID_LINE } else { MAP_GRID_BACK };
                 let at = (y * w + x) * 4;
+                let lit = from[at..at + 3].iter().copied().max().unwrap_or(0) as f32;
+                let seen = seen * ((lit - MAP_EMPTY_BELOW) / MAP_EMPTY_FADE).clamp(0.0, 1.0);
                 for k in 0..3 {
                     shown.rgba[at + k] =
                         (from[at + k] as f32 * seen + unseen[k] * (1.0 - seen)) as u8;
@@ -2045,6 +2049,10 @@ const MAP_SHOWN_WIDTH: f32 = 440.0;
 const MAP_GRID: f32 = 18.0;
 const MAP_GRID_LINE: [f32; 3] = [0.0, 70.0, 105.0];
 const MAP_GRID_BACK: [f32; 3] = [2.0, 4.0, 22.0];
+/// The picture's black round the rooms is nothing seen: the grid stays there. From this bright a pixel starts to be a
+/// room, and this much more and it is all room.
+const MAP_EMPTY_BELOW: f32 = 10.0;
+const MAP_EMPTY_FADE: f32 = 20.0;
 /// What the HUD does not show now: combat, notices, the action queue and the map's picture are not built.
 const HUD_HIDDEN: [&str; 25] = [
     "LBL_CMBT",

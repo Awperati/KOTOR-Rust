@@ -3010,6 +3010,13 @@ fn the_map_picture_lies_the_right_way_up_under_the_floor_on_the_endar_spire_and_
             }
         }
         assert!(floor > 400, "{module}: {floor}");
+        // The black round the rooms, all seen, keeps the grid: no black blob round a player off the rooms drawn.
+        let corner = (pic.width as usize + 1) * 4;
+        assert!(
+            pic.rgba[corner + 2] >= 20 && pic.rgba[corner + 2] > pic.rgba[corner],
+            "{module}: {:?}",
+            &pic.rgba[corner..corner + 3]
+        );
         assert!(drawn * 100 >= floor * 90, "{module}: {drawn} of {floor}");
         // The player stands on what is drawn.
         let p = s.game.world.object(s.game.world.pc).unwrap().position;
@@ -3087,13 +3094,15 @@ fn the_map_shows_the_area_the_party_and_its_notes() {
     };
     let before = seen(&s);
     assert!(before > 0);
+    // To a room the picture draws: the black round the rooms shows the grid, seen or not.
     let o = s.game.world.object_mut(s.game.world.pc).unwrap();
-    o.position[1] += 30.0;
+    let home = o.position;
+    o.position = [46.5, 33.2, home[2]];
     s.hover((1.0, 1.0), SIZE);
     assert!(frame(&mut s) != open);
     assert!(seen(&s) > before);
     let o = s.game.world.object_mut(s.game.world.pc).unwrap();
-    o.position[1] -= 30.0;
+    o.position = home;
     s.hover((1.0, 1.0), SIZE);
     assert!(frame(&mut s) != open, "more of the map shows than before");
     press(&mut s, "BTN_EXIT");
