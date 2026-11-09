@@ -1275,10 +1275,10 @@ fn frames_of_the_bra_straps() {
         for (view, turn, up) in [
             ("front", 0.0f32, 0.25f32),
             ("threeq", 0.7, 0.25),
-            ("side", 1.57, 0.25),
-            ("back", 3.14, 0.25),
+            ("side", std::f32::consts::FRAC_PI_2, 0.25),
+            ("back", std::f32::consts::PI, 0.25),
             ("overfront", 0.0, 1.0),
-            ("overback", 3.14, 1.0),
+            ("overback", std::f32::consts::PI, 1.0),
         ] {
             let a = heading + turn;
             let cam = kotor_render::Camera {
