@@ -14,16 +14,22 @@ fn main() {
             (x.parse().unwrap(), y.parse().unwrap())
         });
     std::fs::create_dir_all(&out).unwrap();
+    // SHOTS_POSE=<clip>[:<time>] poses the body in a clip, as it stands in the game, and adds the views from above.
+    let anim: Option<(String, f32)> = std::env::var("SHOTS_POSE").ok().map(|v| {
+        let (n, t) = v.split_once(':').unwrap_or((&v, "0"));
+        (n.to_string(), t.parse().unwrap_or(0.0))
+    });
+    let tag = anim.as_ref().map_or(String::new(), |a| format!("{}-", a.0));
     let mut inst = Install::open(kotor_core::install_dir().unwrap()).unwrap();
     inst.load_texture_packs().unwrap();
     let scene = rig_for_appearance(&mut inst, row, 1)
         .unwrap()
-        .pose(None)
+        .pose(anim.as_ref().map(|(n, t)| (n.as_str(), *t)))
         .unwrap();
     let soft_scene = {
         let mut rig = rig_for_appearance(&mut inst, row, 1).unwrap();
         rig.soften_underwear_shading();
-        rig.pose(None).unwrap()
+        rig.pose(anim.as_ref().map(|(n, t)| (n.as_str(), *t))).unwrap()
     };
     let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
     let height = scene.max[2] - scene.min[2];
@@ -37,12 +43,16 @@ fn main() {
             ("side", [1.0, 0.0], 0.75),
             ("back", [0.0, -1.0], 0.75),
             ("close", [0.35, 1.0], 0.35),
+            ("threeq", [0.6, 0.8], 0.45),
+            ("backq", [-0.6, -0.8], 0.45),
+            ("top", [0.0, 0.02], 0.45),
+            ("topback", [0.0, -0.3], 0.45),
         ] {
             let cam = Camera {
                 eye: [
                     upper[0] + along[0] * height * reach,
                     upper[1] + along[1] * height * reach,
-                    upper[2],
+                    upper[2] + if side.starts_with("top") { height * 0.45 } else { 0.0 },
                 ],
                 target: upper,
                 fov: 40.0,
@@ -76,7 +86,7 @@ fn main() {
                 w,
                 h,
             );
-            let name = out.join(format!("{row}-{style}-{side}.png"));
+            let name = out.join(format!("{tag}{row}-{style}-{side}.png"));
             std::fs::write(&name, kotor_image::to_png(&img)).unwrap();
             println!("wrote {}", name.display());
         }

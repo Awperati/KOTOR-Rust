@@ -428,7 +428,8 @@ const STRAP_OUT: f32 = 0.0;
 const STRAP_OVER: f32 = 0.04;
 const CUP_INNER: f32 = 0.03;
 const CUP_OUTER: f32 = 0.57;
-const STRAP_AT: f32 = 0.29;
+/// Over the shoulder and not at the neck: 0.29 sat at the neck's foot and read as a halter. Assumed from the A/B pictures.
+const STRAP_AT: f32 = 0.5;
 const STRAP_HALF: f32 = 0.045;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -968,11 +969,12 @@ pub fn plan_for(inst: &mut Install, body: &str) -> Option<Plan> {
             return;
         }
         // The old top's collar ends at the neck, and nothing of the bra does: what is left of it there is cloth to go.
-        if cloth && h >= NECK_CLOTH {
+        // A strap goes on over it, up to the top of the shoulder where the front and the back meet.
+        let part = bra_part(p[0], p[1], h, half);
+        if cloth && h >= NECK_CLOTH && part != Part::Strap {
             marks[n] = CLEAR;
             return;
         }
-        let part = bra_part(p[0], p[1], h, half);
         straps[n] = part == Part::Strap;
         let behind = p[1] <= 0.0;
         if part == Part::Strap && behind {
@@ -2551,5 +2553,21 @@ mod strap_tests {
         }
         // Low on the back it starts where the band is, at the old place.
         assert!((strap_at(BAND_HIGH, false) - STRAP_AT).abs() < 1e-4);
+    }
+    /// "Straps for the top underwear bra still don't go over the shoulders": the strap runs straight up, over the shoulder and
+    /// not at the neck, and it carries on above the old top's collar line (`NECK_CLOTH`), where the old cloth used to cut it short.
+    #[test]
+    fn the_strap_runs_straight_up_over_the_shoulder_past_the_old_collar() {
+        assert!(STRAP_AT > 0.4 && STRAP_OUT == 0.0);
+        let half = 0.22;
+        for front in [true, false] {
+            let y = if front { 0.02 } else { -0.02 };
+            for h in [NECK_CLOTH - 0.02, NECK_CLOTH + 0.01, NECK_RING + 0.005] {
+                assert!(
+                    bra_part(STRAP_AT * half, y, h, half) == Part::Strap,
+                    "front {front} h {h}"
+                );
+            }
+        }
     }
 }

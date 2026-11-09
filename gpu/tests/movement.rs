@@ -1241,6 +1241,61 @@ fn a_jump_strides_with_the_opposite_arm_and_closes_the_stride_with_no_paddling()
     std::fs::remove_file(&file).ok();
 }
 
+/// With `FRAME_STRAPS` set to a folder: the upper body of the player from the front, the back, the side and three quarters,
+/// standing, running and at the top of a jump, close up. For the bra straps.
+#[test]
+fn frames_of_the_bra_straps() {
+    let Ok(dir) = std::env::var("FRAME_STRAPS") else {
+        return;
+    };
+    let Some((mut s, file)) = stage("strapframes", "") else {
+        return;
+    };
+    s.yaw = clear_way(&mut s);
+    s.set_view((640, 640));
+    let pc = s.game.world.pc;
+    let mut gpu = kotor_gpu::GpuRenderer::new(640, 640).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    for pose in ["idle", "run", "jump"] {
+        match pose {
+            "run" => {
+                s.steer = (1.0, 0.0, false);
+                run(&mut s, 40);
+            }
+            "jump" => {
+                s.steer = (0.0, 0.0, false);
+                run(&mut s, 30);
+                s.preview_jump(0.5);
+            }
+            _ => run(&mut s, 5),
+        }
+        s.update(DT);
+        let at = s.game.world.object(pc).unwrap().position;
+        let heading = s.game.world.pc_mover.heading;
+        for (view, turn, up) in [
+            ("front", 0.0f32, 0.25f32),
+            ("threeq", 0.7, 0.25),
+            ("side", 1.57, 0.25),
+            ("back", 3.14, 0.25),
+            ("overfront", 0.0, 1.0),
+            ("overback", 3.14, 1.0),
+        ] {
+            let a = heading + turn;
+            let cam = kotor_render::Camera {
+                eye: [at[0] + a.cos() * 1.3, at[1] + a.sin() * 1.3, at[2] + 1.35 + up * 1.3],
+                target: [at[0], at[1], at[2] + 1.35],
+                fov: 40.0,
+            };
+            let still = s.static_scene().clone();
+            gpu.set_static_scene(&still, &mut |n| s.texture(n));
+            let moving = s.dynamic_scene();
+            let img = gpu.render(&moving, &mut |n| s.texture(n), &cam).unwrap();
+            std::fs::write(format!("{dir}/{pose}-{view}.png"), kotor_image::to_png(&img)).unwrap();
+        }
+    }
+    std::fs::remove_file(&file).ok();
+}
+
 /// From a run or from standing, through a jump and its landing, no hand or foot jumps from one frame to the next.
 #[test]
 fn a_jump_goes_smoothly_from_the_run_to_the_landing_and_back() {
