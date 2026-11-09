@@ -1401,11 +1401,21 @@ fn frames_of_a_jump_from_the_front_and_the_side() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(5);
-    let moments: Vec<f32> = (0..count)
-        .map(|k| 0.05 + 0.9 * k as f32 / (count.max(2) - 1) as f32)
+    // FRAME_WINDUP_COUNT frames (0) of the crouch before it, from the key press to the last moment on the floor.
+    let windup: usize = std::env::var("FRAME_WINDUP_COUNT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let mut moments: Vec<(bool, f32)> = (0..windup)
+        .map(|k| (true, k as f32 / windup.max(2) as f32))
         .collect();
-    for (n, p) in moments.iter().enumerate() {
-        s.preview_jump(*p);
+    moments.extend((0..count).map(|k| (false, 0.05 + 0.9 * k as f32 / (count.max(2) - 1) as f32)));
+    for (n, (crouch, p)) in moments.iter().enumerate() {
+        if *crouch {
+            s.preview_windup(*p);
+        } else {
+            s.preview_jump(*p);
+        }
         s.update(DT);
         let at = s.game.world.object(pc).unwrap().position;
         let heading = s.game.world.pc_mover.heading;
