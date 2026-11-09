@@ -23,7 +23,7 @@
 #   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
 # The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
 #
-version = 6            # which of the game's own jumps this began as. Leave it alone.
+version = 7            # which of the game's own jumps this began as. Leave it alone.
 
 # THE KEYS. Each one is a moment. The game moves from each key to the next.
 #   at     how far through the jump, 0 to 1. 0 is leaving the floor, 0.5 the top, and 1 is the feet touching.
@@ -33,22 +33,65 @@ version = 6            # which of the game's own jumps this began as. Leave it a
 #   lower  how far the body sinks, in metres. In the air there is no floor to keep the feet on, so it is 0.
 # A joint a key does not name is at 0 in that key: standing as it was. Left and right differ here on purpose: a stride.
 
-[key]            # Leaving the floor, out of whatever the body was doing. The run's stride is still in the legs.
-at = 0
+# BEFORE THE FEET LEAVE: keys with an "at" below 0 are the wind-up, the 0.1 s the body waits on the floor. -1 is the key press, 0 the last moment on the floor.
+[key]            # The key is pressed, out of whatever the body was doing.
+at = -1
 tuck = 0
 lower = 0
 #              bend  out  twist
 
-[key]            # Load, the anticipation: the knees give, the back leans in and both arms swing back. The body is sunk, so the feet stay down.
+[key]            # Halfway down: the knees give and the arms start back.
+at = -0.5
+ease = smooth
+tuck = 0.5
+lower = 0.06
+#              bend  out  twist
+lthigh_g   =    30     -5      0
+rthigh_g   =    28     -5      0
+lshin_g    =    48
+rshin_g    =    46
+lfoot_g    =    14
+rfoot_g    =    12
+torso_g    =     8      0      0
+torsoupr_g =     6      0      0
+neck_g     =    -4
+head_g     =    -2
+lbicep_g   =    -8    -22      0
+rbicep_g   =    -6    -22      0
+lforearm_g =    28      0    -50
+rforearm_g =    26      0    -50
+
+[key]            # The deepest, ready to spring: sunk, the back leaning in, both arms back.
+at = 0
+ease = smooth
+tuck = 0.8
+lower = 0.12
+#              bend  out  twist
+lthigh_g   =    46     -5      0
+rthigh_g   =    44     -5      0
+lshin_g    =    80
+rshin_g    =    78
+lfoot_g    =    26
+rfoot_g    =    24
+torso_g    =    15      0      0
+torsoupr_g =    10      0      0
+neck_g     =    -8
+head_g     =    -4
+lbicep_g   =   -20    -22      0
+rbicep_g   =   -18    -22      0
+lforearm_g =    34      0    -50
+rforearm_g =    32      0    -50
+
+[key]            # Spring: the legs drive out of the crouch while the body rises, so the feet stay down until the knees are straight.
 at = 0.07
 ease = smooth
-tuck = 0.28
-lower = 0.1
+tuck = 0.6
+lower = 0.07
 #              bend  out  twist
-lthigh_g   =    38     -5      0
-rthigh_g   =    36     -5      0
-lshin_g    =    56
-rshin_g    =    54
+lthigh_g   =    42     -5      0
+rthigh_g   =    40     -5      0
+lshin_g    =    66
+rshin_g    =    64
 lfoot_g    =    22
 rfoot_g    =    20
 pelvis_g   =     0      0      0
@@ -56,8 +99,8 @@ torso_g    =    14      0      0
 torsoupr_g =     8      0      0
 neck_g     =    -6
 head_g     =    -4
-lbicep_g   =     5    -22      0
-rbicep_g   =     0    -22      0
+lbicep_g   =    -6    -22      0
+rbicep_g   =    -6    -22      0
 lforearm_g =    30      0    -50
 rforearm_g =    28      0    -50
 lhand_g    =   -10

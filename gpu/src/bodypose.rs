@@ -67,12 +67,13 @@ pub(super) const SHIPPED_ROLLS: [&str; 2] = [
     include_str!("poses_old/roll_pose_v2.txt"),
 ];
 pub(super) const SHIPPED_LANDINGS: [&str; 1] = [include_str!("poses_old/landing_pose_v1.txt")];
-pub(super) const SHIPPED_JUMPS: [&str; 5] = [
+pub(super) const SHIPPED_JUMPS: [&str; 6] = [
     include_str!("poses_old/jump_pose_v1.txt"),
     include_str!("poses_old/jump_pose_v2.txt"),
     include_str!("poses_old/jump_pose_v3.txt"),
     include_str!("poses_old/jump_pose_v4.txt"),
     include_str!("poses_old/jump_pose_v5.txt"),
+    include_str!("poses_old/jump_pose_v6.txt"),
 ];
 pub(super) const ROLL_FILE: &str = "roll_pose.txt";
 pub(super) const LANDING_FILE: &str = "landing_pose.txt";
@@ -224,7 +225,7 @@ impl PoseFile {
             };
             match name.as_str() {
                 "at" => {
-                    key.at = within(number(value, line)?, 0.0, 1.0, "at", line)?;
+                    key.at = within(number(value, line)?, -1.0, 1.0, "at", line)?;
                     said_at = true;
                 }
                 "ease" => {
@@ -276,7 +277,7 @@ impl PoseFile {
 
     /// The pose `p` of the way through the move, 0 to 1.
     pub fn sample(&self, p: f32) -> Sampled {
-        let p = p.clamp(0.0, 1.0);
+        let p = p.clamp(-1.0, 1.0);
         let next = self.keys.partition_point(|k| k.at <= p);
         let (a, b, share) = if next == 0 {
             (&self.keys[0], &self.keys[0], 0.0)
@@ -336,10 +337,13 @@ mod tests {
             assert!(angle(&s, "rbicep_g")[0] >= 25.0, "arm at {p}");
         }
         assert_eq!(
-            jump.sample(0.0).tuck,
+            jump.sample(-1.0).tuck,
             0.0,
-            "it comes out of what the body was doing"
+            "the wind-up comes out of what the body was doing"
         );
+        // Before the feet leave the body is down in a crouch, and the spring starts from it.
+        let crouch = jump.sample(0.0);
+        assert!(crouch.lower > 0.1 && angle(&crouch, "lshin_g")[0] > 70.0);
     }
 
     #[test]

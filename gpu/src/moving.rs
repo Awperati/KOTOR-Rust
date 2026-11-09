@@ -297,6 +297,11 @@ impl Stage {
         self.body_poses.preview = Some(Bend::Jump(p));
     }
 
+    /// Draw the player in the wait before a jump, this share of the way through. For the preview and a test.
+    pub fn preview_windup(&mut self, p: f32) {
+        self.body_poses.preview = Some(Bend::Windup(p));
+    }
+
     /// Hold the player `p` of the way through the landing, for a picture of it.
     pub fn preview_landing(&mut self, p: f32) {
         self.body_poses.preview = Some(Bend::Land(p));
@@ -641,6 +646,8 @@ impl Stage {
         let body = &w.pc_body;
         if body.rolling() {
             Some(Bend::Roll(body.roll_progress(&w.tuning)))
+        } else if let Some(p) = body.jump_windup_progress(&w.tuning) {
+            Some(Bend::Windup(p))
         } else if let Some(p) = body.jump_progress(&w.tuning) {
             Some(Bend::Jump(p))
         } else if body.landing() {
@@ -680,6 +687,8 @@ impl Stage {
             Bend::Roll(p) => (&self.body_poses.roll, p, true, ROLL_CLIP),
             Bend::Land(p) => (&self.body_poses.landing, p, false, LANDING_CLIP),
             Bend::Jump(p) => (&self.body_poses.jump, p, false, JUMP_CLIP),
+            // The jump's keys below 0, from the key press to the last moment on the floor. The owner's own jump clip starts at the jump.
+            Bend::Windup(p) => (&self.body_poses.jump, p - 1.0, false, "jump_windup"),
         };
         let keys = file.sample(p);
         // A jump's landing starts from the legs that came down, and not all at once in the crouch.
@@ -831,6 +840,8 @@ enum Bend {
     Roll(f32),
     Land(f32),
     Jump(f32),
+    /// The wait on the floor before a jump, 0 to 1.
+    Windup(f32),
 }
 
 fn smooth(x: f32) -> f32 {

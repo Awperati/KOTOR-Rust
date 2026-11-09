@@ -1,0 +1,280 @@
+# THE JUMP. Edit this file, save it, and press F8 in the game. Then press Space.
+# Anything after a # is a note and is ignored. docs/MOVEMENT_POSE.md explains everything here.
+# A mistake? The game says so, writes it in pose_problems.txt beside this file, and uses its own jump until you fix it.
+# To start again, delete this file: the game writes a fresh one the next time it starts.
+# The game keeps a file you have edited. A file nobody edited is replaced when a new version of the game has a better one.
+#
+# EACH JOINT TAKES UP TO THREE ANGLES IN DEGREES: bend  out  twist
+#   bend    curls the joint in. Knee to the chest, heel to the bottom, chin to the chest, elbow closed.
+#   out     moves the limb away from the body, to the side. A minus brings it across the body.
+#   twist   turns the limb about its own length, its front going outward. A minus turns it inward.
+# Left and right work alike: to keep the body even, give both sides the same numbers.
+#
+#   JOINT                       WHAT IT IS         SAFE BEND    SAFE OUT    SAFE TWIST
+#   lthigh_g  rthigh_g          hip                -30 to 140   -30 to 60   -40 to 40
+#   lshin_g   rshin_g           knee                 0 to 150   do not use  do not use
+#   lfoot_g   rfoot_g           ankle              -50 to 35    -20 to 20   -30 to 30
+#   torso_g   torsoupr_g        lower, upper back  -30 to 50    -30 to 30   -40 to 40
+#   necklwr_g neck_g  head_g    neck and head      -30 to 45    -30 to 30   -60 to 60
+#   lcollar_g rcollar_g         shoulder blade     -20 to 20    -20 to 20   do not use
+#   lbicep_g  rbicep_g          shoulder           -60 to 170   -40 to 120  -70 to 70
+#   lforearm_g rforearm_g       elbow                0 to 145   do not use  -70 to 70
+#   lhand_g   rhand_g           wrist              -60 to 60    -20 to 20   do not use
+#   pelvis_g                    the hips           -30 to 30    -15 to 15   -30 to 30    It moves the legs, not the back.
+# The game refuses only an angle past 180 either way. Inside that, anything goes: the safe ranges are where a body can bend.
+#
+version = 6            # which of the game's own jumps this began as. Leave it alone.
+
+# THE KEYS. Each one is a moment. The game moves from each key to the next.
+#   at     how far through the jump, 0 to 1. 0 is leaving the floor, 0.5 the top, and 1 is the feet touching.
+#          A jump lasts about 0.7 seconds, and 0.1 of it is 0.07 seconds. The game's own run has a key every 0.07 s: so does this. The landing that comes after it is in landing_pose.txt.
+#   ease   how it moves into this key: smooth, linear, in (starts slow) or out (ends slow).
+#   tuck   0 to 1. At 1 the running animation has gone.
+#   lower  how far the body sinks, in metres. In the air there is no floor to keep the feet on, so it is 0.
+# A joint a key does not name is at 0 in that key: standing as it was. Left and right differ here on purpose: a stride.
+
+[key]            # Leaving the floor, out of whatever the body was doing. The run's stride is still in the legs.
+at = 0
+tuck = 0
+lower = 0
+#              bend  out  twist
+
+[key]            # Load, the anticipation: the knees give, the back leans in and both arms swing back. The body is sunk, so the feet stay down.
+at = 0.07
+ease = smooth
+tuck = 0.28
+lower = 0.1
+#              bend  out  twist
+lthigh_g   =    38     -5      0
+rthigh_g   =    36     -5      0
+lshin_g    =    56
+rshin_g    =    54
+lfoot_g    =    22
+rfoot_g    =    20
+pelvis_g   =     0      0      0
+torso_g    =    14      0      0
+torsoupr_g =     8      0      0
+neck_g     =    -6
+head_g     =    -4
+lbicep_g   =     5    -22      0
+rbicep_g   =     0    -22      0
+lforearm_g =    30      0    -50
+rforearm_g =    28      0    -50
+lhand_g    =   -10
+rhand_g    =   -10
+
+[key]            # Push off: the legs drive straight, the left knee comes up first, the arms swing through to the front.
+at = 0.15
+ease = smooth
+tuck = 0.8
+lower = 0.05
+#              bend  out  twist
+lthigh_g   =    54     -5      0
+rthigh_g   =     6     -5      0
+lshin_g    =    70
+rshin_g    =    46
+lfoot_g    =   -12
+rfoot_g    =    -8
+pelvis_g   =     0      0     -6
+torso_g    =     8      0     -6
+torsoupr_g =     6      0     -6
+neck_g     =    -4
+head_g     =    -2
+lbicep_g   =    16    -26      0
+rbicep_g   =    -6    -22      0
+lforearm_g =    50      0    -50
+rforearm_g =    34      0    -50
+lhand_g    =    10
+rhand_g    =     0
+
+[key]            # The stride at its widest, as in the run: the left leg and the right arm forward, the right leg trailing.
+at = 0.27
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    70     -5      0
+rthigh_g   =   -20     -5      0
+lshin_g    =    86
+rshin_g    =    66
+lfoot_g    =   -20
+rfoot_g    =    25
+pelvis_g   =     0      0     -8
+torso_g    =    10      0     -8
+torsoupr_g =     8      0     -8
+neck_g     =    -6
+head_g     =    -4
+lbicep_g   =   -20    -24      0
+rbicep_g   =    52    -26      0
+lforearm_g =    30      0    -50
+rforearm_g =    70      0    -50
+lhand_g    =     0
+rhand_g    =    10
+
+[key]            # Rising, the knees gathering: the trailing leg comes through, the arms start to open for balance.
+at = 0.4
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    62     -5      0
+rthigh_g   =    22     -5      0
+lshin_g    =    80
+rshin_g    =    70
+lfoot_g    =   -10
+rfoot_g    =    15
+pelvis_g   =     0      0      0
+torso_g    =    10      0      0
+torsoupr_g =     8      0      0
+neck_g     =    -6
+head_g     =    -4
+lbicep_g   =    12    -40      0
+rbicep_g   =    42    -40      0
+lforearm_g =    58      0    -50
+rforearm_g =    62      0    -50
+lhand_g    =     0
+rhand_g    =     0
+
+[key]            # The top, 0.35 seconds in the air: the knees tucked up and the arms out.
+at = 0.5
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    58     -5      0
+rthigh_g   =    50     -5      0
+lshin_g    =    76
+rshin_g    =    80
+lfoot_g    =     0
+rfoot_g    =    10
+pelvis_g   =     0      0      0
+torso_g    =    12      0      0
+torsoupr_g =     8      0      0
+neck_g     =    -6
+head_g     =    -4
+lbicep_g   =    36    -52      0
+rbicep_g   =    40    -52      0
+lforearm_g =    70      0    -50
+rforearm_g =    68      0    -50
+lhand_g    =     0
+rhand_g    =     0
+
+[key]            # Over the top: the legs begin to open for the floor, the arms still out and coming forward.
+at = 0.6
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    48     -5      0
+rthigh_g   =    44     -5      0
+lshin_g    =    60
+rshin_g    =    62
+lfoot_g    =     5
+rfoot_g    =     8
+pelvis_g   =     0      0      0
+torso_g    =    14      0      0
+torsoupr_g =    10      0      0
+neck_g     =    -8
+head_g     =    -4
+lbicep_g   =    42    -48      0
+rbicep_g   =    46    -48      0
+lforearm_g =    62      0    -50
+rforearm_g =    60      0    -50
+lhand_g    =     0
+rhand_g    =     0
+
+[key]            # Coming down: one leg ahead of the other, knees soft, the body leaning in a little, the arms forward.
+at = 0.71
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    42     -5      0
+rthigh_g   =    36     -5      0
+lshin_g    =    54
+rshin_g    =    56
+lfoot_g    =     5
+rfoot_g    =     0
+pelvis_g   =     0      0      4
+torso_g    =    16      0      4
+torsoupr_g =    10      0      4
+neck_g     =    -8
+head_g     =    -4
+lbicep_g   =    28    -36      0
+rbicep_g   =    42    -36      0
+lforearm_g =    54      0    -50
+rforearm_g =    58      0    -50
+lhand_g    =     0
+rhand_g    =     0
+
+[key]            # Reaching: the legs go down for the floor, the arms still forward and now level.
+at = 0.81
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    38     -5      0
+rthigh_g   =    34     -5      0
+lshin_g    =    46
+rshin_g    =    50
+lfoot_g    =     0
+rfoot_g    =    -5
+pelvis_g   =     0      0      0
+torso_g    =    18      0      0
+torsoupr_g =    12      0      0
+neck_g     =    -8
+head_g     =    -4
+lbicep_g   =    34    -32      0
+rbicep_g   =    38    -32      0
+lforearm_g =    46      0    -50
+rforearm_g =    48      0    -50
+lhand_g    =     0
+rhand_g    =     0
+
+[key]            # Feet nearly there, knees ready to take it.
+at = 0.91
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    34     -5      0
+rthigh_g   =    32     -5      0
+lshin_g    =    42
+rshin_g    =    46
+lfoot_g    =    -2
+rfoot_g    =    -4
+pelvis_g   =     0      0      0
+torso_g    =    18      0      0
+torsoupr_g =    12      0      0
+neck_g     =    -8
+head_g     =    -4
+lbicep_g   =    30    -30      0
+rbicep_g   =    30    -30      0
+lforearm_g =    42      0    -50
+rforearm_g =    44      0    -50
+lhand_g    =     0
+rhand_g    =     0
+
+[key]            # The feet touch, and the landing takes over.
+at = 1
+ease = smooth
+tuck = 1
+lower = 0
+#              bend  out  twist
+lthigh_g   =    32     -5      0
+rthigh_g   =    30     -5      0
+lshin_g    =    40
+rshin_g    =    42
+lfoot_g    =    -4
+rfoot_g    =    -4
+pelvis_g   =     0      0      0
+torso_g    =    18      0      0
+torsoupr_g =    12      0      0
+neck_g     =    -8
+head_g     =    -4
+lbicep_g   =    26    -30      0
+rbicep_g   =    26    -30      0
+lforearm_g =    38      0    -50
+rforearm_g =    38      0    -50
+lhand_g    =     0
+rhand_g    =     0

@@ -1304,6 +1304,44 @@ fn frames_of_the_bra_straps() {
     std::fs::remove_file(&file).ok();
 }
 
+/// Owner: the jump needs a crouch before it, "original-style and fluid". From the key press the body is drawn sinking into a crouch on
+/// the floor for the wind-up, and it leaves the floor from that crouch.
+#[test]
+fn a_jump_crouches_on_the_floor_before_it_leaves() {
+    let Some((mut s, file)) = stage("windup", "") else {
+        return;
+    };
+    s.yaw = clear_way(&mut s);
+    s.steer = (0.0, 0.0, false);
+    run(&mut s, 30);
+    let stand = s
+        .game
+        .world
+        .pc_body
+        .jump_windup_progress(&s.game.world.tuning);
+    assert!(stand.is_none(), "not winding up before the key");
+    s.jump_key();
+    let mut deepest = 0.0f32;
+    let mut grounded_bent = 0;
+    for _ in 0..40 {
+        s.update(DT);
+        let body = &s.game.world.pc_body;
+        if body.jump_windup_progress(&s.game.world.tuning).is_some() {
+            assert!(body.grounded, "winding up on the floor");
+            if let Some(j) = s.bent_joints() {
+                grounded_bent += 1;
+                deepest = deepest.max(j["lshin_g"][1] - j["lfoot_g"][1]);
+            }
+        }
+    }
+    assert!(
+        grounded_bent >= 3,
+        "the crouch is drawn: {grounded_bent} frames"
+    );
+    println!("crouch frames {grounded_bent}, shin ahead of foot {deepest:.3}");
+    std::fs::remove_file(&file).ok();
+}
+
 /// From a run or from standing, through a jump and its landing, no hand or foot jumps from one frame to the next.
 #[test]
 fn a_jump_goes_smoothly_from_the_run_to_the_landing_and_back() {
