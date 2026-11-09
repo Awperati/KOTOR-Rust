@@ -1237,7 +1237,10 @@ fn a_jump_strides_with_the_opposite_arm_and_closes_the_stride_with_no_paddling()
     }
     // Coming down, the feet are nearly under the body again.
     let down = at(1.0);
-    assert!(ahead(&down, "lshin_g", "rshin_g").abs() < 0.05);
+    // The stride has not gone back to where it began (the owner, 9 Nov: no ping-pong): it is still the same leg ahead, closing for the
+    // landing, which takes it on from here.
+    let split = ahead(&down, "lshin_g", "rshin_g");
+    assert!((-0.02..0.15).contains(&split), "{split}");
     std::fs::remove_file(&file).ok();
 }
 
