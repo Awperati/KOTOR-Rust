@@ -73,8 +73,11 @@ impl Stage {
     }
 
     /// Whether the aim can begin or go on now.
-    fn may_aim(&self) -> bool {
-        self.aim_held && self.in_fight_now()
+    fn may_aim(&mut self) -> bool {
+        // A blade blocks on this button and does not aim (`bladescreen`); a blaster, or bare hands, aim.
+        self.aim_held
+            && !(self.modern_mode() && self.game.world.blade_in_hand())
+            && self.in_fight_now()
     }
 
     /// Whether Modern combat's fighting is up: in a fight, with an enemy in sight, locked on, or with Attack mode on.

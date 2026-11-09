@@ -319,6 +319,74 @@ impl World {
             .unwrap_or(0) as i32
     }
 
+    /// The Block button, as the window sees it each frame: held, and in Modern combat. Only a melee weapon in hand blocks, and a
+    /// blaster keeps the aim.
+    pub fn set_block(&mut self, held: bool) {
+        self.block.wish = held;
+        if !held {
+            self.block.needs_release = false;
+        }
+    }
+
+    /// Whether the player's weapon is a melee one: something in the right hand that is not fired.
+    pub fn blade_in_hand(&mut self) -> bool {
+        let pc = self.pc;
+        self.objects
+            .get(&pc)
+            .is_some_and(|o| o.equipped.contains_key(&4))
+            && !self.weapon_of(pc).ranged
+    }
+
+    /// The Block's clock, every step: it begins on the button, lasts at least a moment, at most a few seconds, and then waits.
+    pub(crate) fn update_block(&mut self) {
+        let now = self.time;
+        let alive = self
+            .objects
+            .get(&self.pc)
+            .is_some_and(|o| !o.dead && !o.down);
+        let wants = self.block.wish
+            && alive
+            && !self.block.needs_release
+            && now >= self.block.cooldown_until
+            && !self.pc_blowing
+            && self.blade_in_hand();
+        if wants {
+            if !self.pc_guard {
+                self.pc_guard = true;
+                self.block.since = now;
+            } else if now - self.block.since >= BLOCK_MAX_SECONDS {
+                self.pc_guard = false;
+                self.block.needs_release = true;
+                self.block.cooldown_until = now + BLOCK_COOLDOWN_SECONDS;
+            }
+        } else if self.pc_guard && now - self.block.since >= BLOCK_MIN_SECONDS {
+            self.pc_guard = false;
+            self.block.cooldown_until = self.block.cooldown_until.max(now + BLOCK_RELEASE_SECONDS);
+        }
+    }
+
+    /// Whether the player's Block stops a blow from `attacker`: it is up, and they are within the front arc.
+    fn blocks(&self, target: ObjId, attacker: ObjId) -> bool {
+        if target != self.pc || !self.pc_guard {
+            return false;
+        }
+        let (Some(t), Some(a)) = (self.objects.get(&target), self.objects.get(&attacker)) else {
+            return false;
+        };
+        let way = (a.position[1] - t.position[1]).atan2(a.position[0] - t.position[0]);
+        let tau = std::f32::consts::TAU;
+        let off = (way - self.pc_mover.heading + tau / 2.0).rem_euclid(tau) - tau / 2.0;
+        off.abs() <= BLOCK_ARC_HALF
+    }
+
+    /// Whether `id` is held in a clash and does not attack.
+    pub fn in_clash(&self, id: ObjId) -> bool {
+        self.block
+            .clash_until
+            .get(&id)
+            .is_some_and(|t| self.time < *t)
+    }
+
     /// Whether `id` is still in the attack it committed to. A click for a new one is ignored until it is over.
     pub fn attack_busy(&self, id: ObjId) -> bool {
         self.attack_until
@@ -694,7 +762,15 @@ impl World {
             + penalty
             + boost.to_hit
             + self.close_combat_bonus(attacker, target);
-        let defense = self.defense_of(target);
+        let blocked = self.blocks(target, attacker);
+        let defense = self.defense_of(target) + if blocked { BLOCK_DEFENSE } else { 0 };
+        // The player's blow right after a block is a riposte.
+        let bonus = if attacker == self.pc && self.time < self.block.riposte_until {
+            self.block.riposte_until = 0.0;
+            bonus + RIPOSTE_BONUS
+        } else {
+            bonus
+        };
         let (roll, confirm) = (self.roll(20), self.roll(20));
         let threat = weapon.threat * boost.threat.max(1) * self.threat_factor(attacker, slot);
         let mut outcome = resolve_attack(roll, confirm, bonus, defense, threat);
@@ -722,6 +798,14 @@ impl World {
             if turned > 0 && self.roll(100) <= turned {
                 outcome = Outcome::Miss;
             }
+        }
+        // A blade in the way turns a share of bolts aside, as a deflect.
+        if blocked
+            && weapon.ranged
+            && outcome != Outcome::Miss
+            && self.roll(100) <= BLOCK_DEFLECT_PERCENT
+        {
+            outcome = Outcome::Miss;
         }
         if outcome == Outcome::Critical && self.is_immune(target, 31) {
             outcome = Outcome::Hit;
@@ -755,6 +839,10 @@ impl World {
             if let Some(share) = self.blow_share {
                 dealt = ((dealt as f32 * share).round() as i32).max(1);
             }
+            // A blow that gets past the Block does less.
+            if blocked {
+                dealt = ((dealt as f32 * BLOCK_DAMAGE_SHARE).round() as i32).max(1);
+            }
             dealt = self.story_soften(attacker, target, dealt);
             // Medication Sickness takes a share off the damage.
             let sick_damage = self.medication_damage_penalty(attacker);
@@ -770,6 +858,20 @@ impl World {
             }
             // A force shield (an item's or a power's) takes what it can of the blow.
             dealt = self.absorb_with_shields(target, dealt, kind);
+        }
+        if blocked {
+            let turned = outcome == Outcome::Miss;
+            self.block_events.push(BlockEvent {
+                attacker,
+                turned,
+                ranged: weapon.ranged,
+            });
+            if turned {
+                // The clash: the attacker is held a moment, and the player may answer.
+                let until = self.time + CLASH_SECONDS;
+                self.block.clash_until.insert(attacker, until);
+                self.block.riposte_until = self.time + RIPOSTE_SECONDS;
+            }
         }
         let fell = self.hurt(attacker, target, dealt);
         if outcome != Outcome::Miss && !fell {
@@ -938,6 +1040,7 @@ impl World {
 
     /// Advance combat by `dt` seconds: heartbeats, perception, movement towards targets, and rounds.
     pub(crate) fn update_combat(&mut self, dt: f32) {
+        self.update_block();
         let now = self.time;
         let (due, later) = std::mem::take(&mut self.combat.swings)
             .into_iter()
@@ -1243,7 +1346,11 @@ impl World {
             if self.combat.target.get(&a) != Some(&t) {
                 continue;
             }
-            if self.is_disabled(a) {
+            if self.is_disabled(a) || self.in_clash(a) {
+                continue;
+            }
+            // The player behind a Block does not strike.
+            if a == self.pc && self.pc_guard {
                 continue;
             }
             // An enemy low on hit points spends a round on a medpac it carries, as the player would.
@@ -1285,6 +1392,46 @@ impl World {
 ///
 /// **Assumption:** my number. The game has no turn rate in the files read here.
 pub const TURN_RATE: f32 = 6.0;
+
+/// Modern combat's Block, with a blade in hand. Every number is mine: the game has no block.
+///
+/// **Assumptions:** the block turns attackers within 120 degrees of the front; adds 5 to Defense; turns half of a bolt away on its
+/// own roll; a blow it does not stop does half damage; it lasts at least 0.3 s, at most 3 s, then needs the button let go and
+/// 1.5 s more. A turned blow (or bolt) is a clash: the attacker recoils and loses 1.5 s, and the player's next blow within 2 s is
+/// a riposte with +4 to hit. The d20 of the brief is the game's d20 attack roll against Defense (`resolve_attack`).
+pub const BLOCK_ARC_HALF: f32 = std::f32::consts::FRAC_PI_3;
+pub const BLOCK_DEFENSE: i32 = 5;
+pub const BLOCK_DEFLECT_PERCENT: i32 = 50;
+pub const BLOCK_DAMAGE_SHARE: f32 = 0.5;
+pub const BLOCK_MIN_SECONDS: f32 = 0.3;
+pub const BLOCK_MAX_SECONDS: f32 = 3.0;
+pub const BLOCK_COOLDOWN_SECONDS: f32 = 1.5;
+pub const BLOCK_RELEASE_SECONDS: f32 = 0.4;
+pub const CLASH_SECONDS: f32 = 1.5;
+pub const RIPOSTE_SECONDS: f32 = 2.0;
+pub const RIPOSTE_BONUS: i32 = 4;
+
+/// What the Block remembers.
+#[derive(Clone, Debug, Default)]
+pub struct BlockState {
+    wish: bool,
+    needs_release: bool,
+    since: f32,
+    cooldown_until: f32,
+    /// Until when the player's next blow is a riposte.
+    pub riposte_until: f32,
+    /// Until when each creature is locked in a clash and does not attack.
+    pub clash_until: BTreeMap<ObjId, f32>,
+}
+
+/// A blow that met the player's Block.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockEvent {
+    pub attacker: ObjId,
+    /// The blade turned it aside entirely (a clash). Otherwise it landed for less.
+    pub turned: bool,
+    pub ranged: bool,
+}
 
 /// A reputation this high is a friend (`GetIsFriend`).
 const FRIEND_REPUTATION: i32 = 90;

@@ -991,7 +991,8 @@ impl World {
         let input = Input {
             aim: self.pc_aim,
             dir,
-            walk,
+            // Behind a Block the player walks, slowly.
+            walk: walk || self.pc_guard,
             roll,
         };
         let ground = NavGround(nav, self.barriers.as_deref());

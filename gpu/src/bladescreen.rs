@@ -61,7 +61,8 @@ impl Stage {
         let Some(stance) = self.game.blade_stance(pc) else {
             return false;
         };
-        if !self.paused() {
+        // Behind a Block the blade does not strike.
+        if !self.paused() && !self.game.world.pc_guard {
             self.blows.wanted = true;
             self.blows.stance = stance;
         }
@@ -74,7 +75,9 @@ impl Stage {
             return;
         }
         let pc = self.game.world.pc;
-        self.game.world.pc_guard = self.aim_on && self.game.blade_stance(pc).is_some();
+        // Right click with a blade is the Block, and not the aim (`aimscreen::may_aim`): held, in a fight, in Modern combat.
+        let block = self.aim_held && self.modern_mode() && self.in_fight_now();
+        self.game.world.set_block(block);
         if !self.in_fight_now() {
             self.blows = Blows::default();
             self.game.world.pc_blowing = false;

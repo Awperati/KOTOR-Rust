@@ -158,3 +158,12 @@ Stage 7 needs one thing: a clip of a minute or two showing the sabre combat the 
 - **Read in the code:** every row of the first table, the key list, and the clip names and lengths from the game's models.
 - **Not checked:** whether the key page's list scrolls to 70 rows, how the `f`, `m` and `g` attack clips look, or whether attack and parry clips match.
 - **Assumed:** every new number here, and the meaning of "action pop-up".
+
+## Block (blade in hand, Modern only)
+
+Right click with a melee weapon is a Block, and not the aim: a blaster keeps hold-right-click aim. All numbers are mine (`combat.rs`, `BLOCK_*`).
+
+- Up while the button is held, at least 0.3 s, at most 3 s. Then the button must be let go and 1.5 s pass. Walking is slow behind it, and the blade does not strike.
+- A blow from the front 120 degrees runs the usual d20 attack roll against Defense plus 5. (The brief's "D21" is read as this d20.) A bolt that still hits has a 50% deflect roll.
+- A blow that lands does half damage. A blow that fails is a clash: the attacker recoils and does not attack for 1.5 s, and the player's next blow within 2 s has +4 to hit (a riposte).
+- Not built: sparks and a clash sound. They need the window, which waits for the baton.

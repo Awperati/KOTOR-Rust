@@ -77,8 +77,10 @@ pub use chargen::{
     ATTRIBUTE_MAX, POINT_POOL,
 };
 pub use combat::{
-    ability_mod, damage, resolve_attack, AttackLog, CombatState, Outcome, Weapon,
-    HEARTBEAT_SECONDS, LINE_OF_FIRE_WIDTH, MELEE_REACH, RANGED_REACH, ROUND_SECONDS, TURN_RATE,
+    ability_mod, damage, resolve_attack, AttackLog, BlockEvent, BlockState, CombatState, Outcome,
+    Weapon, BLOCK_ARC_HALF, BLOCK_COOLDOWN_SECONDS, BLOCK_DAMAGE_SHARE, BLOCK_DEFENSE,
+    BLOCK_MAX_SECONDS, BLOCK_MIN_SECONDS, CLASH_SECONDS, HEARTBEAT_SECONDS, LINE_OF_FIRE_WIDTH,
+    MELEE_REACH, RANGED_REACH, RIPOSTE_BONUS, RIPOSTE_SECONDS, ROUND_SECONDS, TURN_RATE,
 };
 pub use combat_actions::{CombatAction, CombatChoice};
 pub use cutscene::{

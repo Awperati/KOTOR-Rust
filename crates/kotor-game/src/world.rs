@@ -467,6 +467,10 @@ pub struct World {
     pub(crate) attack_until: BTreeMap<ObjId, f32>,
     /// The player guards, right held with a blade in hand: an attack that fails on them is parried.
     pub pc_guard: bool,
+    /// Modern combat's Block: when it began, how long it may go on, the riposte and the clashes (`combat.rs`).
+    pub block: crate::combat::BlockState,
+    /// Blocks since the window last looked: who struck, and whether the blade turned it aside. Taken by `Game` for its clips.
+    pub block_events: Vec<crate::combat::BlockEvent>,
     /// Melee blows struck as ground finishers since the window last looked: attacker and victim. For the attacker's clip.
     pub finishers: Vec<(ObjId, ObjId)>,
     /// Who walks a route by the game's script (`ActionForceMoveToObject` to a waypoint).
@@ -820,6 +824,8 @@ impl World {
             pc_blowing: false,
             attack_until: BTreeMap::new(),
             pc_guard: false,
+            block: Default::default(),
+            block_events: Vec::new(),
             finishers: Vec::new(),
             route_walkers: Default::default(),
             route_held: Default::default(),

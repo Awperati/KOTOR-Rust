@@ -476,6 +476,13 @@ impl Game {
                 self.play_once(l.target, hit, seconds);
             }
         }
+        // A blow the Block turned aside throws the attacker back for a moment: the start of the clash.
+        for e in std::mem::take(&mut self.world.block_events) {
+            if e.turned && !e.ranged {
+                let recoil = self.style_clip(e.attacker, Move::Hit);
+                self.play_once(e.attacker, recoil, COMBAT_CLIP_SECONDS);
+            }
+        }
         // A swing waits for a flinch or dodge in progress, so that being hit is always seen to the end.
         for l in &new {
             if l.attacker == pc && blowing {
