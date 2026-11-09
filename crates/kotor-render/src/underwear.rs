@@ -2558,7 +2558,6 @@ mod strap_tests {
     /// not at the neck, and it carries on above the old top's collar line (`NECK_CLOTH`), where the old cloth used to cut it short.
     #[test]
     fn the_strap_runs_straight_up_over_the_shoulder_past_the_old_collar() {
-        assert!(STRAP_AT > 0.4 && STRAP_OUT == 0.0);
         let half = 0.22;
         for front in [true, false] {
             let y = if front { 0.02 } else { -0.02 };
@@ -2566,6 +2565,10 @@ mod strap_tests {
                 assert!(
                     bra_part(STRAP_AT * half, y, h, half) == Part::Strap,
                     "front {front} h {h}"
+                );
+                assert!(
+                    bra_part(0.29 * half, y, h, half) != Part::Strap,
+                    "not at the neck's foot: front {front} h {h}"
                 );
             }
         }
