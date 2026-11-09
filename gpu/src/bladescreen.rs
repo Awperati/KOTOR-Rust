@@ -160,7 +160,9 @@ impl Stage {
             }
         }
         self.game.play_blow(pc, stance, step, BLOW_RATE);
-        self.game.world.commit_attack(pc, kotor_game::BLOW_CLIP_SECONDS / BLOW_RATE);
+        self.game
+            .world
+            .commit_attack(pc, kotor_game::BLOW_CLIP_SECONDS / BLOW_RATE);
         self.game.hold_stance(pc);
         let row = (stance - 2).clamp(0, 2) as usize;
         let at = now + HIT_SECONDS[row][step] / BLOW_RATE;
