@@ -2976,6 +2976,49 @@ fn the_party_screen_adds_removes_and_answers_a_script() {
     assert_eq!(s.game.world.party_slots(), vec![6, 8]);
 }
 
+/// The owner: "Endar Spire map is bugged". The picture was upside down, so the player stood on black.
+#[test]
+fn the_map_picture_lies_the_right_way_up_under_the_floor_on_the_endar_spire_and_taris() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    for module in ["end_m01aa", "tar_m02aa"] {
+        let mut s = Stage::open(module, true).unwrap();
+        s.set_view(SIZE);
+        s.update(DT);
+        let map = s.game.world.area_map().expect("a map");
+        let all = vec![true; kotor_game::SEEN_COLS * kotor_game::SEEN_ROWS];
+        s.game.world.explored.insert(map.picture.clone(), all);
+        let pic = s.seen_map().expect("the picture");
+        let nav = s.game.world.nav.as_ref().unwrap();
+        // Where the floor is, the picture shows a room: it is black round about.
+        let (mut floor, mut drawn) = (0, 0);
+        for i in -200..1200 {
+            for j in -200..1200 {
+                let (x, y) = (i as f32 * 0.25, j as f32 * 0.25);
+                if nav.walkable_at(x, y, 50.0).is_none() {
+                    continue;
+                }
+                let [px, py] = map.pixel(x, y);
+                let (px, py) = (px as i32, py as i32);
+                if !(0..pic.width as i32).contains(&px) || !(0..pic.height as i32).contains(&py) {
+                    continue;
+                }
+                floor += 1;
+                let at = ((py as u32 * pic.width + px as u32) * 4) as usize;
+                drawn += pic.rgba[at..at + 3].iter().any(|c| *c > 40) as usize;
+            }
+        }
+        assert!(floor > 400, "{module}: {floor}");
+        assert!(drawn * 100 >= floor * 90, "{module}: {drawn} of {floor}");
+        // The player stands on what is drawn.
+        let p = s.game.world.object(s.game.world.pc).unwrap().position;
+        let [px, py] = map.pixel(p[0], p[1]);
+        let at = ((py as u32 * pic.width + px as u32) * 4) as usize;
+        assert!(pic.rgba[at..at + 3].iter().any(|c| *c > 40), "{module}");
+    }
+}
+
 #[test]
 fn the_map_shows_the_area_the_party_and_its_notes() {
     let Some((mut s, _)) = in_game("map") else {

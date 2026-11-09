@@ -150,6 +150,12 @@ impl Stage {
         v
     }
 
+    /// The map as far as it has been seen, as the small map and the map screen show it.
+    pub fn seen_map(&mut self) -> Option<kotor_image::Image> {
+        self.see_here();
+        self.ui.texture(SEEN_PICTURE).cloned()
+    }
+
     /// The small map on the HUD. What moves it is rounded, so the HUD is drawn again only when it shows.
     pub(in crate::stage) fn minimap_view(&mut self) -> Option<MiniMap> {
         self.see_here();
