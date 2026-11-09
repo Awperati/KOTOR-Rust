@@ -2099,6 +2099,7 @@ fn a_new_game_asks_for_the_same_voices_in_both_modes() {
         return;
     }
     let mut asked: Vec<Vec<String>> = Vec::new();
+    let mut firsts: Vec<usize> = Vec::new();
     for mode in [kotor_game::GameMode::Classic, kotor_game::GameMode::Modern] {
         let mut s = Stage::open_in_mode("end_m01aa", true, mode).unwrap();
         let mut voices = Vec::new();
@@ -2122,6 +2123,12 @@ fn a_new_game_asks_for_the_same_voices_in_both_modes() {
             }
             shown = s.lines_shown;
         }
+        firsts.push(
+            voices
+                .first()
+                .and_then(|v| v.split(':').next()?.parse().ok())
+                .unwrap_or(usize::MAX),
+        );
         eprintln!("{mode:?}: lines shown {shown}, stops {stops}, voices {voices:?}");
         asked.push(
             voices
@@ -2131,5 +2138,11 @@ fn a_new_game_asks_for_the_same_voices_in_both_modes() {
         );
     }
     assert!(!asked[0].is_empty(), "Classic asks for no voice at all");
+    // The opening's Trask lines name voices the install lacks and carry sounds it has: the first of them is heard, not just the
+    // tutorial lines that come after 800 steps ("Trask's voicelines dont play upon starting a new game").
+    assert!(
+        firsts.iter().all(|f| *f < 700),
+        "the first voice comes late: {firsts:?}"
+    );
     assert_eq!(asked[0], asked[1], "the two modes ask for other voices");
 }

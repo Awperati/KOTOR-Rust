@@ -1434,6 +1434,9 @@ impl Stage {
         };
         let key = self.game.world.dialogue_serial();
         if self.line_key != key {
+            // The line's own voice-over, or its `Sound` when the install has no file for that: most of the Endar Spire's lines
+            // name a voice the install lacks and carry a sound of their own that it has.
+            let vo = self.voice_resref(vo);
             self.line_key = key;
             self.lines_shown += 1;
             self.cues.push(match self.sound_file(&vo) {
@@ -1488,6 +1491,20 @@ impl Stage {
                 self.game.world.dialogue_choose(0);
             }
         }
+    }
+
+    /// The resref to play for a line: its voice-over if the install has the file, else the line's `Sound` if it has that, else
+    /// the voice-over, so that the missing file is said once.
+    fn voice_resref(&self, vo: String) -> String {
+        if self.sound_file(&vo).is_some() {
+            return vo;
+        }
+        self.game
+            .world
+            .dialogue_conversation()
+            .and_then(|c| c.steps.first().map(|s| s.sound.clone()))
+            .filter(|sound| self.sound_file(sound).is_some())
+            .unwrap_or(vo)
     }
 
     /// A model by name, parsed once.
