@@ -29,7 +29,8 @@ fn main() {
     let soft_scene = {
         let mut rig = rig_for_appearance(&mut inst, row, 1).unwrap();
         rig.soften_underwear_shading();
-        rig.pose(anim.as_ref().map(|(n, t)| (n.as_str(), *t))).unwrap()
+        rig.pose(anim.as_ref().map(|(n, t)| (n.as_str(), *t)))
+            .unwrap()
     };
     let mid = [0, 1, 2].map(|k| (scene.min[k] + scene.max[k]) / 2.0);
     let height = scene.max[2] - scene.min[2];
@@ -52,7 +53,12 @@ fn main() {
                 eye: [
                     upper[0] + along[0] * height * reach,
                     upper[1] + along[1] * height * reach,
-                    upper[2] + if side.starts_with("top") { height * 0.45 } else { 0.0 },
+                    upper[2]
+                        + if side.starts_with("top") {
+                            height * 0.45
+                        } else {
+                            0.0
+                        },
                 ],
                 target: upper,
                 fov: 40.0,

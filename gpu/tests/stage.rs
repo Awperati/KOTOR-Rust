@@ -1385,8 +1385,14 @@ fn a_head_speaks_while_its_line_plays() {
     // Two seconds, six frames of them.
     let mut taken = 0;
     // FRAME_STRIP_COUNT frames (6), FRAME_STRIP_EVERY steps apart (10).
-    let every: usize = std::env::var("FRAME_STRIP_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(10);
-    let count: usize = std::env::var("FRAME_STRIP_COUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(6);
+    let every: usize = std::env::var("FRAME_STRIP_EVERY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+    let count: usize = std::env::var("FRAME_STRIP_COUNT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(6);
     for step in 0..every * count {
         s.update(DT);
         if s.mouth_of(speaker).is_none() {
@@ -2057,7 +2063,11 @@ fn a_line_with_no_voice_moves_no_mouth() {
                         g.set_static_scene(&still, &mut |n| s.texture(n));
                         let cam = s.speaker_camera().unwrap_or_else(|| s.camera());
                         let img = g.render(&scene, &mut |n| s.texture(n), &cam).unwrap();
-                        std::fs::write(format!("{dir}/silent_{shot}.png"), kotor_image::to_png(&img)).unwrap();
+                        std::fs::write(
+                            format!("{dir}/silent_{shot}.png"),
+                            kotor_image::to_png(&img),
+                        )
+                        .unwrap();
                         shot += 1;
                     }
                 }
