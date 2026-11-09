@@ -120,6 +120,16 @@ const CAMERA_BEHIND: f32 = 3.3;
 const CAMERA_ABOVE: f32 = 1.7;
 const CAMERA_LOOKS_AT: f32 = 1.2;
 
+/// Whether a clip is a weapon's own: a stance, a walk or an attack with it (`g5r1`, `b5a1`, `c2a1`, `m2d1`): a letter for the fighting
+/// style, the weapon's digit 1 to 9, and an action. A creature playing one has its weapon in its hands, in a fight or a cutscene.
+pub fn weapon_clip(name: &str) -> bool {
+    let b = name.as_bytes();
+    b.len() >= 3
+        && matches!(b[0], b'g' | b'b' | b'c' | b'f' | b'm')
+        && (b'1'..=b'9').contains(&b[1])
+        && matches!(b[2], b'a' | b'r' | b'g' | b'w' | b'd' | b'p')
+}
+
 /// Something the window should play. Files are found here; decoding and output belong to the window.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Cue {
@@ -3458,6 +3468,29 @@ impl Stage {
         model
     }
 
+    /// The name of an item's model and its box, for a test of how a weapon sits.
+    pub fn item_box(&mut self, item: ObjId) -> Option<(String, [[f32; 3]; 2])> {
+        let m = self.item_model(item)?;
+        let mats = m.world_matrices(None);
+        let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+        m.root.walk(&mut |n: &kotor_model::Node| {
+            let (Some(mesh), Some((_, w))) = (
+                n.mesh.as_ref(),
+                mats.iter().find(|(name, _)| name == &n.name),
+            ) else {
+                return;
+            };
+            for p in &mesh.positions {
+                for k in 0..3 {
+                    let v = w[k][0] * p[0] + w[k][1] * p[1] + w[k][2] * p[2] + w[k][3];
+                    lo[k] = lo[k].min(v);
+                    hi[k] = hi[k].max(v);
+                }
+            }
+        });
+        Some((m.name.clone(), [lo, hi]))
+    }
+
     /// The model of an item by its base item and template.
     fn model_of_item(&mut self, base: usize, template: &str) -> Option<Rc<Model>> {
         let variation = self
@@ -3511,6 +3544,43 @@ impl Stage {
             .is_some_and(|s| s.contains(name))
     }
 
+    /// Whether a creature has a weapon in a hand now, and not on its body.
+    pub fn weapon_in_hand(&mut self, id: ObjId) -> bool {
+        self.hands(id)
+            .iter()
+            .any(|(node, _)| matches!(*node, "rhand" | "lhand"))
+    }
+
+    /// Whether creature `id` is, in the conversation or cutscene now on, using its weapon: it plays a clip of a weapon's stance or an
+    /// attack (`g5r1`, `b5a1`, `c2a1`: a letter, the weapon's digit and an action), or the scene stages it with a stunt animation and
+    /// it is neither the player, nor the speaker, nor who is spoken to.
+    fn acts_armed(&self, id: ObjId) -> bool {
+        let w = &self.game.world;
+        let armed_name = weapon_clip;
+        if self.dialogue_clip(id).is_some_and(|c| armed_name(c.name))
+            || self
+                .forced_clip
+                .is_some_and(|(f, n)| f == id && armed_name(n))
+            || self.game.clip(id).is_some_and(|c| armed_name(c.name))
+        {
+            return true;
+        }
+        let talkers = w
+            .dialogue_pair()
+            .map_or([None, None], |(a, b)| [Some(a), Some(b)]);
+        let Some(o) = w.object(id) else {
+            return false;
+        };
+        id != w.pc
+            && !talkers.contains(&Some(id))
+            && self.beat.as_ref().is_some_and(|b| {
+                b.step
+                    .animations
+                    .iter()
+                    .any(|(who, _)| who.eq_ignore_ascii_case(&o.tag))
+            })
+    }
+
     /// What a creature holds: hand node and model.
     fn hands(&mut self, id: ObjId) -> Vec<(&'static str, Rc<Model>)> {
         if self.hides_equipment(id) {
@@ -3530,7 +3600,13 @@ impl Stage {
             })
             .unwrap_or_default();
         // A weapon is in the hand in a fight and on the body (a holster, a sling, a sheath) outside one, and in a conversation.
-        let drawn = self.game.weapons_drawn(id) && !self.game.world.in_dialogue();
+        // In a cutscene the actors that fight in it have theirs in their hands: whoever plays a weapon's stance or attack, and a soldier the
+        // scene stages beside the talkers. The talkers keep theirs on the body.
+        let drawn = if self.game.world.in_dialogue() {
+            self.acts_armed(id)
+        } else {
+            self.game.weapons_drawn(id)
+        };
         let mut held: Vec<(&'static str, Rc<Model>)> = items
             .into_iter()
             .filter_map(|(node, item, right)| {

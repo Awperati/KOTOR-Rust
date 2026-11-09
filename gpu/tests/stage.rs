@@ -2146,3 +2146,217 @@ fn a_new_game_asks_for_the_same_voices_in_both_modes() {
     );
     assert_eq!(asked[0], asked[1], "the two modes ask for other voices");
 }
+
+/// With `FRAME_OPENING` set to a folder: the Endar Spire's opening as the camera has it, one frame every `FRAME_EVERY` steps (60),
+/// for `FRAME_STEPS` steps (3600). For the weapons of the soldiers in it.
+#[test]
+fn frames_of_the_opening_cinematic() {
+    let Ok(dir) = std::env::var("FRAME_OPENING") else {
+        return;
+    };
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let every: usize = std::env::var("FRAME_EVERY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60);
+    let steps: usize = std::env::var("FRAME_STEPS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3600);
+    let mut s = Stage::open_in_mode("end_m01aa", true, kotor_game::GameMode::Modern).unwrap();
+    s.set_view((960, 540));
+    let mut gpu = GpuRenderer::new(960, 540).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    // FRAME_NEAR=<tag>: out of the opening talk and to that creature, for the scenes further on.
+    if let Ok(tag) = std::env::var("FRAME_NEAR") {
+        for _ in 0..900 {
+            if !s.game.world.in_dialogue() {
+                break;
+            }
+            s.continue_line();
+            s.number_key(1);
+            s.update(DT);
+        }
+        assert!(s.stand_near(&tag), "no floor beside {tag}");
+    }
+    for step in 0..steps {
+        if s.game.world.in_dialogue() && step % 40 == 0 {
+            s.continue_line();
+            s.number_key(1);
+        }
+        s.update(DT);
+        if step % every == 0 {
+            let scene = s.dynamic_scene();
+            let still = s.static_scene().clone();
+            gpu.set_static_scene(&still, &mut |n| s.texture(n));
+            let cam = if s.game.world.in_dialogue() {
+                s.speaker_camera().unwrap_or_else(|| s.camera())
+            } else {
+                s.camera()
+            };
+            let img = gpu.render(&scene, &mut |n| s.texture(n), &cam).unwrap();
+            std::fs::write(
+                format!("{dir}/open-{step:05}.png"),
+                kotor_image::to_png(&img),
+            )
+            .unwrap();
+        }
+    }
+}
+
+/// What every creature of the opening module carries: for the weapons of the soldiers in the cinematics.
+#[test]
+fn what_the_opening_creatures_carry() {
+    if kotor_core::install_dir().is_none() || std::env::var("LIST_CARRIED").is_err() {
+        return;
+    }
+    let mut s = Stage::open_in_mode("end_m01aa", true, kotor_game::GameMode::Modern).unwrap();
+    let creatures: Vec<_> = s
+        .game
+        .world
+        .objects
+        .values()
+        .filter(|o| o.kind == Kind::Creature)
+        .flat_map(|o| o.equipped.values().copied())
+        .collect();
+    for item in creatures {
+        if let Some((name, b)) = s.item_box(item) {
+            eprintln!("BOX {name} {:.2?} .. {:.2?}", b[0], b[1]);
+        }
+    }
+    for o in s.game.world.objects.values() {
+        if o.kind == Kind::Creature {
+            let items: Vec<String> = o
+                .equipped
+                .iter()
+                .filter_map(|(slot, id)| {
+                    let i = s.game.world.object(*id)?;
+                    Some(format!("{slot}:{}/{}", i.template, i.base_item))
+                })
+                .collect();
+            eprintln!(
+                "CARRY {} {} at {:.1},{:.1}: {:?}",
+                o.tag, o.template, o.position[0], o.position[1], items
+            );
+        }
+    }
+}
+
+/// With `FRAME_CARRIED` set to a folder: the soldiers of the opening's cinematics from the front, the side and the back, as they stand
+/// with their weapons stored. `FRAME_TAGS` names them (comma separated).
+#[test]
+fn frames_of_the_soldiers_weapons() {
+    let Ok(dir) = std::env::var("FRAME_CARRIED") else {
+        return;
+    };
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let tags = std::env::var("FRAME_TAGS").unwrap_or_else(|_| {
+        "end_cut2_soldier4,end_cut2_soldier1,end_cut2_soldier2,end_cut2_sith3,end_cut2_sith2,SithSoldier,end_trask".into()
+    });
+    let mut s = Stage::open_in_mode("end_m01aa", true, kotor_game::GameMode::Modern).unwrap();
+    s.set_view((480, 640));
+    let mut gpu = GpuRenderer::new(480, 640).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    for tag in tags.split(',') {
+        // Out of the opening talk first.
+        for _ in 0..600 {
+            if !s.game.world.in_dialogue() {
+                break;
+            }
+            s.continue_line();
+            s.number_key(1);
+            s.update(DT);
+        }
+        if !s.stand_near(tag) {
+            eprintln!("no floor beside {tag}");
+            continue;
+        }
+        for _ in 0..10 {
+            s.update(DT);
+        }
+        let Some(id) = s.game.world.by_tag(tag).first().copied() else {
+            continue;
+        };
+        // FRAME_CLIP=run: the soldiers in that clip, to see the arms swing past what is on the body.
+        if let Ok(clip) = std::env::var("FRAME_CLIP") {
+            s.force_clip(id, Some(&clip));
+            for _ in 0..25 {
+                s.update(DT);
+            }
+        }
+        let at = s.game.world.object(id).unwrap().position;
+        for (view, a) in [
+            ("front", 0.0f32),
+            ("side", std::f32::consts::FRAC_PI_2),
+            ("back", std::f32::consts::PI),
+        ] {
+            let cam = kotor_render::Camera {
+                eye: [at[0] + a.cos() * 2.2, at[1] + a.sin() * 2.2, at[2] + 1.3],
+                target: [at[0], at[1], at[2] + 1.0],
+                fov: 40.0,
+            };
+            let still = s.static_scene().clone();
+            gpu.set_static_scene(&still, &mut |n| s.texture(n));
+            let scene = s.dynamic_scene();
+            let img = gpu.render(&scene, &mut |n| s.texture(n), &cam).unwrap();
+            std::fs::write(format!("{dir}/{tag}-{view}.png"), kotor_image::to_png(&img)).unwrap();
+        }
+    }
+}
+
+/// The owner: "the Sith Soldiers upon their first encounter within the cinematic have their weapons holstered despite actively firing
+/// them". A weapon's own clips say the weapon is in the hands, and the ones with no weapon do not.
+#[test]
+fn a_weapons_own_clips_are_the_ones_that_draw_it() {
+    for armed in ["g5r1", "b5a1", "c2a1", "g1w1", "m2d1", "f5p1", "b7a3"] {
+        assert!(kotor_gpu::stage::weapon_clip(armed), "{armed}");
+    }
+    for bare in [
+        "pause1", "cpause1", "tlknorm", "walk", "run", "listen", "dead1", "cdodgeg", "g1",
+        "turnleft",
+    ] {
+        assert!(!kotor_gpu::stage::weapon_clip(bare), "{bare}");
+    }
+}
+
+/// In a conversation the talkers keep their weapons on the body, and a soldier who plays a weapon's clip in the same scene has it in
+/// its hands, as the Sith firing in the opening's cinematic do.
+#[test]
+fn in_a_cutscene_who_fires_has_the_weapon_in_hand() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open_in_mode("end_m01aa", true, kotor_game::GameMode::Modern).unwrap();
+    for _ in 0..200 {
+        s.update(DT);
+        if s.game.world.in_dialogue() {
+            break;
+        }
+    }
+    assert!(s.game.world.in_dialogue(), "the opening talk is on");
+    let id = |tag: &str| s.game.world.by_tag(tag).first().copied().unwrap();
+    let (trask, shooter, bystander) = (
+        id("end_trask"),
+        id("end_cut2_soldier2"),
+        id("end_cut2_soldier1"),
+    );
+    assert!(
+        !s.weapon_in_hand(trask),
+        "the speaker's pistol stays on its hip"
+    );
+    assert!(!s.weapon_in_hand(shooter) && !s.weapon_in_hand(bystander));
+    s.force_clip(shooter, Some("b7a1"));
+    assert!(
+        s.weapon_in_hand(shooter),
+        "firing, the rifle is in the hands"
+    );
+    assert!(
+        !s.weapon_in_hand(bystander),
+        "a soldier at ease keeps it slung"
+    );
+    assert!(!s.weapon_in_hand(trask));
+}

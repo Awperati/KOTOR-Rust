@@ -77,3 +77,11 @@ with `FRAME_STRIP`.
 - Droids with arms (HK-47, the war droids) holster too where their nodes allow (`pelvis_g` and `torso_g`); a droid without those
   nodes keeps the weapon in the hand.
 - The offsets in `docs/holsters.tsv` are first guesses, tuned from frames in stage 1.
+
+## 9 Nov: blades along z, more detail, cutscene actors
+
+- **Axis (the cause of the sword bugs):** a sword, saber, double blade and baton model runs along its own **z** (vibroblade z -0.24 to 1.05); a gun runs along **y**. The table had turned every weapon as a gun, so a sword lay across the shoulders, forward and back, as in the owner's screenshots. The blade, twohand and baton rows now turn z: blades hang from the shoulder to the opposite hip (pitch 205 / 155), a double blade lies diagonally across the back at 0.6 of its size (`scale`, a new last column of the table), a baton hangs down from the hip.
+- **Detail:** hip holster has a flap, a belt loop, a thigh strap and buckle; the sling has two loops, a buckle and a butt pad; the sheath has two bands and a belt tab; the double blade has a harness. All are boxes in `shape_mesh`. A shape named `_z` is the same turned to run along z. Assumed: the look, from frames.
+- **Rifle and heavy:** moved to the middle of the back, leaning left at the top (-22 deg), so the butt does not hang at the left hand. Pistols sit 1 cm further out and 3 cm lower and back, clear of the swinging fist.
+- **Cutscenes:** in a conversation or cutscene a weapon is in the hand when the creature plays a weapon's clip (`weapon_clip`: `g5r1`, `b5a1`, `c2a1`) or the scene stages it with a stunt animation and it is not the player, speaker or listener. The talkers keep theirs on the body. Assumed: the stunt animations of the Endar Spire's firing soldiers are not named by their weapon, so any staged actor is armed.
+- **Not reproduced:** the first-encounter cutscene itself (needs the route to it). The soldiers are shown standing and running with their gear instead.
