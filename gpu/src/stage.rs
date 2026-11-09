@@ -189,6 +189,10 @@ fn placement_flat(p: [f32; 3], angle: f32, over: f32) -> Mat {
 /// How long a body with no death clip takes to fall back, in seconds.
 const FALL_SECONDS: f32 = 0.5;
 
+/// After a module is entered, for this many scenes, at most `ARRIVAL_SKINS` creatures away from the action are skinned fresh in each:
+/// the rest keep the body they had, or wait their turn. The first scene of an area otherwise skinned every creature in it at once (36 ms).
+const ARRIVAL_SCENES: u32 = 40;
+const ARRIVAL_SKINS: usize = 4;
 /// A creature beyond this many metres of the eye is skinned at `FAR_RATE` poses a second, and one behind the camera not at all.
 const FAR_FROM_EYE: f32 = 12.0;
 const FAR_RATE: f32 = 10.0;
@@ -690,6 +694,10 @@ pub struct Stage {
     pub reach_hold: Option<f32>,
     /// The last skinned body of each creature far from the eye, and what it was skinned for: it is reused until that changes.
     far_bodies: HashMap<ObjId, (u64, Vec<kotor_render::SceneMesh>)>,
+    /// Scenes left of the arrival in a module, in which the skinning is held to `ARRIVAL_SKINS` bodies each.
+    arrival_scenes: u32,
+    /// How many bodies away from the action the last scene skinned fresh.
+    pub fresh_skins: usize,
     /// The `name` of each row of `dialoganimations.2da`.
     dialogue_labels: Vec<String>,
     models: HashMap<String, Option<Rc<Model>>>,
@@ -894,6 +902,8 @@ impl Stage {
             idle_clock: 0.0,
             reach_hold: None,
             far_bodies: HashMap::new(),
+            arrival_scenes: 0,
+            fresh_skins: 0,
             dialogue_labels: Vec::new(),
             models: HashMap::new(),
             fixed_cameras: HashMap::new(),
@@ -974,6 +984,7 @@ impl Stage {
         // A turret's sky is not a picture of the area.
         let ready = ready.filter(|_| self.game.world.minigame.is_none());
         self.module = self.game.world.module.clone();
+        self.arrival_scenes = ARRIVAL_SCENES;
         self.inst.load_module(&self.module).map_err(e)?;
         let area = self.area_name();
         // The turret's sky moves, so it is drawn with what moves.
@@ -3745,6 +3756,9 @@ impl Stage {
         if let Some(turret) = self.turret_scene() {
             return turret;
         }
+        let capped = self.arrival_scenes > 0;
+        self.arrival_scenes = self.arrival_scenes.saturating_sub(1);
+        let mut fresh = 0usize;
         let here = self.pc_position();
         // A shot of someone far from the player (Carth on the comm) is a view from beside them.
         let cam = self.camera();
@@ -3883,6 +3897,19 @@ impl Stage {
                             }
                         }
                     }
+                    // On arrival in a module only a few bodies are skinned in a scene: the rest keep the last one, or wait.
+                    if !near_the_action {
+                        if capped && fresh >= ARRIVAL_SKINS {
+                            if let Some((_, meshes)) = self.far_bodies.get(&pose.id) {
+                                scene.meshes.extend(meshes.iter().cloned().map(|mut m| {
+                                    m.fade = fade;
+                                    m
+                                }));
+                            }
+                            continue;
+                        }
+                        fresh += 1;
+                    }
                     if self.add_bent_body(
                         &mut scene,
                         pose.id,
@@ -3970,6 +3997,7 @@ impl Stage {
             }
         }
         self.neighbour_figures(&mut scene, false);
+        self.fresh_skins = fresh;
         scene
     }
 

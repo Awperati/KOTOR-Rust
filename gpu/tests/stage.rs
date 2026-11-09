@@ -2360,3 +2360,27 @@ fn in_a_cutscene_who_fires_has_the_weapon_in_hand() {
     );
     assert!(!s.weapon_in_hand(trask));
 }
+
+/// The first scene of a module cost 36 ms because every creature was skinned at once. For the first scenes after arriving, at most four
+/// bodies away from the action are skinned fresh in each, and the count falls back to what the area has once they are over.
+#[test]
+fn the_first_scenes_of_an_area_skin_only_a_few_bodies() {
+    if kotor_core::install_dir().is_none() {
+        return;
+    }
+    let mut s = Stage::open_in_mode("end_m01aa", true, kotor_game::GameMode::Classic).unwrap();
+    s.set_view((320, 180));
+    let mut most = 0;
+    let mut later = 0;
+    for step in 0..100 {
+        s.update(DT);
+        let _ = s.dynamic_scene();
+        if step < 40 {
+            most = most.max(s.fresh_skins);
+        } else {
+            later = later.max(s.fresh_skins);
+        }
+    }
+    eprintln!("fresh skins: arrival at most {most}, later at most {later}");
+    assert!(most <= 4, "arrival skinned {most} bodies in one scene");
+}
